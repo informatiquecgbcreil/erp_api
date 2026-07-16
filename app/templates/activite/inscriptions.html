@@ -1,0 +1,215 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    {% if session %}
+      {% set d = session.rdv_date or session.date_session %}
+      <h1>Inscriptions · {{ atelier.nom }} — séance du {{ d.strftime('%d/%m/%Y') if d else 'sans date' }}</h1>
+      <p class="muted">
+        Inscriptions pour <strong>cette séance précise</strong> (sortie, événement à places
+        limitées…). Les inscrits « atelier entier » sont aussi attendus à cette séance.
+      </p>
+    {% else %}
+      <h1>Inscriptions · {{ atelier.nom }}</h1>
+      <p class="muted">
+        Inscriptions à <strong>l'atelier entier</strong> (les habitué·es attendu·es à chaque
+        séance). Pour une sortie ou un événement à places limitées, passez par la séance concernée.
+      </p>
+    {% endif %}
+
+    <div class="inline" style="gap:16px; flex-wrap:wrap; margin:10px 0;">
+      <div><strong style="font-size:22px;">{{ etat.inscrits }}</strong> <span class="muted">inscrit·e·s</span></div>
+      <div><strong style="font-size:22px;">{{ etat.attente }}</strong> <span class="muted">en liste d'attente</span></div>
+      <div>
+        {% if etat.capacite is not none %}
+          <strong style="font-size:22px;">{{ etat.places_restantes }}</strong>
+          <span class="muted">place(s) restante(s) sur {{ etat.capacite }}</span>
+          {% if etat.complet %}<span class="status-badge status-danger">COMPLET</span>{% endif %}
+        {% else %}
+          <span class="muted">jauge illimitée (renseignez la capacité de
+            {% if session %}la séance{% else %}l'atelier{% endif %} pour activer la liste d'attente)</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="inline" style="gap:8px; flex-wrap:wrap;">
+      {% if session %}
+        <a class="btn" href="{{ url_for('activite.emargement', session_id=session.id) }}">Ouvrir l'émargement</a>
+        <a class="btn" href="{{ url_for('activite.inscriptions_atelier', atelier_id=atelier.id) }}">Inscriptions atelier entier</a>
+        <a class="btn" href="{{ url_for('activite.inscriptions_export_brevo', atelier_id=atelier.id, session_id=session.id) }}"
+           title="Fichier CSV à importer dans Brevo (Contacts → Importer) pour écrire aux inscrits.">⬇ Contacts pour Brevo</a>
+      {% else %}
+        <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Séances de l'atelier</a>
+        <a class="btn" href="{{ url_for('activite.inscriptions_export_brevo', atelier_id=atelier.id) }}"
+           title="Fichier CSV à importer dans Brevo (Contacts → Importer) pour écrire aux inscrits.">⬇ Contacts pour Brevo</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if can('inscriptions:edit') %}
+  <div class="card">
+    <h2>Inscrire une personne</h2>
+    <form method="get" class="inline" style="gap:8px; flex-wrap:wrap;">
+      {% if session %}<input type="hidden" name="session_id" value="{{ session.id }}">{% endif %}
+      <input type="search" name="q" value="{{ q }}" placeholder="Nom ou prénom (2 lettres min.)"
+             aria-label="Rechercher une personne à inscrire">
+      <button class="btn" type="submit">Rechercher</button>
+    </form>
+    {% if q %}
+      {% if resultats %}
+        <div class="tablewrap" style="margin-top:10px;">
+        <table class="table">
+          <tbody>
+            {% for p in resultats %}
+              <tr>
+                <td>{{ p.nom }} {{ p.prenom }}</td>
+                <td class="muted">{{ p.ville or '—' }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('activite.inscription_creer') }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
+                    {% if session %}<input type="hidden" name="session_id" value="{{ session.id }}">{% endif %}
+                    <input type="hidden" name="participant_id" value="{{ p.id }}">
+                    <button class="btn" type="submit">
+                      {% if etat.complet %}➕ Liste d'attente{% else %}➕ Inscrire{% endif %}
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="muted" style="margin-top:10px;">Aucune personne trouvée pour « {{ q }} »
+          (déjà inscrite ? nom orthographié autrement ?).</p>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if a_pointer is not none and a_pointer %}
+  <div class="card">
+    <h2>⏳ {{ a_pointer|length }} inscrit·e·s pas encore pointé·e·s</h2>
+    <p class="muted">Attendu·e·s (inscription à la séance ou à l'atelier entier) sans ligne d'émargement.</p>
+    <div class="tablewrap">
+    <table class="table">
+      <tbody>
+        {% for i in a_pointer %}
+          <tr>
+            <td>{{ i.participant.nom }} {{ i.participant.prenom }}</td>
+            <td class="muted">{{ 'séance' if i.session_id else 'atelier entier' }}</td>
+            <td>
+              {% if can('emargement:edit') %}
+              <form method="post" action="{{ url_for('activite.inscription_pointer', session_id=session.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="participant_id" value="{{ i.participant_id }}">
+                <button class="btn" type="submit">✔ Pointer présent·e</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>{{ listes.inscrits|length }} inscrit·e·s</h2>
+    {% if listes.inscrits %}
+      <div class="tablewrap">
+      <table class="table">
+        <thead><tr><th>Personne</th><th>Depuis le</th><th>Commentaire</th><th></th></tr></thead>
+        <tbody>
+          {% for i in listes.inscrits %}
+            <tr>
+              <td>{{ i.participant.nom }} {{ i.participant.prenom }}</td>
+              <td>{{ i.created_at.strftime('%d/%m/%Y') if i.created_at else '—' }}</td>
+              <td class="muted">{{ i.commentaire or '' }}</td>
+              <td>
+                {% if can('inscriptions:edit') %}
+                <form method="post" action="{{ url_for('activite.inscription_annuler', inscription_id=i.id) }}" style="display:inline;"
+                      onsubmit="return confirm('Annuler cette inscription ? Le premier de la liste d’attente prendra la place.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn danger" type="submit">Annuler</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="muted">Personne d'inscrit pour le moment. Utilisez la recherche ci-dessus pour inscrire.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>{{ listes.attente|length }} en liste d'attente</h2>
+    {% if listes.attente %}
+      <div class="tablewrap">
+      <table class="table">
+        <thead><tr><th>Ordre</th><th>Personne</th><th>Depuis le</th><th></th></tr></thead>
+        <tbody>
+          {% for i in listes.attente %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>{{ i.participant.nom }} {{ i.participant.prenom }}</td>
+              <td>{{ i.created_at.strftime('%d/%m/%Y') if i.created_at else '—' }}</td>
+              <td>
+                {% if can('inscriptions:edit') %}
+                <form method="post" action="{{ url_for('activite.inscription_annuler', inscription_id=i.id) }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn danger" type="submit">Retirer</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="muted">À chaque annulation d'inscrit·e, la première personne de cette liste est promue automatiquement (un message vous invite à la prévenir).</p>
+    {% else %}
+      <p class="muted">Liste d'attente vide.</p>
+    {% endif %}
+  </div>
+
+  {% if sessions_a_venir is not none %}
+  <div class="card">
+    <h2>Séances à venir</h2>
+    {% if sessions_a_venir %}
+      <div class="tablewrap">
+      <table class="table">
+        <thead><tr><th>Date</th><th>Jauge</th><th></th></tr></thead>
+        <tbody>
+          {% for row in sessions_a_venir %}
+            {% set s = row.session %}
+            {% set d = s.rdv_date or s.date_session %}
+            <tr>
+              <td>{{ d.strftime('%d/%m/%Y') if d else '—' }} {{ s.heure_debut or s.rdv_debut or '' }}</td>
+              <td>
+                {{ row.etat.inscrits }} inscrit·e·s
+                {% if row.etat.capacite is not none %} / {{ row.etat.capacite }}
+                  {% if row.etat.complet %}<span class="status-badge status-danger">complet</span>{% endif %}
+                {% endif %}
+                {% if row.etat.attente %} · {{ row.etat.attente }} en attente{% endif %}
+              </td>
+              <td><a class="btn" href="{{ url_for('activite.inscriptions_session', session_id=s.id) }}">Inscriptions de la séance</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="muted">Aucune séance à venir sur cet atelier.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

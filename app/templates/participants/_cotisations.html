@@ -1,0 +1,262 @@
+{# Adhésion, participation & foyer — année scolaire en cours + historique. #}
+<style>
+  .cotis-card{ border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:14px; background:#fff; }
+  .cotis-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
+  .cotis-obligation{ border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:12px; }
+  .cotis-obligation.solde{ border-color:rgba(34,197,94,.30); background:rgba(34,197,94,.06); }
+  .cotis-obligation.partiel{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.07); }
+  .cotis-obligation.impaye{ border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.06); }
+  .cotis-montants{ display:flex; gap:14px; flex-wrap:wrap; margin:6px 0; }
+  .cotis-montants div{ font-size:13px; color:#64748b; }
+  .cotis-montants strong{ display:block; font-size:18px; color:#0f172a; }
+  .cotis-versements{ margin-top:8px; font-size:13px; }
+  .cotis-versement-row{ display:flex; justify-content:space-between; gap:8px; padding:3px 0; border-top:1px dashed rgba(15,23,42,.10); color:#475569; }
+  .cotis-versement-row:first-child{ border-top:0; }
+  .cotis-form-inline{ display:flex; gap:6px; flex-wrap:wrap; align-items:end; margin-top:8px; }
+  .cotis-form-inline label{ font-size:11px; color:#64748b; display:block; }
+  .cotis-form-inline input, .cotis-form-inline select{ padding:5px 7px; border-radius:6px; border:1px solid rgba(15,23,42,.15); font-size:13px; }
+  .cotis-actions-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .cotis-badge{ display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .cotis-badge.solde{ background:rgba(34,197,94,.18); color:#166534; }
+  .cotis-badge.partiel{ background:rgba(245,158,11,.22); color:#78350f; }
+  .cotis-badge.impaye{ background:rgba(239,68,68,.20); color:#7f1d1d; }
+  .foyer-chip{ display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(15,23,42,.12); border-radius:999px; padding:4px 10px 4px 4px; font-size:13px; background:#fff; }
+  .foyer-chip a{ text-decoration:none; }
+</style>
+<section class="person-card">
+  <div class="person-head">
+    <div>
+      <h2>🎫 Adhésion &amp; participation — {{ libelle_annee_scolaire_courante }}</h2>
+      <div class="person-meta">Adhésion obligatoire pour participer aux activités ; se renouvelle chaque année scolaire.</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+
+  <div class="cotis-grid">
+    {# --------- Adhésion --------- #}
+    <div>
+      <h3>Adhésion</h3>
+      {% if adhesion_courante %}
+        {% set c = adhesion_courante %}
+        {% set etat = 'solde' if c.solde else ('partiel' if c.montant_regle > 0 else 'impaye') %}
+        <div class="cotis-obligation {{ etat }}">
+          <span class="cotis-badge {{ etat }}">{{ 'Soldée' if etat == 'solde' else ('Partiellement réglée' if etat == 'partiel' else 'Impayée') }}</span>
+          <div class="cotis-montants">
+            <div>Type<strong>{{ c.type_label }}</strong></div>
+            <div>Dû<strong>{{ "%.2f"|format(c.montant_du) }} €</strong></div>
+            <div>Réglé<strong>{{ "%.2f"|format(c.montant_regle) }} €</strong></div>
+            <div>Reste<strong>{{ "%.2f"|format(c.reste_du) }} €</strong></div>
+          </div>
+          {% if c.paiements %}
+            <div class="cotis-versements">
+              {% for v in c.paiements %}
+                <div class="cotis-versement-row"><span>{{ v.date_paiement.strftime('%d/%m/%Y') }} · {{ v.mode_label }}{% if v.commentaire %} · {{ v.commentaire }}{% endif %}</span><strong>{{ "%.2f"|format(v.montant) }} €</strong></div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if c.montant_regle > 0 %}
+            <div style="margin-top:6px;"><a class="mini-link" href="{{ url_for('participants.cotisation_recu', participant_id=participant.id, cotisation_id=c.id) }}" target="_blank">🧾 Imprimer un reçu de règlement</a></div>
+          {% endif %}
+          {% if can_edit_cotisations %}
+            <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement', participant_id=participant.id, cotisation_id=c.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div><label>Montant réglé</label><input type="text" name="montant" size="6" placeholder="0,00" required></div>
+              <div><label>Date</label><input type="date" name="date_paiement"></div>
+              <div><label>Mode</label>
+                <select name="mode">
+                  {% for m in modes_paiement %}<option value="{{ m }}">{{ {'especes':'Espèces','cheque':'Chèque','carte':'Carte','virement':'Virement','autre':'Autre'}[m] }}</option>{% endfor %}
+                </select>
+              </div>
+              <div><label>Commentaire</label><input type="text" name="commentaire" size="14" placeholder="optionnel"></div>
+              <button class="btn" type="submit">💶 Enregistrer</button>
+            </form>
+            <div class="cotis-actions-row">
+              {% if not c.solde %}
+                <form method="post" action="{{ url_for('participants.cotisation_relancer', participant_id=participant.id, cotisation_id=c.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn" type="submit" title="Pose un rappel dans À traiter">🔔 Relancer</button>
+                </form>
+              {% endif %}
+              <details style="display:inline-block;">
+                <summary class="btn" style="display:inline-block;">✏️ Corriger le montant dû</summary>
+                <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_montant_update', participant_id=participant.id, cotisation_id=c.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <div><label>Nouveau montant dû</label><input type="text" name="montant_du" size="6" value="{{ '%.2f'|format(c.montant_du) }}"></div>
+                  <button class="btn" type="submit">Valider</button>
+                </form>
+              </details>
+              {% if c.montant_regle == 0 %}
+                <form method="post" action="{{ url_for('participants.cotisation_supprimer', participant_id=participant.id, cotisation_id=c.id) }}" onsubmit="return confirm('Supprimer cette cotisation (créée par erreur) ?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-danger-outline" type="submit">Supprimer</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      {% elif can_edit_cotisations %}
+        <div class="person-muted-box">
+          Pas encore d'adhésion {{ libelle_annee_scolaire_courante }}.
+          <div class="cotis-actions-row">
+            <form method="post" action="{{ url_for('participants.cotisation_creer', participant_id=participant.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="type_cotisation" value="adhesion_individuelle">
+              <button class="btn" type="submit">Individuelle{% if tarifs_en_vigueur.adhesion_individuelle %} ({{ "%.2f"|format(tarifs_en_vigueur.adhesion_individuelle.montant) }} €){% endif %}</button>
+            </form>
+            <form method="post" action="{{ url_for('participants.cotisation_creer', participant_id=participant.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="type_cotisation" value="adhesion_familiale">
+              <button class="btn" type="submit" title="{% if not foyer_membres %}Un foyer sera créé automatiquement{% endif %}">Familiale{% if tarifs_en_vigueur.adhesion_familiale %} ({{ "%.2f"|format(tarifs_en_vigueur.adhesion_familiale.montant) }} €){% endif %}</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <div class="person-muted-box">Pas encore d'adhésion {{ libelle_annee_scolaire_courante }}.</div>
+      {% endif %}
+    </div>
+
+    {# --------- Participation --------- #}
+    <div>
+      <h3>Participation</h3>
+      {% if participation_courante %}
+        {% set c = participation_courante %}
+        {% set etat = 'solde' if c.solde else ('partiel' if c.montant_regle > 0 else 'impaye') %}
+        <div class="cotis-obligation {{ etat }}">
+          <span class="cotis-badge {{ etat }}">{{ 'Soldée' if etat == 'solde' else ('Partiellement réglée' if etat == 'partiel' else 'Impayée') }}</span>
+          <div class="cotis-montants">
+            <div>Dû<strong>{{ "%.2f"|format(c.montant_du) }} €</strong></div>
+            <div>Réglé<strong>{{ "%.2f"|format(c.montant_regle) }} €</strong></div>
+            <div>Reste<strong>{{ "%.2f"|format(c.reste_du) }} €</strong></div>
+          </div>
+          {% if c.paiements %}
+            <div class="cotis-versements">
+              {% for v in c.paiements %}
+                <div class="cotis-versement-row"><span>{{ v.date_paiement.strftime('%d/%m/%Y') }} · {{ v.mode_label }}{% if v.commentaire %} · {{ v.commentaire }}{% endif %}</span><strong>{{ "%.2f"|format(v.montant) }} €</strong></div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if c.montant_regle > 0 %}
+            <div style="margin-top:6px;"><a class="mini-link" href="{{ url_for('participants.cotisation_recu', participant_id=participant.id, cotisation_id=c.id) }}" target="_blank">🧾 Imprimer un reçu de règlement</a></div>
+          {% endif %}
+          {% if can_edit_cotisations %}
+            <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement', participant_id=participant.id, cotisation_id=c.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div><label>Montant réglé</label><input type="text" name="montant" size="6" placeholder="0,00" required></div>
+              <div><label>Date</label><input type="date" name="date_paiement"></div>
+              <div><label>Mode</label>
+                <select name="mode">
+                  {% for m in modes_paiement %}<option value="{{ m }}">{{ {'especes':'Espèces','cheque':'Chèque','carte':'Carte','virement':'Virement','autre':'Autre'}[m] }}</option>{% endfor %}
+                </select>
+              </div>
+              <div><label>Commentaire</label><input type="text" name="commentaire" size="14" placeholder="optionnel"></div>
+              <button class="btn" type="submit">💶 Enregistrer</button>
+            </form>
+            <div class="cotis-actions-row">
+              {% if not c.solde %}
+                <form method="post" action="{{ url_for('participants.cotisation_relancer', participant_id=participant.id, cotisation_id=c.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn" type="submit" title="Pose un rappel dans À traiter">🔔 Relancer</button>
+                </form>
+              {% endif %}
+              <details style="display:inline-block;">
+                <summary class="btn" style="display:inline-block;">✏️ Corriger le montant dû</summary>
+                <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_montant_update', participant_id=participant.id, cotisation_id=c.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <div><label>Nouveau montant dû</label><input type="text" name="montant_du" size="6" value="{{ '%.2f'|format(c.montant_du) }}"></div>
+                  <button class="btn" type="submit">Valider</button>
+                </form>
+              </details>
+              {% if c.montant_regle == 0 %}
+                <form method="post" action="{{ url_for('participants.cotisation_supprimer', participant_id=participant.id, cotisation_id=c.id) }}" onsubmit="return confirm('Supprimer cette cotisation (créée par erreur) ?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-danger-outline" type="submit">Supprimer</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      {% elif can_edit_cotisations %}
+        <div class="person-muted-box">
+          Pas encore de participation {{ libelle_annee_scolaire_courante }}.
+          <div class="cotis-actions-row">
+            <form method="post" action="{{ url_for('participants.cotisation_creer', participant_id=participant.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="type_cotisation" value="participation">
+              <button class="btn" type="submit">Enregistrer{% if tarifs_en_vigueur.participation %} ({{ "%.2f"|format(tarifs_en_vigueur.participation.montant) }} €){% endif %}</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <div class="person-muted-box">Pas encore de participation {{ libelle_annee_scolaire_courante }}.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if cotisations_historique %}
+    <details style="margin-top:12px;">
+      <summary class="btn" style="display:inline-block;">📜 Historique des années précédentes ({{ cotisations_historique|length }})</summary>
+      <div class="person-list" style="margin-top:8px;">
+        {% for annee, lignes in cotisations_historique %}
+          <div class="person-row">
+            <strong>{{ annee }}-{{ annee + 1 }}</strong>
+            {% for c in lignes %}
+              <div class="person-meta">{{ c.type_label }} · dû {{ "%.2f"|format(c.montant_du) }} € · réglé {{ "%.2f"|format(c.montant_regle) }} € · {{ 'soldée' if c.solde else ('reste ' ~ "%.2f"|format(c.reste_du) ~ ' €') }}</div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
+
+  <div class="spacer"></div>
+  <h3 id="famille">👪 Famille (foyer)</h3>
+  <p class="person-meta" style="margin:2px 0 8px 0;">Les membres d'une même famille partagent l'adhésion familiale. Astuce : dans l'annuaire, cochez plusieurs personnes puis « Regrouper en famille » pour aller plus vite.</p>
+  {% if foyer_membres %}
+    <div class="person-list">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% for m in foyer_membres %}
+          <span class="foyer-chip">
+            <a href="{{ url_for('participants.synthese_participant', participant_id=m.id) }}">{{ m.nom }} {{ m.prenom }}</a>
+            {% if can_edit_cotisations %}
+              <form method="post" action="{{ url_for('participants.foyer_detacher', participant_id=participant.id) }}" style="margin:0;" onsubmit="return confirm('Détacher {{ m.nom }} {{ m.prenom }} de ce foyer ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="membre_id" value="{{ m.id }}">
+                <button class="btn" type="submit" style="padding:0 5px; font-size:11px;" title="Détacher du foyer">✕</button>
+              </form>
+            {% endif %}
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <div class="person-muted-box">Aucun membre de famille rapproché pour l'instant.</div>
+  {% endif %}
+
+  {% if can_edit_cotisations %}
+    <form method="get" action="{{ url_for('participants.synthese_participant', participant_id=participant.id) }}" style="margin-top:10px;">
+      <label style="font-size:12px; color:#64748b; display:block;">Rapprocher un membre de la famille</label>
+      <div style="display:flex; gap:6px;">
+        <input type="search" name="q_famille" value="{{ q_famille or '' }}" placeholder="Nom ou prénom…" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(15,23,42,.15);">
+        <button class="btn" type="submit">🔎 Chercher</button>
+      </div>
+    </form>
+    {% if q_famille %}
+      {% if resultats_famille %}
+        <div class="cotis-actions-row">
+          {% for p in resultats_famille %}
+            <form method="post" action="{{ url_for('participants.foyer_rapprocher', participant_id=participant.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="autre_participant_id" value="{{ p.id }}">
+              <button class="btn" type="submit">➕ {{ p.nom }} {{ p.prenom }}{% if p.ville %} · {{ p.ville }}{% endif %}</button>
+            </form>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="person-meta">Aucune fiche trouvée pour « {{ q_famille }} ».</div>
+      {% endif %}
+    {% endif %}
+    {% if foyer_membres %}
+      <div class="person-meta" style="margin-top:6px;">Foyer déjà lié : la recherche exclut ses membres actuels.</div>
+    {% endif %}
+  {% endif %}
+</section>

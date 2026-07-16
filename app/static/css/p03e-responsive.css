@@ -1,0 +1,387 @@
+/* P0.3E — Responsive mobile / tablette
+   Couche volontairement isolée pour éviter de massacrer le style global.
+   Objectif : rendre les pages métier utilisables sur laptop, tablette et smartphone.
+*/
+
+:root{
+  --p03e-touch: 42px;
+}
+
+/* ------------------------------
+   Navigation
+------------------------------ */
+
+@media (max-width: 1100px){
+  .topbar,
+  .navbar,
+  header .nav,
+  .nav-wrap{
+    gap: 8px;
+  }
+
+  .nav-category-row,
+  .nav-quick{
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    flex-wrap: nowrap !important;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+  }
+
+  .nav-category-row .pill,
+  .nav-quick .pill,
+  .nav-more > summary.pill{
+    min-height: var(--p03e-touch);
+    white-space: nowrap;
+  }
+
+  .nav-more-panel{
+    max-height: min(70vh, 520px);
+    min-width: min(92vw, 360px);
+    overflow: auto;
+  }
+}
+
+@media (max-width: 720px){
+  .topbar,
+  .navbar,
+  header .nav{
+    align-items: stretch;
+  }
+
+  .brand,
+  .app-brand{
+    max-width: 100%;
+  }
+
+  .right,
+  .topbar .right,
+  .navbar .right{
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .nav-quick-label,
+  .nav-group-title{
+    display: none;
+  }
+
+  .pill,
+  .btn,
+  button,
+  input,
+  select,
+  textarea{
+    min-height: var(--p03e-touch);
+  }
+}
+
+/* ------------------------------
+   Layouts génériques
+------------------------------ */
+
+@media (max-width: 900px){
+  .row,
+  .row.two,
+  .row.three,
+  .row.four,
+  .grid,
+  .grid.two,
+  .grid.three,
+  .grid.four,
+  .cards,
+  .kpi-grid,
+  .stats-grid{
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .card-header,
+  .screen-head,
+  .screen-hero .card-header,
+  .hero-actions{
+    align-items: flex-start !important;
+    flex-direction: column;
+  }
+
+  .inline{
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px){
+  body{
+    font-size: 15px;
+  }
+
+  main,
+  .container,
+  .page,
+  .content,
+  .screen,
+  .shell{
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .card,
+  .screen-hero,
+  .simple-hero,
+  .hub-hero,
+  .bilan-hero,
+  .audit-hero{
+    border-radius: 16px !important;
+    padding: 14px !important;
+  }
+
+  .row,
+  .row.two,
+  .row.three,
+  .row.four,
+  .grid,
+  .grid.two,
+  .grid.three,
+  .grid.four,
+  .cards,
+  .kpi-grid,
+  .stats-grid,
+  .simple-kpis,
+  .hub-grid,
+  .bilan-kpis,
+  .audit-kpis,
+  .envelope-grid,
+  .bilan-mat-grid{
+    grid-template-columns: 1fr !important;
+  }
+
+  h1{font-size: 1.45rem !important;}
+  h2{font-size: 1.20rem !important;}
+  h3{font-size: 1.05rem !important;}
+
+  .btn,
+  button,
+  .pill{
+    width: auto;
+    max-width: 100%;
+  }
+
+  .form-actions,
+  .actions,
+  .screen-actions,
+  .simple-actions,
+  .hub-actions,
+  .pagination-buttons{
+    width: 100%;
+    gap: 8px;
+  }
+
+  .form-actions .btn,
+  .actions .btn,
+  .screen-actions .btn,
+  .pagination-buttons .btn{
+    flex: 1 1 auto;
+  }
+}
+
+/* ------------------------------
+   Tableaux : lisibles sans casser le HTML
+------------------------------ */
+
+.tablewrap,
+.table-wrap,
+.clean,
+.wide{
+  max-width: 100%;
+}
+
+@media (max-width: 900px){
+  .tablewrap,
+  .table-wrap{
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table,
+  .table,
+  .js-sortable,
+  .audit-table,
+  .bilan-table{
+    min-width: 760px;
+  }
+
+  th,
+  td{
+    white-space: normal;
+  }
+}
+
+@media (max-width: 640px){
+  .tablewrap::after,
+  .table-wrap::after{
+    content: "Glisse horizontalement pour voir tout le tableau →";
+    display: block;
+    margin-top: 6px;
+    color: var(--muted,#667085);
+    font-size: .82rem;
+  }
+
+  table,
+  .table,
+  .js-sortable,
+  .audit-table,
+  .bilan-table{
+    min-width: 680px;
+  }
+}
+
+/* ------------------------------
+   Formulaires / filtres
+------------------------------ */
+
+@media (max-width: 900px){
+  .expenses-toolbar,
+  .simple-filters,
+  .bilan-filters,
+  form[data-filter-summary="true"]{
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+@media (max-width: 640px){
+  .expenses-toolbar,
+  .simple-filters,
+  .bilan-filters,
+  form[data-filter-summary="true"]{
+    grid-template-columns: 1fr !important;
+  }
+
+  label,
+  .field-stack{
+    width: 100%;
+  }
+
+  input,
+  select,
+  textarea{
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+/* ------------------------------
+   Pages Finance / Vue simple
+------------------------------ */
+
+@media (max-width: 760px){
+  .simple-title,
+  .hub-card-top,
+  .bilan-head,
+  .envelope-title{
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .split-grid{
+    grid-template-columns: 1fr !important;
+    border: 1px solid rgba(120,130,160,.18);
+    border-radius: 14px;
+    padding: 10px;
+    background: rgba(255,255,255,.45);
+  }
+
+  .split-row + .split-row{
+    margin-top: 10px;
+  }
+
+  .split-pill{
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+/* ------------------------------
+   Bilans : éviter l’accordéon cassé
+------------------------------ */
+
+@media (max-width: 900px){
+  .bilan-line,
+  .bilan-item{
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .bilan-line.header,
+  .bilan-item.header{
+    display: none !important;
+  }
+
+  .bilan-num{
+    text-align: left !important;
+  }
+}
+
+@media (max-width: 620px){
+  .bilan-line,
+  .bilan-item{
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ------------------------------
+   Hubs métier
+------------------------------ */
+
+@media (max-width: 760px){
+  .hub-card{
+    min-height: unset !important;
+  }
+
+  .hub-actions .btn,
+  .hub-secondary .btn{
+    flex: 1 1 100%;
+    text-align: center;
+  }
+}
+
+/* ------------------------------
+   Audit / admin
+------------------------------ */
+
+@media (max-width: 760px){
+  .audit-table{
+    min-width: 820px;
+  }
+}
+
+/* ------------------------------
+   Petits écrans vraiment étroits
+------------------------------ */
+
+@media (max-width: 420px){
+  body{
+    font-size: 14px;
+  }
+
+  .card,
+  .screen-hero,
+  .simple-hero,
+  .hub-hero,
+  .bilan-hero,
+  .audit-hero{
+    padding: 12px !important;
+  }
+
+  .btn,
+  button,
+  .pill{
+    font-size: .92rem;
+  }
+
+  .kpi-value,
+  .simple-card .value,
+  .bilan-kpi .value,
+  .audit-kpi .value{
+    font-size: 1.18rem !important;
+  }
+}

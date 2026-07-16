@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+{% endblock %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>Modifier un quartier</h1>
+        <p class="muted">{{ quartier.ville }} — {{ quartier.nom }}</p>
+      </div>
+      <div>
+        <a class="btn" href="{{ url_for('quartiers.index') }}">⬅️ Retour</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="post" class="stack" style="gap:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <input class="in" name="ville" value="{{ quartier.ville }}" required style="min-width:180px;">
+        <input class="in" name="nom" value="{{ quartier.nom }}" required style="min-width:220px;">
+        <label class="inline" style="gap:6px; align-items:center;">
+          <input type="checkbox" name="is_qpv" value="1" {% if quartier.is_qpv %}checked{% endif %}>
+          <span>QPV</span>
+        </label>
+      </div>
+      <textarea class="in" name="description" rows="4" placeholder="Description (optionnel)">{{ quartier.description or "" }}</textarea>
+
+      <div>
+        <label class="muted">Position sur la carte des habitants</label>
+        <p class="muted" style="font-size:13px; margin:4px 0 8px 0;">
+          Cliquez sur la carte pour placer ce quartier (ou déplacez le repère). C'est ici que sa bulle
+          s'affichera. Laissez vide pour laisser le bouton « 🧭 Placer les quartiers » le positionner automatiquement.
+        </p>
+        <div id="quartier-map" style="height:360px; width:100%; border-radius:10px;"
+             data-tile-url="{{ tile_url }}"
+             data-tile-attr="{{ tile_attribution }}"
+             data-marker-base="{{ url_for('static', filename='vendor/leaflet/images/') }}"></div>
+        <div class="inline" style="gap:10px; margin-top:8px; align-items:center; flex-wrap:wrap;">
+          <input type="hidden" id="quartier-lat" name="latitude" value="{{ quartier.latitude if quartier.latitude is not none else '' }}">
+          <input type="hidden" id="quartier-lon" name="longitude" value="{{ quartier.longitude if quartier.longitude is not none else '' }}">
+          <input type="hidden" id="quartier-effacer" name="effacer_position" value="0">
+          <span class="muted" id="quartier-coords-label" style="font-size:12px;">
+            {% if quartier.latitude is not none %}Position définie{% if quartier.geo_manuel %} (manuelle){% endif %}{% else %}Aucune position (auto){% endif %}
+          </span>
+          <button type="button" class="btn" id="quartier-clear">Effacer la position</button>
+        </div>
+      </div>
+
+      <div>
+        <button class="btn" type="submit">💾 Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts_extra %}
+  <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/quartier_geo.js') }}"></script>
+{% endblock %}

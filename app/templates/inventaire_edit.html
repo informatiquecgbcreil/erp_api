@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div class="stack">
+    <div class="inline">
+      <h1 style="margin:0">Inventaire #{{ item.id }}</h1>
+      <div class="inline" style="gap:8px">
+        <a class="btn" href="{{ url_for('inventaire_materiel.list_items') }}">⬅ Retour</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="muted" style="margin-top:0">
+        Secteur: <strong>{{ item.secteur }}</strong>
+        {% if item.facture_ligne_id %} · lié à une ligne facture #{{ item.facture_ligne_id }}{% endif %}
+        {% if item.depense_id %}
+          · lié à une dépense <a href="{{ url_for('budget.depense_edit', depense_id=item.depense_id) }}">#{{ item.depense_id }}</a>
+        {% endif %}
+      </p>
+
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="grid2">
+          <div>
+            <label>ID interne</label>
+            <input type="text" value="{{ item.id_interne or '' }}" readonly>
+            <div class="muted" style="font-size:12px">Généré automatiquement ({{ item.secteur }} · {{ item.date_entree or 'date inconnue' }})</div>
+          </div>
+          <div>
+            <label>Secteur</label>
+            {% if can('scope:all_secteurs') %}
+              <input type="text" name="secteur" value="{{ item.secteur }}">
+            {% else %}
+              <input type="text" name="secteur" value="{{ item.secteur }}" readonly>
+            {% endif %}
+          </div>
+          <div>
+            <label>Catégorie</label>
+            <input type="text" name="categorie" value="{{ item.categorie or '' }}">
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label>Désignation *</label>
+            <input type="text" name="designation" value="{{ item.designation }}" required>
+          </div>
+          <div class="grid2" style="grid-template-columns:1fr 1fr; gap:10px">
+            <div>
+              <label>Quantité</label>
+              <input type="number" name="quantite" value="{{ item.quantite }}" min="1">
+            </div>
+            <div>
+              <label>État</label>
+              <select name="etat">
+                {% for v in ['OK','A réparer','HS','Donné'] %}
+                  <option value="{{ v }}" {% if item.etat==v %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label>Marque</label>
+            <input type="text" name="marque" value="{{ item.marque or '' }}">
+          </div>
+          <div>
+            <label>Modèle</label>
+            <input type="text" name="modele" value="{{ item.modele or '' }}">
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label>Numéro de série</label>
+            <input type="text" name="numero_serie" value="{{ item.numero_serie or '' }}">
+          </div>
+          <div>
+            <label>Localisation</label>
+            <input type="text" name="localisation" value="{{ item.localisation or '' }}">
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label>Valeur unitaire</label>
+            <input type="number" step="0.01" name="valeur_unitaire" value="{% if item.valeur_unitaire is not none %}{{ item.valeur_unitaire }}{% endif %}">
+          </div>
+          <div>
+            <label>Date d’entrée</label>
+            <input type="date" name="date_entree" value="{% if item.date_entree %}{{ item.date_entree }}{% endif %}">
+          </div>
+        </div>
+
+        <div>
+          <label>Notes</label>
+          <textarea name="notes" rows="4">{{ item.notes or '' }}</textarea>
+        </div>
+
+        <div class="inline" style="justify-content:flex-end; margin-top:10px">
+          <button class="btn ok" type="submit">Enregistrer</button>
+        </div>
+      </form>
+
+      <div class="inline" style="justify-content:flex-end; margin-top:12px">
+        <form method="POST" action="{{ url_for('inventaire_materiel.delete_item', item_id=item.id) }}" onsubmit="return confirm('Supprimer définitivement cette entrée inventaire ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn danger" type="submit">🗑️ Supprimer définitivement</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

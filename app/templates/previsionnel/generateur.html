@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .gen-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  @media (max-width: 1100px){ .gen-grid { grid-template-columns:1fr; } }
+  .gen-sec { padding:12px; }
+  .gen-sec-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .gen-sec-head h3 { margin:0; }
+  .gen-sec-total { font-weight:800; font-variant-numeric:tabular-nums; }
+  .gen-compte { border:1px solid var(--border); border-radius:10px; margin-top:10px; overflow:hidden; }
+  .gen-compte-head { display:flex; align-items:center; gap:6px; padding:6px 8px; background:color-mix(in srgb, var(--border) 30%, transparent); flex-wrap:wrap; }
+  .gen-compte-head .gen-code { width:64px; font-weight:700; }
+  .gen-compte-head .gen-clib { flex:1 1 160px; font-weight:700; }
+  .gen-csub { font-weight:800; font-variant-numeric:tabular-nums; margin-left:auto; }
+  .gen-lines { padding:4px 8px; }
+  .gen-line { display:grid; grid-template-columns:1fr 120px auto; gap:6px; align-items:center; padding:3px 0; }
+  .gen-line .gen-amt { text-align:right; }
+  .gen-add-compte { margin-top:10px; }
+  .gen-add-line, .gen-del-compte, .gen-del-line { padding:2px 8px; }
+  .eq-ok { color: var(--ok,#2e7d32); } .eq-bad { color: var(--danger,#dc2626); }
+  @media print { .no-print { display:none !important; } .gen-del-line,.gen-del-compte,.gen-add-line,.gen-add-compte { display:none !important; } }
+</style>
+
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Générateur de budget prévisionnel</h1>
+      <p class="page-subtitle">Modèle associatif type CERFA / CAF-FADO, <strong>entièrement éditable</strong> : ajoute ou retire des comptes, ajoute, renomme ou supprime des lignes. Exporte en Excel ou envoie vers une subvention ou un budget de projet.</p>
+    </div>
+    <div class="hero-actions no-print">
+      <button type="button" class="btn" id="genReset" title="Repartir du modèle CERFA par défaut">↺ Réinitialiser au modèle</button>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('previsionnel.generateur') }}" id="cerfaForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="structure_json" id="structureJson">
+    <input type="hidden" name="action" id="cerfaAction" value="export_xlsx">
+    <input type="hidden" name="budget_nom" id="budgetNomMirror">
+
+    <section class="section-card">
+      <div class="form-grid-3">
+        <label class="field-stack"><span>Organisme</span><input class="in" name="organisme" value="{{ organisme_default }}"></label>
+        <label class="field-stack"><span>Exercice</span><input class="in" name="exercice" type="number" min="2000" max="2100" value="{{ exercice }}"></label>
+        <label class="field-stack"><span>Secteur</span>
+          <select class="in" name="secteur">
+            {% for s in secteurs %}<option value="{{ s }}" {% if s == selected_secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="context-strip" style="margin-top:12px;">
+        <span class="context-pill">Total charges : <strong id="tCharges">0,00</strong> €</span>
+        <span class="context-pill">Total produits : <strong id="tProduits">0,00</strong> €</span>
+        <span class="context-pill">Équilibre : <strong id="tEquilibre" class="eq-ok">0,00</strong> €</span>
+        <span class="context-pill muted">Vos modifications sont mémorisées dans ce navigateur.</span>
+      </div>
+    </section>
+
+    <noscript><div class="callout-soft">Ce générateur nécessite JavaScript pour l'édition et l'export.</div></noscript>
+    <div id="genRoot"></div>
+
+    <section class="section-card no-print">
+      <h3 class="section-title">Exporter ou envoyer</h3>
+      <div class="form-grid-2">
+        <label class="field-stack"><span>Nom (si envoi vers subvention / budget)</span><input class="in" name="subvention_nom" placeholder="Ex : Budget prévisionnel Numérique 2026"></label>
+        <label class="field-stack"><span>Projet à rattacher (budget prévisionnel)</span>
+          <select class="in" name="projet_id">
+            <option value="">— Aucun —</option>
+            {% for p in projets %}<option value="{{ p.id }}">{{ p.secteur }} — {{ p.nom }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="inline-actions" style="margin-top:12px;">
+        <button class="btn ok" type="submit" onclick="document.getElementById('cerfaAction').value='export_xlsx'">⬇ Exporter en Excel</button>
+        {% if can_edit_budget %}
+          <button class="btn" type="submit" onclick="document.getElementById('cerfaAction').value='to_subvention'">→ Créer une subvention</button>
+          <button class="btn" type="submit" onclick="document.getElementById('cerfaAction').value='to_previsionnel'">→ Créer un budget prévisionnel</button>
+        {% endif %}
+        <button class="btn" type="button" onclick="window.print()">🖨️ Imprimer</button>
+      </div>
+      <p class="muted" style="font-size:12px; margin-top:8px;">Les contributions volontaires (86/87) figurent dans l'export Excel mais ne sont pas envoyées vers une subvention ou un budget (ce ne sont pas des flux financiers réels).</p>
+    </section>
+  </form>
+</div>
+
+<script id="cerfaDefault" type="application/json">{{ default_structure|tojson }}</script>
+<script>window.CERFA_SECTION_LABELS = {{ section_labels|tojson }};</script>
+<script src="{{ url_for('static', filename='js/budget-generateur.js') }}?v=20260701-editable"></script>
+{% endblock %}

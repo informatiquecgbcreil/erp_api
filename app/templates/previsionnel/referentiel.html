@@ -1,0 +1,178 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card">
+  <div class="page-head">
+    <div>
+      <h1>Référentiel budgétaire</h1>
+      <p class="muted">Comptes, catégories de charges/produits et lignes types utilisées dans les budgets prévisionnels.</p>
+    </div>
+    <div class="inline">
+      <a class="btn" href="{{ url_for('previsionnel.index') }}">Retour budgets</a>
+    </div>
+  </div>
+</div>
+
+{% if can_edit_budget %}
+<div class="grid cards-2">
+  <div class="card">
+    <h2>Ajouter un compte</h2>
+    <form method="post" class="form-grid-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="create_compte">
+      <label class="field-stack">Nature<select class="in" name="nature"><option value="charge">Charge</option><option value="produit">Produit</option></select></label>
+      <label class="field-stack">Code<input class="in" name="code" placeholder="60 / 74" required></label>
+      <label class="field-stack">Libellé<input class="in" name="libelle" placeholder="Achats / Subventions d'exploitation" required></label>
+      <label class="field-stack">Secteur<select class="in" name="secteur"><option value="">Global</option>{% for s in secteurs %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></label>
+      <label class="field-stack">Ordre<input class="in" type="number" name="ordre" value="0"></label>
+      <label class="field-stack">Description<input class="in" name="description"></label>
+      <div class="form-actions"><button class="btn ok" type="submit">Ajouter le compte</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Ajouter une catégorie</h2>
+    <form method="post" class="form-grid-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="create_categorie">
+      <label class="field-stack">Compte<select class="in" name="compte_id" required>{% for c in comptes if c.actif %}<option value="{{ c.id }}">{{ 'Produit' if c.nature == 'produit' else 'Charge' }} — {{ c.code }} - {{ c.libelle }}</option>{% endfor %}</select></label>
+      <label class="field-stack">Code interne<input class="in" name="code" placeholder="facultatif"></label>
+      <label class="field-stack">Libellé<input class="in" name="libelle" placeholder="Achat de petit équipement" required></label>
+      <label class="field-stack">Montant défaut<input class="in" type="number" step="0.01" name="montant_defaut" value="0"></label>
+      <label class="field-stack">Secteur<select class="in" name="secteur"><option value="">Global</option>{% for s in secteurs %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></label>
+      <label class="field-stack">Ordre<input class="in" type="number" name="ordre" value="0"></label>
+      <label class="field-stack">Description<input class="in" name="description"></label>
+      <div class="form-actions"><button class="btn ok" type="submit">Ajouter la catégorie</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Comptes budgétaires</h2>
+  <div class="tablewrap clean"><table class="table">
+    <thead><tr><th>Statut</th><th>Nature</th><th>Code</th><th>Libellé</th><th>Secteur</th><th>Ordre</th><th>Description</th><th></th></tr></thead>
+    <tbody>
+    {% for c in comptes %}
+      <tr>
+        <td>{{ 'Actif' if c.actif else 'Désactivé' }}</td>
+        <td>{{ 'Produit' if c.nature == 'produit' else 'Charge' }}</td>
+        <td><strong>{{ c.code }}</strong></td>
+        <td>{{ c.libelle }}</td>
+        <td>{{ c.secteur or 'Global' }}</td>
+        <td>{{ c.ordre }}</td>
+        <td>{{ c.description or '' }}</td>
+        <td>{% if can_edit_budget %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle_compte"><input type="hidden" name="compte_id" value="{{ c.id }}"><button class="btn" type="submit">{{ 'Désactiver' if c.actif else 'Réactiver' }}</button></form>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="muted">Aucun compte.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h2>Catégories / lignes types</h2>
+  <div class="tablewrap clean"><table class="table">
+    <thead><tr><th>Statut</th><th>Nature</th><th>Compte</th><th>Catégorie</th><th>Montant défaut</th><th>Secteur</th><th>Ordre</th><th>Description</th><th></th></tr></thead>
+    <tbody>
+    {% for c in categories %}
+      <tr>
+        <td>{{ 'Actif' if c.actif else 'Désactivé' }}</td>
+        <td>{{ 'Produit' if c.nature == 'produit' else 'Charge' }}</td>
+        <td>{{ c.compte.code }} - {{ c.compte.libelle }}</td>
+        <td><strong>{{ c.libelle }}</strong></td>
+        <td>{{ '%.2f'|format(c.montant_defaut or 0) }} €</td>
+        <td>{{ c.secteur or 'Global' }}</td>
+        <td>{{ c.ordre }}</td>
+        <td>{{ c.description or '' }}</td>
+        <td>{% if can_edit_budget %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle_categorie"><input type="hidden" name="categorie_id" value="{{ c.id }}"><button class="btn" type="submit">{{ 'Désactiver' if c.actif else 'Réactiver' }}</button></form>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="9" class="muted">Aucune catégorie.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="grid cards-2">
+  {% if can_edit_budget %}
+  <div class="card">
+    <h2>Créer un modèle de budget / appel à projet</h2>
+    <form method="post" class="form-grid-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="create_modele">
+      <label class="field-stack">Nom<input class="in" name="nom" placeholder="Budget numérique standard" required></label>
+      <label class="field-stack">Secteur<select class="in" name="secteur"><option value="">Global</option>{% for s in secteurs %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></label>
+      <label class="field-stack">Ordre<input class="in" type="number" name="ordre" value="0"></label>
+      <label class="field-stack">Description<input class="in" name="description"></label>
+      <div class="form-actions"><button class="btn ok" type="submit">Créer le modèle</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>À quoi ça sert ?</h2>
+    <p class="muted">Un modèle regroupe des lignes types du référentiel. À la création d'un budget, tu choisis un modèle et l'app préremplit les lignes : comptes, catégories, libellés et montants par défaut.</p>
+    <p class="muted">Dans l'onglet Appels à projet, le modèle peut aussi servir de filtre pour repérer rapidement les lignes utiles.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Modèles budgétaires</h2>
+  <div class="tablewrap clean"><table class="table">
+    <thead><tr><th>Statut</th><th>Nom</th><th>Secteur</th><th>Lignes du modèle</th><th>Ajouter une ligne</th><th></th></tr></thead>
+    <tbody>
+    {% for m in modeles %}
+      <tr>
+        <td>{{ 'Actif' if m.actif else 'Désactivé' }}</td>
+        <td><strong>{{ m.nom }}</strong><br><span class="muted">{{ m.description or '' }}</span></td>
+        <td>{{ m.secteur or 'Global' }}</td>
+        <td>
+          {% for row in m.lignes %}
+            <div style="margin-bottom:6px;">
+              <strong>{{ row.categorie.compte.code }} - {{ row.categorie.compte.libelle }}</strong> &gt; {{ row.categorie.libelle }}
+              {% if row.montant_defaut %} — {{ '%.2f'|format(row.montant_defaut or 0) }} €{% endif %}
+              {% if can_edit_budget %}
+              <form method="post" style="display:inline;" onsubmit="return confirm('Retirer cette ligne du modèle ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="remove_modele_line">
+                <input type="hidden" name="modele_ligne_id" value="{{ row.id }}">
+                <button class="btn danger" type="submit">Retirer</button>
+              </form>
+              {% endif %}
+            </div>
+          {% else %}
+            <span class="muted">Aucune ligne.</span>
+          {% endfor %}
+        </td>
+        <td>
+          {% if can_edit_budget %}
+          <form method="post" class="stack">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_modele_line">
+            <input type="hidden" name="modele_id" value="{{ m.id }}">
+            <select class="in" name="categorie_id" required>
+              {% for c in categories if c.actif and c.compte.actif %}
+                <option value="{{ c.id }}">{{ 'Produit' if c.nature == 'produit' else 'Charge' }} — {{ c.compte.code }} - {{ c.compte.libelle }} &gt; {{ c.libelle }}</option>
+              {% endfor %}
+            </select>
+            <input class="in" type="number" step="0.01" name="montant_defaut" placeholder="Montant défaut">
+            <input class="in" type="number" name="ordre" placeholder="Ordre">
+            <input class="in" name="commentaire" placeholder="Commentaire">
+            <button class="btn ok" type="submit">Ajouter</button>
+          </form>
+          {% endif %}
+        </td>
+        <td>
+          {% if can_edit_budget %}
+          <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="toggle_modele">
+            <input type="hidden" name="modele_id" value="{{ m.id }}">
+            <button class="btn" type="submit">{{ 'Désactiver' if m.actif else 'Réactiver' }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="6" class="muted">Aucun modèle.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{% endblock %}

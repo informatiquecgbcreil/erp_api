@@ -1,0 +1,91 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+<div class="card">
+  <div class="page-head">
+    <div>
+      <h1>Budgets demandés</h1>
+      <p class="muted">Préparez les charges et les produits à présenter aux financeurs, puis répartissez-les par projet ou appel à projets.</p>
+      <p><a class="btn" href="{{ url_for('previsionnel.referentiel') }}">Gérer les lignes de budget proposées</a></p>
+    </div>
+  </div>
+</div>
+
+{% if can_edit_budget %}
+<div class="card" id="creer-budget">
+  <h2>Créer un budget prévisionnel</h2>
+  <form method="post" class="form-grid-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-stack">Année
+      <input class="in" type="number" name="annee" value="{{ current_year + 1 }}" required>
+    </label>
+    <label class="field-stack">Secteur
+      <select class="in" name="secteur" required>
+        {% for s in secteurs %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field-stack">Modèle de budget
+      <select class="in" name="modele_ref_id">
+        <option value="">Aucun modèle</option>
+        {% for m in modeles_ref %}
+          <option value="{{ m.id }}">{{ m.nom }}{% if m.secteur %} — {{ m.secteur }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <span class="muted">Optionnel : ajoute automatiquement les lignes types du modèle.</span>
+    </label>
+    <label class="field-stack">Nom
+      <input class="in" type="text" name="nom" placeholder="Budget prévisionnel Numérique 2026">
+    </label>
+    <div class="form-actions"><button class="btn ok" type="submit">Créer</button></div>
+
+    {% if categories_ref %}
+    <div style="grid-column:1/-1; margin-top:12px;">
+      <h3>Lignes types à intégrer dès la création</h3>
+      <p class="muted">Optionnel : coche les lignes fréquentes pour éviter de tout retaper ensuite. Les montants peuvent rester à 0 €.</p>
+      <div class="tablewrap clean" style="max-height:300px; overflow:auto;">
+        <table class="table">
+          <thead><tr><th></th><th>Nature</th><th>Compte</th><th>Catégorie</th><th>Montant défaut</th></tr></thead>
+          <tbody>
+            {% for c in categories_ref %}
+            <tr>
+              <td><input type="checkbox" name="categorie_ref_id" value="{{ c.id }}"></td>
+              <td>{{ 'Produit' if c.nature == 'produit' else 'Charge' }}</td>
+              <td>{{ c.compte.code }} - {{ c.compte.libelle }}</td>
+              <td><strong>{{ c.libelle }}</strong></td>
+              <td>{{ '%.2f'|format(c.montant_defaut or 0) }} €</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Budgets existants</h2>
+  <div class="tablewrap clean">
+    <table class="table">
+      <thead><tr><th>Année</th><th>Secteur</th><th>Nom</th><th>Charges</th><th>Produits</th><th>Solde</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+        {% for b in budgets %}
+          <tr>
+            <td>{{ b.annee }}</td>
+            <td>{{ b.secteur }}</td>
+            <td><strong>{{ b.nom }}</strong></td>
+            <td>{{ '%.2f'|format(b.total_charges) }} €</td>
+            <td>{{ '%.2f'|format(b.total_produits) }} €</td>
+            <td><strong>{{ '%.2f'|format(b.solde) }} €</strong></td>
+            <td>{{ b.statut }}</td>
+            <td><a class="btn" href="{{ url_for('previsionnel.detail', budget_id=b.id) }}">Ouvrir</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8">{{ ui.empty_state("Aucun budget demandé", "Utilisez le formulaire ci-dessus pour préparer le premier budget annuel à présenter à un financeur.", "#creer-budget" if can_edit_budget else None, "Créer le premier budget" if can_edit_budget else None, "🧮") }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

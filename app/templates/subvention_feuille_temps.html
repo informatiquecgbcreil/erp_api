@@ -1,0 +1,117 @@
+{% extends "layout.html" %}
+{% block title %}Feuille de temps — {{ sub.nom }}{% endblock %}
+{% block body %}
+<style>
+  .ft-feuille{ max-width:880px; margin:0 auto; background:#fff; color:#111;
+               border:1px solid #999; border-radius:6px; padding:26px 32px; }
+  .ft-feuille h2{ margin:0 0 2px; }
+  .ft-sous{ font-size:13px; opacity:.8; margin-bottom:14px; }
+  .ft-table{ width:100%; border-collapse:collapse; margin-top:10px; }
+  .ft-table th, .ft-table td{ border:1px solid #999; padding:5px 9px; font-size:13px; text-align:left; }
+  .ft-table th{ background:#f0f0f0; }
+  .ft-table td.m{ text-align:right; white-space:nowrap; }
+  .ft-totaux{ margin-top:14px; width:100%; border-collapse:collapse; }
+  .ft-totaux td{ border:1px solid #999; padding:7px 10px; font-size:14px; }
+  .ft-totaux td.m{ text-align:right; font-weight:800; white-space:nowrap; }
+  .ft-totaux tr.total td{ font-size:16px; background:#f0f0f0; }
+  .ft-sign{ display:flex; justify-content:space-between; gap:24px; margin-top:26px; }
+  .ft-sign div{ flex:1; border-top:1px solid #666; padding-top:6px; font-size:13px; }
+  .ft-filtres{ display:flex; gap:8px; align-items:end; flex-wrap:wrap; }
+  .ft-filtres label{ display:block; font-size:.78rem; font-weight:600; }
+  .ft-filtres input{ padding:6px 8px; border-radius:8px; border:1px solid var(--border,#e3e6ef); }
+  @media print{
+    .no-print, nav, header, footer, .topbar, .aide-page, .context-banner, .guide-bandeau{ display:none !important; }
+    .ft-feuille{ border:none; padding:0; }
+    body{ background:#fff; }
+  }
+</style>
+<div class="page-shell stack">
+  <div class="page-header no-print">
+    <div class="page-title-wrap">
+      <h1 class="page-title">⏱️ Feuille de temps — {{ sub.nom }}</h1>
+      <p class="page-subtitle">Le temps effectif passé sur cette subvention : séances des ateliers financés,
+        créneaux rattachés au projet, préparation. À imprimer, signer et joindre au dossier — ou à comparer
+        avec ce que la plateforme du financeur a extrait.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('main.subvention_justificatif', subvention_id=sub.id) }}">📊 Justificatif d'activité</a>
+      <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <form method="get" class="ft-filtres no-print" action="{{ url_for('main.subvention_feuille_temps', subvention_id=sub.id) }}">
+    <div><label>Du</label><input type="date" name="du" value="{{ du.isoformat() }}"></div>
+    <div><label>Au</label><input type="date" name="au" value="{{ au.isoformat() }}"></div>
+    <div><label>Préparation forfaitaire / séance (min)</label><input type="number" name="prep" min="0" max="240" step="5" value="{{ prep_minutes }}"></div>
+    <button class="btn" type="submit">Actualiser</button>
+  </form>
+
+  <div class="ft-feuille">
+    <h2>État des heures — {{ sub.nom }}</h2>
+    <div class="ft-sous">
+      {% if sub.financeur %}Financeur : <strong>{{ sub.financeur }}</strong> · {% endif %}
+      {% if sub.reference %}Réf. {{ sub.reference }} · {% endif %}
+      Secteur {{ sub.secteur }} · Exercice {{ sub.annee_exercice }}<br>
+      Période : du <strong>{{ du.strftime('%d/%m/%Y') }}</strong> au <strong>{{ au.strftime('%d/%m/%Y') }}</strong>
+      · Établi le {{ today.strftime('%d/%m/%Y') }} — {{ ORGANIZATION_NAME }}
+    </div>
+
+    <h3 style="margin:12px 0 0;">1. Séances des ateliers financés (face-à-face)</h3>
+    {% if lignes_seances %}
+      <table class="ft-table">
+        <thead><tr><th>Date</th><th>Atelier</th><th>Horaire</th><th style="text-align:right;">Durée</th><th style="text-align:right;">Présences</th></tr></thead>
+        <tbody>
+          {% for l in lignes_seances %}
+            <tr>
+              <td>{{ l.date.strftime('%d/%m/%Y') if l.date else '—' }}</td>
+              <td>{{ l.atelier }}</td>
+              <td>{{ l.horaire }}</td>
+              <td class="m">{{ '%dh%02d'|format(l.duree_minutes // 60, l.duree_minutes % 60) if l.duree_minutes else '—' }}</td>
+              <td class="m">{{ l.presences or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="font-size:13px; opacity:.75;">Aucune séance d'atelier financé sur la période.
+        {% if not nb_seances %}Vérifie que les ateliers sont bien rattachés à la subvention (page Justificatif).{% endif %}</p>
+    {% endif %}
+
+    <h3 style="margin:16px 0 0;">2. Temps rattachés au projet (réunions, préparation dédiée…)</h3>
+    {% if creneaux %}
+      <table class="ft-table">
+        <thead><tr><th>Date</th><th>Type</th><th>Intitulé</th><th>Par</th><th>Horaire</th><th style="text-align:right;">Durée</th></tr></thead>
+        <tbody>
+          {% for c in creneaux %}
+            <tr>
+              <td>{{ c.date_creneau.strftime('%d/%m/%Y') }}</td>
+              <td>{{ c.type_label }}</td>
+              <td>{{ c.titre }}{% if c.description %} — {{ c.description }}{% endif %}</td>
+              <td>{{ c.user.nom if c.user else '—' }}</td>
+              <td>{{ c.heure_debut or '—' }}{% if c.heure_fin %}–{{ c.heure_fin }}{% endif %}</td>
+              <td class="m">{{ '%dh%02d'|format(c.duree_minutes // 60, c.duree_minutes % 60) if c.duree_minutes else '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="font-size:13px; opacity:.75;">Aucun créneau rattaché au projet sur la période.
+        <span class="no-print">Rattache tes réunions/préparations depuis « Mon agenda » (champ « Compte sur le projet »).</span></p>
+    {% endif %}
+
+    <table class="ft-totaux">
+      <tr><td>Face-à-face ({{ nb_seances }} séance{{ 's' if nb_seances > 1 else '' }})</td><td class="m">{{ '%.2f'|format(heures_seances) }} h</td></tr>
+      {% if prep_minutes %}
+        <tr><td>Préparation forfaitaire ({{ prep_minutes }} min × séances avec horaire)</td><td class="m">{{ '%.2f'|format(heures_prep) }} h</td></tr>
+      {% endif %}
+      <tr><td>Temps rattachés au projet</td><td class="m">{{ '%.2f'|format(heures_creneaux) }} h</td></tr>
+      <tr class="total"><td><strong>Total du temps effectif sur la période</strong></td><td class="m">{{ '%.2f'|format(heures_total) }} h</td></tr>
+    </table>
+
+    <div class="ft-sign">
+      <div>Établi par<br><br><br></div>
+      <div>Le responsable de la structure<br>(signature et cachet)<br><br></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

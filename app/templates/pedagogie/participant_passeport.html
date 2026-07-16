@@ -1,0 +1,782 @@
+{% extends 'layout.html' %}
+{% block body %}
+
+{# ---------------------------------------
+  Helpers / état UI
+---------------------------------------- #}
+{% set sec = selected_secteur if selected_secteur else sectors[0] %}
+{% set s = summary.get(sec, {}) %}
+{% set active_tab = request.args.get('tab', 'overview') %}
+
+<style>
+  /* ---- Passeport UX (scopé pour ne pas flinguer la nav globale) ---- */
+  .passport-page .passport-header h1 { margin: 0; }
+  .passport-page .passport-sub { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+  .passport-page .passport-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .passport-page .tabbtn { border:1px solid var(--border); background:var(--surface); color:var(--text); padding:8px 12px; border-radius:12px; cursor:pointer; font-weight:700; }
+  .passport-page .tabbtn.active { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 18%, var(--surface)); box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent) inset; }
+  .passport-page .tabpanel { display:none; }
+  .passport-page .tabpanel.active { display:block; }
+
+  .passport-page .kpi-grid { display:grid; grid-template-columns:repeat(5,minmax(140px,1fr)); gap:10px; }
+  @media (max-width: 1100px){ .passport-page .kpi-grid{ grid-template-columns:repeat(2,minmax(160px,1fr)); } }
+  .passport-page .kpi { border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface); }
+  .passport-page .kpi .muted { font-size:12px; }
+  .passport-page .kpi strong { font-size:20px; display:block; margin-top:2px; }
+
+  .passport-page .progressbar { height:10px; background:color-mix(in srgb, var(--surface) 65%, #000 35%); border-radius:999px; overflow:hidden; }
+  .passport-page .progressbar > div { height:100%; background:var(--accent); width:0%; }
+
+  .passport-page .pillrow { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .passport-page .skill-pill { border-radius:999px; padding:6px 10px; border:1px solid rgba(255,255,255,.16); font-size:12px; display:inline-flex; gap:6px; align-items:center; font-weight:700; }
+  .passport-page .skill-pill b { font-size:12px; }
+  .passport-page .skill-pill .lvlmark { opacity:.9; }
+  .passport-page .lvl0 { background:#5a0f16; border-color:#ff5b67; color:#ffd6d9; }
+  .passport-page .lvl1 { background:#5a3c04; border-color:#ffbe3b; color:#ffe7a6; }
+  .passport-page .lvl2 { background:#0c4b22; border-color:#45d483; color:#d5f9df; }
+  .passport-page .lvl3 { background:#0a3870; border-color:#62a5ff; color:#d9e8ff; }
+
+  html[data-theme="light"] .passport-page .lvl0 { background:#ffe0e3; border-color:#e75b68; color:#7a0f18; }
+  html[data-theme="light"] .passport-page .lvl1 { background:#fff0cf; border-color:#d69a12; color:#7a5200; }
+  html[data-theme="light"] .passport-page .lvl2 { background:#def6e5; border-color:#2fa55f; color:#15552d; }
+  html[data-theme="light"] .passport-page .lvl3 { background:#dfeeff; border-color:#3a78da; color:#123d84; }
+
+  .passport-page .ref-card { border:1px solid var(--border); border-radius:14px; padding:12px; margin-bottom:10px; background:var(--surface); }
+  .passport-page .ref-head { display:flex; justify-content:space-between; align-items:end; gap:10px; flex-wrap:wrap; }
+  .passport-page .ref-title { margin:0; font-size:16px; }
+  .passport-page .ref-meta { font-size:12px; color:var(--muted); }
+
+  .passport-page .split { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width: 1100px){ .passport-page .split{ grid-template-columns:1fr; } }
+
+  .passport-page .note-item { border:1px solid var(--border); border-radius:12px; padding:10px; margin-bottom:8px; background:color-mix(in srgb, var(--surface) 92%, transparent); }
+  .passport-page .note-top { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .passport-page .note-cat { font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:var(--surface-soft); }
+  .passport-page .note-date { font-size:12px; color:var(--muted); }
+  .passport-page .note-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+
+  .passport-page .file-card { border:1px solid var(--border); border-radius:12px; padding:10px; margin-bottom:8px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; background:color-mix(in srgb, var(--surface) 92%, transparent); }
+  .passport-page .file-meta { font-size:12px; color:var(--muted); }
+</style>
+
+<div class="stack passport-page">
+
+  <div class="card passport-header">
+    <h1>Passeport habitant · {{ participant.nom }} {{ participant.prenom }}</h1>
+
+    <div class="passport-sub">
+      <a class="btn" href="{{ url_for('activite.index') }}">← Retour émargement</a>
+
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        {% for sector in sectors %}
+          <a class="btn {% if sector == sec %}ok{% endif %}"
+             href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id, secteur=sector, tab=active_tab) }}">
+            {{ sector }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="passport-tabs" id="passportTabs">
+      <button class="tabbtn" data-tab="overview">Vue d’ensemble</button>
+      <button class="tabbtn" data-tab="participation">🪜 Participation</button>
+      <button class="tabbtn" data-tab="evaluate">Évaluer</button>
+      <button class="tabbtn" data-tab="skills">Compétences</button>
+      <button class="tabbtn" data-tab="notes">Notes</button>
+      <button class="tabbtn" data-tab="files">Documents</button>
+      <button class="tabbtn" data-tab="portail">Activités en ligne</button>
+    </div>
+  </div>
+
+  {# -----------------------------
+     TAB: OVERVIEW
+  ------------------------------ #}
+  <div class="card tabpanel" data-panel="overview">
+    <h2 style="margin-top:0;">📌 Résumé ({{ sec }})</h2>
+
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="muted">Nb sessions</div>
+        <strong>{{ s.nb_sessions or 0 }}</strong>
+      </div>
+      <div class="kpi">
+        <div class="muted">Dernière participation</div>
+        <strong>{{ s.last_participation or '—' }}</strong>
+      </div>
+      <div class="kpi">
+        <div class="muted">Notes</div>
+        <strong>{{ s.nb_notes or 0 }}</strong>
+      </div>
+      <div class="kpi">
+        <div class="muted">Compétences validées</div>
+        <strong>{{ s.nb_competences_validees or 0 }}</strong>
+      </div>
+      <div class="kpi">
+        <div class="muted">Intensité</div>
+        <strong>{{ s.intensity or 0 }}/mois</strong>
+        {# Barre indicative simple (0–30) #}
+        {% set intensity_pct = ((s.intensity or 0) / 30.0 * 100.0) %}
+        {% if intensity_pct < 0 %}{% set intensity_pct = 0 %}{% endif %}
+        {% if intensity_pct > 100 %}{% set intensity_pct = 100 %}{% endif %}
+        <div class="progressbar" style="margin-top:6px;">
+          <div style="width:{{ intensity_pct }}%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="split">
+      <div class="ref-card">
+        <div class="ref-head">
+          <h3 class="ref-title">🧠 Compétences (aperçu)</h3>
+          <div class="ref-meta">Validation = niveau ≥ 2</div>
+        </div>
+        <div class="spacer"></div>
+        <ul style="margin:0;">
+          {% for ref,stats in referentiel_stats.items() %}
+            <li style="margin-bottom:8px;">
+              <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                <span><strong>{{ ref }}</strong></span>
+                <span class="muted">{{ stats.valides }}/{{ stats.total }} validées</span>
+              </div>
+              {% set pct = (stats.valides / stats.total * 100) if stats.total else 0 %}
+              <div class="progressbar" style="margin-top:6px;">
+                <div style="width:{{ pct }}%;"></div>
+              </div>
+            </li>
+          {% else %}
+            <li class="muted">Aucune évaluation.</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="ref-card">
+        <div class="ref-head">
+          <h3 class="ref-title">🗒️ Dernières notes</h3>
+          <div class="ref-meta">Secteur : {{ sec }}</div>
+        </div>
+        <div class="spacer"></div>
+        {% for n in notes[:5] %}
+          <div class="note-item">
+            <div class="note-top">
+              <div class="note-date">{{ n.created_at.date() if n.created_at else '' }}</div>
+              <div class="note-cat">{{ note_categories.get(n.categorie, n.categorie) }}</div>
+            </div>
+            <div style="margin-top:6px;">{{ n.contenu }}</div>
+          </div>
+        {% else %}
+          <div class="muted">Aucune note.</div>
+        {% endfor %}
+        <div class="spacer"></div>
+        <button class="btn" type="button" data-tablink="notes">Voir toutes les notes</button>
+      </div>
+    </div>
+
+  </div>
+
+  {# -----------------------------
+     TAB: PARTICIPATION (échelle de Hart)
+  ------------------------------ #}
+  <div class="card tabpanel" data-panel="participation">
+    <div class="ref-card" id="hart" style="border:none; box-shadow:none; padding:0;">
+      <div class="ref-head">
+        <h3 class="ref-title">🪜 Mon escalier de la participation <span class="muted" style="font-weight:400; font-size:12px;">(échelle de Hart)</span></h3>
+        <div class="ref-meta">
+          {% if hart_evaluations %}
+            Aujourd'hui : <strong>niveau {{ hart_evaluations[-1].niveau }} — {{ (hart_niveaux | selectattr('niveau', 'equalto', hart_evaluations[-1].niveau) | list | first).habitant }}</strong>
+            ({{ hart_evaluations[-1].type_label }}, {{ hart_evaluations[-1].date_evaluation.strftime('%d/%m/%Y') }})
+          {% else %}
+            Pas encore sur l'escalier
+          {% endif %}
+        </div>
+      </div>
+
+      {% if hart_due %}
+        <div class="callout-soft" style="border-color: color-mix(in srgb, var(--warn,#f59e0b) 55%, var(--border)); margin-top:8px;">
+          <strong>Évaluation {{ 'initiale (première venue)' if hart_due.motif == 'initiale' else 'de suivi' }} à poser</strong>
+          {% if hart_due.motif != 'initiale' %} — {{ hart_due.nb_seances }} séance(s) depuis la dernière évaluation.{% endif %}
+        </div>
+      {% endif %}
+
+      {# ---- Mon escalier de la participation : scène ludique ---- #}
+      <style>
+        .hart-scene { margin-top:14px; overflow-x:auto; padding-bottom:4px; }
+        .hart-steps { display:flex; align-items:flex-end; gap:4px; min-width:640px; }
+        .hart-step { flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; }
+        .hart-step-above { min-height:74px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:2px; }
+        .hart-avatar { font-size:30px; line-height:1; filter:drop-shadow(0 3px 3px rgba(0,0,0,.25)); animation:hartBob 2.4s ease-in-out infinite; }
+        @keyframes hartBob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-5px); } }
+        .hart-bulle { background:#fff; color:#222; border:2px solid #f2bd6b; border-radius:14px; padding:5px 10px;
+                      font-size:12px; font-style:italic; max-width:180px; text-align:center; position:relative; margin-bottom:4px;
+                      box-shadow:0 2px 6px rgba(0,0,0,.12); }
+        .hart-bulle::after { content:""; position:absolute; bottom:-8px; left:50%; transform:translateX(-50%);
+                             border:5px solid transparent; border-top-color:#f2bd6b; }
+        .hart-trace { font-size:13px; cursor:help; opacity:.85; }
+        .hart-step-block { width:100%; border-radius:12px 12px 0 0; display:flex; flex-direction:column; align-items:center;
+                           justify-content:flex-start; padding-top:6px; color:#fff; font-weight:900;
+                           box-shadow: inset 0 -6px 0 rgba(0,0,0,.12); }
+        .hart-step.is-here .hart-step-block { outline:3px solid #fff; outline-offset:-5px; }
+        .hart-step-emoji { font-size:20px; }
+        .hart-step-label { font-size:10.5px; text-align:center; margin-top:5px; line-height:1.25; min-height:40px; font-weight:700; }
+        .hart-sol { height:10px; border-radius:6px; background:linear-gradient(90deg,#8d6e63,#a1887f); margin-top:-2px; }
+      </style>
+      {% set position = hart_evaluations[-1] if hart_evaluations else None %}
+      {% set last_temoignage = (hart_evaluations | selectattr('temoignage') | list | last) if hart_evaluations else None %}
+      <div class="hart-scene">
+        <div class="hart-steps">
+          {% for niv in hart_niveaux %}
+            <div class="hart-step {% if position and position.niveau == niv.niveau %}is-here{% endif %}">
+              <div class="hart-step-above">
+                {% if position and position.niveau == niv.niveau %}
+                  {% if last_temoignage %}<div class="hart-bulle">« {{ last_temoignage.temoignage }} »</div>{% endif %}
+                  <div class="hart-avatar" title="{{ participant.prenom }} est ici : {{ niv.habitant }} ({{ position.type_label }}, {{ position.date_evaluation.strftime('%d/%m/%Y') }})">🧗</div>
+                {% endif %}
+                {% for ev in hart_evaluations[:-1] if ev.niveau == niv.niveau %}
+                  <span class="hart-trace" title="Passé par ici : {{ ev.type_label }} · {{ ev.date_evaluation.strftime('%d/%m/%Y') }}{% if ev.temoignage %} · « {{ ev.temoignage }} »{% endif %}">👣</span>
+                {% endfor %}
+              </div>
+              <div class="hart-step-block" style="background: {{ niv.couleur }}; height: {{ 44 + niv.niveau * 11 }}px;">
+                <span class="hart-step-emoji">{{ niv.emoji }}</span>
+                <span>{{ niv.niveau }}</span>
+              </div>
+              <div class="hart-step-label" title="Échelle de Hart : {{ niv.libelle }} — {{ niv.description }}">{{ niv.habitant }}</div>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="hart-sol"></div>
+      </div>
+      {% if not hart_evaluations %}
+        <p class="muted" style="margin-top:8px;">{{ participant.prenom }} n'a pas encore posé le pied sur l'escalier : pose l'évaluation de première venue ci-dessous. 👇</p>
+      {% endif %}
+      <p class="muted" style="font-size:12px; margin-top:6px;">L'échelle de Hart est une <strong>évaluation humaine</strong> guidée par les présences (proposée à la première venue puis toutes les 5 séances) — pas un calcul automatique.</p>
+
+      {% if hart_evaluations %}
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; font-weight:700;">🧾 Historique des évaluations ({{ hart_evaluations|length }})</summary>
+          <div class="tablewrap clean" style="margin-top:8px;">
+            <table>
+              <thead><tr><th>Date</th><th>Étape</th><th>Type</th><th>Témoignage</th><th>Remarque pro</th><th></th></tr></thead>
+              <tbody>
+                {% for ev in hart_evaluations | reverse %}
+                  <tr>
+                    <td>{{ ev.date_evaluation.strftime('%d/%m/%Y') }}</td>
+                    <td><span class="status-badge" style="background: {{ hart_couleurs.get(ev.niveau, '#888') }}; color:#fff;">{{ ev.niveau }}</span></td>
+                    <td>{{ ev.type_label }}</td>
+                    <td>{% if ev.temoignage %}<em>« {{ ev.temoignage }} »</em>{% else %}—{% endif %}</td>
+                    <td class="muted">{{ ev.remarque_pro or '—' }}</td>
+                    <td>
+                      <form method="post" action="{{ url_for('main.hart_evaluation_supprimer', evaluation_id=ev.id) }}" onsubmit="return confirm('Supprimer cette évaluation ?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id, tab='participation') }}">
+                        <button class="btn danger" type="submit" style="padding:0 6px; font-size:11px;">🗑</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      {% endif %}
+
+      <div class="spacer"></div>
+      <details {% if hart_due %}open{% endif %}>
+        <summary style="cursor:pointer; font-weight:700;">➕ Poser une évaluation</summary>
+        <form method="post" action="{{ url_for('main.hart_evaluer', participant_id=participant.id) }}" class="stack" style="margin-top:10px; gap:10px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id, tab='participation') }}">
+          <div class="row" style="gap:10px; flex-wrap:wrap;">
+            <label class="field-stack"><span>Étape sur l'escalier</span>
+              <select class="in" name="niveau" required>
+                <option value="">— Choisir —</option>
+                {% for niv in hart_niveaux %}
+                  <option value="{{ niv.niveau }}" title="{{ niv.libelle }} — {{ niv.description }}">{{ niv.niveau }} {{ niv.emoji }} {{ niv.habitant }}{{ '' if niv.participation else ' (non-participation)' }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field-stack"><span>Type</span>
+              <select class="in" name="type_evaluation">
+                {% for val, lab in hart_types %}
+                  <option value="{{ val }}" {% if hart_due and hart_due.motif == val %}selected{% endif %}>{{ lab }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field-stack"><span>Date</span><input class="in" type="date" name="date_evaluation"></label>
+          </div>
+          <label class="field-stack"><span>Témoignage du participant (optionnel)</span><textarea class="in" name="temoignage" rows="2" placeholder="Sa parole, telle quelle…"></textarea></label>
+          <label class="field-stack"><span>Remarque du professionnel (optionnel)</span><textarea class="in" name="remarque_pro" rows="2"></textarea></label>
+          <div><button class="btn ok" type="submit">Enregistrer l'évaluation</button></div>
+        </form>
+      </details>
+    </div>
+
+    {% if benevolat and (benevolat.total or participant.est_benevole) %}
+    <div class="ref-card">
+      <div class="ref-head">
+        <h3 class="ref-title">🤲 Bénévolat</h3>
+        <div class="ref-meta">
+          {{ '%g'|format(benevolat.annee or 0) }} h cette année · {{ '%g'|format(benevolat.total) }} h au total
+        </div>
+      </div>
+      {% if benevolat.dernieres %}
+        <ul style="margin:8px 0 0 0; padding-left:18px;">
+          {% for l in benevolat.dernieres %}
+            <li>{{ l.date_action.strftime('%d/%m/%Y') }} — {{ '%g'|format(l.heures) }} h{% if l.mission %} · {{ l.mission }}{% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <div style="margin-top:8px;"><a class="btn" href="{{ url_for('main.benevolat') }}">Ouvrir la page bénévolat</a></div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# -----------------------------
+     TAB: EVALUATE
+  ------------------------------ #}
+  <div class="card tabpanel" data-panel="evaluate">
+    <h2 style="margin-top:0;">✅ Évaluer (hors session ou rattachée)</h2>
+    <div class="muted" style="margin-top:-6px;">
+      Astuce : rattache une session si tu veux retrouver l’évaluation dans l’historique “comme si”.
+    </div>
+    <div class="spacer"></div>
+
+    {# Ton form partial actuel #}
+    {% include "pedagogie/_passeport_eval_form.html" %}
+
+    <div class="spacer"></div>
+    <div class="ref-card">
+      <h3 class="ref-title" style="margin:0;">📜 Historique rapide</h3>
+      <div class="tablewrap" style="margin-top:10px;">
+        <table class="js-sortable">
+          <thead>
+            <tr>
+              <th>Date</th><th>Compétence</th><th>État</th><th>Commentaire</th><th>Séance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in events[:20] %}
+              <tr>
+                <td>{{ e.date_evaluation }}</td>
+                <td>{{ e.competence.code }} · {{ e.competence.nom }}</td>
+                <td>{{ e.etat }}</td>
+                <td>{{ e.commentaire or '' }}</td>
+                <td>{{ e.session_id or '—' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="muted">Aucune donnée.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="muted" style="margin-top:8px;">(Affichage limité aux 20 dernières entrées ici.)</div>
+    </div>
+  </div>
+
+  {# -----------------------------
+     TAB: SKILLS (graphique)
+  ------------------------------ #}
+  <div class="card tabpanel" data-panel="skills">
+    <h2 style="margin-top:0;">🧩 Compétences (visuel)</h2>
+
+    {# Groupement des compétences par référentiel à partir de current_levels + comp_map #}
+    {% set by_ref = namespace(data={}) %}
+    {% for cid, lvl in current_levels.items() %}
+      {% set c = comp_map.get(cid) %}
+      {% if c %}
+        {% set rname = c.referentiel.nom if c.referentiel else "Sans référentiel" %}
+        {% if rname not in by_ref.data %}
+          {% set _ = by_ref.data.update({rname: []}) %}
+        {% endif %}
+        {% set _ = by_ref.data[rname].append((c, lvl)) %}
+      {% endif %}
+    {% endfor %}
+
+    {% for ref, items in by_ref.data.items() %}
+      {# stats #}
+      <!-- {% set total = items|length %}
+      {% set valides = (items | selectattr(1, 'ge', 2) | list) | length %}
+      {% set pct = (valides / total * 100) if total else 0 %} -->
+	  {% set total = items|length %}
+	  {% set valides = namespace(n=0) %}
+	  {% set n0 = namespace(n=0) %}
+	  {% set n1 = namespace(n=0) %}
+	  {% set n2 = namespace(n=0) %}
+	  {% set n3 = namespace(n=0) %}
+	  {% for pair in items %}
+	    {% set c = pair[0] %}
+	    {% set lvl = pair[1] %}
+	    {% if lvl <= 0 %}
+	      {% set n0.n = n0.n + 1 %}
+	    {% elif lvl == 1 %}
+	      {% set n1.n = n1.n + 1 %}
+	    {% elif lvl == 2 %}
+	      {% set n2.n = n2.n + 1 %}
+	    {% else %}
+	      {% set n3.n = n3.n + 1 %}
+	    {% endif %}
+	    {% if lvl >= 2 %}
+		  {% set valides.n = valides.n + 1 %}
+	    {% endif %}
+	  {% endfor %}
+	  {% set pct = (valides.n / total * 100) if total else 0 %}
+	
+      <div class="ref-card">
+        <div class="ref-head">
+          <h3 class="ref-title">{{ ref }}</h3>
+          <div class="ref-meta">{{ valides.n }}/{{ total }} validées</div>
+        </div>
+
+        <div class="progressbar" style="margin-top:8px;">
+          <div style="width:{{ pct }}%;"></div>
+        </div>
+        <div class="skill-dist">
+          <div class="skill-stat lvl0"><b>{{ n0.n }}</b><span>Non vu</span></div>
+          <div class="skill-stat lvl1"><b>{{ n1.n }}</b><span>En cours</span></div>
+          <div class="skill-stat lvl2"><b>{{ n2.n }}</b><span>Acquis</span></div>
+          <div class="skill-stat lvl3"><b>{{ n3.n }}</b><span>Maîtrisé</span></div>
+        </div>
+
+        <div class="skill-segbar" aria-hidden="true">
+          <div class="seg lvl0" style="width:{{ (n0.n / total * 100) if total else 0 }}%"></div>
+          <div class="seg lvl1" style="width:{{ (n1.n / total * 100) if total else 0 }}%"></div>
+          <div class="seg lvl2" style="width:{{ (n2.n / total * 100) if total else 0 }}%"></div>
+          <div class="seg lvl3" style="width:{{ (n3.n / total * 100) if total else 0 }}%"></div>
+        </div>
+
+        <div class="pillrow">
+          {% for c,lvl in items %}
+            {% set cls = "lvl0" %}
+            {% if lvl == 1 %}{% set cls="lvl1" %}{% endif %}
+            {% if lvl == 2 %}{% set cls="lvl2" %}{% endif %}
+            {% if lvl >= 3 %}{% set cls="lvl3" %}{% endif %}
+            <span class="skill-pill {{ cls }}" title="{{ c.nom }}{% if c.id in portail_comp_ids %} (niveau enrichi par le portail){% endif %}">
+              <b>{{ c.code }}</b>
+              <span class="lvlmark">N{{ lvl }}</span>
+              {% if c.id in portail_comp_ids %}<span class="lvlmark" title="Niveau enrichi par le portail des apprenants">🔌</span>{% endif %}
+            </span>
+          {% endfor %}
+        </div>
+
+        <div class="muted" style="margin-top:10px;">
+          Légende : N0 = non évalué/à faire · N1 = en cours · N2 = acquis · N3 = maîtrisé
+        </div>
+      </div>
+    {% else %}
+      <div class="muted">Aucune compétence évaluée pour l’instant.</div>
+    {% endfor %}
+
+    <div class="spacer"></div>
+
+    <details>
+      <summary class="btn">Afficher le tableau complet (brut)</summary>
+      <div class="spacer"></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Date</th><th>Compétence</th><th>État</th><th>Commentaire</th><th>Séance</th></tr></thead>
+          <tbody>
+            {% for e in events %}
+              <tr>
+                <td>{{ e.date_evaluation }}</td>
+                <td>{{ e.competence.code }} · {{ e.competence.nom }}</td>
+                <td>{{ e.etat }}</td>
+                <td>{{ e.commentaire or '' }}</td>
+                <td>{{ e.session_id or '—' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="muted">Aucune donnée.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+
+  {# -----------------------------
+     TAB: NOTES
+  ------------------------------ #}
+  <div class="card tabpanel" data-panel="notes">
+    <h2 style="margin-top:0;">🗒️ Notes / Journal ({{ sec }})</h2>
+
+    <div class="split">
+      <div class="ref-card">
+        <h3 class="ref-title" style="margin:0;">Ajouter une note</h3>
+        <div class="spacer"></div>
+
+        <form method="post" action="{{ url_for('pedagogie.participant_passeport_note', participant_id=participant.id) }}?tab=notes">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="secteur" value="{{ sec }}">
+
+          <label>Note</label>
+          <textarea class="in" name="contenu" rows="3" required placeholder="Observation, progression, témoignage..."></textarea>
+
+          <div class="spacer"></div>
+
+          <label>Catégorie</label>
+          <select class="in" name="categorie">
+            {% for cat, label in note_categories.items() %}
+              <option value="{{ cat }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+
+          <div class="spacer"></div>
+          <button class="btn ok" type="submit">Enregistrer</button>
+        </form>
+
+        <div class="spacer"></div>
+
+        <form method="get" class="row" style="gap:8px;align-items:end;">
+          <input type="hidden" name="secteur" value="{{ sec }}">
+          <input type="hidden" name="tab" value="notes">
+          <div>
+            <label>Filtre catégorie</label>
+            <select class="in" name="categorie">
+              <option value="">Toutes</option>
+              {% for cat,nb in notes_by_cat.items() %}
+                <option value="{{ cat }}" {% if selected_categorie==cat %}selected{% endif %}>
+                  {{ note_categories.get(cat, cat) }} ({{ nb }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <button class="btn" type="submit">Filtrer</button>
+        </form>
+      </div>
+
+      <div class="ref-card">
+        <h3 class="ref-title" style="margin:0;">Historique</h3>
+        <div class="spacer"></div>
+
+        {% for n in notes %}
+          <div class="note-item">
+            <div class="note-top">
+              <div class="note-date">{{ n.created_at.date() if n.created_at else '' }}</div>
+              <div class="note-cat">{{ note_categories.get(n.categorie, n.categorie) }}</div>
+            </div>
+
+            <div style="margin-top:6px;">{{ n.contenu }}</div>
+
+            <div class="note-actions">
+              <form method="post"
+                    action="{{ url_for('pedagogie.participant_passeport_note_update', participant_id=participant.id, note_id=n.id) }}?tab=notes">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row" style="gap:8px;flex-wrap:wrap;">
+                  <select class="in" name="categorie" style="max-width:190px;">
+                    {% for cat, label in note_categories.items() %}
+                      <option value="{{ cat }}" {% if n.categorie==cat %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <input class="in" name="contenu" value="{{ n.contenu }}">
+                  <button class="btn" type="submit">Mettre à jour</button>
+                </div>
+              </form>
+
+              <form method="post"
+                    action="{{ url_for('pedagogie.participant_passeport_note_delete', participant_id=participant.id, note_id=n.id) }}?tab=notes"
+                    onsubmit="return confirm('Supprimer cette note ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn" type="submit">Supprimer</button>
+              </form>
+            </div>
+          </div>
+        {% else %}
+          <div class="muted">Aucune note.</div>
+        {% endfor %}
+
+        {% if notes_total > page_size %}
+          <div class="row" style="gap:8px; flex-wrap:wrap;">
+            {% if notes_page > 1 %}
+              <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id, secteur=sec, tab='notes', categorie=selected_categorie, notes_page=notes_page-1, files_page=files_page) }}">← Notes précédentes</a>
+            {% endif %}
+            {% if notes_page * page_size < notes_total %}
+              <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id, secteur=sec, tab='notes', categorie=selected_categorie, notes_page=notes_page+1, files_page=files_page) }}">Notes suivantes →</a>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# -----------------------------
+     TAB: FILES
+  ------------------------------ #}
+  <div class="card tabpanel" data-panel="files">
+    <h2 style="margin-top:0;">📎 Documents ({{ sec }})</h2>
+
+    <div class="split">
+      <div class="ref-card">
+        <h3 class="ref-title" style="margin:0;">Ajouter un document</h3>
+        <div class="spacer"></div>
+
+        <form method="post" action="{{ url_for('pedagogie.participant_passeport_file_upload', participant_id=participant.id) }}?tab=files" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="secteur" value="{{ sec }}">
+
+          <label>Titre (optionnel)</label>
+          <input class="in" name="titre" placeholder="Ex : Attestation, photo, CV, ...">
+
+          <div class="spacer"></div>
+
+          <label>Catégorie</label>
+          <select class="in" name="categorie">
+            <option value="atelier">Atelier</option>
+            <option value="temoignage">Témoignage</option>
+          </select>
+
+          <div class="spacer"></div>
+
+          <label>Fichier</label>
+          <input class="in" type="file" name="file" required>
+
+          <div class="spacer"></div>
+          <button class="btn ok" type="submit">Uploader</button>
+        </form>
+      </div>
+
+      <div class="ref-card">
+        <h3 class="ref-title" style="margin:0;">Liste</h3>
+        <div class="spacer"></div>
+
+        {% for f in files %}
+          <div class="file-card">
+            <div>
+              <div><strong>{{ f.titre or f.original_name }}</strong></div>
+              <div class="file-meta">
+                {{ f.categorie or '' }} · {{ f.mime_type or '' }} · {{ f.created_at.date() if f.created_at else '' }}
+              </div>
+            </div>
+            <div>
+              <a class="btn ok" href="{{ url_for('pedagogie.participant_passeport_file_download', participant_id=participant.id, file_id=f.id) }}">Télécharger</a>
+            </div>
+          </div>
+        {% else %}
+          <div class="muted">Aucune pièce jointe.</div>
+        {% endfor %}
+
+        {% if files_total > page_size %}
+          <div class="row" style="gap:8px; flex-wrap:wrap;">
+            {% if files_page > 1 %}
+              <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id, secteur=sec, tab='files', categorie=selected_categorie, notes_page=notes_page, files_page=files_page-1) }}">← Fichiers précédents</a>
+            {% endif %}
+            {% if files_page * page_size < files_total %}
+              <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id, secteur=sec, tab='files', categorie=selected_categorie, notes_page=notes_page, files_page=files_page+1) }}">Fichiers suivants →</a>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# -----------------------------
+     TAB: PORTAIL (activités en ligne)
+  ------------------------------ #}
+  <div class="card tabpanel" data-panel="portail">
+    <h2 style="margin-top:0;">🌐 Activités en ligne (portail des apprenants)</h2>
+
+    {% if portail_competences %}
+      <h3 style="margin-top:4px;">Compétences alimentées par le portail</h3>
+      <p class="muted">Déduit des exercices réussis — enrichit le niveau de compétence, sans remplacer l'évaluation de l'équipe.</p>
+      <div class="tablewrap">
+      <table class="table">
+        <thead><tr><th>Compétence</th><th>Exercices réussis</th><th>Niveau déduit</th></tr></thead>
+        <tbody>
+          {% for pc in portail_competences %}
+            <tr>
+              <td><strong>{{ pc.competence.code }}</strong> · {{ pc.competence.nom }}</td>
+              <td>{{ pc.reussis }}/{{ pc.total }}</td>
+              <td>N{{ pc.niveau }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% endif %}
+
+    <p class="ux-helper"><a href="{{ url_for('pedagogie.portail_competences') }}">⚙️ Gérer les correspondances exercices → compétences</a></p>
+
+    {% if participant.portail_code %}
+      <p class="muted">Code apprenant : <strong>{{ participant.portail_code }}</strong></p>
+      {% if portail_attempts %}
+        <div class="tablewrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Activité</th><th>Type</th><th>Thème</th><th>Score</th><th>Durée</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in portail_attempts %}
+              <tr>
+                <td>{{ a.finished_at.strftime('%d/%m/%Y %H:%M') if a.finished_at else '—' }}</td>
+                <td>{{ a.activity or '—' }}</td>
+                <td>{{ a.activity_type or '—' }}</td>
+                <td>{{ a.theme or '—' }}</td>
+                <td>
+                  {% if a.score is not none and a.max_score %}{{ a.score|int if a.score == a.score|int else a.score }}/{{ a.max_score|int if a.max_score == a.max_score|int else a.max_score }}{% if a.pct is not none %} ({{ a.pct|round(0)|int }}%){% endif %}
+                  {%- elif a.pct is not none %}{{ a.pct|round(0)|int }}%
+                  {%- else %}—{% endif %}
+                </td>
+                <td>{% if a.duration_ms %}{{ (a.duration_ms // 60000) }} min {{ ((a.duration_ms % 60000) // 1000) }} s{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <p class="muted" style="margin-top:8px;">{{ portail_attempts|length }} activité(s) enregistrée(s). Mise à jour à chaque synchronisation.</p>
+      {% else %}
+        <p class="muted">Aucun résultat pour le moment. Les tentatives apparaîtront ici après la prochaine synchronisation.</p>
+      {% endif %}
+    {% else %}
+      <p class="muted">Ce participant n'a pas encore de profil sur le portail des apprenants.</p>
+      {% if portail_configure %}
+        <form method="post" action="{{ url_for('pedagogie.participant_passeport_portail', participant_id=participant.id) }}" data-no-scroll-restore>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn" type="submit" data-pending-text="Création en cours…">Créer le profil portail</button>
+        </form>
+        <p class="ux-helper" style="margin-top:6px;">Crée le code apprenant sur le portail et le rattache à cette fiche (utile pour les habitants déjà présents avant la mise en place du portail).</p>
+      {% else %}
+        <p class="muted">L'intégration au portail n'est pas configurée sur ce serveur (PORTAIL_BASE_URL / PORTAIL_TOKEN).</p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  (function(){
+    const tabs = document.querySelectorAll('#passportTabs .tabbtn');
+    const panels = document.querySelectorAll('.tabpanel');
+
+    function setActive(tab){
+      tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      panels.forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+    }
+
+    // tab depuis l'URL (fallback overview)
+    const url = new URL(window.location.href);
+    const tabFromUrl = url.searchParams.get('tab') || "{{ active_tab }}";
+    setActive(tabFromUrl);
+
+    // clic onglets => update URL ?tab=xxx sans reload + switch
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        url.searchParams.set('tab', btn.dataset.tab);
+        window.history.replaceState({}, '', url.toString());
+        setActive(btn.dataset.tab);
+      });
+    });
+
+    // boutons internes data-tablink
+    document.querySelectorAll('[data-tablink]').forEach(el => {
+      el.addEventListener('click', () => {
+        const t = el.getAttribute('data-tablink');
+        url.searchParams.set('tab', t);
+        window.history.replaceState({}, '', url.toString());
+        setActive(t);
+        window.scrollTo({top: 0, behavior: 'smooth'});
+      });
+    });
+  })();
+</script>
+
+{% endblock %}

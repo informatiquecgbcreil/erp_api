@@ -1,0 +1,85 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+  <div class="stack">
+    <div class="card">
+      <h1 style="margin-top:0;">Référentiel · {{ referentiel.nom }}</h1>
+      <form method="post" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="update_referentiel">
+        <label>Nom</label>
+        <input class="in" name="nom" value="{{ referentiel.nom }}" required>
+        <label>Description</label>
+        <textarea class="in" name="description" rows="3">{{ referentiel.description or '' }}</textarea>
+        <div class="row" style="gap:10px;">
+          <button class="btn ok" type="submit">Enregistrer</button>
+          <a class="btn" href="{{ url_for('pedagogie.referentiels_list') }}">Retour</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Compétences</h2>
+      <form method="post" class="inline" style="gap:8px; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="add_competence">
+        <input class="in" name="code" placeholder="Code (ex: A1)" required>
+        <input class="in" name="nom" placeholder="Nom compétence" required>
+        <input class="in" name="description" placeholder="Description (optionnelle)">
+        <button class="btn ok" type="submit">Ajouter</button>
+      </form>
+
+      
+
+      <div class="spacer"></div>
+
+      <div class="card" style="padding:12px; border:1px dashed rgba(255,255,255,.15);">
+        <h3 style="margin:0 0 6px 0;">Importer un CSV</h3>
+        <div class="muted" style="margin-bottom:10px;">
+          Colonnes minimales : <code>code</code> et <code>nom</code> (ou <code>label</code>).
+          Colonne optionnelle : <code>description</code>.
+          Les autres colonnes sont ignorées (ex: DigComp).
+        </div>
+        <form method="post" action="{{ url_for('pedagogie.import_referentiel_csv', referentiel_id=referentiel.id) }}" enctype="multipart/form-data" class="inline" style="gap:8px; flex-wrap:wrap;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input class="in" type="file" name="csv_file" accept=".csv" required>
+          <button class="btn ok" type="submit">Importer</button>
+        </form>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Nom</th>
+              <th>Description</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for comp in competences %}
+              <tr>
+                <td><span class="badge">{{ comp.code }}</span></td>
+                <td><strong>{{ comp.nom }}</strong></td>
+                <td class="muted">{{ comp.description or '—' }}</td>
+                <td>
+                  <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="delete_competence">
+                    <input type="hidden" name="competence_id" value="{{ comp.id }}">
+                    <button class="btn danger" type="submit">Supprimer</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="muted">Aucune compétence pour ce référentiel.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

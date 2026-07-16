@@ -1,0 +1,106 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="finance-shell finance-shell--single wide-shell">
+  <section class="finance-hero">
+    <div class="finance-hero__top">
+      <div>
+        <h1 class="finance-title">Bilan financeurs</h1>
+        <p class="finance-subtitle">Synthèse multi-subventions avec filtres année, secteur et projet. L’objectif : une lecture claire du demandé, reçu, engagé et du reste, sans te forcer à scroller comme un damné.</p>
+      </div>
+      <div class="finance-actions">
+        <a class="btn" href="{{ url_for('main.export_depenses_csv') }}">Exporter dépenses CSV</a>
+        <a class="btn" href="{{ url_for('main.bilan_global_export_xlsx', annee=selected_annee or '', secteur=selected_secteur or '', projet_id=selected_projet_id or '') }}">Export Excel fidèle</a>
+      </div>
+    </div>
+
+    <form method="GET" class="finance-filters" data-filter-summary="true">
+      <div class="finance-field">
+        <label for="annee">Année</label>
+        <input id="annee" name="annee" value="{{ selected_annee or '' }}" placeholder="ex : 2026">
+      </div>
+      <div class="finance-field">
+        <label for="secteur">Secteur</label>
+        <select id="secteur" name="secteur">
+          <option value="">-- tous --</option>
+          {% for sec in secteurs %}
+            <option value="{{ sec }}" {% if selected_secteur and (selected_secteur|string)==(sec|string) %}selected{% endif %}>{{ sec }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="finance-field">
+        <label for="projet_id">Projet</label>
+        <select id="projet_id" name="projet_id">
+          <option value="">-- tous --</option>
+          {% for p in projets %}
+            <option value="{{ p.id }}" {% if selected_projet_id and (selected_projet_id|string)==(p.id|string) %}selected{% endif %}>{{ p.secteur }} · {{ p.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="finance-actions">
+        <button class="btn ok" type="submit">Appliquer</button>
+        <a class="btn" href="{{ url_for('main.bilan_global') }}">Réinitialiser</a>
+      </div>
+    </form>
+  </section>
+
+  {% if alertes and alertes|length %}
+  <section class="finance-card">
+    <div class="finance-card__head"><div><h2 class="finance-card__title">Alertes</h2><p class="finance-card__hint">À traiter avant de sortir un bilan propre.</p></div></div>
+    <div class="finance-alerts">
+      {% for a in alertes %}<div class="finance-alert"><div>{{ a }}</div></div>{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="finance-card">
+    <div class="finance-card__head"><div><h2 class="finance-card__title">Synthèse</h2><p class="finance-card__hint">Vue consolidée de l’enveloppe et de sa consommation.</p></div></div>
+    <div class="finance-kpis">
+      <article class="finance-kpi"><div class="finance-kpi__label">Demandé</div><div class="finance-kpi__value">{{ "%.2f"|format(totals.demande or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Attribué</div><div class="finance-kpi__value">{{ "%.2f"|format(totals.attribue or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Reçu</div><div class="finance-kpi__value">{{ "%.2f"|format(totals.recu or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Ventilé réel</div><div class="finance-kpi__value">{{ "%.2f"|format(totals.reel_lignes or 0) }}€</div><div class="finance-kpi__help">Somme réelle des lignes.</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Engagé</div><div class="finance-kpi__value">{{ "%.2f"|format(totals.engage or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Reste</div><div class="finance-kpi__value">{{ "%.2f"|format(totals.reste or 0) }}€</div></article>
+    </div>
+  </section>
+
+  <section class="finance-card">
+    <div class="finance-card__head">
+      <div>
+        <h2 class="finance-card__title">Subventions incluses ({{ subs|length }})</h2>
+        <p class="finance-card__hint">Chaque ligne garde ses actions, mais le tableau évite désormais de partir en scrolling horizontal de l’enfer.</p>
+      </div>
+    </div>
+    <div class="finance-scroll-guard tablewrap clean">
+      <table class="finance-table finance-sticky-head">
+        <thead>
+          <tr>
+            <th>Année</th><th>Secteur</th><th>Subvention</th>
+            <th class="num">Demandé</th><th class="num">Attribué</th><th class="num">Reçu</th>
+            <th class="num">Ventilé réel</th><th class="num">Engagé</th><th class="num">Reste</th><th class="actions-cell">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in subs %}
+          <tr>
+            <td class="muted">{{ s.annee_exercice }}</td>
+            <td class="muted">{{ s.secteur }}</td>
+            <td><strong>{{ s.nom }}</strong></td>
+            <td class="num">{{ "%.2f"|format(s.montant_demande or 0) }}€</td>
+            <td class="num">{{ "%.2f"|format(s.montant_attribue or 0) }}€</td>
+            <td class="num">{{ "%.2f"|format(s.montant_recu or 0) }}€</td>
+            <td class="num"><strong>{{ "%.2f"|format(s.total_reel_lignes or 0) }}€</strong></td>
+            <td class="num">{{ "%.2f"|format(s.total_engage or 0) }}€</td>
+            <td class="num">{{ "%.2f"|format(s.total_reste or 0) }}€</td>
+            <td class="actions-cell"><div class="table-actions"><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=s.id) }}">Pilotage</a><a class="btn" href="{{ url_for('main.export_subvention_csv', subvention_id=s.id) }}">CSV</a></div></td>
+          </tr>
+          {% endfor %}
+          {% if subs|length == 0 %}
+          <tr><td colspan="10"><div class="finance-empty"><strong>Aucune subvention</strong><span>Change les filtres pour élargir le périmètre.</span></div></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

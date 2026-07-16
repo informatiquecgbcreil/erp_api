@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  body[data-device-mode="mobile"] .form-actions .btn{
+    width:100%;
+    justify-content:center;
+  }
+  body[data-device-mode="mobile"] ol{
+    padding-left:18px;
+  }
+</style>
+<div class="grid two">
+  <div class="card">
+    <h1 style="margin-top:0;">Connexion</h1>
+    <p class="muted">Connectez-vous pour retrouver votre espace de travail.</p>
+
+    <form method="POST" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label>Adresse e-mail</label>
+        <input class="in" name="email" id="loginEmail" type="email" autocomplete="username" required placeholder="prenom.nom@structure.fr">
+      </div>
+      <div>
+        <label>Mot de passe</label>
+        <input class="in" name="password" id="loginPassword" type="password" autocomplete="current-password" required>
+        <div class="inline" style="margin-top:8px; gap:12px; flex-wrap:wrap;">
+          <label style="margin:0;display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="togglePassword" style="width:auto;"> Afficher le mot de passe
+          </label>
+          <span id="capsLockHint" class="muted" style="display:none;">Verr. Maj activé</span>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn ok" type="submit">Se connecter</button>
+      </div>
+    </form>
+    <div class="spacer"></div>
+    <a href="{{ url_for('auth.password_reset_request') }}">Mot de passe oublié ?</a>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Besoin d'aide ?</h2>
+    <p class="muted">Trois étapes simples pour démarrer :</p>
+    <ol>
+      <li>Entrez votre adresse e-mail professionnelle.</li>
+      <li>Saisissez votre mot de passe.</li>
+      <li>Cliquez sur <strong>Se connecter</strong>.</li>
+    </ol>
+    <p class="muted">En cas de blocage, utilisez le lien de réinitialisation ou contactez l'administrateur de votre structure.</p>
+  </div>
+</div>
+<script>
+  (function () {
+    const emailInput = document.getElementById('loginEmail');
+    const passwordInput = document.getElementById('loginPassword');
+    const togglePassword = document.getElementById('togglePassword');
+    const capsLockHint = document.getElementById('capsLockHint');
+    const storageKey = 'avril.last_login_email';
+
+    if (emailInput) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved && !emailInput.value) emailInput.value = saved;
+      emailInput.form?.addEventListener('submit', function () {
+        localStorage.setItem(storageKey, emailInput.value || '');
+      });
+    }
+
+    if (togglePassword && passwordInput) {
+      togglePassword.addEventListener('change', function () {
+        passwordInput.type = togglePassword.checked ? 'text' : 'password';
+      });
+    }
+
+    if (passwordInput && capsLockHint) {
+      function updateCapsLock(ev) {
+        const on = !!(ev.getModifierState && ev.getModifierState('CapsLock'));
+        capsLockHint.style.display = on ? 'inline' : 'none';
+      }
+      passwordInput.addEventListener('keydown', updateCapsLock);
+      passwordInput.addEventListener('keyup', updateCapsLock);
+      passwordInput.addEventListener('blur', function () { capsLockHint.style.display = 'none'; });
+    }
+  })();
+</script>
+{% endblock %}

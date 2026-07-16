@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block title %}Guides pas à pas{% endblock %}
+{% block body %}
+<style>
+  .guides-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
+    gap:12px; margin-top:14px;
+  }
+  .guide-carte{
+    display:flex; flex-direction:column; gap:8px;
+    border:1px solid var(--border, #e3e6ef); border-radius:14px;
+    padding:16px; background:var(--panel, #fff);
+  }
+  .guide-carte__icone{ font-size:1.8rem; line-height:1; }
+  .guide-carte__titre{ font-weight:700; font-size:1.05rem; }
+  .guide-carte__resume{ font-size:.9rem; opacity:.75; line-height:1.4; flex:1; }
+  .guide-carte__pied{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .guide-carte__nb{ font-size:.8rem; opacity:.6; }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">🧭 Guides pas à pas</h1>
+      <p class="ui-subtitle page-subtitle">
+        Un guide t'accompagne à travers les pages normales de l'application, dans le bon ordre,
+        avec une explication à chaque étape. Tu peux le quitter et le reprendre quand tu veux.
+      </p>
+    </div>
+    <div class="ui-actions inline-actions">
+      <a class="btn" href="{{ url_for('main.glossaire') }}">📖 Glossaire — le dico du social</a>
+    </div>
+  </section>
+
+  {% if guides %}
+    <div class="guides-grid">
+      {% for g in guides %}
+        <article class="guide-carte">
+          <span class="guide-carte__icone" aria-hidden="true">{{ g.icone }}</span>
+          <span class="guide-carte__titre">{{ g.titre }}</span>
+          <span class="guide-carte__resume">{{ g.resume }}</span>
+          <div class="guide-carte__pied">
+            <span class="guide-carte__nb">{{ g.nb_etapes }} étapes</span>
+            <form method="post" action="{{ url_for('main.guide_demarrer', key=g.key) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn primary" type="submit">Démarrer</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="quick-empty" style="margin-top:14px;">
+      <strong>Aucun guide disponible</strong>
+      Les guides correspondant à tes droits apparaîtront ici.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

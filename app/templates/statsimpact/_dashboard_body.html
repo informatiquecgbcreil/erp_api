@@ -1,0 +1,1048 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+<style>
+  .dash-hero {
+    background: linear-gradient(135deg, #0f62fe, #6c5ce7);
+    color: #fff;
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  }
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .kpi-card {
+    padding: 14px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 6px 16px rgba(15,98,254,0.08);
+    border: 1px solid #e5e8ff;
+  }
+  .kpi-label { color: #4a4a4a; font-size: 13px; margin-bottom: 4px; }
+  .kpi-value { font-size: 22px; font-weight: 700; color: #111; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.16);
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .progress-shell {
+    width: 100%; height: 8px; background: #eef2ff; border-radius: 6px; overflow: hidden;
+  }
+  .progress-bar {
+    height: 8px; border-radius: 6px;
+    background: linear-gradient(90deg, #0f62fe, #6c5ce7);
+  }
+  .tag-soft { padding: 2px 8px; border-radius: 10px; background: #eef2ff; font-size: 12px; color: #3b3b3b; }
+  .mini-table { border-collapse: collapse; width: 100%; table-layout: auto; }
+  .mini-table th, .mini-table td {
+    border-bottom: 1px solid #f0f0f0;
+    padding: 6px 4px;
+    text-align: left;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+  .mini-table--compact {
+    width: 100%;
+    table-layout: fixed;
+  }
+  .mini-table--compact th,
+  .mini-table--compact td {
+    padding: 8px 6px;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .mini-table--compact th {
+    font-size: 11px;
+  }
+  .mini-table--compact th:first-child,
+  .mini-table--compact td:first-child {
+    width: 23%;
+    text-align: left;
+  }
+  .mini-table--compact th:not(:first-child),
+  .mini-table--compact td:not(:first-child) {
+    width: 7%;
+    text-align: center;
+  }
+  .tab-nav { display:flex; gap:8px; margin:12px 0 16px 0; flex-wrap:wrap; }
+  .tab-btn { padding:10px 14px; border:1px solid #dfe3f0; background:#f7f9fc; border-radius:10px; cursor:pointer; font-weight:600; }
+  .tab-btn.active { background:#0f62fe; color:#fff; border-color:#0f62fe; box-shadow:0 6px 12px rgba(15,98,254,0.2); }
+  .tab-pane { display:none; }
+  .tab-pane.active { display:block; }
+</style>
+
+<h1>Pilotage de l’activité</h1>
+{% set current_mode = (flt.mode if flt.mode is defined else None) or "Tous modes" %}
+{% set current_secteur = flt.secteur or "Tous secteurs" %}
+<p class="muted">Période : {{ flt.date_from }} → {{ flt.date_to }} — Mode : {{ current_mode }} — Secteur : {{ current_secteur }}</p>
+
+<style>
+  .spark-row{display:flex; align-items:flex-end; gap:6px; margin-top:4px;}
+  .spark-bar{width:12px; border-radius:4px; background:rgba(106,165,255,.55);}
+  .spark-bar.presences{background:rgba(88,204,152,.55);}
+  .spark-bar.uniques{background:rgba(199,146,234,.65);}
+  .heat-cell{min-width:42px; text-align:center; padding:6px 10px; border-radius:10px; font-weight:700;}
+  .heat-0{background:color-mix(in srgb, var(--border) 15%, transparent); color:var(--muted);}
+  .heat-low{background:rgba(106,165,255,.22); color:#f4f7ff;}
+  .heat-mid{background:rgba(106,165,255,.35); color:#fff;}
+  .heat-high{background:rgba(106,165,255,.55); color:#fff;}
+</style>
+
+<form method="get" style="margin-bottom: 16px;">
+  <div style="display:flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+    {% if secteurs and secteurs|length > 0 %}
+    <div>
+      <label>Secteur</label><br>
+      <select name="secteur">
+        <option value="">Tous</option>
+        {% for s in secteurs %}
+          <option value="{{ s }}" {% if flt.secteur==s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div style="grid-column: 1 / -1;">
+      <label>Ateliers</label><br>
+      <div class="help">Coche un ou plusieurs ateliers pour recalculer toutes les statistiques uniquement sur cette sélection.</div>
+      <details class="atelier-multi-panel" {% if flt.atelier_ids %}open{% endif %}>
+        <summary>
+          {% if flt.atelier_ids %}
+            {{ flt.atelier_ids|length }} atelier{% if flt.atelier_ids|length > 1 %}s{% endif %} sélectionné{% if flt.atelier_ids|length > 1 %}s{% endif %}
+          {% else %}
+            Tous les ateliers
+          {% endif %}
+        </summary>
+        <div class="atelier-multi-actions">
+          <button type="button" class="btn" data-atelier-check="all">Tout cocher</button>
+          <button type="button" class="btn" data-atelier-check="none">Tout décocher</button>
+        </div>
+        <div class="atelier-checkbox-grid">
+          {% for a in ateliers %}
+            <label class="atelier-check">
+              <input type="checkbox" name="atelier_ids" value="{{ a.id }}" {% if a.id in (flt.atelier_ids or []) %}checked{% endif %}>
+              <span>
+                <strong>{{ a.nom }}</strong>
+                <small>{{ a.secteur }}</small>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+
+    <div>
+      <label>Du</label><br>
+      {% set date_from_value = flt.date_from.isoformat() if flt.date_from else "" %}
+      <input type="date" name="date_from" value="{{ date_from_value }}">
+      <div class="help">Par défaut, l'année en cours est appliquée si aucune date n'est renseignée.</div>
+    </div>
+
+    <div>
+      <label>Au</label><br>
+      {% set date_to_value = flt.date_to.isoformat() if flt.date_to else "" %}
+      <input type="date" name="date_to" value="{{ date_to_value }}">
+      <div class="help">Adaptez la période pour affiner les indicateurs affichés. Si aucune date n'est renseignée, l'année courante est utilisée.</div>
+    </div>
+
+    <div>
+      <label>Groupement</label><br>
+      <select name="group_by">
+        {% for g in ["DAY","MONTH","QUARTER","YEAR"] %}
+        <option value="{{ g }}" {% if flt.group_by==g %}selected{% endif %}>{{ g }}</option>
+        {% endfor %}
+      </select>
+      <div class="help">Définit le niveau de regroupement des courbes et des tableaux : jour, mois, trimestre ou année.</div>
+    </div>
+
+    <div>
+      <button type="submit">Afficher les résultats</button>
+    </div>
+  </div>
+</form>
+
+<div class="tab-nav" id="tab-buttons">
+  <button class="tab-btn active" data-tab-btn="base">Vue d’ensemble</button>
+  <button class="tab-btn" data-tab-btn="advanced">Analyse avancée</button>
+  <button class="tab-btn" data-tab-btn="participants">Participants</button>
+  <button class="tab-btn" data-tab-btn="magato">Magatomatique</button>
+</div>
+
+<div class="tab-pane active" data-tab="base">
+  <div class="kpi-card" style="margin-bottom:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div class="pill">Vue par secteur</div>
+        <h2 style="margin:6px 0 0 0;">Vue d’ensemble</h2>
+      </div>
+      <div class="tag-soft">Filtré par secteur : {{ flt.secteur or "Tous" }}</div>
+    </div>
+  </div>
+  {% if stats.base_by_secteur %}
+    {% for sect, rows in stats.base_by_secteur.items() %}
+      <div class="card" style="margin-bottom:14px; padding:12px; border:1px solid #e5e5e5; box-shadow:0 6px 16px rgba(0,0,0,0.04);">
+        <h3 style="margin-top:0;">Secteur : {{ sect }}</h3>
+        <table class="mini-table mini-table--compact">
+          <thead>
+            <tr>
+              <th>Atelier</th>
+              <th>Séances prév.</th>
+              <th>Séances réelles</th>
+              <th>Présences totales</th>
+              <th>Heures réalisées</th>
+              <th>Heures prév.</th>
+              <th>Inscrits</th>
+              <th>Capacité accueil</th>
+              <th>Places prév.</th>
+              <th>Taux d'occupation</th>
+              <th>Moyenne / séance</th>
+              <th>Durée activité (j)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              <tr>
+                <td title="{{ r.nom }}"><strong>{{ r.nom }}</strong></td>
+                <td>{{ r.sessions_planned }}</td>
+                <td>{{ r.sessions_real }}</td>
+                <td>{{ r.presences }}</td>
+                <td>{{ r.real_hours }}</td>
+                <td>{{ r.planned_hours }}</td>
+                <td>{{ r.uniques }}</td>
+                <td>{{ r.real_capacity }}</td>
+                <td>{{ r.planned_capacity }}</td>
+                <td>{{ r.occupation_rate }}%</td>
+                <td>{{ r.avg_per_session_real }}</td>
+                <td>{{ r.activity_duration_days if r.activity_duration_days is not none else "N/A" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="card" style="padding:16px; border:1px solid #eee;">
+      <p style="margin:0;">Aucun atelier ne correspond à la période ou aux filtres sélectionnés.</p>
+    </div>
+  {% endif %}
+</div>
+
+<div class="tab-pane" data-tab="advanced">
+  <div class="dash-hero">
+    <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; justify-content:space-between;">
+      <div>
+        <div class="pill">Vue dynamique</div>
+        <h2 style="margin:6px 0 4px 0; font-size:26px;">Impact global sur la période sélectionnée</h2>
+        <p style="margin:0; opacity:0.9;">Séances, présences, fidélisation et démographie sur la période sélectionnée.</p>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="pill" style="background:rgba(255,255,255,0.24);">Séances : {{ stats.kpi.sessions }}</div>
+        <div class="pill" style="background:rgba(255,255,255,0.24);">Présences : {{ stats.kpi.presences }}</div>
+        <div class="pill" style="background:rgba(255,255,255,0.24);">Uniques : {{ stats.kpi.uniques }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-grid" style="margin-bottom:14px;">
+    <div class="kpi-card">
+      <div class="kpi-label">Séances</div>
+      <div class="kpi-value">{{ stats.kpi.sessions }}</div>
+      <div class="progress-shell" style="margin-top:8px;">
+        <div class="progress-bar" style="width:100%;"></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Présences</div>
+      <div class="kpi-value">{{ stats.kpi.presences }}</div>
+      <div class="progress-shell" style="margin-top:8px;">
+        <div class="progress-bar" style="width:100%; background:linear-gradient(90deg,#ff6f61,#ff9f7f);"></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Participants uniques</div>
+      <div class="kpi-value">{{ stats.kpi.uniques }}</div>
+      <div class="progress-shell" style="margin-top:8px;">
+        <div class="progress-bar" style="width:100%; background:linear-gradient(90deg,#34c759,#78e08f);"></div>
+      </div>
+      <div style="font-size:12px; color:#666; margin-top:6px;">Nouveaux : {{ stats.kpi.new_participants }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Moyenne / session</div>
+      <div class="kpi-value">{{ stats.kpi.avg_per_session }}</div>
+      <div style="font-size:12px; color:#666; margin-top:6px;">Heures anim. : {{ stats.kpi.hours_animator }} — Heures part. : {{ stats.kpi.hours_people }}</div>
+    </div>
+  </div>
+
+  <div class="kpi-card" style="margin-bottom:14px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div style="font-weight:700;">Participation & fidélisation</div>
+      <span class="tag-soft">Fréquence moyenne : {{ freq.freq_avg }}</span>
+    </div>
+    <div class="dash-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">
+      <div>
+        <div class="kpi-label">Taux de retour (≥2)</div>
+        <div class="kpi-value">{{ freq.returning_rate }}%</div>
+      </div>
+      <div>
+        <div class="kpi-label">Réguliers (≥4)</div>
+        <div class="kpi-value">{{ freq.regulars_4plus }}</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;">
+      {% set max_bucket = [freq.buckets["1"], freq.buckets["2-3"], freq.buckets["4-6"], freq.buckets["7+"]]|max %}
+      <table class="mini-table">
+        <thead><tr><th>Tranche de venues</th><th>Volume</th><th style="width:40%;">Répartition</th></tr></thead>
+        <tbody>
+          {% for label in ["1","2-3","4-6","7+"] %}
+            {% set val = freq.buckets[label] %}
+            <tr>
+              <td>{{ label }}</td>
+              <td><strong>{{ val }}</strong></td>
+              <td>
+                <div class="progress-shell">
+                  <div class="progress-bar" style="width: {% if max_bucket > 0 %}{{ (val / max_bucket * 100)|round(0) }}{% else %}0{% endif %}%; background:linear-gradient(90deg,#ff9f0a,#ffcc80);"></div>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% include "statsimpact/_occupancy_block.html" %}
+
+  <h2>Transversalité</h2>
+  {% if trans.scope_limited %}
+    <p class="muted">Les indicateurs inter-secteurs sont masqués pour les accès sectorisés afin d'éviter toute fuite de données entre secteurs.</p>
+  {% else %}
+    <p><b>Multi-secteurs</b> : {{ trans.multi_count }} / {{ trans.uniques }} ({{ trans.multi_rate }}%)</p>
+    {% if trans.top_cross and trans.top_cross|length > 0 %}
+      <h3>Secteurs croisés (top 10)</h3>
+      <ul>
+      {% for row in trans.top_cross %}
+        <li>{{ row.secteur }} : {{ row.participants_communs }}</li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+  {% endif %}
+
+  <hr>
+
+  <div class="kpi-card" style="margin-bottom:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <h2 style="margin:0;">Démographie</h2>
+      <span class="tag-soft">Âge moyen : {% if demo.age_avg is not none %}{{ demo.age_avg }}{% else %}N/A{% endif %}</span>
+    </div>
+    <div class="dash-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+      <div>
+        <div class="kpi-label">Origine géographique</div>
+        <div class="kpi-value" style="font-size:16px;">Creil {{ demo.creil.creil }} / Hors {{ demo.creil.hors_creil }}</div>
+      </div>
+      <div>
+        <div class="kpi-label">QPV</div>
+        <div class="kpi-value" style="font-size:16px;">{{ demo.qpv.qpv }} QPV — {{ demo.qpv.hors_qpv }} hors — {{ demo.qpv.inconnu }} inc.</div>
+      </div>
+    </div>
+    {% include "statsimpact/_demography_qpv_details.html" %}
+    <div class="demo-grid" style="margin-top:10px;">
+      <div>
+        <div class="kpi-label">Tranches d'âge</div>
+        <table class="mini-table">
+          <thead>
+            <tr><th>Tranche</th><th style="text-align:right;">Nb</th></tr>
+          </thead>
+          {% for k,v in demo.age_buckets.items() %}
+            <tr><td>{{ k }}</td><td style="text-align:right;"><strong>{{ v }}</strong></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      <div>
+        <div class="kpi-label">Genre</div>
+        <table class="mini-table">
+          <thead>
+            <tr><th>Genre</th><th style="text-align:right;">Nb</th></tr>
+          </thead>
+          {% for k,v in demo.genre.items() %}
+            <tr><td>{{ k }}</td><td style="text-align:right;"><strong>{{ v }}</strong></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      <div>
+        <div class="kpi-label">Type public</div>
+        <table class="mini-table">
+          <thead>
+            <tr><th>Type</th><th style="text-align:right;">Nb</th></tr>
+          </thead>
+          {% for k,v in demo.type_public.items() %}
+            <tr><td>{{ k }}</td><td style="text-align:right;"><strong>{{ v }}</strong></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      <div>
+        <div class="kpi-label">Villes (Top 10)</div>
+        <table class="mini-table">
+          <thead>
+            <tr><th>Ville</th><th style="text-align:right;">Participants uniques</th></tr>
+          </thead>
+          {% for row in demo.villes_top %}
+            <tr><td>{{ row.ville }}</td><td style="text-align:right;"><strong>{{ row.count }}</strong></td></tr>
+          {% endfor %}
+        </table>
+        <div class="muted" style="font-size:12px; margin-top:6px;">Nombre de participants uniques sur la période.</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Ateliers</h2>
+  {% if stats.table_ateliers|length > 0 %}
+    {% if stats.top_ateliers %}
+      <div class="card" style="margin-bottom:12px; padding:12px; background:linear-gradient(135deg,#fdfbfb,#ebedee); border:1px solid #e6e6e6; box-shadow:0 10px 20px rgba(0,0,0,0.04);">
+        <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
+          <div style="font-weight:700; font-size:18px;">Top 3 ateliers</div>
+          {% for r in stats.top_ateliers %}
+            <div style="padding:10px 12px; border-radius:10px; background:#fff; border:1px solid #d6e9ff; display:flex; flex-direction:column; gap:6px; min-width:240px; box-shadow:0 6px 16px rgba(0,0,0,0.06);">
+              <div style="display:flex; align-items:center; gap:8px; font-weight:bold; color:#0f62fe;">
+                <span>{{ loop.index }}.</span>
+                <span>{{ r.secteur }} — {{ r.nom }}</span>
+                {% if stats.has_previous_period and r.is_new_vs_previous %}
+                  <span style="background:#d1fadf; color:#0f5132; padding:2px 6px; border-radius:10px; font-size:12px; border:1px solid #9be2b0;">New</span>
+                {% endif %}
+              </div>
+              <div style="display:flex; gap:12px; font-size:14px; color:#333;">
+                <span>Séances : <strong>{{ r.sessions }}</strong></span>
+                <span>Présences : <strong>{{ r.presences }}</strong></span>
+                <span>Uniques : <strong>{{ r.uniques }}</strong></span>
+              </div>
+              {% set max_tp = [r.presences, r.sessions, r.uniques]|max %}
+              {% set denom = max_tp if max_tp > 0 else 1 %}
+              <div class="progress-shell">
+                <div class="progress-bar" style="width: {{ (r.presences/denom*100)|round(0) }}%;"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    {% if stats.sectors_summary and stats.sectors_summary|length > 0 %}
+      {% set max_pres = (stats.sectors_summary|max(attribute='presences')).presences if stats.sectors_summary else 0 %}
+      <div class="card" style="margin-bottom:12px; padding:12px; border:1px solid #eee; box-shadow:0 6px 16px rgba(0,0,0,0.05);">
+        <h3 style="margin-top:0;">Vue par secteur</h3>
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>Secteur</th>
+              <th>Séances</th>
+              <th>Présences</th>
+              <th>Uniques</th>
+              <th>Heures</th>
+              <th style="width:30%;">Dyn.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in stats.sectors_summary %}
+              {% set pct = (r.presences / max_pres * 100) if max_pres > 0 else 0 %}
+              <tr>
+                <td><strong>{{ r.secteur }}</strong></td>
+                <td>{{ r.sessions }}</td>
+                <td>{{ r.presences }}</td>
+                <td>{{ r.uniques }}</td>
+              <td>{{ r.hours_animator }}h / {{ r.hours_people }}h</td>
+              <td>
+                <div class="progress-shell">
+                  <div class="progress-bar" style="width: {{ pct|round(0) }}%; background:linear-gradient(90deg,#0f62fe,#33b1ff);"></div>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+  <table border="1" cellpadding="6" cellspacing="0" style="max-width:100%; overflow-x:auto;">
+    <thead>
+      <tr>
+        <th>Secteur</th>
+        <th>Atelier</th>
+        <th>Séances</th>
+        <th>Présences</th>
+        <th>Uniques</th>
+        <th>Heures anim.</th>
+        <th>Heures part.</th>
+        <th>Conso kWh</th>
+        <th>CO₂ kg</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in stats.table_ateliers %}
+      <tr>
+        <td>{{ r.secteur }}</td>
+        <td>{{ r.nom }}</td>
+        <td>{{ r.sessions }}</td>
+        <td>{{ r.presences }}</td>
+        <td>{{ r.uniques }}</td>
+        <td>{{ r.hours_animator }}</td>
+        <td>{{ r.hours_people }}</td>
+        <td>{{ r.conso_kwh|default(0) }}</td>
+        <td>{{ r.co2_kg|default(0) }}</td>
+      </tr>
+      {% endfor %}
+      {% if stats.table_ateliers|length == 0 %}
+        <tr>
+          <td colspan="9" style="text-align:center; padding:16px;">
+            Aucun atelier ne correspond à la période ou aux filtres sélectionnés.
+            <div style="margin-top:8px;">
+              <a href="{{ safe_url_for('ateliers.list_ateliers', fallback=safe_url_for('activite.index', fallback='#')) }}" style="text-decoration:none; color:#0d6efd;">➡️ Voir la liste des ateliers</a>
+            </div>
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="card" style="padding:16px; border:1px solid #eee;">
+      <p style="margin:0;">Aucun atelier ne correspond à la période ou aux filtres sélectionnés.</p>
+      <p style="margin:8px 0 0 0;"><a href="{{ safe_url_for('ateliers.list_ateliers', fallback=safe_url_for('activite.index', fallback='#')) }}">➡️ Voir la liste des ateliers</a></p>
+    </div>
+  {% endif %}
+</div>
+
+<div class="tab-pane" data-tab="participants">
+  <div class="kpi-card" style="margin-bottom:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div class="pill">Participants</div>
+        <h2 style="margin:6px 0 0 0;">Parcours individuels</h2>
+      </div>
+      <div class="tag-soft">Total : {{ participants.total }}</div>
+    </div>
+  </div>
+  {% if participants.participants and participants.participants|length > 0 %}
+    <div class="grid" style="grid-template-columns:1fr; gap:12px;">
+      {% for p in participants.participants %}
+        <div class="card" style="padding:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div>
+              <strong style="font-size:16px;">{{ p.prenom }} {{ p.nom }}</strong>
+              <div class="muted" style="font-size:13px;">{{ p.ville or "Ville inconnue" }}{% if p.quartier %} — {{ p.quartier }}{% endif %}</div>
+            </div>
+            <div class="tag-soft">Total venues : {{ p.visites }}</div>
+            <button class="btn" type="button" data-toggle-detail="{{ p.id }}">Détail</button>
+          </div>
+          <div id="participant-detail-{{ p.id }}" class="participant-detail" style="display:none; margin-top:12px;">
+            <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+              <form method="post" class="card" style="padding:12px; background:var(--surface-soft);">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="update_participant">
+                <input type="hidden" name="participant_id" value="{{ p.id }}">
+                <input type="hidden" name="tab" value="participants">
+                <div class="pill" style="margin-bottom:8px;">Données personnelles</div>
+                <div class="grid" style="grid-template-columns:1fr 1fr; gap:10px;">
+                  <div>
+                    <label>Nom</label>
+                    <input class="in" name="nom" value="{{ p.nom }}">
+                  </div>
+                  <div>
+                    <label>Prénom</label>
+                    <input class="in" name="prenom" value="{{ p.prenom }}">
+                  </div>
+                  <div>
+                    <label>Email</label>
+                    <input class="in" type="email" name="email" value="{{ p.email or '' }}">
+                  </div>
+                  <div>
+                    <label>Téléphone</label>
+                    <input class="in" type="tel" name="telephone" value="{{ p.telephone or '' }}">
+                  </div>
+                  <div>
+                    <label>Ville</label>
+                    <input class="in" name="ville" value="{{ p.ville or '' }}" data-ville-input>
+                  </div>
+                  <div>
+                    <label>Quartier</label>
+                    <select class="in" name="quartier_id" data-quartier-select>
+                      <option value="">—</option>
+                      {% for q in quartiers %}
+                        <option value="{{ q.id }}" data-ville="{{ q.ville }}" {% if p.quartier_id == q.id %}selected{% endif %}>{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Genre</label>
+                    <select class="in" name="genre">
+                      <option value="">—</option>
+                      <option value="Femme" {% if p.genre == "Femme" %}selected{% endif %}>Femme</option>
+                      <option value="Homme" {% if p.genre == "Homme" %}selected{% endif %}>Homme</option>
+                      <option value="Autre" {% if p.genre == "Autre" %}selected{% endif %}>Autre</option>
+                      <option value="Préférez ne pas répondre" {% if p.genre == "Préférez ne pas répondre" %}selected{% endif %}>Préférez ne pas répondre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Date de naissance</label>
+                    <input class="in" type="date" name="date_naissance" value="{{ p.date_naissance or '' }}">
+                  </div>
+                  <div>
+                    <label>Type de public</label>
+                    <select class="in" name="type_public">
+                      {% for code in ["H","S","B","A","P"] %}
+                        <option value="{{ code }}" {% if p.type_public == code %}selected{% endif %}>{{ code }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div style="margin-top:12px; text-align:right;">
+                  <button class="btn" type="submit">Enregistrer</button>
+                </div>
+              </form>
+
+              <div class="card" style="padding:12px;">
+                <div class="pill" style="margin-bottom:8px;">Participation</div>
+                <div class="muted" style="font-size:13px; margin-bottom:8px;">{{ p.visites }} venue(s) sur la période filtrée.</div>
+                <div style="font-size:13px; margin-bottom:10px;">
+                  <strong>Ateliers fréquentés</strong>
+                  <ul style="margin:6px 0 0 14px; padding:0;">
+                    {% for a in p.ateliers.values() %}
+                      <li>{{ a.atelier }} ({{ a.secteur }}) — {{ a.visites }} venue(s)</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                <div style="font-size:13px;">
+                  <strong>Séances</strong>
+                  <ul style="margin:6px 0 0 14px; padding:0;">
+                    {% for s in p.sessions %}
+                      <li>{{ s.date or "Date ?" }} — {{ s.atelier }} ({{ s.secteur }})</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="card" style="padding:16px; border:1px solid #eee;">
+      <p style="margin:0;">Aucun participant sur ce filtre.</p>
+    </div>
+  {% endif %}
+</div>
+
+
+<div class="tab-pane" data-tab="magato" data-magato-loaded="{{ 1 if magato else 0 }}">
+  <div class="kpi-card" style="margin-bottom:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div>
+        <div class="pill">Excel-killer mode</div>
+        <h2 style="margin:6px 0 0 0;">Magatomatique</h2>
+        <div class="muted" style="margin-top:6px; max-width: 900px;">
+          Vue macro + zoom (secteur → atelier → sessions → participants). Filtrable, exportable, et cloisonnée selon les droits.
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <a class="btn" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ request.query_string.decode('utf-8') }}">Exporter (.xlsx)</a>
+        <a class="btn" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ request.query_string.decode('utf-8') }}&export_mode=per_atelier">Export annuel (1 feuille / atelier)</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="kpi-card" style="margin-bottom:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0 0 6px 0;">Export CSV sur mesure</h3>
+        <div class="muted">Chaque ligne correspond à une présence (participant × session). Sélectionne les colonnes que tu veux exporter.</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" type="button" data-csv-select="all">Tout cocher</button>
+        <button class="btn" type="button" data-csv-select="none">Tout décocher</button>
+      </div>
+    </div>
+
+    <form method="get" action="{{ url_for('statsimpact.magatomatique_export_csv') }}" style="margin-top:12px;">
+      <input type="hidden" name="tab" value="magato">
+      {% if flt.secteur %}<input type="hidden" name="secteur" value="{{ flt.secteur }}">{% endif %}
+      {% for atelier_id in flt.atelier_ids or [] %}<input type="hidden" name="atelier_ids" value="{{ atelier_id }}">{% endfor %}
+      {% if flt.periode_id %}<input type="hidden" name="periode_id" value="{{ flt.periode_id }}">{% endif %}
+      <input type="hidden" name="date_from" value="{{ flt.date_from or '' }}">
+      <input type="hidden" name="date_to" value="{{ flt.date_to or '' }}">
+      <input type="hidden" name="participant_q" value="{{ request.args.get('participant_q','') }}">
+
+      <div class="stack" style="gap:12px;">
+        {% for group in csv_field_groups or [] %}
+          <div>
+            <div style="font-weight:600; margin-bottom:6px;">{{ group.label }}</div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              {% for field in group.fields %}
+                <label class="tag-soft" style="display:flex; gap:6px; align-items:center;">
+                  <input type="checkbox" name="fields" value="{{ field.key }}" {% if field.key in csv_default_fields %}checked{% endif %}>
+                  {{ field.label }}
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div style="margin-top:12px;">
+        <button class="btn ok" type="submit">Exporter CSV</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="kpi-card" style="margin-bottom:12px;">
+    <form method="get" style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">
+      {# On garde tous les filtres existants (secteur, atelier, dates, etc.) via champs hidden si déjà présents #}
+      <input type="hidden" name="tab" value="magato">
+      {% if flt.secteur %}<input type="hidden" name="secteur" value="{{ flt.secteur }}">{% endif %}
+      {% for atelier_id in flt.atelier_ids or [] %}<input type="hidden" name="atelier_ids" value="{{ atelier_id }}">{% endfor %}
+      <input type="hidden" name="date_from" id="magato_date_from" value="{{ flt.date_from or '' }}">
+      <input type="hidden" name="date_to" id="magato_date_to" value="{{ flt.date_to or '' }}">
+      {% if flt.periode_id %}<input type="hidden" name="periode_id" value="{{ flt.periode_id }}">{% endif %}
+      <input type="hidden" name="preset" id="magato_preset" value="{{ flt.preset or '' }}">
+
+      <div>
+        <label>Année</label><br>
+        <select id="magato_year">
+          <option value="">—</option>
+          {% for y in available_years or [] %}
+            <option value="{{ y }}">{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Vue</label><br>
+        {% set v = (request.args.get('magato_view') or 'macro') %}
+        <select name="magato_view">
+          <option value="macro" {% if v=='macro' %}selected{% endif %}>Macro (global)</option>
+          <option value="participants" {% if v=='participants' %}selected{% endif %}>Zoom participants (liste)</option>
+          <option value="matrix" {% if v=='matrix' %}selected{% endif %}>Zoom sessions (matrice)</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Recherche participant</label><br>
+        <input name="participant_q" placeholder="Nom / prénom…" value="{{ request.args.get('participant_q','') }}" style="min-width:240px;">
+      </div>
+
+      <div>
+        <label>Max sessions</label><br>
+        <input type="number" name="max_sessions" min="5" max="200" value="{{ request.args.get('max_sessions', 40) }}" style="width:120px;">
+      </div>
+
+      <div>
+        <label>Max participants</label><br>
+        <input type="number" name="max_participants" min="20" max="1000" value="{{ request.args.get('max_participants', 250) }}" style="width:140px;">
+      </div>
+
+      <div>
+        <button class="btn" type="submit">Afficher les résultats</button>
+      </div>
+    </form>
+    <div class="muted" style="margin-top:8px;">
+      Utilisez les filtres en haut de page pour définir votre périmètre d’analyse avant de consulter ou d’exporter les résultats.
+    </div>
+  </div>
+
+  {% if not magato %}
+    <div class="kpi-card">
+      <div class="muted">
+        Cliquez sur « Afficher les résultats » pour générer les données du Magatomatique. Le paramètre d’URL <code>?tab=magato</code> reste disponible pour un accès direct à cet onglet.
+      </div>
+    </div>
+  {% else %}
+    {% if magato.restricted %}
+      <div class="kpi-card"><b>Accès restreint.</b></div>
+    {% else %}
+      <div class="dash-grid" style="margin-bottom:12px;">
+        {% set m = magato.macro %}
+        {% if m and m.kpis is defined %}
+          <div class="kpi-card">
+            <div class="kpi-label">Séances</div>
+            <div class="kpi-value">{{ m.kpis.total_sessions }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Présences</div>
+            <div class="kpi-value">{{ m.kpis.total_presences }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Participants uniques</div>
+            <div class="kpi-value">{{ m.kpis.total_participants_uniques }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Moy. présences / session</div>
+            <div class="kpi-value">{{ (m.kpis.avg_presences_per_session|round(2)) }}</div>
+          </div>
+          {% if m.kpis.avg_sessions_per_participant is defined %}
+            <div class="kpi-card">
+              <div class="kpi-label">Moy. séances / participant</div>
+              <div class="kpi-value">{{ (m.kpis.avg_sessions_per_participant|round(2)) }}</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Récurrents (≥2)</div>
+              <div class="kpi-value">{{ m.kpis.returning_participants }} <span class="muted" style="font-size:14px;">({{ (m.kpis.returning_rate*100)|round(1) }}%)</span></div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Fidèles (≥3)</div>
+              <div class="kpi-value">{{ m.kpis.fidelite_3plus }} <span class="muted" style="font-size:14px;">({{ (m.kpis.fidelite_3plus_rate*100)|round(1) }}%)</span></div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Nouveaux</div>
+              <div class="kpi-value">{{ m.kpis.new_participants }}</div>
+            </div>
+          {% endif %}
+        {% endif %}
+        <div class="kpi-card">
+          <div class="kpi-label">Secteurs dans le périmètre</div>
+          <div class="kpi-value">{{ (m.by_secteur|length) if m and m.by_secteur is defined else 0 }}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ateliers dans le périmètre</div>
+          <div class="kpi-value">{{ (m.by_atelier|length) if m and m.by_atelier is defined else 0 }}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Vue actuelle</div>
+          <div class="kpi-value" style="font-size:18px;">{{ magato.view }}</div>
+        </div>
+      </div>
+
+      <div class="kpi-card" style="margin-bottom:12px;">
+        <h3 style="margin:0 0 10px 0;">Synthèse par secteur</h3>
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>Secteur</th>
+              <th>Séances</th>
+              <th>Présences</th>
+              <th>Participants uniques</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in magato.macro.by_secteur %}
+              <tr>
+                <td>
+                  <a href="?tab=magato&magato_view=macro&secteur={{ r.secteur }}{% if flt.date_from %}&date_from={{ flt.date_from }}{% endif %}{% if flt.date_to %}&date_to={{ flt.date_to }}{% endif %}{% if flt.periode_id %}&periode_id={{ flt.periode_id }}{% endif %}" style="text-decoration:none;">
+                    <span class="tag-soft">{{ r.secteur }}</span>
+                  </a>
+                </td>
+                <td>{{ r.nb_sessions }}</td>
+                <td>{{ r.nb_presences }}</td>
+                <td>{{ r.nb_participants_uniques }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="kpi-card" style="margin-bottom:12px;">
+        <h3 style="margin:0 0 10px 0;">Synthèse par atelier</h3>
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>Secteur</th>
+              <th>Atelier</th>
+              <th>Séances</th>
+              <th>Présences</th>
+              <th>Participants uniques</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in magato.macro.by_atelier %}
+              <tr>
+                <td><span class="tag-soft">{{ r.secteur }}</span></td>
+                <td>
+                  <a href="?tab=magato&magato_view=participants&atelier_id={{ r.atelier_id }}{% if r.secteur %}&secteur={{ r.secteur }}{% endif %}{% if flt.date_from %}&date_from={{ flt.date_from }}{% endif %}{% if flt.date_to %}&date_to={{ flt.date_to }}{% endif %}{% if flt.periode_id %}&periode_id={{ flt.periode_id }}{% endif %}" style="text-decoration:none;">
+                    {{ r.atelier_nom }}
+                  </a>
+                </td>
+                <td>{{ r.nb_sessions }}</td>
+                <td>{{ r.nb_presences }}</td>
+                <td>{{ r.nb_participants_uniques }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if magato.participants %}
+        <div class="kpi-card" style="margin-bottom:12px;">
+          <h3 style="margin:0 0 10px 0;">Participants (résumé)</h3>
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Ville</th>
+                <th>Quartier</th>
+                <th>Nb présences</th>
+                <th>1ère venue</th>
+                <th>Dernière venue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in magato.participants %}
+                <tr>
+                  <td>{{ p.nom }}</td>
+                  <td>{{ p.prenom }}</td>
+                  <td>{{ p.ville or "" }}</td>
+                  <td>{{ p.quartier or "" }}</td>
+                  <td>{{ p.nb_presences }}</td>
+                  <td>{{ p.first_date.strftime("%d/%m/%Y") if p.first_date else "" }}</td>
+                  <td>{{ p.last_date.strftime("%d/%m/%Y") if p.last_date else "" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="muted" style="margin-top:8px;">
+            Limites d’affichage : {{ magato.limits.max_participants }} participants / {{ magato.limits.max_sessions }} sessions (pour rester fluide).
+          </div>
+        </div>
+      {% endif %}
+
+      {% if magato.sessions and magato.view != 'macro' %}
+        <div class="kpi-card" style="margin-bottom:12px;">
+          <h3 style="margin:0 0 10px 0;">Séances (clic = zoom sur 1 journée)</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            {% for s in magato.sessions %}
+              <a class="pill" style="text-decoration:none;" href="?tab=magato&magato_view=matrix{% if flt.secteur %}&secteur={{ flt.secteur }}{% endif %}{% for atelier_id in flt.atelier_ids or [] %}&atelier_ids={{ atelier_id }}{% endfor %}&date_from={{ s.date }}&date_to={{ s.date }}{% if flt.periode_id %}&periode_id={{ flt.periode_id }}{% endif %}">{{ s.label }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if magato.view == 'matrix' and magato.sessions and magato.participants %}
+        <div class="kpi-card">
+          <h3 style="margin:0 0 10px 0;">Matrice (participants × sessions)</h3>
+          <div class="muted" style="margin-bottom:10px;">1 = présent, vide = absent / non émargé.</div>
+          <div style="overflow:auto; max-height: 520px; border:1px solid #eef2ff; border-radius: 10px;">
+            <table class="mini-table" style="min-width: 900px;">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Prénom</th>
+                  {% for s in magato.sessions %}
+                    <th style="white-space:nowrap;">{{ s.label }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in magato.participants %}
+                  <tr>
+                    <td>{{ p.nom }}</td>
+                    <td>{{ p.prenom }}</td>
+                    {% for s in magato.sessions %}
+                      {% set key = (p.id, s.id) %}
+                      <td style="text-align:center;">
+                        {% if magato.matrix.get(key) %}<span class="pill" style="padding:3px 8px;">1</span>{% endif %}
+                      </td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</div>
+
+<script>
+  (function(){
+    const yearSel = document.getElementById('magato_year');
+    if (!yearSel) return;
+    yearSel.addEventListener('change', function(){
+      const y = parseInt(this.value || '0', 10);
+      if (!y) return;
+      const df = document.getElementById('magato_date_from');
+      const dt = document.getElementById('magato_date_to');
+      const pr = document.getElementById('magato_preset');
+      if (df) df.value = `${y}-01-01`;
+      if (dt) dt.value = `${y}-12-31`;
+      if (pr) pr.value = '';
+    });
+  })();
+</script>
+
+
+<script>
+  (function() {
+    const params = new URLSearchParams(window.location.search);
+    const initial = params.get("tab") || "base";
+    const panes = document.querySelectorAll("[data-tab]");
+    const btns = document.querySelectorAll("[data-tab-btn]");
+
+    const magatoPane = document.querySelector('[data-tab="magato"]');
+    const magatoLoaded = magatoPane && magatoPane.getAttribute('data-magato-loaded') === '1';
+
+    const csvButtons = document.querySelectorAll('[data-csv-select]');
+    csvButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-csv-select');
+        const checkboxes = document.querySelectorAll('[name="fields"]');
+        checkboxes.forEach(cb => {
+          cb.checked = (mode === 'all');
+        });
+      });
+    });
+
+    const atelierButtons = document.querySelectorAll('[data-atelier-check]');
+    atelierButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-atelier-check');
+        document.querySelectorAll('[name="atelier_ids"]').forEach(cb => {
+          cb.checked = (mode === 'all');
+        });
+      });
+    });
+
+    function activate(tab) {
+      panes.forEach(p => p.classList.toggle("active", p.getAttribute("data-tab") === tab));
+      btns.forEach(b => b.classList.toggle("active", b.getAttribute("data-tab-btn") === tab));
+      params.set("tab", tab);
+      const url = `${window.location.pathname}?${params.toString()}`;
+      if (tab === 'magato' && !magatoLoaded) {
+        window.location.href = url;
+        return;
+      }
+      window.history.replaceState({}, "", url);
+    }
+
+    btns.forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        activate(btn.getAttribute("data-tab-btn"));
+      });
+    });
+
+    activate(initial);
+
+    // Participant detail toggles
+    document.querySelectorAll("[data-toggle-detail]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const pid = btn.getAttribute("data-toggle-detail");
+        const pane = document.getElementById(`participant-detail-${pid}`);
+        if (!pane) return;
+        const isOpen = pane.style.display !== "none";
+        pane.style.display = isOpen ? "none" : "block";
+        btn.textContent = isOpen ? "Détail" : "Fermer";
+      });
+    });
+  })();
+</script>
+{% endblock %}

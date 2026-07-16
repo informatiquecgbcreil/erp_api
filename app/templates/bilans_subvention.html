@@ -1,0 +1,127 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<style>
+  .bilan-shell{display:flex;flex-direction:column;gap:16px}
+  .bilan-hero{border:1px solid rgba(120,130,160,.22);border-radius:24px;padding:20px;background:linear-gradient(135deg, rgba(59,130,246,.10), rgba(16,185,129,.08))}
+  .bilan-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  .bilan-head h1{margin:0}
+  .bilan-filters{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:10px;align-items:end;margin-top:12px}
+  .bilan-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .bilan-kpi{border:1px solid rgba(120,130,160,.22);border-radius:18px;padding:14px;background:var(--card-bg, rgba(255,255,255,.74))}
+  .bilan-kpi .label{font-size:.86rem;color:var(--muted,#667085);font-weight:800}
+  .bilan-kpi .value{font-size:1.35rem;font-weight:900;margin-top:4px}
+  .bilan-rail{height:10px;border-radius:999px;background:rgba(120,130,160,.18);overflow:hidden;margin-top:8px}
+  .bilan-rail span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#22c55e)}
+  .bilan-list{display:flex;flex-direction:column;gap:10px}
+  .bilan-item{display:grid;grid-template-columns:110px 1.2fr 1.6fr 1.3fr 1fr 120px;gap:10px;align-items:center;border:1px solid rgba(120,130,160,.20);border-radius:16px;padding:12px;background:rgba(255,255,255,.58)}
+  .bilan-item.header{background:color-mix(in srgb, var(--surface-strong,#f3f4f6) 88%, transparent);font-size:.82rem;color:var(--muted,#667085);text-transform:uppercase;letter-spacing:.04em;font-weight:900}
+  .bilan-title{font-weight:900}
+  .bilan-num{text-align:right;white-space:nowrap}
+  .bilan-mat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .bilan-mat{border:1px solid rgba(120,130,160,.20);border-radius:16px;padding:12px;background:rgba(255,255,255,.58)}
+  @media(max-width:1050px){.bilan-item{grid-template-columns:1fr 1fr}.bilan-item.header{display:none}.bilan-num{text-align:left}.bilan-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:720px){.bilan-filters,.bilan-kpis,.bilan-item,.bilan-mat-grid{grid-template-columns:1fr}}
+</style>
+
+{% if forbidden %}
+  <div class="card"><h1>Bilan par enveloppe</h1><p class="muted">Accès réservé.</p></div>
+{% else %}
+<div class="bilan-shell">
+  <section class="bilan-hero">
+    <div class="bilan-head">
+      <div>
+        <h1>Bilan par enveloppe</h1>
+        <p class="muted">Montant accordé, dépenses imputées, reste disponible et matériel lié.</p>
+      </div>
+      <div class="inline" style="gap:8px;flex-wrap:wrap">
+        <a class="btn" href="{{ url_for('bilans.dashboard', year=year) }}">← Tableau de bord</a>
+        <a class="btn" href="{{ url_for('bilans.bilan_secteur', year=year) }}">Bilan par secteur</a>
+      </div>
+    </div>
+
+    <form method="get" action="{{ url_for('bilans.bilan_subvention') }}" class="bilan-filters">
+      <input type="hidden" name="year" value="{{ year }}">
+      <label class="field-stack">Enveloppe
+        <select name="id" onchange="this.form.submit()">
+          {% for s in subventions %}
+            <option value="{{ s.id }}" {% if selected_subvention and s.id == selected_subvention.id %}selected{% endif %}>
+              [{{ s.secteur }}] {{ s.nom }} — {{ '%.2f'|format(s.montant_attribue or 0) }} €
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn ok" type="submit">Afficher</button>
+    </form>
+
+    <form method="get" action="{{ url_for('bilans.bilan_subvention') }}" class="bilan-filters" style="grid-template-columns:160px auto;margin-top:8px;">
+      {% if selected_subvention %}<input type="hidden" name="id" value="{{ selected_subvention.id }}">{% endif %}
+      <label class="field-stack">Exercice
+        <select name="year" onchange="this.form.submit()">
+          {% for y in years %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <noscript><button class="btn">Afficher</button></noscript>
+    </form>
+  </section>
+
+  {{ ux.callout("Lecture", "Cette page est pensée pour préparer un point financeur : ce qui a été accordé, ce qui est consommé, ce qui reste et les dépenses associées.") }}
+
+  {% if not data %}
+    <div class="card"><p class="muted">Aucune donnée pour cette sélection.</p></div>
+  {% else %}
+    <section class="card">
+      <h2>Synthèse</h2>
+      <div class="bilan-kpis">
+        <article class="bilan-kpi"><div class="label">Montant accordé</div><div class="value">{{ '%.2f'|format(data.kpis.montant_accorde) }} €</div></article>
+        <article class="bilan-kpi"><div class="label">Dépenses imputées</div><div class="value">{{ '%.2f'|format(data.kpis.depenses) }} €</div></article>
+        <article class="bilan-kpi"><div class="label">Taux de consommation</div><div class="value">{{ '%.1f'|format(data.kpis.taux) }} %</div><div class="bilan-rail"><span style="width:{{ 0 if data.kpis.taux < 0 else (100 if data.kpis.taux > 100 else data.kpis.taux) }}%"></span></div></article>
+        <article class="bilan-kpi"><div class="label">Écart</div><div class="value">{{ '%.2f'|format(data.kpis.ecart) }} €</div></article>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Dépenses imputées</h2>
+      {% if data.depenses %}
+        <div class="bilan-list">
+          <div class="bilan-item header"><div>Date</div><div>Fournisseur</div><div>Libellé</div><div>Ligne</div><div>Référence</div><div class="bilan-num">Montant</div></div>
+          {% for d in data.depenses %}
+            <div class="bilan-item">
+              <div class="muted">{{ d.date }}</div>
+              <div>{{ d.fournisseur }}</div>
+              <div><span class="bilan-title">{{ d.libelle }}</span></div>
+              <div class="muted">{{ d.compte }} · {{ d.ligne }}</div>
+              <div class="muted">{{ d.reference }}</div>
+              <div class="bilan-num"><strong>{{ '%.2f'|format(d.montant) }} €</strong></div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">Cette enveloppe n’a pas encore de dépense rattachée.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Matériel lié</h2>
+      {% if data.materiel %}
+        <div class="bilan-mat-grid">
+          {% for m in data.materiel %}
+            <div class="bilan-mat">
+              <strong>{{ m.designation }}</strong>
+              <p class="muted">ID : {{ m.id_interne or '—' }}</p>
+              <p>État : {{ m.etat or '—' }}</p>
+              <p>Localisation : {{ m.localisation or '—' }}</p>
+              <p><strong>{% if m.valeur != '' %}{{ '%.2f'|format(m.valeur) }} €{% else %}—{% endif %}</strong></p>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">Aucun matériel n’a encore été inventorié à partir de cette enveloppe.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

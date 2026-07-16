@@ -1,0 +1,33 @@
+{% macro help_tip(text, label='Aide') -%}
+<span class="help-tip">
+  <button type="button" class="help-tip__trigger" aria-label="{{ label }}">?</button>
+  <span class="help-tip__bubble" role="tooltip">{{ text }}</span>
+</span>
+{%- endmacro %}
+
+{% macro label(text, help_text=None, required=False) -%}
+<span class="label-with-help">
+  <span>{{ text }}{% if required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</span>
+  {% if help_text %}{{ help_tip(help_text, 'Aide : ' ~ text) }}{% endif %}
+</span>
+{%- endmacro %}
+
+{% macro callout(title, text, tone='info') -%}
+<div class="ux-callout ux-callout--{{ tone }}">
+  <strong>{{ title }}</strong>
+  <p>{{ text }}</p>
+</div>
+{%- endmacro %}
+
+{% macro empty_state(title, text, action_url=None, action_label=None, icon='🧭') -%}
+<div class="ui-empty-state" role="status">
+  <span class="ui-empty-state__icon" aria-hidden="true">{{ icon }}</span>
+  <div class="ui-empty-state__body">
+    <strong class="ui-empty-state__title">{{ title }}</strong>
+    <p class="ui-empty-state__text">{{ text }}</p>
+    {% if action_url and action_label %}
+      <a class="btn ui-empty-state__action" href="{{ action_url }}">{{ action_label }}</a>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}

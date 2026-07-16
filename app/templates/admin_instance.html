@@ -1,0 +1,91 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="card" style="max-width:860px; margin:0 auto;">
+  <h1>Configuration simplifiée de votre structure</h1>
+  <p class="muted">Personnalisez ici le nom de l’application, les logos, l’URL publique et la messagerie sans modifier les fichiers du projet.</p>
+
+  {{ ux.callout("Paramètres essentiels", "Renseignez l'URL publique si l'application est ouverte depuis d'autres postes ou si des e-mails de récupération doivent contenir un lien fonctionnel. Configurez le SMTP uniquement si vous utilisez l'envoi d'e-mails depuis l'application.") }}
+
+  <form method="post" enctype="multipart/form-data" class="stack" style="gap:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="row">
+      <div>
+        <label>Nom de l’application</label>
+        <input class="in" name="app_name" value="{{ settings.app_name or APP_NAME }}" placeholder="Ex: Portail Gestion Associative">
+      </div>
+      <div>
+        <label>Nom de la structure</label>
+        <input class="in" name="organization_name" value="{{ settings.organization_name or ORGANIZATION_NAME }}" placeholder="Ex: Centre Social ABC">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Logo de l’application (png/jpg/webp/svg)</label>
+        <input class="in" type="file" name="app_logo" accept=".png,.jpg,.jpeg,.webp,.svg,image/*">
+        {% if APP_LOGO_URL %}
+          <div style="margin-top:8px;"><img src="{{ APP_LOGO_URL }}" alt="Logo application" style="height:56px; object-fit:contain;"></div>
+        {% endif %}
+      </div>
+      <div>
+        <label>Logo de la structure (png/jpg/webp/svg)</label>
+        <input class="in" type="file" name="organization_logo" accept=".png,.jpg,.jpeg,.webp,.svg,image/*">
+        {% if ORGANIZATION_LOGO_URL %}
+          <div style="margin-top:8px;"><img src="{{ ORGANIZATION_LOGO_URL }}" alt="Logo structure" style="height:56px; object-fit:contain;"></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:0;">URL publique</h3>
+    <div>
+      <label>URL publique de l'application</label>
+      <input class="in" name="public_base_url" value="{{ settings.public_base_url or '' }}" placeholder="http://192.168.1.42:8000">
+      <div class="muted">Utilisée pour générer des liens corrects dans les e-mails et pour les accès depuis d'autres postes du réseau.</div>
+    </div>
+
+    <h3 style="margin-bottom:0;">SMTP (emails de récupération de mot de passe)</h3>
+    <div class="row">
+      <div>
+        <label>Serveur SMTP</label>
+        <input class="in" name="smtp_host" value="{{ settings.smtp_host or '' }}" placeholder="smtp.votre-domaine.fr">
+      </div>
+      <div>
+        <label>Port SMTP</label>
+        <input class="in" type="number" name="smtp_port" min="1" max="65535" value="{{ settings.smtp_port or '' }}" placeholder="587">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Utilisateur SMTP</label>
+        <input class="in" name="smtp_username" value="{{ settings.smtp_username or '' }}" placeholder="no-reply@association.fr">
+      </div>
+      <div>
+        <label>Nouveau mot de passe SMTP (laisser vide pour conserver le mot de passe actuel)</label>
+        <input class="in" type="password" name="smtp_password" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Adresse expéditeur</label>
+        <input class="in" type="email" name="smtp_sender" value="{{ settings.smtp_sender or '' }}" placeholder="no-reply@association.fr">
+      </div>
+      <div style="display:flex; align-items:flex-end;">
+        <label style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+          <input type="checkbox" name="smtp_use_tls" value="1" {% if settings.smtp_use_tls is not sameas false %}checked{% endif %}>
+          Utiliser STARTTLS
+        </label>
+      </div>
+    </div>
+
+    <div class="muted" style="font-size:13px;">
+      Vous pouvez revenir sur cette page à tout moment pour mettre à jour les informations d'identité visuelle ou de messagerie.
+    </div>
+
+    <div style="text-align:right;">
+      <button class="btn" type="submit">Enregistrer la configuration</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

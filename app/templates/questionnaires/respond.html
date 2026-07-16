@@ -1,0 +1,88 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:center;">
+      <div>
+        <h1>Questionnaire d’impact</h1>
+        <p class="muted">{{ session.secteur }} — {{ atelier.nom if atelier else 'Atelier' }}</p>
+      </div>
+      <a class="btn" href="{{ url_for('activite.sessions', atelier_id=session.atelier_id) }}">⬅️ Retour session</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="get">
+      <div class="inline" style="gap:12px; flex-wrap:wrap;">
+        <div style="min-width:240px;">
+          <label class="muted">Questionnaire</label>
+          <select class="in" name="questionnaire_id">
+            <option value="">—</option>
+            {% for q in questionnaires %}
+              <option value="{{ q.id }}" {% if selected_questionnaire and q.id == selected_questionnaire.id %}selected{% endif %}>{{ q.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="min-width:240px;">
+          <label class="muted">Participant</label>
+          <select class="in" name="participant_id">
+            <option value="">—</option>
+            {% for p in presences %}
+              <option value="{{ p.id }}" {% if selected_participant_id and selected_participant_id|int == p.id %}selected{% endif %}>{{ p.prenom }} {{ p.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="align-self:end;">
+          <button class="btn" type="submit">Charger</button>
+        </div>
+      </div>
+    </form>
+
+    {% if selected_questionnaire %}
+    <form method="post" style="margin-top:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="questionnaire_id" value="{{ selected_questionnaire.id }}">
+      <input type="hidden" name="participant_id" value="{{ selected_participant_id or '' }}">
+
+      <div class="stack" style="gap:12px;">
+        {% for q in questions %}
+          <div class="card" style="padding:12px;">
+            <div><strong>{{ q.label }}</strong>{% if q.is_required %} <span class="muted">*</span>{% endif %}</div>
+            {% if q.kind == 'scale' %}
+              <select class="in" name="question_{{ q.id }}">
+                <option value="">—</option>
+                {% for i in range(1,6) %}
+                  <option value="{{ i }}">{{ i }}</option>
+                {% endfor %}
+              </select>
+            {% elif q.kind == 'yesno' %}
+              <select class="in" name="question_{{ q.id }}">
+                <option value="">—</option>
+                <option value="oui">Oui</option>
+                <option value="non">Non</option>
+              </select>
+            {% elif q.kind == 'multi' %}
+              {% for opt in options_map.get(q.id, []) %}
+                <label class="inline" style="gap:6px;">
+                  <input type="checkbox" name="question_{{ q.id }}" value="{{ opt }}">
+                  <span>{{ opt }}</span>
+                </label>
+              {% endfor %}
+            {% else %}
+              <textarea class="in" name="question_{{ q.id }}" rows="3"></textarea>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn ok" type="submit">Enregistrer</button>
+      </div>
+    </form>
+    {% else %}
+      <p class="muted" style="margin-top:12px;">Sélectionne un questionnaire pour commencer.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

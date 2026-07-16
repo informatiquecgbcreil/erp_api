@@ -1,0 +1,108 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .treso-bar-row { display:grid; grid-template-columns: 160px 1fr 130px; gap:12px; align-items:center; margin:6px 0; }
+  .treso-track { height:18px; border-radius:9px; background: color-mix(in srgb, var(--border) 60%, transparent); overflow:hidden; }
+  .treso-fill { height:100%; border-radius:9px; background: var(--accent, #2563eb); }
+  .treso-fill.is-late { background: var(--danger, #dc2626); }
+  @media print { .no-print { display:none !important; } }
+</style>
+
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Trésorerie prévisionnelle</h1>
+      <p class="page-subtitle">
+        Encaissements de subventions attendus{% if portee_globale %} — tous secteurs{% else %} — votre secteur{% endif %}.
+      </p>
+    </div>
+    <div class="hero-actions no-print">
+      <form method="get" class="inline-actions">
+        <label class="field-stack slim"><span>Exercice</span>
+          <select name="annee" onchange="this.form.submit()">
+            <option value="">Tous</option>
+            {% for y in annees %}<option value="{{ y }}" {% if y == annee %}selected{% endif %}>{{ y }}</option>{% endfor %}
+          </select>
+        </label>
+        <noscript><button class="btn" type="submit">Afficher</button></noscript>
+      </form>
+      <a class="btn" href="{{ url_for('main.tresorerie_export_xlsx', annee=annee) }}">⬇ Export Excel</a>
+      <button class="btn" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Attribué</div><strong>{{ '%.0f'|format(totaux.attribue) }}€</strong></div>
+    <div class="kpi-box"><div class="muted">Reçu</div><strong>{{ '%.0f'|format(totaux.recu) }}€</strong></div>
+    <div class="kpi-box"><div class="muted">Reste à percevoir</div><strong>{{ '%.0f'|format(totaux.reste) }}€</strong></div>
+    <div class="kpi-box"><div class="muted">Taux de réalisation</div><strong>{% if totaux.taux is not none %}{{ totaux.taux }}%{% else %}—{% endif %}</strong></div>
+  </div>
+
+  <section class="section-card">
+    <h2 class="section-title">Encaissements attendus par mois</h2>
+    {% if plan.total_retard %}
+      <div class="callout-soft" style="border-color: color-mix(in srgb, var(--danger) 55%, var(--border));">
+        <strong>{{ '%.0f'|format(plan.total_retard) }}€</strong> de versements attendus sont en retard (échéance dépassée, non soldés).
+      </div>
+    {% endif %}
+    {% set maxi = (plan.lignes | map(attribute='total') | max) if plan.lignes else 0 %}
+    {% for b in plan.lignes %}
+      <div class="treso-bar-row">
+        <div><strong>{{ b.label }}</strong>{% if b.en_retard %} <span class="status-badge status-danger">retard</span>{% endif %}</div>
+        <div class="treso-track"><div class="treso-fill {{ 'is-late' if b.en_retard else '' }}" style="width: {{ (b.total / maxi * 100) if maxi else 0 }}%;"></div></div>
+        <div style="text-align:right;"><strong>{{ '%.0f'|format(b.total) }}€</strong></div>
+      </div>
+      <div class="muted" style="font-size:12px; margin:-2px 0 8px 172px;">
+        {% for f, m in b.financeurs | dictsort(by='value', reverse=true) %}{{ f }} {{ '%.0f'|format(m) }}€{% if not loop.last %} · {% endif %}{% endfor %}
+      </div>
+    {% else %}
+      <div class="quick-empty"><strong>Aucun encaissement daté à venir.</strong>Renseignez la « date de versement attendu » sur les dossiers de subvention.</div>
+    {% endfor %}
+
+    {% if plan.sans_date %}
+      <h3 style="margin-top:16px;">Sans date de versement prévue</h3>
+      <ul class="muted" style="padding-left:18px;">
+        {% for x in plan.sans_date %}
+          <li>{{ x.sub.nom }}{% if x.sub.financeur %} ({{ x.sub.financeur }}){% endif %} — {{ '%.0f'|format(x.montant) }}€ à percevoir</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+
+  {% if alertes and alertes|length %}
+  <section class="section-card" style="border-color: color-mix(in srgb, var(--warn) 55%, var(--border));">
+    <h2 class="section-title">⏰ Échéances consolidées</h2>
+    <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:6px;">
+      {% for a in alertes %}
+        <li><span class="status-badge {{ 'status-danger' if a.niveau == 'danger' else 'status-warning' }}">{{ 'Retard' if a.niveau == 'danger' else 'Bientôt' }}</span>
+          <a href="{{ url_for('main.subvention_pilotage', subvention_id=a.sub.id) }}"><strong>{{ a.sub.financeur or a.sub.nom }}</strong></a>
+          <span class="muted">({{ a.sub.secteur }})</span> — {{ a.message }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="section-card">
+    <h2 class="section-title">Réalisation par financeur</h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>Financeur</th><th>Dossiers</th><th>Attribué</th><th>Reçu</th><th>Reste</th><th>Taux</th></tr></thead>
+        <tbody>
+          {% for g in financeurs %}
+            <tr>
+              <td><strong>{{ g.financeur }}</strong></td>
+              <td>{{ g.nb }}</td>
+              <td>{{ '%.0f'|format(g.attribue) }}€</td>
+              <td>{{ '%.0f'|format(g.recu) }}€</td>
+              <td>{{ '%.0f'|format(g.reste) }}€</td>
+              <td>{% if g.taux is not none %}<span class="status-badge {{ 'status-success' if g.taux >= 80 else ('status-warning' if g.taux >= 30 else 'status-danger') }}">{{ g.taux }}%</span>{% else %}—{% endif %}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="muted">Aucune subvention dans le périmètre.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

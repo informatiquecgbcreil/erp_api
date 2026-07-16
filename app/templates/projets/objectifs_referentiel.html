@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>Objectifs sectoriels — {{ secteur }}</h1>
+        <p class="muted">Définissez les objectifs propres à ce secteur (ex. OS1 Comprendre, OS2 Expérimenter…). Les actions s'y rattachent ensuite, et la fiche action les reprend automatiquement.</p>
+      </div>
+      <a class="btn" href="{{ url_for('projets.objectifs_synthese', secteur=secteur) }}">📊 Voir la consolidation</a>
+    </div>
+    {% if secteurs|length > 1 %}
+    <form method="get" class="inline" style="gap:8px; margin-top:8px;">
+      <label>Secteur :</label>
+      <select class="in" name="secteur" onchange="this.form.submit()">
+        {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if peut_gerer %}
+  <div class="card">
+    <h2>Ajouter un objectif</h2>
+    <form method="post" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="ajouter">
+      <input type="hidden" name="secteur" value="{{ secteur }}">
+      <div class="field-stack"><label>Code</label><input class="in" name="code" placeholder="OS1" style="width:90px;" required></div>
+      <div class="field-stack grow-2"><label>Libellé</label><input class="in" name="libelle" placeholder="Comprendre" required></div>
+      <div class="field-stack"><label>Axe (optionnel)</label><input class="in" name="axe" placeholder="Transitions"></div>
+      <div class="field-stack"><label>Ordre</label><input class="in" type="number" name="ordre" value="0" style="width:80px;"></div>
+      <button class="btn ok" type="submit">➕ Ajouter</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Objectifs du secteur ({{ objectifs|length }})</h2>
+    {% if not objectifs %}
+      <p class="muted">Aucun objectif défini pour ce secteur. Ajoutez-en ci-dessus.</p>
+    {% else %}
+      {% for obj in objectifs %}
+      <form method="post" class="inline" style="gap:8px; flex-wrap:wrap; align-items:flex-end; border-top:1px solid var(--border-soft); padding:10px 0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="modifier">
+        <input type="hidden" name="id" value="{{ obj.id }}">
+        <input type="hidden" name="secteur" value="{{ secteur }}">
+        <div class="field-stack"><label>Code</label><input class="in" name="code" value="{{ obj.code }}" style="width:90px;" {% if not peut_gerer %}disabled{% endif %}></div>
+        <div class="field-stack grow-2"><label>Libellé</label><input class="in" name="libelle" value="{{ obj.libelle }}" {% if not peut_gerer %}disabled{% endif %}></div>
+        <div class="field-stack"><label>Axe</label><input class="in" name="axe" value="{{ obj.axe or '' }}" {% if not peut_gerer %}disabled{% endif %}></div>
+        <div class="field-stack"><label>Ordre</label><input class="in" type="number" name="ordre" value="{{ obj.ordre }}" style="width:80px;" {% if not peut_gerer %}disabled{% endif %}></div>
+        <label class="inline" style="gap:6px;"><input type="checkbox" name="actif" value="1" {% if obj.actif %}checked{% endif %} {% if not peut_gerer %}disabled{% endif %}> actif</label>
+        {% if peut_gerer %}
+        <button class="btn" type="submit">💾</button>
+        <button class="btn danger" type="submit" name="action" value="supprimer" onclick="return confirm('Supprimer cet objectif ?');">🗑️</button>
+        {% endif %}
+      </form>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+  <div class="stack">
+    <div class="card">
+      <h1 style="margin-top:0;">Référentiels pédagogiques</h1>
+      <p class="muted">Crée ici tes référentiels (PIX, Savoirs de base…) et gère la liste des compétences.</p>
+      <div class="row" style="gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+        <a class="btn" href="{{ url_for('pedagogie.objectifs') }}">Gérer les objectifs</a>
+      </div>
+
+      <form method="post" class="inline" style="gap:10px; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="create_referentiel">
+        <input class="in" type="text" name="nom" placeholder="Nom du référentiel" required>
+        <input class="in" type="text" name="description" placeholder="Description (optionnelle)">
+        <button class="btn ok" type="submit">Créer</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Liste des référentiels</h2>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Description</th>
+              <th>Compétences</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ref in referentiels %}
+              <tr>
+                <td><strong>{{ ref.nom }}</strong></td>
+                <td class="muted">{{ ref.description or '—' }}</td>
+                <td>{{ ref.competences|length }}</td>
+                <td>
+                  <div class="inline" style="gap:6px;">
+                    <a class="btn" href="{{ url_for('pedagogie.referentiels_edit', referentiel_id=ref.id) }}">Gérer</a>
+                    <form method="post">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="action" value="delete_referentiel">
+                      <input type="hidden" name="referentiel_id" value="{{ ref.id }}">
+                      <button class="btn danger" type="submit">Supprimer</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="muted">Aucun référentiel pour l'instant.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

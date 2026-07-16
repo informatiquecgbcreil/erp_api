@@ -1,0 +1,207 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="monster-shell project-edit-shell wide-shell">
+
+  <div class="monster-hero">
+    <div class="monster-head">
+      <div>
+        <h1>Projet</h1>
+        <p><strong>{{ projet.nom }}</strong> · {{ projet.secteur }}</p>
+      </div>
+      <div class="inline">
+        <a class="btn" href="{{ url_for('projets.projets_list') }}">Retour aux projets</a>
+        <a class="btn" href="{{ url_for('projets.projet_synthese', projet_id=projet.id) }}">Fiche synthèse</a>
+        <a class="btn" href="{{ url_for('projets.projet_indicateurs', projet_id=projet.id) }}">Indicateurs</a>
+        <a class="btn ok" href="{{ url_for('projets.projet_finance', projet_id=projet.id) }}">Dossier financier</a>
+        <form method="post" action="{{ url_for('projets.projets_delete', projet_id=projet.id) }}" onsubmit="return confirm('Supprimer définitivement ce projet ? Cette action est irréversible.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn danger" type="submit">Supprimer</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="kpi-grid-flex">
+      <div class="box"><div class="muted">Demandé</div><div class="v">{{ "%.2f"|format(projet.total_demande or 0) }}€</div></div>
+      <div class="box"><div class="muted">Attribué</div><div class="v">{{ "%.2f"|format(projet.total_attribue or 0) }}€</div></div>
+      <div class="box"><div class="muted">Reçu</div><div class="v">{{ "%.2f"|format(projet.total_recu or 0) }}€</div></div>
+      <div class="box"><div class="muted">Réalisé (lignes)</div><div class="v">{{ "%.2f"|format(projet.total_reel_lignes or 0) }}€</div></div>
+      <div class="box"><div class="muted">Engagé</div><div class="v">{{ "%.2f"|format(projet.total_engage or 0) }}€</div></div>
+      <div class="box"><div class="muted">Reste</div><div class="v">{{ "%.2f"|format(projet.total_reste or 0) }}€</div></div>
+    </div>
+  </div>
+
+  <div class="story-grid">
+    <div class="monster-card form-card reading-width">
+      <h2>Informations du projet</h2>
+      <form method="POST" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="update">
+
+        <div class="form-grid-2">
+          <div>
+            <label>Nom</label>
+            <input name="nom" value="{{ projet.nom }}" required>
+          </div>
+          <div>
+            <label>Description</label>
+            <textarea name="description" rows="7">{{ projet.description or "" }}</textarea>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+        <div class="form-actions"><button class="btn ok" type="submit">Enregistrer</button></div>
+      </form>
+    </div>
+
+    <div class="monster-card">
+      <h2>Compte-rendu</h2>
+      <p class="muted">Formats acceptés : PDF, DOC, DOCX et ODT.</p>
+
+      {% if projet.cr_filename %}
+        <div class="flash success">
+          Compte-rendu disponible : <strong>{{ projet.cr_original_name or projet.cr_filename }}</strong>
+          <div class="spacer"></div>
+          <a class="btn" href="{{ url_for('projets.projets_cr_download', projet_id=projet.id) }}">Télécharger</a>
+        </div>
+        <div class="spacer"></div>
+      {% else %}
+        <div class="flash warning">Aucun compte-rendu n’est encore déposé.</div>
+        <div class="spacer"></div>
+      {% endif %}
+
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="upload_cr">
+        <input type="file" name="cr_file" required>
+        <div class="spacer"></div>
+        <button class="btn ok" type="submit">Importer le compte-rendu</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="story-grid">
+    <div class="monster-card">
+      <h2>Budget du projet</h2>
+      <div class="kpi-grid-flex">
+        <div class="kpi-box"><div class="label">Charges</div><div class="value">{{ "%.2f"|format(projet.total_charges_previsionnel or 0) }}€</div></div>
+        <div class="kpi-box"><div class="label">Produits demandés</div><div class="value">{{ "%.2f"|format(projet.total_produits_demandes or 0) }}€</div></div>
+        <div class="kpi-box"><div class="label">Produits accordés</div><div class="value">{{ "%.2f"|format(projet.total_produits_accordes or 0) }}€</div></div>
+        <div class="kpi-box"><div class="label">Reste à financer</div><div class="value">{{ "%.2f"|format(projet.reste_a_financer or 0) }}€</div></div>
+      </div>
+      <div class="spacer"></div>
+      <a class="btn ok" href="{{ url_for('projets.projet_budget_home', projet_id=projet.id) }}">Ouvrir le budget AAP</a>
+      <p class="muted">Le budget regroupe les charges, les produits et leur répartition. Les dépenses restent disponibles dans le suivi des engagements.</p>
+    </div>
+
+    <div class="monster-card">
+      <h2>Indicateurs</h2>
+      {{ ux.helper('Les indicateurs actifs remontent dans Stats lorsque ce projet est sélectionné.') }}
+      <div class="kpi-grid-flex">
+        <div class="kpi-box"><div class="label">Configurés</div><div class="value">{{ indicateurs|length }}</div></div>
+        <div class="kpi-box"><div class="label">Actifs</div><div class="value">{{ indicateurs|selectattr('is_active')|list|length }}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <a class="btn ok" href="{{ url_for('projets.projet_synthese', projet_id=projet.id) }}">Ouvrir la fiche synthèse</a>
+      <a class="btn ok" href="{{ url_for('projets.projet_indicateurs', projet_id=projet.id) }}">Ouvrir les indicateurs</a>
+      <a class="btn" href="{{ url_for('main.stats', secteur=projet.secteur, projet_id=projet.id) }}">Voir dans Stats</a>
+    </div>
+  </div>
+
+  <div class="monster-card">
+    <h2>Subventions liées</h2>
+    <p class="muted">Seules les subventions du même secteur peuvent être rattachées à ce projet.</p>
+
+    <div class="tablewrap clean wide">
+      <table>
+        <thead>
+          <tr>
+            <th>Année</th>
+            <th>Subvention</th>
+            <th>Reçu</th>
+            <th>Engagé</th>
+            <th>Reste</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in subs %}
+            <tr>
+              <td>{{ s.annee_exercice }}</td>
+              <td><strong>{{ s.nom }}</strong></td>
+              <td>{{ "%.2f"|format(s.montant_recu or 0) }}€</td>
+              <td>{{ "%.2f"|format(s.total_engage or 0) }}€</td>
+              <td>{{ "%.2f"|format(s.total_reste or 0) }}€</td>
+              <td>
+                <form method="POST">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="toggle_subvention">
+                  <input type="hidden" name="subvention_id" value="{{ s.id }}">
+                  {% if s.id in linked %}
+                    <button class="btn warn" type="submit">Délier</button>
+                  {% else %}
+                    <button class="btn ok" type="submit">Lier</button>
+                  {% endif %}
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if subs|length == 0 %}
+            <tr><td colspan="6" class="muted">Aucune subvention disponible pour ce secteur.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="story-grid">
+    <div class="monster-card">
+      <h2>Objectifs généraux</h2>
+      <p class="muted">Les objectifs généraux du projet se gèrent dans le module pédagogique.</p>
+      <a class="btn ok" href="{{ url_for('pedagogie.objectifs', projet_id=projet.id) }}">Configurer les objectifs</a>
+    </div>
+
+    <div class="monster-card">
+      <h2>Ateliers liés</h2>
+      <p class="muted">Le rattachement des ateliers alimente les indicateurs connectés aux statistiques.</p>
+      <div class="tablewrap clean wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Atelier</th>
+              <th>Type</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in ateliers %}
+              <tr>
+                <td><strong>{{ a.nom }}</strong></td>
+                <td><span class="badge">{{ a.type_atelier }}</span></td>
+                <td>
+                  <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="toggle_atelier">
+                    <input type="hidden" name="atelier_id" value="{{ a.id }}">
+                    {% if a.id in linked_ateliers %}
+                      <button class="btn warn" type="submit">Délier</button>
+                    {% else %}
+                      <button class="btn ok" type="submit">Lier</button>
+                    {% endif %}
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            {% if ateliers|length == 0 %}
+              <tr><td colspan="3" class="muted">Aucun atelier disponible pour ce secteur.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

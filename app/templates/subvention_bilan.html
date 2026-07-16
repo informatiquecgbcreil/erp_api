@@ -1,0 +1,172 @@
+{% extends "layout.html" %}
+{% block body %}
+
+{#
+  Bilan financeur — UI "AAP-like"
+  On garde toutes les données, on change juste la présentation.
+#}
+
+{# Jinja n'a pas accès à la fonction Python float() : on utilise le filtre |float #}
+{% set demande = (totals.demande or 0) | float %}
+{% set attribue = (totals.attribue or 0) | float %}
+{% set recu = (totals.recu or 0) | float %}
+{% set base_charges = (totals.base_charges or 0) | float %}
+{% set base_produits = (totals.base_produits or 0) | float %}
+{% set reel_charges = (totals.reel_charges or 0) | float %}
+{% set reel_produits = (totals.reel_produits or 0) | float %}
+{% set engage = (totals.engage or 0) | float %}
+{% set reste = (totals.reste or 0) | float %}
+
+{% set pct_recu_sur_attribue = (recu / attribue * 100) if attribue else 0 %}
+{% set pct_attribue_sur_demande = (attribue / demande * 100) if demande else 0 %}
+
+<div class="stack">
+
+  <div class="card">
+    <div class="card-header" style="align-items:flex-start;">
+      <div>
+        <div class="inline" style="margin-bottom:8px;">
+          <a class="btn" href="{{ url_for('main.subventions_list') }}">← Retour subventions</a>
+          <div class="inline" style="gap:6px;">
+            <a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}">Pilotage</a>
+            <a class="btn ok" href="{{ url_for('main.subvention_bilan', subvention_id=sub.id) }}">Bilan</a>
+            <a class="btn" href="{{ url_for('main.export_subvention_csv', subvention_id=sub.id) }}">Export CSV</a>
+          </div>
+        </div>
+
+        <h1 class="card-title">Bilan — {{ sub.nom }}</h1>
+        <p class="card-subtitle">Secteur : <strong>{{ sub.secteur }}</strong> — Exercice : <strong>{{ sub.annee_exercice }}</strong></p>
+      </div>
+
+      <div class="small muted">
+        (Vue synthèse + détail par ligne)
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="muted">Demandé</div>
+        <div class="kpi-value">{{ "%.2f"|format(demande) }}€</div>
+      </div>
+      <div class="kpi-card">
+        <div class="muted">Attribué</div>
+        <div class="kpi-value">{{ "%.2f"|format(attribue) }}€</div>
+        <div class="kpi-sub">{{ "%.0f"|format(pct_attribue_sur_demande) }}% du demandé</div>
+      </div>
+      <div class="kpi-card">
+        <div class="muted">Reçu</div>
+        <div class="kpi-value">{{ "%.2f"|format(recu) }}€</div>
+        <div class="kpi-sub">{{ "%.0f"|format(pct_recu_sur_attribue) }}% de l’attribué</div>
+      </div>
+      <div class="kpi-card">
+        <div class="muted">Engagé / Reste</div>
+        <div class="kpi-value">{{ "%.2f"|format(engage) }}€</div>
+        <div class="kpi-sub">Reste : {{ "%.2f"|format(reste) }}€</div>
+      </div>
+    </div>
+
+    <div class="grid two" style="margin-top:12px;">
+      <div class="card">
+        <div class="section-title">Progression (reçu / attribué)</div>
+        <div class="meter" aria-label="Progression">
+          <div class="meter__fill {{ 'meter__fill--ok' if pct_recu_sur_attribue >= 80 else ('meter__fill--warn' if pct_recu_sur_attribue >= 30 else 'meter__fill--danger') }}" style="width:{{ pct_recu_sur_attribue }}%"></div>
+        </div>
+        <div class="balance-legend">
+          <div class="muted">Attribué : <strong>{{ "%.2f"|format(attribue) }}€</strong></div>
+          <div class="muted">Reçu : <strong>{{ "%.2f"|format(recu) }}€</strong> ({{ "%.0f"|format(pct_recu_sur_attribue) }}%)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Bases & Réel</div>
+        <div class="row two">
+          <div>
+            <div class="muted">Base charges</div>
+            <div style="font-weight:900; font-size:18px;">{{ "%.2f"|format(base_charges) }}€</div>
+          </div>
+          <div>
+            <div class="muted">Réel charges</div>
+            <div style="font-weight:900; font-size:18px;">{{ "%.2f"|format(reel_charges) }}€</div>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row two">
+          <div>
+            <div class="muted">Base produits</div>
+            <div style="font-weight:900; font-size:18px;">{{ "%.2f"|format(base_produits) }}€</div>
+          </div>
+          <div>
+            <div class="muted">Réel produits</div>
+            <div style="font-weight:900; font-size:18px;">{{ "%.2f"|format(reel_produits) }}€</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="card">
+    <div class="section-title">Détail par ligne</div>
+    <p class="muted">Charges : engagé + reste. Produits : réel.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nature</th>
+            <th>Compte</th>
+            <th>Libellé</th>
+            <th>Base</th>
+            <th>Réel</th>
+            <th>Engagé</th>
+            <th>Reste</th>
+            <th>Visuel</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in lignes %}
+            {% set is_prod = (l.nature == 'produit') %}
+            {% set denom = (l.base or 0) if (l.base or 0) else (max_total or 1) %}
+            {% set pct_reel = ((l.reel or 0) / denom * 100) if denom else 0 %}
+            {% set pct_engage = ((l.engage or 0) / denom * 100) if denom else 0 %}
+            {% set pct_reste = ((l.reste or 0) / denom * 100) if denom else 0 %}
+            <tr>
+              <td><span class="pill {{ 'pill--ok' if is_prod else 'pill--warn' }}">{{ l.nature }}</span></td>
+              <td>{{ l.compte }}</td>
+              <td><strong>{{ l.libelle }}</strong></td>
+              <td>{{ "%.2f"|format(l.base or 0) }}€</td>
+              <td>{{ "%.2f"|format(l.reel or 0) }}€</td>
+              <td>{{ "%.2f"|format(l.engage or 0) }}€</td>
+              <td>{{ "%.2f"|format(l.reste or 0) }}€</td>
+              <td style="min-width:240px;">
+                <div class="meter" aria-label="ligne">
+                  {% if is_prod %}
+                    <div class="meter__fill meter__fill--ok" style="width:{{ pct_reel }}%"></div>
+                  {% else %}
+                    <div class="meter__fill meter__fill--warn" style="width:{{ pct_engage }}%"></div>
+                  {% endif %}
+                </div>
+                <div class="muted" style="margin-top:6px;">
+                  {% if is_prod %}
+                    Réel : {{ "%.0f"|format(pct_reel) }}% de la base
+                  {% else %}
+                    Engagé : {{ "%.0f"|format(pct_engage) }}% · Reste : {{ "%.0f"|format(pct_reste) }}%
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+
+          {% if lignes|length == 0 %}
+            <tr><td colspan="8" class="muted">Aucune ligne pour cette subvention.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

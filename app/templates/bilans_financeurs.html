@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+{% if forbidden %}
+  <div class="finance-shell finance-shell--single wide-shell">
+    {{ ux.callout("Lecture par financeur", "Cette vue compare rapidement les subventions de l’exercice. Elle permet de repérer les taux de consommation élevés, les montants encore disponibles et les lignes qui restent à ventiler.") }}
+
+<section class="finance-card">
+      <h1 class="finance-title">Bilans & Stats · Financeurs</h1>
+      <p class="finance-subtitle">Accès réservé aux rôles finance, direction ou responsable de secteur.</p>
+    </section>
+  </div>
+{% else %}
+  <div class="finance-shell finance-shell--single wide-shell">
+    <section class="finance-hero">
+      <div class="finance-hero__top">
+        <div>
+          <h1 class="finance-title">Financeurs · synthèse</h1>
+          <p class="finance-subtitle">Tableau de pilotage par subvention : montant accordé, dépenses imputées, reste, répartition du budget et actions rapides.</p>
+        </div>
+        <div class="finance-actions">
+          <form method="get" action="{{ url_for('bilans.bilan_subvention') }}" class="finance-inline" data-filter-summary="true">
+            <label for="year" class="finance-label">Exercice</label>
+            <select id="year" name="year" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+            <noscript><button class="btn" type="submit">Afficher</button></noscript>
+          </form>
+          <a class="btn" href="{{ url_for('bilans.dashboard', year=year) }}">← Tableau de bord</a>
+          <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year) }}">🧾 Voir une subvention</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="finance-card">
+      <div class="finance-card__head"><div><h2 class="finance-card__title">Subventions de l'exercice</h2><p class="finance-card__hint">Lecture directe des principales données par subvention pour l’exercice sélectionné.</p></div></div>
+      {% if not data or not data.rows %}
+        <div class="finance-empty"><strong>Aucune subvention trouvée</strong><span>Aucun enregistrement pour cet exercice.</span></div>
+      {% else %}
+        <div class="finance-scroll-guard tablewrap clean">
+          <table class="js-sortable finance-table finance-sticky-head finance-table--compact">
+            <thead><tr><th>Secteur</th><th>Subvention</th><th class="num">Accordé</th><th class="num">Dépensé</th><th class="num">Reste</th><th class="num">Taux</th><th class="num">À ventiler</th><th class="num">Factures</th><th class="actions-cell">Actions</th></tr></thead>
+            <tbody>
+              {% for r in data.rows %}
+                {% set tone = 'chip-ok' if r.taux < 70 else ('chip-warn' if r.taux < 90 else 'chip-danger') %}
+                <tr>
+                  <td>{{ r.secteur }}</td>
+                  <td><strong>{{ r.nom }}</strong></td>
+                  <td class="num">{{ '%.2f'|format(r.accorde) }} €</td>
+                  <td class="num">{{ '%.2f'|format(r.depenses) }} €</td>
+                  <td class="num">{{ '%.2f'|format(r.reste) }} €</td>
+                  <td class="num"><span class="chip {{ tone }}">{{ '%.1f'|format(r.taux) }}%</span></td>
+                  <td class="num">{{ '%.2f'|format(r.a_ventiler) }} €</td>
+                  <td class="num">{{ r.nb_factures }}</td>
+                  <td class="actions-cell"><div class="table-actions"><a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year, id=r.id) }}">Ouvrir</a><a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year, id=r.id) }}" target="_blank">🖨️ Imprimer</a><a class="btn" href="{{ url_for('main.export_subvention_csv', subvention_id=r.id) }}">CSV</a></div></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+{% endif %}
+{% endblock %}

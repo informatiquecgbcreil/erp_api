@@ -1,0 +1,453 @@
+{% extends "layout.html" %}
+{% block body %}
+{% set k = data.kpis %}
+<style>
+  .annual-shell{display:flex;flex-direction:column;gap:16px}
+  .annual-hero{
+    border:1px solid rgba(120,130,160,.22);
+    border-radius:24px;
+    padding:22px;
+    background:linear-gradient(135deg, rgba(59,130,246,.12), rgba(16,185,129,.08));
+  }
+  .annual-title{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .annual-title h1{margin:0}
+  .annual-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+  .annual-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .annual-card{
+    border:1px solid rgba(120,130,160,.22);
+    border-radius:18px;
+    padding:14px;
+    background:var(--card-bg, rgba(255,255,255,.72));
+    box-shadow:0 8px 24px rgba(15,23,42,.06);
+  }
+  .annual-card .label{font-size:.86rem;color:var(--muted,#667085);font-weight:800}
+  .annual-card .value{font-size:1.45rem;font-weight:900;margin-top:4px}
+  .annual-bar{height:12px;background:rgba(120,130,160,.18);border-radius:999px;overflow:hidden;margin-top:8px}
+  .annual-bar span{display:block;height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e);border-radius:999px}
+  .annual-bar.warn span{background:linear-gradient(90deg,#f97316,#facc15)}
+  .annual-bar.bad span{background:linear-gradient(90deg,#ef4444,#f97316)}
+  .annual-tabs{display:flex;gap:8px;flex-wrap:wrap}
+  .annual-tabs .btn.ok{font-weight:900}
+  .annual-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .annual-alerts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .annual-alert{border-radius:16px;padding:12px;border:1px solid rgba(120,130,160,.22);background:rgba(255,255,255,.65)}
+  .annual-alert.danger{border-color:rgba(239,68,68,.35)}
+  .annual-alert.warn{border-color:rgba(245,158,11,.35)}
+  .annual-alert.ok{border-color:rgba(34,197,94,.35)}
+  .annual-alert.info{border-color:rgba(59,130,246,.35)}
+  .annual-note{font-size:.92rem;color:var(--muted,#667085)}
+  .annual-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .annual-table td,.annual-table th{vertical-align:top}
+  @media(max-width:1000px){
+    .annual-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .annual-grid-2,.annual-alerts,.annual-filters{grid-template-columns:1fr}
+  }
+  @media(max-width:640px){
+    .annual-kpis{grid-template-columns:1fr}
+  }
+</style>
+
+<div class="annual-shell">
+
+  <div class="annual-hero">
+    <div class="annual-title">
+      <div>
+        <h1>Pilotage financier annuel</h1>
+        <p class="muted"><strong>{{ secteur }}</strong> · Exercice {{ year }}</p>
+      </div>
+      <div class="annual-actions">
+        <a class="btn" href="{{ url_for('projets.finance_home', secteur=secteur, year=year) }}">Accueil finances</a>
+        <a class="btn ok" href="{{ url_for('projets.finance_simple', secteur=secteur, year=year) }}">Vue simple</a>
+        <a class="btn" href="{{ url_for('projets.finance_secteur_export', secteur=secteur, year=year) }}">Exporter XLSX</a>
+        <a class="btn" href="{{ url_for('projets.projets_list') }}">Projets</a>
+        <a class="btn" href="{{ url_for('previsionnel.index') }}">Prévisionnels</a>
+      </div>
+    </div>
+
+    <form method="get" class="annual-filters">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <label class="field-stack">Secteur
+        <select class="in" name="secteur" onchange="this.form.submit()">
+          {% for s in sectors %}
+            <option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Exercice
+        <select class="in" name="year" onchange="this.form.submit()">
+          {% for y in years %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="field-stack">
+        <span>Lecture</span>
+        <span class="muted">Prévu → demandé → accordé/reçu → imputé.</span>
+      </div>
+    </form>
+  </div>
+
+  <div class="annual-kpis">
+    <div class="annual-card">
+      <div class="label">Charges prévues</div>
+      <div class="value">{{ "%.2f"|format(k.charges_prevues or 0) }}€</div>
+      <div class="annual-note">{{ k.nb_budgets }} budget(s) prévisionnel(s).</div>
+    </div>
+    <div class="annual-card">
+      <div class="label">Financement accordé</div>
+      <div class="value">{{ "%.2f"|format(k.attribue or 0) }}€</div>
+      <div class="annual-bar {{ 'bad' if (k.pct_finance or 0) < 50 else ('warn' if (k.pct_finance or 0) < 90 else '') }}">
+        <span style="width:{{ k.pct_finance or 0 }}%"></span>
+      </div>
+      <div class="annual-note">{{ k.pct_finance or 0 }}% des charges prévues.</div>
+    </div>
+    <div class="annual-card">
+      <div class="label">Reçu</div>
+      <div class="value">{{ "%.2f"|format(k.recu or 0) }}€</div>
+      <div class="annual-bar {{ 'bad' if (k.pct_recu or 0) < 50 else ('warn' if (k.pct_recu or 0) < 90 else '') }}">
+        <span style="width:{{ k.pct_recu or 0 }}%"></span>
+      </div>
+      <div class="annual-note">Reste à encaisser : {{ "%.2f"|format(k.reste_a_encaisser or 0) }}€.</div>
+    </div>
+    <div class="annual-card">
+      <div class="label">Imputé sur dépenses</div>
+      <div class="value">{{ "%.2f"|format(k.total_impute or 0) }}€</div>
+      <div class="annual-bar {{ 'bad' if (k.pct_impute or 0) > 105 else ('warn' if (k.pct_impute or 0) > 85 else '') }}">
+        <span style="width:{{ k.pct_impute or 0 }}%"></span>
+      </div>
+      <div class="annual-note">{{ k.nb_depenses }} dépense(s) détectée(s).</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="annual-tabs">
+      <a class="btn {% if tab == 'vue' %}ok{% endif %}" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year, tab='vue') }}">Vue annuelle</a>
+      <a class="btn {% if tab == 'budget' %}ok{% endif %}" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year, tab='budget') }}">Budget</a>
+      <a class="btn {% if tab == 'financeurs' %}ok{% endif %}" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year, tab='financeurs') }}">Financeurs</a>
+      <a class="btn {% if tab == 'projets' %}ok{% endif %}" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year, tab='projets') }}">Projets</a>
+      <a class="btn {% if tab == 'depenses' %}ok{% endif %}" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year, tab='depenses') }}">Dépenses</a>
+      <a class="btn {% if tab == 'controles' %}ok{% endif %}" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year, tab='controles') }}">Contrôles</a>
+      <a class="btn" href="{{ url_for('projets.finance_simple', secteur=secteur, year=year) }}">Vue simple</a>
+      <a class="btn" href="{{ url_for('projets.finance_secteur_export', secteur=secteur, year=year) }}">Export XLSX</a>
+    </div>
+  </div>
+
+  {% if tab == 'vue' %}
+  <div class="annual-grid-2">
+    <div class="card">
+      <h2>Lecture rapide</h2>
+      <div class="annual-kpis" style="grid-template-columns:repeat(2,minmax(0,1fr));">
+        <div class="annual-card">
+          <div class="label">Produits prévus</div>
+          <div class="value">{{ "%.2f"|format(k.produits_prevus or 0) }}€</div>
+          <div class="annual-note">Solde prévu : {{ "%.2f"|format(k.solde_prevu or 0) }}€.</div>
+        </div>
+        <div class="annual-card">
+          <div class="label">Demandé</div>
+          <div class="value">{{ "%.2f"|format(k.demande or 0) }}€</div>
+          <div class="annual-note">{{ k.nb_subventions }} enveloppe(s) externe(s).</div>
+        </div>
+        <div class="annual-card">
+          <div class="label">Fonds propres / autofinancement</div>
+          <div class="value">{{ "%.2f"|format(k.fonds_propres_attribue or 0) }}€</div>
+          <div class="annual-note">Imputé : {{ "%.2f"|format(k.impute_fonds_propres or 0) }}€ · {{ k.nb_fonds_propres }} enveloppe(s) compte 99.</div>
+        </div>
+        <div class="annual-card">
+          <div class="label">À corriger</div>
+          <div class="value">{{ k.nb_depenses_a_corriger }}</div>
+          <div class="annual-note">Dépense(s) partiellement ou trop affectée(s).</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Alertes</h2>
+      <div class="annual-alerts">
+        {% for a in data.alerts %}
+          <div class="annual-alert {{ a.level }}">
+            <strong>{{ "OK" if a.level == "ok" else ("Attention" if a.level == "warn" else ("Alerte" if a.level == "danger" else "Info")) }}</strong>
+            <div>{{ a.text }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sources de financement utilisées</h2>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Type</th><th>Source</th><th>Attribué</th><th>Reçu</th><th>Imputé</th><th>Reste</th></tr></thead>
+        <tbody>
+          {% for s in data.sources %}
+          <tr>
+            <td>{{ s.type }}</td>
+            <td><strong>{{ s.label }}</strong></td>
+            <td>{{ "%.2f"|format(s.attribue or 0) }}€</td>
+            <td>{{ "%.2f"|format(s.recu or 0) }}€</td>
+            <td>{{ "%.2f"|format(s.impute or 0) }}€</td>
+            <td>{% if s.reste is not none %}{{ "%.2f"|format(s.reste or 0) }}€{% else %}—{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">Aucune source utilisée dans des répartitions.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'budget' %}
+  <div class="card">
+    <h2>Budgets prévisionnels</h2>
+    <div class="annual-actions">
+      <a class="btn ok" href="{{ url_for('previsionnel.index') }}">Ouvrir les prévisionnels</a>
+    </div>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Budget</th><th>Statut</th><th>Charges</th><th>Produits</th><th>Solde</th><th></th></tr></thead>
+        <tbody>
+          {% for b in data.budgets %}
+          <tr>
+            <td><strong>{{ b.nom }}</strong></td>
+            <td>{{ b.statut }}</td>
+            <td>{{ "%.2f"|format(b.total_charges or 0) }}€</td>
+            <td>{{ "%.2f"|format(b.total_produits or 0) }}€</td>
+            <td>{{ "%.2f"|format(b.solde or 0) }}€</td>
+            <td><a class="btn" href="{{ url_for('previsionnel.detail', budget_id=b.id) }}">Ouvrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">Aucun budget prévisionnel pour cet exercice.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Répartition prévisionnelle par compte</h2>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Nature</th><th>Compte</th><th>Montant prévu</th><th>Lignes</th></tr></thead>
+        <tbody>
+          {% for c in data.comptes %}
+          <tr>
+            <td>{{ c.nature_label }}</td>
+            <td><strong>{{ c.compte }}</strong></td>
+            <td>{{ "%.2f"|format(c.prevu or 0) }}€</td>
+            <td>{{ c.nb }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="muted">Aucune ligne prévisionnelle.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'financeurs' %}
+  <div class="card">
+    <h2>Enveloppes externes / subventions</h2>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Financeur / subvention</th><th>Demandé</th><th>Attribué</th><th>Reçu</th><th>Imputé</th><th>Reste imputable</th><th>% imputé</th><th></th></tr></thead>
+        <tbody>
+          {% set ext = namespace(found=false) %}
+          {% for r in data.subventions %}
+            {% if not r.is_fonds_propres %}
+              {% set ext.found = true %}
+              <tr>
+                <td><strong>{{ r.subvention.nom }}</strong></td>
+                <td>{{ "%.2f"|format(r.demande or 0) }}€</td>
+                <td>{{ "%.2f"|format(r.attribue or 0) }}€</td>
+                <td>{{ "%.2f"|format(r.recu or 0) }}€</td>
+                <td>{{ "%.2f"|format(r.impute or 0) }}€</td>
+                <td>{{ "%.2f"|format(r.reste or 0) }}€</td>
+                <td>{{ r.pct_impute }}%</td>
+                <td><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=r.subvention.id) }}">Ouvrir</a></td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+          {% if not ext.found %}
+            <tr><td colspan="8" class="muted">Aucune subvention externe réelle.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Fonds propres / autofinancement interne</h2>
+    <p class="muted">
+      Convention retenue : une enveloppe avec une ligne en <strong>99 - Fonds propres / autofinancement</strong>
+      est isolée ici. Techniquement elle reste gérée comme une enveloppe de financement, mais elle ne se mélange pas aux enveloppes externes.
+    </p>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Enveloppe</th><th>Montant disponible</th><th>Reçu / disponible</th><th>Imputé</th><th>Reste</th><th>% imputé</th><th></th></tr></thead>
+        <tbody>
+          {% set fp = namespace(found=false) %}
+          {% for r in data.subventions %}
+            {% if r.is_fonds_propres %}
+              {% set fp.found = true %}
+              <tr>
+                <td><strong>{{ r.subvention.nom }}</strong><br><span class="muted">Compte 99 / autofinancement</span></td>
+                <td>{{ "%.2f"|format(r.attribue or 0) }}€</td>
+                <td>{{ "%.2f"|format(r.recu or 0) }}€</td>
+                <td>{{ "%.2f"|format(r.impute or 0) }}€</td>
+                <td>{{ "%.2f"|format(r.reste or 0) }}€</td>
+                <td>{{ r.pct_impute }}%</td>
+                <td><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=r.subvention.id) }}">Ouvrir</a></td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+          {% if not fp.found %}
+            <tr><td colspan="7" class="muted">Aucune enveloppe compte 99 détectée. Tu peux créer une enveloppe “Fonds propres {{ year }}” avec une ligne 99 dans le référentiel/budget.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sources libres hors enveloppe</h2>
+    <p class="muted">
+      Ces montants viennent de répartitions saisies en “fonds propres” ou “autre” sans enveloppe formelle compte 99.
+      À terme, il vaut mieux privilégier une enveloppe “Fonds propres {{ year }}” avec un compte 99.
+    </p>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Type</th><th>Source</th><th>Montant imputé</th></tr></thead>
+        <tbody>
+          {% set libre = namespace(found=false) %}
+          {% for s in data.sources %}
+            {% if not s.is_enveloppe and s.type != "Subvention" %}
+              {% set libre.found = true %}
+              <tr>
+                <td>{{ s.type }}</td>
+                <td><strong>{{ s.label }}</strong></td>
+                <td>{{ "%.2f"|format(s.impute or 0) }}€</td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+          {% if not libre.found %}
+            <tr><td colspan="3" class="muted">Aucune source libre hors enveloppe.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Dossiers financeurs / demandes</h2>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Dossier</th><th>Projet</th><th>Financeur</th><th>Charges</th><th>Produits</th><th>Solde</th><th></th></tr></thead>
+        <tbody>
+          {% for a in data.dossiers %}
+          <tr>
+            <td><strong>{{ a.nom }}</strong><br><span class="muted">{{ a.statut }}</span></td>
+            <td>{{ a.projet.nom if a.projet else "Transversal" }}</td>
+            <td>{{ a.financeur or (a.subvention.nom if a.subvention else "") }}</td>
+            <td>{{ "%.2f"|format(a.total_charges or 0) }}€</td>
+            <td>{{ "%.2f"|format(a.total_produits or 0) }}€</td>
+            <td>{{ "%.2f"|format(a.solde or 0) }}€</td>
+            <td><a class="btn" href="{{ url_for('previsionnel.appel_detail', appel_id=a.id) }}">Ouvrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="muted">Aucun dossier financeur détecté.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'projets' %}
+  <div class="card">
+    <h2>Projets / actions de l’exercice</h2>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Projet</th><th>Charges prévues</th><th>Produits prévus</th><th>Attribué</th><th>Reçu</th><th>Dépenses</th><th>Reste à financer</th><th></th></tr></thead>
+        <tbody>
+          {% for r in data.projets %}
+          <tr>
+            <td><strong>{{ r.projet.nom }}</strong>{% if not r.has_data %}<br><span class="muted">Aucune donnée financière détectée</span>{% endif %}</td>
+            <td>{{ "%.2f"|format(r.charges_prevues or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.produits_prevus or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.sub_attribue or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.sub_recu or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.depenses_total or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.reste_a_financer or 0) }}€</td>
+            <td><a class="btn" href="{{ url_for('projets.projet_finance', projet_id=r.projet.id, year=year) }}">Dossier</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="muted">Aucun projet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'depenses' %}
+  <div class="card">
+    <h2>Dépenses et équilibre des répartitions</h2>
+    <p class="muted">Ici, on surveille les dépenses uniques et leur répartition entre enveloppes externes / fonds propres / autres sources.</p>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Date</th><th>Dépense</th><th>Montant</th><th>Affecté</th><th>Reste</th><th>Statut</th><th>Source initiale</th><th></th></tr></thead>
+        <tbody>
+          {% for r in data.depenses %}
+          <tr>
+            <td>{{ r.date or "" }}</td>
+            <td><strong>{{ r.depense.libelle }}</strong><br><span class="muted">{{ r.depense.fournisseur or "" }} {{ r.depense.reference_piece or "" }}</span></td>
+            <td>{{ "%.2f"|format(r.montant or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.affecte or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.reste or 0) }}€</td>
+            <td>{{ r.statut }}</td>
+            <td>{% if r.depense.budget_source %}{{ r.depense.budget_source.source_sub.nom }}{% else %}—{% endif %}</td>
+            <td><a class="btn" href="{{ url_for('budget.depense_edit', depense_id=r.depense.id) }}">Ouvrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="muted">Aucune dépense imputée détectée.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+
+  {% if tab == 'controles' %}
+  <div class="card">
+    <h2>Contrôles de cohérence</h2>
+    <p class="muted">Cette page repère les fantômes financiers : dépenses mal réparties, enveloppes surconsommées, dossiers non reliés, lignes sans budget suffisant.</p>
+    <div class="annual-kpis" style="margin-bottom:12px;">
+      <div class="annual-card"><div class="label">Contrôles à traiter</div><div class="value">{{ k.nb_controles or 0 }}</div></div>
+      <div class="annual-card"><div class="label">Bloquants</div><div class="value">{{ k.nb_controles_danger or 0 }}</div></div>
+      <div class="annual-card"><div class="label">Avertissements</div><div class="value">{{ k.nb_controles_warn or 0 }}</div></div>
+      <div class="annual-card"><div class="label">Dépenses à corriger</div><div class="value">{{ k.nb_depenses_a_corriger or 0 }}</div></div>
+    </div>
+    <div class="tablewrap clean wide">
+      <table class="table annual-table">
+        <thead><tr><th>Niveau</th><th>Zone</th><th>Message</th><th>Action conseillée</th></tr></thead>
+        <tbody>
+          {% for c in data.controls %}
+          <tr>
+            <td><strong>{{ c.level }}</strong></td>
+            <td>{{ c.zone }}</td>
+            <td>{{ c.message }}</td>
+            <td>{{ c.action }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="muted">Aucun contrôle disponible.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

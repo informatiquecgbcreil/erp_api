@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .qstat-bar-row { display:grid; grid-template-columns: 90px 1fr 110px; gap:10px; align-items:center; margin:4px 0; }
+  .qstat-track { position:relative; height:16px; border-radius:8px; background: color-mix(in srgb, var(--border) 60%, transparent); overflow:hidden; }
+  .qstat-fill { height:100%; border-radius:8px; background: var(--accent, #2563eb); }
+  .qstat-meta { font-size:13px; white-space:nowrap; text-align:right; }
+  .qstat-q { padding:14px 0; border-top:1px solid var(--border); }
+  .qstat-texte { padding:6px 10px; border-left:3px solid var(--border); margin:4px 0; font-size:14px; }
+  @media print { .no-print { display:none !important; } }
+</style>
+
+<div class="page-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Dépouillement — {{ questionnaire.nom }}</h1>
+      <p class="page-subtitle">
+        <span class="tag">{{ questionnaire.type_label }}</span>
+        {% if questionnaire.projet %} · Projet : <strong>{{ questionnaire.projet.nom }}</strong>{% endif %}
+      </p>
+    </div>
+    <div class="hero-actions no-print">
+      <a class="btn" href="{{ url_for('questionnaires.index') }}">⬅ Retour</a>
+      {% if can('questionnaires:export') %}
+        <a class="btn" href="{{ url_for('questionnaires.export_xlsx', questionnaire_id=questionnaire.id) }}">⬇️ Excel</a>
+      {% endif %}
+      <button class="btn" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Réponses</div><strong>{{ stats.nb_reponses }}</strong></div>
+    <div class="kpi-box"><div class="muted">Identifiés</div><strong>{{ stats.nb_identifies }}</strong></div>
+    <div class="kpi-box"><div class="muted">Anonymes</div><strong>{{ stats.nb_anonymes }}</strong></div>
+    <div class="kpi-box"><div class="muted">Taux de réponse</div><strong>{% if stats.taux_reponse is not none %}{{ stats.taux_reponse }}%{% else %}—{% endif %}</strong></div>
+  </div>
+
+  {% if comparaison %}
+  <div class="section-card">
+    <h2 class="section-title">Comparaison avant / après (moyenne des échelles)</h2>
+    <div class="kpi-grid-modern">
+      <div class="kpi-box"><div class="muted">Avant ({{ comparaison.nb_avant }} quest.)</div><strong>{{ comparaison.moy_avant }}/5</strong></div>
+      <div class="kpi-box"><div class="muted">Après ({{ comparaison.nb_apres }} quest.)</div><strong>{{ comparaison.moy_apres }}/5</strong></div>
+      <div class="kpi-box">
+        <div class="muted">Évolution</div>
+        <strong style="color: {{ 'var(--ok,#2e7d32)' if comparaison.evolution >= 0 else 'var(--danger,#dc2626)' }};">
+          {{ '+' if comparaison.evolution >= 0 else '' }}{{ comparaison.evolution }}
+        </strong>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="section-card">
+    <h2 class="section-title">Résultats par question</h2>
+    {% for item in stats.questions %}
+      <div class="qstat-q">
+        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <strong>{{ item.question.label }}</strong>
+          <span class="muted">{{ item.nb }} réponse(s){% if item.moyenne is not none %} · moyenne {{ item.moyenne }}/5{% endif %}</span>
+        </div>
+
+        {% if item.kind in ('scale', 'yesno', 'multi') %}
+          <div style="margin-top:8px;">
+            {% for d in item.distribution %}
+              <div class="qstat-bar-row">
+                <div class="muted">{{ d.label }}</div>
+                <div class="qstat-track"><div class="qstat-fill" style="width: {{ d.pct }}%;"></div></div>
+                <div class="qstat-meta">{{ d.count }} · {{ d.pct }}%</div>
+              </div>
+            {% else %}
+              <div class="muted">Aucune réponse.</div>
+            {% endfor %}
+          </div>
+        {% elif item.kind == 'text' %}
+          {% if item.textes %}
+            <div style="margin-top:8px;">
+              {% for t in item.textes %}
+                <div class="qstat-texte">{{ t }}</div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="muted" style="margin-top:8px;">Aucune réponse libre.</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="quick-empty"><strong>Ce questionnaire n'a pas encore de question.</strong></div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

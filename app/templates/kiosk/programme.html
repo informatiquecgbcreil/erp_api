@@ -1,0 +1,41 @@
+{% extends 'kiosk/base.html' %}
+{% block header_title %}Programme du jour{% endblock %}
+{% block body %}
+
+  <div class="k-card">
+    <h1 class="k-card__title">Programme en direct 📋</h1>
+    <p class="k-card__sub">Les ateliers ouverts en ce moment. Cette page se met à jour toute seule.</p>
+  </div>
+
+  <div class="k-card">
+    {% if sessions %}
+      <div class="k-sessions">
+        {% for it in sessions %}
+          <a class="k-session" href="{{ url_for('kiosk.kiosk_session', token=it.token) }}">
+            <span class="k-chip">{{ it.secteur }}</span>
+            <span class="k-session__atelier">{{ it.atelier }}</span>
+            <span class="k-session__meta">
+              {% if it.debut %}🕒 {{ it.debut }}{% if it.fin %} – {{ it.fin }}{% endif %}{% endif %}
+              {% if it.type != 'COLLECTIF' %} · rendez-vous{% endif %}
+            </span>
+            <span class="k-session__go">Voir / émarger →</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="k-hint">Aucun atelier ouvert pour le moment.</p>
+    {% endif %}
+  </div>
+
+  <div class="k-card">
+    <a class="k-btn k-btn--block k-btn--lg" href="{{ url_for('kiosk.kiosk_home') }}">Pointer ma présence →</a>
+  </div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+  /* Rafraîchissement automatique du programme en direct (toutes les 60 s),
+     utile pour un affichage mural dans le hall. */
+  setTimeout(function(){ window.location.reload(); }, 60000);
+</script>
+{% endblock %}

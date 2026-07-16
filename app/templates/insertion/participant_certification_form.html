@@ -1,0 +1,45 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="breadcrumb">
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.index') }}">Insertion</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">{{ participant.nom }} {{ participant.prenom }}</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item">{{ 'Nouvelle certification' if is_new else 'Modifier la certification' }}</span>
+  </div>
+  <div class="page-head"><h1 style="margin:0;">{{ 'Nouvelle certification linguistique' if is_new else 'Modifier la certification linguistique' }}</h1></div>
+  <div class="card">
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="filters-grid" style="grid-template-columns:1fr 1fr;">
+        <div>
+          <label class="muted">Parcours rattaché</label>
+          <select class="in" name="parcours_id"><option value="">Aucun parcours rattaché</option>{% for opt in parcours_options %}<option value="{{ opt.id }}" {% if row.parcours_id == opt.id %}selected{% endif %}>{{ opt.label }}</option>{% endfor %}</select>
+        </div>
+        <div>
+          <label class="muted">Diplôme</label>
+          <select class="in" name="diplome_id"><option value="">Non renseigné</option>{% for ref in diplomes %}<option value="{{ ref.id }}" {% if row.diplome_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}</select>
+        </div>
+        <div>
+          <label class="muted">Niveau visé / obtenu</label>
+          <select class="in" name="niveau_id"><option value="">Non renseigné</option>{% for ref in niveaux %}<option value="{{ ref.id }}" {% if row.niveau_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}</select>
+        </div>
+        <div>
+          <label class="muted">Résultat</label>
+          <select class="in" name="resultat"><option value="">Non renseigné</option>{% for code, label in certification_results %}<option value="{{ code }}" {% if row.resultat == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        </div>
+        <div>
+          <label class="muted">Date de passage</label>
+          <input class="in" type="date" name="date_passage" value="{{ row.date_passage.isoformat() if row.date_passage else (row.date_obtention.isoformat() if row.date_obtention else '') }}">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="muted">Commentaire</label>
+          <textarea class="in" name="commentaire" rows="4">{{ row.commentaire or '' }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions"><button class="pill active" type="submit">Enregistrer</button><a class="pill" href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">Annuler</a></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

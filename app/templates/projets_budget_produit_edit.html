@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    {% include "_projet_budget_header.html" %}
+    <div class="spacer"></div>
+    <a class="btn" href="{{ url_for('projets.projet_budget_produits', projet_id=projet.id) }}">↩ Retour produits</a>
+    <div class="spacer"></div>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Financeur</label>
+      <input name="financeur" value="{{ produit.financeur }}" required>
+
+      <div class="row three">
+        <div class="stack">
+          <label>Catégorie</label>
+          <input name="categorie" value="{{ produit.categorie }}">
+        </div>
+        <div class="stack">
+          <label>Statut</label>
+          <input name="statut" value="{{ produit.statut }}">
+        </div>
+        <div class="stack">
+          <label>Demandé (€)</label>
+          <input name="montant_demande" type="number" step="0.01" value="{{ produit.montant_demande or 0 }}">
+        </div>
+        <div class="stack">
+          <label>Accordé (€)</label>
+          <input name="montant_accorde" type="number" step="0.01" value="{{ produit.montant_accorde or 0 }}">
+        </div>
+        <div class="stack">
+          <label>Reçu (€)</label>
+          <input name="montant_recu" type="number" step="0.01" value="{{ produit.montant_recu or 0 }}">
+        </div>
+      </div>
+
+      <label>Référence dossier</label>
+      <input name="reference_dossier" value="{{ produit.reference_dossier or '' }}">
+
+      <label>Commentaire</label>
+      <input name="commentaire" value="{{ produit.commentaire or '' }}">
+
+      <div class="row three">
+        <button class="btn ok" type="submit">Enregistrer</button>
+        <a class="btn" href="{{ url_for('projets.projet_budget_produits', projet_id=projet.id) }}">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

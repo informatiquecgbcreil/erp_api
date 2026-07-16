@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .delta-up { color: var(--ok, #2e7d32); font-weight:700; }
+  .delta-down { color: var(--danger, #dc2626); font-weight:700; }
+  @media print { .no-print { display:none !important; } }
+</style>
+{% macro delta(d) %}
+  {% if d.abs > 0 %}<span class="delta-up">▲ +{{ '%.0f'|format(d.abs) }}{% if d.pct is not none %} ({{ d.pct }}%){% endif %}</span>
+  {% elif d.abs < 0 %}<span class="delta-down">▼ {{ '%.0f'|format(d.abs) }}{% if d.pct is not none %} ({{ d.pct }}%){% endif %}</span>
+  {% else %}<span class="muted">=</span>{% endif %}
+{% endmacro %}
+
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Comparaison {{ data.n }} / {{ data.n_1 }}</h1>
+      <p class="page-subtitle">Évolution annuelle et comparaison inter-secteurs{% if not portee_globale %} (votre secteur){% endif %}.</p>
+    </div>
+    <div class="hero-actions no-print">
+      <form method="get" class="inline-actions">
+        <label class="field-stack slim"><span>Exercice N</span>
+          <select name="annee" onchange="this.form.submit()">
+            {% for y in annees %}<option value="{{ y }}" {% if y == year_n %}selected{% endif %}>{{ y }}</option>{% endfor %}
+          </select>
+        </label>
+        <noscript><button class="btn" type="submit">Afficher</button></noscript>
+      </form>
+      <a class="btn" href="{{ url_for('main.comparaison_export_xlsx', annee=year_n) }}">⬇ Export Excel</a>
+      <button class="btn" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <section class="section-card">
+    <h2 class="section-title">Évolution globale</h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>Indicateur</th><th>{{ data.n }}</th><th>{{ data.n_1 }}</th><th>Évolution</th></tr></thead>
+        <tbody>
+          {% for key, label in metriques %}
+            <tr>
+              <td><strong>{{ label }}</strong></td>
+              <td>{{ '%.0f'|format(data.totaux.n[key]) }}</td>
+              <td class="muted">{{ '%.0f'|format(data.totaux.n_1[key]) }}</td>
+              <td>{{ delta(data.totaux.delta[key]) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <h2 class="section-title">Évolution par secteur</h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr><th>Secteur</th>{% for key, label in metriques %}<th>{{ label }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for lig in data.lignes_secteur %}
+            <tr>
+              <td><strong>{{ lig.secteur }}</strong></td>
+              {% for key, label in metriques %}
+                <td>{{ '%.0f'|format(lig.n[key]) }} {{ delta(lig.delta[key]) }}</td>
+              {% endfor %}
+            </tr>
+          {% else %}
+            <tr><td colspan="{{ metriques|length + 1 }}" class="muted">Aucune donnée sur la période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" style="font-size:12px;">La valeur affichée est celle de {{ data.n }} ; le repère coloré indique l'écart avec {{ data.n_1 }}.</p>
+  </section>
+
+  <section class="section-card">
+    <h2 class="section-title">Classement inter-secteurs {{ data.n }}</h2>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead><tr><th>Secteur</th><th>Reçu</th><th>Engagé</th><th>Reste</th><th>Séances</th><th>Présences</th><th>Taux conso.</th></tr></thead>
+        <tbody>
+          {% for r in data.classement %}
+            <tr>
+              <td><strong>{{ r.secteur }}</strong></td>
+              <td>{{ '%.0f'|format(r.recu) }}€</td>
+              <td>{{ '%.0f'|format(r.engage) }}€</td>
+              <td>{{ '%.0f'|format(r.reste) }}€</td>
+              <td>{{ '%.0f'|format(r.sessions) }}</td>
+              <td>{{ '%.0f'|format(r.presences) }}</td>
+              <td>{% if r.taux_conso is not none %}<span class="status-badge {{ 'status-success' if r.taux_conso <= 100 else 'status-danger' }}">{{ r.taux_conso }}%</span>{% else %}—{% endif %}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="muted">Aucune subvention sur {{ data.n }}.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

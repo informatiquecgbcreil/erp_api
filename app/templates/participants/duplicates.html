@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell dense-list-shell wide-shell">
+  <section class="hero-card">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1>Doublons participants</h1>
+        <p class="muted">Analyse rapide des doublons certains ou probables, avec raccourcis d’ouverture et fusion quand tu es sûr de ton coup.</p>
+      </div>
+      <div class="hero-actions"><a class="btn" href="{{ url_for('participants.list_participants') }}">⬅ Retour</a></div>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <form class="filters-panel" method="get" action="{{ url_for('participants.duplicates') }}">
+      <div class="filters-grid">
+        <label class="field-stack"><span>Mode</span><select class="in" name="mode"><option value="certain" {% if mode=='certain' %}selected{% endif %}>Doublons certains</option><option value="probable" {% if mode=='probable' %}selected{% endif %}>Doublons probables</option></select></label>
+        <label class="field-stack"><span>Seuil</span><input class="in" type="text" name="t" value="{{ threshold }}" placeholder="0.90"></label>
+        <div class="field-stack field-actions"><span>Périmètre</span><div class="muted">{% if not is_global %}Filtré sur ton secteur.{% else %}Global.{% endif %}</div></div>
+        <div class="field-stack field-actions"><span>&nbsp;</span><button class="btn" type="submit">Analyser</button></div>
+      </div>
+    </form>
+  </section>
+
+  {% if mode == 'certain' %}
+  <section class="section-card">
+    <div class="page-header"><div class="page-title-wrap"><h2>Doublons certains</h2></div></div>
+    {% if not groups %}<div class="empty-state">Aucun doublon certain détecté ✅</div>{% endif %}
+    <div class="stack">
+      {% for g in groups %}
+      <article class="soft-panel">
+        <div class="page-header">
+          <div class="page-title-wrap"><strong>{{ g.type }}</strong><p class="muted">{{ g.key }}</p></div>
+          <span class="chip">{{ g['items']|length }} fiche(s)</span>
+        </div>
+        <div class="tablewrap clean">
+          <table class="compact-table">
+            <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Secteur</th><th></th></tr></thead>
+            <tbody>{% for p in g['items'] %}<tr><td>{{ p.id }}</td><td><strong>{{ p.nom }} {{ p.prenom }}</strong></td><td>{{ p.email or '—' }}</td><td>{{ p.telephone or '—' }}</td><td>{{ p.created_secteur or '—' }}</td><td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+        <div class="responsive-card-list" aria-label="Doublons certains (vue compacte)">
+          {% for p in g['items'] %}
+          <article class="responsive-card">
+            <header class="responsive-card__head">
+              <strong>{{ p.nom }} {{ p.prenom }}</strong>
+              <span class="chip">#{{ p.id }}</span>
+            </header>
+            <dl class="responsive-card__grid">
+              <div><dt>Email</dt><dd>{{ p.email or '—' }}</dd></div>
+              <div><dt>Téléphone</dt><dd>{{ p.telephone or '—' }}</dd></div>
+              <div><dt>Secteur</dt><dd>{{ p.created_secteur or '—' }}</dd></div>
+            </dl>
+            <div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></div>
+          </article>
+          {% endfor %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mode == 'probable' %}
+  <section class="section-card">
+    <div class="page-header"><div class="page-title-wrap"><h2>Doublons probables</h2><p class="muted">Comparaison approximative sur nom + prénom (seuil {{ threshold }}).</p></div></div>
+    {% if not probable %}<div class="empty-state">Aucun match probable détecté ✅</div>{% endif %}
+    <div class="stack">
+      {% for x in probable %}
+      <article class="soft-panel">
+        <div class="page-header"><div class="page-title-wrap"><strong>Score {{ x.score }}</strong><p class="muted">suspect</p></div></div>
+        <div class="inline-actions wrapy">
+          <form method="post" action="{{ url_for('participants.merge_participants') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="keep_id" value="{{ x.a.id }}"><input type="hidden" name="merge_ids" value="{{ x.a.id }}"><input type="hidden" name="merge_ids" value="{{ x.b.id }}"><button class="btn ok" type="submit" onclick="return confirm('Garder A et fusionner B → A ?');">Garder A ✅</button></form>
+          <form method="post" action="{{ url_for('participants.merge_participants') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="keep_id" value="{{ x.b.id }}"><input type="hidden" name="merge_ids" value="{{ x.a.id }}"><input type="hidden" name="merge_ids" value="{{ x.b.id }}"><button class="btn warn" type="submit" onclick="return confirm('Garder B et fusionner A → B ?');">Garder B ⚠️</button></form>
+          <a class="btn" href="{{ url_for('participants.edit_participant', participant_id=x.a.id) }}">Ouvrir A</a>
+          <a class="btn" href="{{ url_for('participants.edit_participant', participant_id=x.b.id) }}">Ouvrir B</a>
+        </div>
+        <div class="tablewrap clean">
+          <table class="compact-table">
+            <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Tél</th><th>Secteur</th><th></th></tr></thead>
+            <tbody>
+              {% set p = x.a %}<tr><td>{{ p.id }}</td><td><strong>{{ p.nom }} {{ p.prenom }}</strong></td><td>{{ p.email or '—' }}</td><td>{{ p.telephone or '—' }}</td><td>{{ p.created_secteur or '—' }}</td><td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></td></tr>
+              {% set p = x.b %}<tr><td>{{ p.id }}</td><td><strong>{{ p.nom }} {{ p.prenom }}</strong></td><td>{{ p.email or '—' }}</td><td>{{ p.telephone or '—' }}</td><td>{{ p.created_secteur or '—' }}</td><td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="responsive-card-list" aria-label="Doublons probables (vue compacte)">
+          {% set p = x.a %}
+          <article class="responsive-card">
+            <header class="responsive-card__head"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="chip">A · #{{ p.id }}</span></header>
+            <dl class="responsive-card__grid"><div><dt>Email</dt><dd>{{ p.email or '—' }}</dd></div><div><dt>Téléphone</dt><dd>{{ p.telephone or '—' }}</dd></div><div><dt>Secteur</dt><dd>{{ p.created_secteur or '—' }}</dd></div></dl>
+            <div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir A</a></div>
+          </article>
+          {% set p = x.b %}
+          <article class="responsive-card">
+            <header class="responsive-card__head"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="chip">B · #{{ p.id }}</span></header>
+            <dl class="responsive-card__grid"><div><dt>Email</dt><dd>{{ p.email or '—' }}</dd></div><div><dt>Téléphone</dt><dd>{{ p.telephone or '—' }}</dd></div><div><dt>Secteur</dt><dd>{{ p.created_secteur or '—' }}</dd></div></dl>
+            <div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir B</a></div>
+          </article>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

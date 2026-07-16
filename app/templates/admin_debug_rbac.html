@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block body %}
+  <h1>Debug RBAC</h1>
+  <div class="stack">
+    <div class="card">
+      <h2>Utilisateur courant</h2>
+      <p><b>Nom:</b> {{ current_user.nom }}</p>
+      <p><b>Email:</b> {{ current_user.email }}</p>
+      <p><b>RBAC roles:</b> {{ current_user.role_codes|join(', ') }}</p>
+    </div>
+
+    <div class="card">
+      <h2>Permissions calculées</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Code</th></tr></thead>
+          <tbody>
+            {% for code in perms %}
+              <tr><td><code>{{ code }}</code></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

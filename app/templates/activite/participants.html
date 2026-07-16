@@ -1,0 +1,151 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+{% set ns = namespace(total=participants|length, mail=0, phone=0, anonymisable=0) %}
+{% for p in participants %}
+  {% if p.email %}{% set ns.mail = ns.mail + 1 %}{% endif %}
+  {% if p.telephone %}{% set ns.phone = ns.phone + 1 %}{% endif %}
+  {% set st = stats_map.get(p.id, {}) %}
+  {% if st.get('visites', 0) > 0 %}{% set ns.anonymisable = ns.anonymisable + 1 %}{% endif %}
+{% endfor %}
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="ui-header__main section-head">
+      <div>
+        <h1 class="ui-title" style="margin:0;">Participants · {{ secteur or 'Aucun secteur sélectionné' }}</h1>
+        <p class="ui-subtitle muted">Consultez les participants déjà présents dans ce secteur et gérez leurs fiches sans perdre l’historique des présences.</p>
+      </div>
+      <div class="ui-actions section-actions">
+        <a class="btn ok" href="{{ url_for('activite.attestations') }}">Attestations</a>
+        <a class="btn" href="{{ url_for('activite.index') }}">Retour aux activités</a>
+      </div>
+    </div>
+    {{ ux.callout('Anonymisation', 'L’anonymisation supprime les données identifiantes tout en conservant les statistiques de participation. Utilisez la suppression définitive uniquement si la fiche n’est plus utilisée ailleurs.') }}
+    <div class="ui-kpi-grid page-kpis">
+      <div class="ui-kpi-card metric-card"><div class="metric-label">Participants</div><div class="metric-value">{{ ns.total }}</div><div class="metric-help">Dans ce secteur</div></div>
+      <div class="ui-kpi-card metric-card"><div class="metric-label">E-mails renseignés</div><div class="metric-value">{{ ns.mail }}</div><div class="metric-help">Contact numérique</div></div>
+      <div class="ui-kpi-card metric-card"><div class="metric-label">Téléphones renseignés</div><div class="metric-value">{{ ns.phone }}</div><div class="metric-help">Contact direct</div></div>
+      <div class="ui-kpi-card metric-card"><div class="metric-label">Avec historique</div><div class="metric-value">{{ ns.anonymisable }}</div><div class="metric-help">Au moins une visite</div></div>
+    </div>
+  </section>
+
+  <div class="ui-panel filters-panel">
+    <div class="ui-section-head section-head">
+      <div>
+        <h2 style="margin:0;">Recherche</h2>
+        <div class="muted">Nom, prénom, e-mail ou téléphone.</div>
+      </div>
+    </div>
+    <form method="get" style="margin-top:12px;" data-filter-summary="true">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <input class="in" name="q" placeholder="Rechercher un participant" value="{{ q }}" style="min-width:260px;">
+        <button class="btn ok" type="submit">Rechercher</button>
+        {% if q %}<a class="btn" href="{{ url_for('activite.participants') }}">Réinitialiser la recherche</a>{% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="ui-panel section-card compact">
+    <div class="ui-section-head section-head">
+      <div>
+        <h2 style="margin:0;">Liste des participants</h2>
+        <div class="muted">Vue synthétique du profil, des coordonnées et des dernières visites.</div>
+      </div>
+      <div class="context-strip"><span class="chip">{{ participants|length }} résultat(s)</span></div>
+    </div>
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>Coordonnées</th>
+            <th>Profil</th>
+            <th>Visites (secteur)</th>
+            <th>Dernière visite</th>
+            <th style="width:280px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in participants %}
+            {% set st = stats_map.get(p.id, {}) %}
+            <tr>
+              <td><strong>{{ p.prenom }} {{ p.nom }}</strong><div class="muted" style="font-size:12px;">#{{ p.id }}</div></td>
+              <td class="muted">{{ p.email or "—" }}<br>{{ p.telephone or "—" }}</td>
+              <td class="muted">
+                {{ p.type_public or "—" }} · {{ p.genre or "—" }} ·
+                {% if p.date_naissance %}{{ p.date_naissance.strftime('%d/%m/%Y') }}{% else %}—{% endif %}
+                <br>
+                {% if p.quartier %}{{ p.quartier.ville }} — {{ p.quartier.nom }}{% else %}Quartier : —{% endif %}
+              </td>
+              <td><span class="status-badge {{ 'status-success' if st.get('visites', 0) > 0 else 'status-warning' }}">{{ st.get('visites', 0) }} visite(s)</span></td>
+              <td class="muted">{% if st.get('last_seen') %}{{ st.get('last_seen').strftime('%d/%m/%Y') }}{% else %}—{% endif %}</td>
+              <td>
+                <div class="table-actions">
+                  <a class="btn" href="{{ url_for('activite.participant_edit', participant_id=p.id) }}">Modifier</a>
+                  <a class="btn ok" href="{{ url_for('activite.participant_attestation', participant_id=p.id) }}">Attestation</a>
+                  <form method="post" action="{{ url_for('activite.participant_anonymize', participant_id=p.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn" type="submit" onclick="return confirm('Anonymiser ce participant ? Les statistiques seront conservées, mais les données identifiantes seront supprimées.');">Anonymiser</button>
+                  </form>
+                  <form method="post" action="{{ url_for('activite.participant_delete', participant_id=p.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn danger" type="submit" onclick="return confirm('Supprimer définitivement ce participant ? Cette action est irréversible et n’est possible que si la fiche n’est pas utilisée dans d’autres secteurs.');">Supprimer</button>
+                  </form>
+                  {% if is_admin_global %}
+                  <form method="post" action="{{ url_for('activite.participant_anonymize', participant_id=p.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="strict" value="1">
+                    <button class="btn warn" type="submit" onclick="return confirm('Appliquer une anonymisation renforcée ? Les données démographiques seront également supprimées.');">Anonymisation renforcée</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if participants|length == 0 %}
+            <tr><td colspan="6"><div class="quick-empty"><strong>Aucun participant ne correspond à la recherche.</strong>Vérifiez l’orthographe, essayez un autre critère ou réinitialisez la recherche.</div></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Participants du secteur (vue compacte)">
+      {% for p in participants %}
+        {% set st = stats_map.get(p.id, {}) %}
+        <article class="ui-record responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ p.prenom }} {{ p.nom }}</strong>
+            <span class="chip">#{{ p.id }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>Coordonnées</dt><dd class="muted">{{ p.email or "—" }}<br>{{ p.telephone or "—" }}</dd></div>
+            <div><dt>Profil</dt><dd class="muted">{{ p.type_public or "—" }} · {{ p.genre or "—" }}</dd></div>
+            <div><dt>Visites</dt><dd><span class="status-badge {{ 'status-success' if st.get('visites', 0) > 0 else 'status-warning' }}">{{ st.get('visites', 0) }} visite(s)</span></dd></div>
+            <div><dt>Dernière visite</dt><dd class="muted">{% if st.get('last_seen') %}{{ st.get('last_seen').strftime('%d/%m/%Y') }}{% else %}—{% endif %}</dd></div>
+          </dl>
+          <div class="table-actions">
+            <a class="btn" href="{{ url_for('activite.participant_edit', participant_id=p.id) }}">Modifier</a>
+            <a class="btn ok" href="{{ url_for('activite.participant_attestation', participant_id=p.id) }}">Attestation</a>
+            <form method="post" action="{{ url_for('activite.participant_anonymize', participant_id=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn" type="submit" onclick="return confirm('Anonymiser ce participant ? Les statistiques seront conservées, mais les données identifiantes seront supprimées.');">Anonymiser</button>
+            </form>
+            <form method="post" action="{{ url_for('activite.participant_delete', participant_id=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn danger" type="submit" onclick="return confirm('Supprimer définitivement ce participant ? Cette action est irréversible et n’est possible que si la fiche n’est pas utilisée dans d’autres secteurs.');">Supprimer</button>
+            </form>
+            {% if is_admin_global %}
+            <form method="post" action="{{ url_for('activite.participant_anonymize', participant_id=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="strict" value="1">
+              <button class="btn warn" type="submit" onclick="return confirm('Appliquer une anonymisation renforcée ? Les données démographiques seront également supprimées.');">Anonymisation renforcée</button>
+            </form>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        <div class="quick-empty"><strong>Aucun participant ne correspond à la recherche.</strong>Vérifiez l’orthographe ou réinitialisez la recherche.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

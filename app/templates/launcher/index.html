@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1 style="margin-top:0">Borne (kiosk)</h1>
+    <p class="muted">Cette page est volontairement publique : elle sert de point d’entrée pour les participants.
+      L’<strong>administration</strong> reste protégée par la page de connexion.</p>
+
+    <div class="row two">
+      <div class="card" style="margin:0">
+        <h2 style="margin-top:0">📱 Accès Kiosk</h2>
+        <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
+          <div style="min-width:200px">
+            <img alt="QR Kiosk" style="width:200px; height:200px" src="{{ url_for('launcher.launcher_qr', target='kiosk') }}">
+          </div>
+          <div>
+            <div class="muted" style="font-size:12px; margin-bottom:6px">URL</div>
+            <div><code>{{ kiosk_url }}</code></div>
+            <div class="spacer"></div>
+            <a class="btn ok" href="{{ kiosk_url }}">Ouvrir le kiosque</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin:0">
+        <h2 style="margin-top:0">🔐 Administration</h2>
+        <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
+          <div style="min-width:200px">
+            <img alt="QR Admin" style="width:200px; height:200px" src="{{ url_for('launcher.launcher_qr', target='admin') }}">
+          </div>
+          <div>
+            <div class="muted" style="font-size:12px; margin-bottom:6px">Connexion</div>
+            <div><code>{{ admin_url }}</code></div>
+            <div class="spacer"></div>
+            <a class="btn" href="{{ admin_url }}">Aller à la connexion</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .wizard-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.wizard-step{border:1px solid var(--border-soft);border-radius:14px;padding:14px;background:var(--surface)}.wizard-step.ok{border-left:4px solid var(--ok)}.wizard-step.todo{border-left:4px solid var(--warn)}
+  @media print{.no-print,.topbar,.aide-page{display:none!important}}
+</style>
+<div class="stack">
+  <section class="card">
+    <div class="inline" style="justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+      <div><h1>Assistant bilan financeur</h1><p class="muted">Préparez un dossier à envoyer : financeur, budget réel, dépenses imputées, échéance et documents.</p></div>
+      <button class="btn no-print" onclick="window.print()" type="button">Imprimer la checklist</button>
+    </div>
+    <form class="inline no-print" method="get" style="gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <input class="in" type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:110px;">
+      <select class="in" name="subvention_id">
+        {% for s in subventions %}<option value="{{ s.id }}" {% if selected and s.id == selected.id %}selected{% endif %}>{{ s.nom }}{% if s.financeur %} · {{ s.financeur }}{% endif %}</option>{% endfor %}
+      </select>
+      <button class="btn" type="submit">Ouvrir</button>
+    </form>
+  </section>
+  {% if selected %}
+    <section class="card"><h2>{{ selected.nom }}</h2><p class="muted">{{ selected.secteur }} · exercice {{ selected.annee_exercice }} · {{ ready }}/{{ checks|length }} points prêts</p></section>
+    <section class="wizard-steps">
+      {% for c in checks %}<article class="wizard-step {{ 'ok' if c.ok else 'todo' }}"><h3>{{ '✅' if c.ok else '⚠️' }} {{ c.label }}</h3><p class="muted">{{ c.help }}</p><a class="btn" href="{{ c.url }}">Corriger / vérifier</a></article>{% endfor %}
+    </section>
+    <section class="card"><h2>Sorties utiles</h2><div class="inline" style="gap:8px;flex-wrap:wrap;"><a class="btn ok" href="{{ url_for('main.documents_exports', year=year, secteur=selected.secteur) }}">Documents prêts</a><a class="btn" href="{{ url_for('main.qualite_bilans') }}">Qualité bilan</a><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=selected.id) }}">Pilotage subvention</a></div></section>
+  {% else %}
+    <section class="card"><p class="muted">Aucune subvention disponible sur cette année et ce périmètre.</p></section>
+  {% endif %}
+</div>
+{% endblock %}

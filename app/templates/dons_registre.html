@@ -1,0 +1,102 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🎁 Dons & reçus fiscaux</h1>
+      <p class="page-subtitle">Registre numéroté des dons (exercice {{ annee }}) et génération des reçus fiscaux (modèle CERFA 11580). Un reçu ne se supprime pas : il s'annule et son numéro reste au registre.</p>
+    </div>
+    <div class="hero-actions">
+      <form method="get" class="inline-actions">
+        <label class="field-stack slim"><span>Exercice</span>
+          <select name="annee" onchange="this.form.submit()">
+            {% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>{% endfor %}
+            {% if annee not in annees %}<option value="{{ annee }}" selected>{{ annee }}</option>{% endif %}
+          </select>
+        </label>
+        <noscript><button class="btn" type="submit">Afficher</button></noscript>
+      </form>
+      <a class="btn" href="{{ url_for('main.dons_export_xlsx', annee=annee) }}">⬇ Export registre (Excel)</a>
+    </div>
+  </div>
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Reçus émis</div><strong>{{ dons|length }}</strong></div>
+    <div class="kpi-box"><div class="muted">Reçus valides</div><strong>{{ nb_valides }}</strong></div>
+    <div class="kpi-box"><div class="muted">Total des dons (valides)</div><strong>{{ '%.2f'|format(total_valide) }}€</strong></div>
+  </div>
+
+  {% if can_edit %}
+  <section class="section-card">
+    <h2 class="section-title">Enregistrer un don</h2>
+    <form method="post" action="{{ url_for('main.don_create') }}" class="stack" style="gap:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-3">
+        <label class="field-stack"><span>Civilité</span>
+          <select class="in" name="donateur_civilite"><option value=""></option><option>Madame</option><option>Monsieur</option></select></label>
+        <label class="field-stack"><span>Nom *</span><input class="in" name="donateur_nom" required></label>
+        <label class="field-stack"><span>Prénom</span><input class="in" name="donateur_prenom"></label>
+        <label class="field-stack"><span>Adresse</span><input class="in" name="donateur_adresse"></label>
+        <label class="field-stack"><span>Code postal</span><input class="in" name="donateur_cp"></label>
+        <label class="field-stack"><span>Ville</span><input class="in" name="donateur_ville"></label>
+        <label class="field-stack"><span>Type de donateur</span>
+          <select class="in" name="type_donateur">{% for v, l in types_donateur.items() %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label>
+        <label class="field-stack"><span>Montant (€) *</span><input class="in" name="montant" inputmode="decimal" required placeholder="Ex : 150"></label>
+        <label class="field-stack"><span>Date du don</span><input class="in" type="date" name="date_don" value="{{ today.isoformat() }}"></label>
+        <label class="field-stack"><span>Forme</span>
+          <select class="in" name="forme_don" id="donForme">{% for v, l in formes.items() %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label>
+        <label class="field-stack"><span>Mode de versement</span>
+          <select class="in" name="mode_versement">{% for v, l in modes.items() %}<option value="{{ v }}" {% if v == 'virement' %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+        <label class="field-stack"><span>Description (si don en nature)</span><input class="in" name="nature_description" placeholder="Ex : matériel informatique"></label>
+      </div>
+      <details>
+        <summary style="cursor:pointer; font-weight:700;">Coordonnées de l'organisme (imprimées sur le reçu)</summary>
+        <div class="form-grid-2" style="margin-top:8px;">
+          <label class="field-stack"><span>Nom de l'organisme</span><input class="in" name="organisme_nom" value="{{ org_nom }}"></label>
+          <label class="field-stack"><span>Adresse de l'organisme</span><input class="in" name="organisme_adresse" value="{{ org_adresse }}" placeholder="Ex : 2 rue …, 60100 Creil"></label>
+        </div>
+      </details>
+      <div><button class="btn ok" type="submit">Enregistrer et générer le reçu</button></div>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="section-card compact">
+    <h2 class="section-title">Registre {{ annee }}</h2>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead><tr><th>N°</th><th>Date</th><th>Donateur</th><th>Montant</th><th>Forme</th><th>Mode</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {% for d in dons %}
+            <tr {% if d.est_annule %}style="opacity:.55;"{% endif %}>
+              <td><strong>{{ d.numero }}</strong></td>
+              <td>{{ d.date_don.strftime('%d/%m/%Y') if d.date_don else '—' }}</td>
+              <td>{{ d.donateur_civilite or '' }} {{ d.donateur_prenom or '' }} <strong>{{ d.donateur_nom }}</strong>
+                  <div class="muted" style="font-size:12px;">{{ types_donateur.get(d.type_donateur, d.type_donateur) }}</div></td>
+              <td><strong>{{ '%.2f'|format(d.montant) }}€</strong></td>
+              <td>{{ formes.get(d.forme_don, d.forme_don) }}</td>
+              <td>{{ modes.get(d.mode_versement, d.mode_versement) }}</td>
+              <td>{% if d.est_annule %}<span class="status-badge status-danger">Annulé</span>{% if d.annulation_motif %}<div class="muted" style="font-size:11px;">{{ d.annulation_motif }}</div>{% endif %}{% else %}<span class="status-badge status-success">Valide</span>{% endif %}</td>
+              <td>
+                <div class="inline-actions">
+                  <a class="btn" href="{{ url_for('main.don_recu', don_id=d.id) }}">🧾 Reçu</a>
+                  {% if can_edit and not d.est_annule %}
+                    <form method="post" action="{{ url_for('main.don_annuler', don_id=d.id) }}"
+                          onsubmit="var m=prompt('Motif de l\'annulation ?'); if(m===null) return false; this.motif.value=m; return true;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="motif" value="">
+                      <button class="btn danger" type="submit">Annuler</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8"><div class="quick-empty"><strong>Aucun don enregistré pour {{ annee }}.</strong>Enregistrez un don pour générer son reçu fiscal.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

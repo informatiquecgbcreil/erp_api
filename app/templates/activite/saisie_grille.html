@@ -1,0 +1,179 @@
+{% extends "layout.html" %}
+{% block title %}Saisie en grille — rattrapage des émargements{% endblock %}
+{% block body %}
+<style>
+  .grille-outils{ display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:12px 0; }
+  .grille-outils label{ display:block; font-size:.8rem; font-weight:600; margin-bottom:3px; }
+  .grille-scroll{ overflow-x:auto; border:1px solid var(--border, #e3e6ef); border-radius:12px; }
+  table.grille{ border-collapse:collapse; width:100%; background:var(--panel, #fff); }
+  table.grille th, table.grille td{
+    border-bottom:1px solid var(--border-soft, #eef0f6);
+    padding:6px 8px; font-size:.88rem; white-space:nowrap;
+  }
+  table.grille thead th{
+    position:sticky; top:0; background:var(--panel, #fff); z-index:2;
+    text-align:center; font-size:.8rem;
+  }
+  table.grille td.nom, table.grille th.nom{
+    position:sticky; left:0; background:var(--panel, #fff); z-index:1;
+    text-align:left; font-weight:600; max-width:240px; overflow:hidden; text-overflow:ellipsis;
+  }
+  table.grille td.case{ text-align:center; }
+  table.grille input[type="checkbox"]{ width:19px; height:19px; cursor:pointer; }
+  table.grille tr:hover td{ background:rgba(90,120,255,.05); }
+  .case-protegee{ font-size:.9rem; cursor:help; }
+  .grille-pied{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px; }
+  .grille-ajouts{ display:flex; flex-wrap:wrap; gap:16px; margin-top:14px; }
+  .grille-ajouts form{ display:flex; gap:8px; align-items:end; flex-wrap:wrap; }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">🗓️ Saisie en grille</h1>
+      <p class="ui-subtitle page-subtitle">
+        Pour rattraper les feuilles d'émargement papier : choisis un atelier et un mois,
+        coche les présents, enregistre. Les statistiques et bilans se mettent à jour tout seuls —
+        plus besoin de tableur.
+      </p>
+    </div>
+    <div class="ui-actions inline-actions">
+      {% if atelier %}
+        <a class="btn" href="{{ url_for('activite.saisie_grille_imprimer', atelier_id=atelier.id, mois=mois_str) }}" title="La feuille papier du mois, miroir exact de cette grille : l'animateur coche, l'accueil recopie.">🖨️ Feuille du mois (papier)</a>
+      {% endif %}
+      <a class="btn" href="{{ url_for('activite.emargements_attente') }}">⏳ Émargements en attente</a>
+      <a class="btn" href="{{ url_for('activite.index') }}">Ateliers</a>
+    </div>
+  </section>
+
+  <form method="get" action="{{ url_for('activite.saisie_grille') }}" class="grille-outils">
+    <div>
+      <label for="grille-atelier">Atelier</label>
+      <select id="grille-atelier" class="in" name="atelier_id" onchange="this.form.submit()">
+        <option value="">— Choisir un atelier —</option>
+        {% for a in ateliers %}
+          <option value="{{ a.id }}" {% if atelier and a.id == atelier.id %}selected{% endif %}>{{ a.nom }} ({{ a.secteur }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="grille-mois">Mois</label>
+      <input id="grille-mois" class="in" type="month" name="mois" value="{{ mois_str }}" onchange="this.form.submit()">
+    </div>
+    <noscript><button class="btn" type="submit">Afficher</button></noscript>
+  </form>
+
+  {% if atelier %}
+    {% if seances %}
+      <form method="post" action="{{ url_for('activite.saisie_grille', atelier_id=atelier.id, mois=mois_str, plus=en_plus|join(',') or None) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
+        <input type="hidden" name="mois" value="{{ mois_str }}">
+        {% set paires = [] %}
+        <div class="grille-scroll">
+          <table class="grille">
+            <thead>
+              <tr>
+                <th class="nom">Participant</th>
+                {% for s in seances %}
+                  {% set d = s.rdv_date or s.date_session %}
+                  <th title="{{ d.strftime('%d/%m/%Y') if d else '' }}{% if s.heure_debut %} · {{ s.heure_debut }}{% if s.heure_fin %}–{{ s.heure_fin }}{% endif %}{% endif %}">
+                    <a href="{{ url_for('activite.emargement', session_id=s.id) }}" title="Ouvrir la feuille d'émargement complète">{{ d.strftime('%d/%m') if d else '?' }}</a>
+                  </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in participants %}
+                <tr>
+                  <td class="nom">{{ p.nom }} {{ p.prenom }}</td>
+                  {% for s in seances %}
+                    {% set pres = presences.get((p.id, s.id)) %}
+                    <td class="case">
+                      {% if pres and (pres.signature_path or (pres.presence_type or 'present') != 'present') %}
+                        <span class="case-protegee" title="Présence protégée ({{ 'signée sur la tablette' if pres.signature_path else pres.presence_type }}) : modifiable uniquement depuis la feuille d'émargement.">🔒</span>
+                      {% else %}
+                        {% if paires.append(p.id ~ ':' ~ s.id) %}{% endif %}
+                        <input type="checkbox" name="cell_{{ p.id }}_{{ s.id }}" value="1" {% if pres %}checked{% endif %}
+                               aria-label="{{ p.nom }} {{ p.prenom }} présent le {{ (s.rdv_date or s.date_session).strftime('%d/%m') }}">
+                      {% endif %}
+                    </td>
+                  {% endfor %}
+                </tr>
+              {% else %}
+                <tr><td class="nom" colspan="{{ 1 + seances|length }}">Aucun habitué pour l'instant : ajoute une première personne ci-dessous, coche ses présences, enregistre — elle restera dans la grille.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <input type="hidden" name="paires" value="{{ paires|join(' ') }}">
+        <div class="grille-pied">
+          <button class="btn primary" type="submit">💾 Enregistrer la grille</button>
+          <span class="muted">🔒 = présence signée sur la tablette ou statut particulier : non modifiable depuis la grille.</span>
+        </div>
+      </form>
+    {% else %}
+      <div class="quick-empty" style="margin:12px 0;">
+        <strong>Aucune séance sur ce mois</strong>
+        Ajoute la ou les séances de la feuille papier ci-dessous : la grille apparaîtra.
+      </div>
+    {% endif %}
+
+    <div class="grille-ajouts no-print">
+      <form method="post" action="{{ url_for('activite.saisie_grille', atelier_id=atelier.id, mois=mois_str, plus=en_plus|join(',') or None) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="add_session">
+        <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
+        <input type="hidden" name="mois" value="{{ mois_str }}">
+        <div>
+          <label>Ajouter une séance (date de la feuille)</label>
+          <input class="in" type="date" name="date_session" required>
+        </div>
+        <div>
+          <label>Début (optionnel)</label>
+          <input class="in" type="time" name="heure_debut">
+        </div>
+        <div>
+          <label>Fin (optionnel)</label>
+          <input class="in" type="time" name="heure_fin">
+        </div>
+        <button class="btn" type="submit">➕ Créer la séance</button>
+      </form>
+
+      {% if seances %}
+      <div>
+        <form method="get" action="{{ url_for('activite.saisie_grille') }}">
+          <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
+          <input type="hidden" name="mois" value="{{ mois_str }}">
+          {% if en_plus %}<input type="hidden" name="plus" value="{{ en_plus|join(',') }}">{% endif %}
+          <div>
+            <label for="grille-personne">Ajouter une personne à la grille</label>
+            <input id="grille-personne" class="in" type="search" name="q_personne" value="{{ q_personne or '' }}"
+                   placeholder="Taper un nom ou un prénom…">
+          </div>
+          <button class="btn" type="submit">🔎 Chercher</button>
+          <span class="muted">La recherche couvre toutes les fiches. Personne introuvable ? <a href="{{ url_for('participants.new_participant') }}">Créer sa fiche</a> d'abord.</span>
+        </form>
+        {% if q_personne %}
+          {% if resultats_ajout %}
+            <div class="ui-actions inline-actions" style="flex-wrap:wrap; margin-top:8px;">
+              {% for c in resultats_ajout %}
+                <form method="post" action="{{ url_for('activite.saisie_grille', atelier_id=atelier.id, mois=mois_str, plus=en_plus|join(',') or None) }}" style="margin:0;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="add_participant">
+                  <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
+                  <input type="hidden" name="mois" value="{{ mois_str }}">
+                  <input type="hidden" name="participant_id" value="{{ c.id }}">
+                  <button class="btn" type="submit" title="Ajouter cette personne à la grille">➕ {{ c.nom }} {{ c.prenom }}{% if c.ville %} · {{ c.ville }}{% endif %}</button>
+                </form>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="muted" style="margin-top:8px;">Aucune fiche trouvée pour « {{ q_personne }} » (ou déjà dans la grille).</div>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

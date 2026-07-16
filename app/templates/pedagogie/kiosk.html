@@ -1,0 +1,133 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1 style="margin-top:0;">Observation de séance</h1>
+    <p class="muted">Observation rapide des apprentissages explicitement choisis pour cette séance.</p>
+
+    <form method="get" class="inline" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+      <div>
+        <label>Séance</label>
+        <select class="in" name="session_id" required>
+          <option value="">Choisir…</option>
+          {% for s in sessions %}
+            {% set label = s.date_session or s.rdv_date or '' %}
+            <option value="{{ s.id }}" {% if selected_session and selected_session.id == s.id %}selected{% endif %}>{{ s.atelier.nom }} · {{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Participant (optionnel)</label>
+        <select class="in" name="participant_id">
+          <option value="">Groupe / séance</option>
+          {% for pr in participants %}
+            <option value="{{ pr.participant.id }}" {% if selected_participant_id == pr.participant.id %}selected{% endif %}>{{ pr.participant.nom }} {{ pr.participant.prenom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn" type="submit">Ouvrir</button>
+      <a class="btn" href="{{ url_for('pedagogie.objectifs') }}">Gérer les anciens objectifs</a>
+    </form>
+  </div>
+
+  {% if selected_session %}
+    <div class="card">
+      <h2 style="margin-top:0;">Observation rapide</h2>
+      <form method="post" class="stack" style="gap:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="participant_id" value="{{ selected_participant_id or '' }}">
+
+        <div>
+          <label>Mode</label>
+          <select class="in" name="mode">
+            <option value="ressenti">Ressenti (souple)</option>
+            <option value="competence">Compétence (objectif atteint)</option>
+            <option value="mixte">Mixte</option>
+          </select>
+        </div>
+
+        {% if objectifs %}
+          {% for obj in objectifs %}
+            <input type="hidden" name="objectif_ids" value="{{ obj.id }}">
+            <div class="card" style="background:var(--surface-soft);">
+              <div class="inline" style="justify-content:space-between; gap:8px;">
+                <strong>{{ obj.titre }}</strong>
+                <span class="badge">{{ obj.type }}</span>
+              </div>
+              {% if obj.description %}<div class="muted" style="margin-top:4px;">{{ obj.description }}</div>{% endif %}
+
+              <div class="grid" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+                <div>
+                  <label>État de l'objectif</label>
+                  <select class="in" name="etat_{{ obj.id }}">
+                    <option value="">—</option>
+                    <option value="0">Non atteint</option>
+                    <option value="1">En progression</option>
+                    <option value="2">Atteint</option>
+                    <option value="3">Dépassé</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Ressenti (1 à 5)</label>
+                  <select class="in" name="ressenti_{{ obj.id }}">
+                    <option value="">—</option>
+                    <option value="1">1 · Très difficile</option>
+                    <option value="2">2</option>
+                    <option value="3">3 · Neutre</option>
+                    <option value="4">4</option>
+                    <option value="5">5 · Très positif</option>
+                  </select>
+                </div>
+              </div>
+
+              <label style="margin-top:8px;">Commentaire</label>
+              <input class="in" name="commentaire_{{ obj.id }}" placeholder="Observation terrain, ressenti, anecdote utile…">
+            </div>
+          {% endfor %}
+
+          <div style="text-align:right;">
+            <button class="btn ok" type="submit">Enregistrer la saisie</button>
+          </div>
+        {% else %}
+          <div class="muted">Aucun apprentissage n’a été choisi pour cette séance. Passe par “Suivi des apprentissages” pour ajouter ce qui est travaillé aujourd’hui.</div>
+        {% endif %}
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Dernières saisies</h2>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Objectif</th>
+              <th>Type</th>
+              <th>Mode</th>
+              <th>État</th>
+              <th>Ressenti</th>
+              <th>Commentaire</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in recent_rows %}
+              <tr>
+                <td>{{ row.date_saisie }}</td>
+                <td>{{ row.objectif.titre if row.objectif else '—' }}</td>
+                <td>{{ row.objectif.type if row.objectif else '—' }}</td>
+                <td>{{ row.mode }}</td>
+                <td>{{ row.etat }}</td>
+                <td>{{ row.ressenti if row.ressenti is not none else '—' }}</td>
+                <td>{{ row.commentaire or '—' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="muted">Aucune saisie pour le filtre courant.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

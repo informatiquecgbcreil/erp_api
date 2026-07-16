@@ -1,0 +1,63 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="breadcrumb">
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.index') }}">Insertion</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">{{ participant.nom }} {{ participant.prenom }}</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item">{{ 'Nouveau parcours' if is_new else 'Modifier le parcours' }}</span>
+  </div>
+  <div class="page-head">
+    <h1 style="margin:0;">{{ 'Nouveau parcours insertion' if is_new else 'Modifier le parcours insertion' }}</h1>
+  </div>
+  <div class="card">
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="filters-grid" style="grid-template-columns:1fr 1fr;">
+        <div>
+          <label class="muted">Dispositif</label>
+          <select class="in" name="dispositif_id">
+            <option value="">Non renseigné</option>
+            {% for ref in dispositifs %}<option value="{{ ref.id }}" {% if row.dispositif_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="muted">Prescripteur</label>
+          <select class="in" name="prescripteur_id">
+            <option value="">Non renseigné</option>
+            {% for ref in prescripteurs %}<option value="{{ ref.id }}" {% if row.prescripteur_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="muted">Type de titre de séjour</label>
+          <select class="in" name="titre_sejour_type_id">
+            <option value="">Non renseigné</option>
+            {% for ref in titres %}<option value="{{ ref.id }}" {% if row.titre_sejour_type_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="muted">Début du titre de séjour</label>
+          <input class="in" type="date" name="date_debut_titre_sejour" value="{{ row.date_debut_titre_sejour.isoformat() if row.date_debut_titre_sejour else '' }}">
+        </div>
+        <div>
+          <label class="muted">Expiration du titre de séjour</label>
+          <input class="in" type="date" name="date_expiration_titre_sejour" value="{{ row.date_expiration_titre_sejour.isoformat() if row.date_expiration_titre_sejour else '' }}">
+        </div>
+        <div style="display:flex;align-items:end;">
+          <label style="display:flex;gap:8px;align-items:center;margin:0;"><input type="checkbox" name="is_active" value="1" {% if row.is_active %}checked{% endif %}><span>Parcours actif</span></label>
+        </div>
+        <div>
+          <label class="muted">Date d’entrée</label>
+          <input class="in" type="date" name="date_entree" value="{{ row.date_entree.isoformat() if row.date_entree else '' }}">
+        </div>
+        <div>
+          <label class="muted">Date de sortie</label>
+          <input class="in" type="date" name="date_sortie" value="{{ row.date_sortie.isoformat() if row.date_sortie else '' }}">
+        </div>
+      </div>
+      <div class="form-actions"><button class="pill active" type="submit">Enregistrer</button><a class="pill" href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">Annuler</a></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

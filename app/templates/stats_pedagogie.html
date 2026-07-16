@@ -1,0 +1,215 @@
+{% extends "layout.html" %}
+{% block body %}
+  {% set tab = request.args.get('tab', 'projet') %}
+  <div class="page-shell content-shell">
+    <section class="hero-card">
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <h1>Stats pédagogiques</h1>
+          <p class="muted">Suivi des objectifs, ateliers, participants et accès rapide aux passeports. Une lecture plus simple, sans noyer le cerveau.</p>
+        </div>
+        <div class="hero-actions">
+          <a class="pill {% if tab == 'projet' %}active{% endif %}" href="{{ url_for('statsimpact.stats_pedagogie', tab='projet') }}">Suivi Projet</a>
+          <a class="pill {% if tab == 'atelier' %}active{% endif %}" href="{{ url_for('statsimpact.stats_pedagogie', tab='atelier') }}">Suivi Atelier</a>
+          <a class="pill {% if tab == 'participant' %}active{% endif %}" href="{{ url_for('statsimpact.stats_pedagogie', tab='participant') }}">Suivi Participant</a>
+          <a class="pill {% if tab == 'passport' %}active{% endif %}" href="{{ url_for('statsimpact.stats_pedagogie', tab='passport') }}">Menu Passeports</a>
+        </div>
+      </div>
+    </section>
+
+    {% if tab == 'projet' %}
+      <section class="section-card">
+        <div class="page-header">
+          <div class="page-title-wrap">
+            <h2>Suivi Projet</h2>
+            <p class="muted">Choisis un projet pour voir la progression de ses objectifs généraux.</p>
+          </div>
+        </div>
+        <form method="get" class="filters-panel" data-filter-summary="true">
+          <input type="hidden" name="tab" value="projet">
+          <div class="filters-grid">
+            <label class="field-stack">
+              <span>Projet</span>
+              <select class="in" name="projet_id" required>
+                <option value="">Choisir un projet…</option>
+                {% for p in projets %}
+                  <option value="{{ p.id }}" {% if projet and p.id == projet.id %}selected{% endif %}>{{ p.secteur }} · {{ p.nom }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <div class="field-stack field-actions">
+              <span>&nbsp;</span>
+              <button class="btn ok" type="submit">Afficher</button>
+            </div>
+          </div>
+        </form>
+
+        {% if projet %}
+          <div class="story-grid">
+            {% if projet_objectifs %}
+              {% for item in projet_objectifs %}
+                <article class="soft-panel progress-panel">
+                  <strong>{{ item.objectif.titre }}</strong>
+                  <div class="muted">{{ item.objectif.description or '' }}</div>
+                  <div class="muted">Objectifs spécifiques validés : {{ item.success }} / {{ item.total }}</div>
+                  <div class="progress-shell"><div class="progress-fill" style="width:{{ item.ratio|round(0) }}%;">{{ item.ratio|round(0) }}%</div></div>
+                  <div class="muted">Seuil de validation : {{ item.objectif.seuil_validation|round(0) }}%</div>
+                </article>
+              {% endfor %}
+            {% else %}
+              <div class="empty-state">Aucun objectif général défini pour ce projet.</div>
+            {% endif %}
+          </div>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if tab == 'atelier' %}
+      <section class="section-card">
+        <div class="page-header"><div class="page-title-wrap"><h2>Suivi Atelier</h2><p class="muted">Lis la progression des objectifs opérationnels liés à un atelier.</p></div></div>
+        <form method="get" class="filters-panel">
+          <input type="hidden" name="tab" value="atelier">
+          <div class="filters-grid">
+            <label class="field-stack">
+              <span>Atelier</span>
+              <select class="in" name="atelier_id" required>
+                <option value="">Choisir un atelier…</option>
+                {% for a in ateliers %}
+                  <option value="{{ a.id }}" {% if atelier and a.id == atelier.id %}selected{% endif %}>{{ a.secteur }} · {{ a.nom }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <div class="field-stack field-actions"><span>&nbsp;</span><button class="btn ok" type="submit">Afficher</button></div>
+          </div>
+        </form>
+        {% if atelier %}
+          <div class="story-grid">
+            {% for item in atelier_stats.objectifs %}
+              <article class="soft-panel progress-panel">
+                <strong>{{ item.objectif.titre }}</strong>
+                <div class="muted">{{ item.objectif.description or '' }}</div>
+                <div class="muted">Objectifs opérationnels validés : {{ item.success }} / {{ item.total }}</div>
+                <div class="progress-shell"><div class="progress-fill" style="width:{{ item.ratio|round(0) }}%;">{{ item.ratio|round(0) }}%</div></div>
+                <div class="muted">Seuil de validation : {{ item.objectif.seuil_validation|round(0) }}%</div>
+              </article>
+            {% else %}
+              <div class="empty-state">Aucun objectif spécifique défini pour cet atelier.</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if tab == 'participant' %}
+      <section class="section-card">
+        <div class="page-header"><div class="page-title-wrap"><h2>Suivi Participant</h2><p class="muted">Relis les compétences acquises par participant, puis exporte un bilan si besoin.</p></div></div>
+        <form method="get" class="filters-panel">
+          <input type="hidden" name="tab" value="participant">
+          <div class="filters-grid">
+            <label class="field-stack">
+              <span>Participant</span>
+              <select class="in" name="participant_id" required>
+                <option value="">Choisir un participant…</option>
+                {% for p in participants %}
+                  <option value="{{ p.id }}" {% if participant and p.id == participant.id %}selected{% endif %}>{{ p.nom }} {{ p.prenom }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <div class="field-stack field-actions"><span>&nbsp;</span><button class="btn ok" type="submit">Afficher</button></div>
+          </div>
+        </form>
+
+        {% if participant %}
+          <div class="soft-panel participant-head">
+            <div>
+              <strong>{{ participant.nom }} {{ participant.prenom }}</strong>
+              <div class="muted">{{ participant.email or '—' }}</div>
+            </div>
+            <a class="btn" href="{{ url_for('statsimpact.stats_pedagogie_bilan', participant_id=participant.id) }}">Imprimer Bilan PDF</a>
+          </div>
+          <div class="stack">
+            {% for group in participant_groups %}
+              <article class="soft-panel">
+                <h3>{{ group.referentiel }}</h3>
+                <div class="tablewrap clean">
+                  <table class="js-sortable" class="compact-table">
+                    <thead><tr><th>Compétence</th><th>Date</th><th>Atelier</th></tr></thead>
+                    <tbody>
+                      {% for row in group.rows %}
+                        <tr><td>{{ row.competence }}</td><td class="muted">{{ row.date }}</td><td class="muted">{{ row.atelier or '—' }}</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="responsive-card-list" aria-label="Compétences acquises (vue compacte)">
+                  {% for row in group.rows %}
+                  <article class="responsive-card">
+                    <header class="responsive-card__head">
+                      <strong>{{ row.competence }}</strong>
+                      <span class="chip">{{ row.date or '—' }}</span>
+                    </header>
+                    <dl class="responsive-card__grid">
+                      <div><dt>Atelier</dt><dd class="muted">{{ row.atelier or '—' }}</dd></div>
+                    </dl>
+                  </article>
+                  {% endfor %}
+                </div>
+              </article>
+            {% else %}
+              <div class="empty-state">Aucune compétence acquise pour le moment.</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if tab == 'passport' %}
+      <section class="section-card">
+        <div class="page-header"><div class="page-title-wrap"><h2>Menu Passeports participants</h2><p class="muted">Recherche rapide puis accès direct au passeport ou à la vue compétences acquises.</p></div></div>
+        <form method="get" class="filters-panel">
+          <input type="hidden" name="tab" value="passport">
+          <div class="filters-grid">
+            <label class="field-stack"><span>Recherche</span><input class="in" name="participant_q" value="{{ participant_q or '' }}" placeholder="Rechercher nom/prénom..."></label>
+            <div class="field-stack field-actions"><span>&nbsp;</span><button class="btn" type="submit">Rechercher</button></div>
+          </div>
+        </form>
+        <div class="tablewrap clean">
+          <table class="js-sortable" class="compact-table">
+            <thead><tr><th>Participant</th><th>Email</th><th>Ville</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for p in participants_for_passport %}
+                <tr>
+                  <td><strong>{{ p.nom }} {{ p.prenom }}</strong></td>
+                  <td class="muted">{{ p.email or '—' }}</td>
+                  <td class="muted">{{ p.ville or '—' }}</td>
+                  <td><div class="inline-actions"><a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=p.id) }}">Ouvrir passeport</a><a class="btn" href="{{ url_for('statsimpact.stats_pedagogie', tab='participant', participant_id=p.id) }}">Compétences acquises</a></div></td>
+                </tr>
+              {% else %}
+                <tr><td colspan="4" class="quick-empty">Aucun participant trouvé.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="responsive-card-list" aria-label="Menu passeports (vue compacte)">
+          {% for p in participants_for_passport %}
+            <article class="responsive-card">
+              <header class="responsive-card__head">
+                <strong>{{ p.nom }} {{ p.prenom }}</strong>
+                <span class="chip">{{ p.ville or '—' }}</span>
+              </header>
+              <dl class="responsive-card__grid">
+                <div><dt>Email</dt><dd class="muted">{{ p.email or '—' }}</dd></div>
+              </dl>
+              <div class="inline-actions">
+                <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=p.id) }}">Ouvrir passeport</a>
+                <a class="btn" href="{{ url_for('statsimpact.stats_pedagogie', tab='participant', participant_id=p.id) }}">Compétences acquises</a>
+              </div>
+            </article>
+          {% else %}
+            <div class="quick-empty"><strong>Aucun participant trouvé.</strong>Affinez la recherche puis relancez.</div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}

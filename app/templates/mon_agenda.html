@@ -1,0 +1,194 @@
+{% extends "layout.html" %}
+{% block title %}Mon agenda{% endblock %}
+{% block body %}
+<style>
+  .agenda-url{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0; }
+  .agenda-url code{ flex:1; min-width:280px; background:var(--surface-soft,#f1f4fb); padding:10px 12px; border-radius:8px; font-size:.88rem; word-break:break-all; }
+  .agenda-etapes{ counter-reset:et; list-style:none; padding:0; margin:14px 0; }
+  .agenda-etapes li{ position:relative; padding:8px 0 8px 40px; line-height:1.5; }
+  .agenda-etapes li::before{ counter-increment:et; content:counter(et); position:absolute; left:0; top:6px; width:26px; height:26px; border-radius:50%; background:rgba(90,120,255,.15); color:#3346c0; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .agenda-carte{ border:1px solid var(--border,#e3e6ef); border-radius:12px; padding:16px 18px; background:var(--panel,#fff); }
+  .agenda-grid2{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px,1fr)); gap:12px; }
+  .agenda-form label{ display:block; font-size:.8rem; font-weight:600; margin:8px 0 3px; }
+  .agenda-form input[type="text"], .agenda-form input[type="number"], .agenda-form input[type="date"], .agenda-form input[type="time"], .agenda-form select{
+    width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border,#e3e6ef); }
+  .agenda-form .case{ display:flex; align-items:flex-start; gap:8px; margin:6px 0; font-size:.9rem; }
+  .agenda-form .case input{ margin-top:3px; }
+  .apercu-event{ border:1px solid var(--border,#e3e6ef); border-left:4px solid #3b82f6; border-radius:10px; padding:12px 14px; background:var(--surface-soft,#f6f8ff); }
+  .apercu-event .titre{ font-weight:800; }
+  .apercu-event .ligne{ font-size:.88rem; opacity:.85; }
+  .creneau-ligne{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-top:1px dashed var(--border,#e3e6ef); font-size:.9rem; }
+  .creneau-ligne:first-child{ border-top:0; }
+  .creneau-type{ display:inline-block; font-size:.72rem; font-weight:700; padding:1px 8px; border-radius:999px; background:rgba(90,120,255,.14); }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">📅 Mon agenda — synchro & export</h1>
+      <p class="ui-subtitle page-subtitle">
+        Ton agenda peut servir de feuille de temps (extraction par les financeurs) : ici tu contrôles
+        exactement ce qu'il contient — séances, réunions, préparation, événements — et ce que chaque
+        événement affiche.
+      </p>
+    </div>
+  </section>
+
+  <div class="agenda-carte" style="margin-top:14px;">
+    <h2 style="margin-top:0; font-size:1.05rem;">🔗 Ton lien personnel</h2>
+    <p class="muted" style="margin-top:0;">Garde-le pour toi : ce lien secret donne accès à ton planning. Il fonctionne avec Google Agenda, Apple Calendrier, Outlook…</p>
+    <div class="agenda-url">
+      <code id="agenda-lien">{{ url_https }}</code>
+      <button class="btn primary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('agenda-lien').textContent).then(()=>{this.textContent='✔ Copié';setTimeout(()=>this.textContent='📋 Copier le lien',1500);})">📋 Copier le lien</button>
+      <a class="btn" href="{{ url_webcal }}" title="Ouvre directement l'application d'agenda de ton appareil">➕ Ajouter (webcal)</a>
+    </div>
+    <details style="margin-top:6px;">
+      <summary class="mini-link" style="cursor:pointer;">Comment l'ajouter dans Google Agenda / iPhone ?</summary>
+      <ol class="agenda-etapes">
+        <li>Ouvre <strong>Google Agenda</strong> sur un ordinateur (calendar.google.com).</li>
+        <li>À gauche, à côté de <strong>« Autres agendas »</strong>, clique sur le <strong>+</strong>.</li>
+        <li>Choisis <strong>« À partir de l'URL »</strong>, colle le lien, puis <strong>« Ajouter l'agenda »</strong>.</li>
+        <li>Google rafraîchit ensuite tout seul (compter quelques heures — ce n'est pas instantané).</li>
+      </ol>
+      <p class="muted">Sur iPhone/Mac : Réglages → Calendrier → Comptes → Ajouter un compte → « Autre » → « Ajouter un abonnement à un calendrier ».</p>
+    </details>
+  </div>
+
+  <div class="agenda-grid2" style="margin-top:12px;">
+    <div class="agenda-carte agenda-form">
+      <h2 style="margin-top:0; font-size:1.05rem;">⚙️ Ce que contient mon agenda</h2>
+      <form method="post" action="{{ url_for('main.mon_agenda_preferences') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label for="titre_format">Titre des événements</label>
+        <input type="text" id="titre_format" name="titre_format" value="{{ options.titre_format }}" list="titre-presets" maxlength="120">
+        <datalist id="titre-presets">
+          {% for gabarit, libelle in titre_presets %}<option value="{{ gabarit }}">{{ libelle }}</option>{% endfor %}
+        </datalist>
+        <div class="muted" style="font-size:.78rem;">Jetons disponibles : <code>{atelier}</code> <code>{secteur}</code> <code>{type}</code> <code>{heure}</code></div>
+
+        <label>Lignes de la description</label>
+        {% for champ in champs_description %}
+          <label class="case" style="font-weight:400;">
+            <input type="checkbox" name="champs_description" value="{{ champ }}" {% if champ in options.champs_description %}checked{% endif %}>
+            <span>{{ champs_labels[champ] }}</span>
+          </label>
+        {% endfor %}
+        <label class="case" style="font-weight:400;">
+          <input type="checkbox" name="inclure_lien" value="1" {% if options.inclure_lien %}checked{% endif %}>
+          <span>Lien vers la séance dans l'application</span>
+        </label>
+
+        <label>Périmètre</label>
+        <label class="case" style="font-weight:400;">
+          <input type="checkbox" name="evenements_tous_secteurs" value="1" {% if options.evenements_tous_secteurs %}checked{% endif %}>
+          <span>Inclure les <strong>événements / temps forts de tous les secteurs</strong> (fêtes de quartier, sorties…), pas seulement le mien</span>
+        </label>
+        <label class="case" style="font-weight:400;">
+          <input type="checkbox" name="inclure_creneaux" value="1" {% if options.inclure_creneaux %}checked{% endif %}>
+          <span>Inclure mes créneaux hors ateliers (réunions, préparation…)</span>
+        </label>
+        <label class="case" style="font-weight:400;">
+          <input type="checkbox" name="inclure_annulees" value="1" {% if options.inclure_annulees %}checked{% endif %}>
+          <span>Inclure les séances annulées (marquées « annulé » dans l'agenda)</span>
+        </label>
+
+        <div class="agenda-grid2">
+          <div>
+            <label for="preparation_minutes">Préparation automatique avant chaque séance (minutes)</label>
+            <input type="number" id="preparation_minutes" name="preparation_minutes" min="0" max="240" step="5" value="{{ options.preparation_minutes }}">
+            <div class="muted" style="font-size:.78rem;">0 = désactivé. Ajoute un événement « Préparation — … » avant chaque séance : c'est du temps effectif.</div>
+          </div>
+          <div>
+            <label for="jours_passe">Fenêtre du flux (jours passés / futurs)</label>
+            <div style="display:flex; gap:6px;">
+              <input type="number" id="jours_passe" name="jours_passe" min="0" max="366" value="{{ options.jours_passe }}">
+              <input type="number" name="jours_futur" min="7" max="366" value="{{ options.jours_futur }}">
+            </div>
+            <div class="muted" style="font-size:.78rem;">Astuce fliqués du 10 du mois : garde au moins 45 jours de passé pour que le mois précédent complet reste visible.</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;"><button class="btn primary" type="submit">💾 Enregistrer mes réglages</button></div>
+      </form>
+    </div>
+
+    <div class="agenda-carte">
+      <h2 style="margin-top:0; font-size:1.05rem;">👁️ Aperçu d'un événement</h2>
+      <p class="muted" style="margin-top:0;">Exemple avec tes réglages actuels (enregistre pour actualiser) :</p>
+      <div class="apercu-event">
+        <div class="titre">{{ apercu.titre }}</div>
+        <div class="ligne">🕒 14:00 – 16:00</div>
+        {% for l in apercu.lignes %}<div class="ligne">{{ l }}</div>{% endfor %}
+      </div>
+
+      <h2 style="font-size:1.05rem; margin-top:18px;">📤 Exporter une période (.ics)</h2>
+      <p class="muted" style="margin-top:0;">Le fichier reflète exactement tes réglages ci-contre — pratique pour vérifier ou archiver ce que la plateforme du financeur va extraire (par défaut : le mois dernier).</p>
+      <form method="get" action="{{ url_for('main.mon_agenda_export') }}" class="agenda-form" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+        <div><label>Du</label><input type="date" name="du" value="{{ export_du.isoformat() }}" required></div>
+        <div><label>Au</label><input type="date" name="au" value="{{ export_au.isoformat() }}" required></div>
+        <button class="btn" type="submit">⬇️ Télécharger le fichier</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="agenda-carte agenda-form" style="margin-top:12px;">
+    <h2 style="margin-top:0; font-size:1.05rem;">🗓️ Mes créneaux hors ateliers</h2>
+    <p class="muted" style="margin-top:0;">Réunions, temps de préparation, formations, partenariats… Ils apparaissent dans ton agenda comme le reste : ton temps effectif complet, pas seulement le face-à-face.</p>
+    <form method="post" action="{{ url_for('main.mon_agenda_creneau_creer') }}" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:8px; align-items:end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div><label>Type</label>
+        <select name="type_creneau">
+          {% for t in types_creneau %}<option value="{{ t }}">{{ types_creneau_labels[t] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="grid-column:span 2;"><label>Titre</label><input type="text" name="titre" required maxlength="200" placeholder="ex. Réunion d'équipe"></div>
+      <div><label>Date</label><input type="date" name="date_creneau" required></div>
+      <div><label>Début</label><input type="time" name="heure_debut"></div>
+      <div><label>Fin</label><input type="time" name="heure_fin"></div>
+      <div><label>Répéter (semaines)</label><input type="number" name="repeter_semaines" min="0" max="52" value="0" title="0 = une seule fois ; 12 = chaque semaine pendant 12 semaines de plus"></div>
+      <div style="grid-column:span 2;"><label>Compte sur le projet (optionnel)</label>
+        <select name="subvention_id" title="Le créneau apparaîtra dans la feuille de temps de ce financeur">
+          <option value="">— Aucun —</option>
+          {% for sub in subventions %}
+            <option value="{{ sub.id }}">{{ sub.nom }}{% if sub.financeur %} · {{ sub.financeur }}{% endif %} ({{ sub.annee_exercice }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="grid-column:span 2;"><label>Détail (optionnel)</label><input type="text" name="description" maxlength="500" placeholder="ex. point projet CAF"></div>
+      <div><button class="btn primary" type="submit">➕ Ajouter</button></div>
+    </form>
+
+    {% if creneaux %}
+      <div style="margin-top:12px;">
+        {% for c in creneaux %}
+          <div class="creneau-ligne">
+            <span>
+              <span class="creneau-type">{{ c.type_label }}</span>
+              <strong>{{ c.titre }}</strong>
+              · {{ c.date_creneau.strftime('%d/%m/%Y') }}
+              {% if c.heure_debut %}· {{ c.heure_debut }}{% if c.heure_fin %}–{{ c.heure_fin }}{% endif %}{% endif %}
+              {% if c.subvention %}<span class="creneau-type" style="background:rgba(60,180,110,.16);">💶 {{ c.subvention.nom }}</span>{% endif %}
+              {% if c.description %}<span class="muted">· {{ c.description }}</span>{% endif %}
+            </span>
+            <form method="post" action="{{ url_for('main.mon_agenda_creneau_supprimer', creneau_id=c.id) }}" style="margin:0;" onsubmit="return confirm('Supprimer ce créneau ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn" type="submit" style="padding:2px 8px; font-size:.8rem;">✕</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="quick-empty" style="margin-top:10px;"><strong>Aucun créneau pour l'instant</strong>Ajoute ta première réunion ou ton premier temps de préparation ci-dessus.</div>
+    {% endif %}
+  </div>
+
+  <div class="agenda-carte no-print" style="margin-top:12px;">
+    <h2 style="margin-top:0; font-size:1.05rem;">🔒 Sécurité</h2>
+    <p class="muted" style="margin-top:0;">Le lien ne contient <strong>aucun nom de participant</strong> — seulement tes ateliers, créneaux, horaires et secteur. Si tu penses l'avoir partagé par erreur, régénère-le : l'ancien cessera aussitôt de fonctionner (tu devras remettre le nouveau lien dans ton agenda).</p>
+    <form method="post" action="{{ url_for('main.mon_agenda_regenerer') }}" onsubmit="return confirm('Régénérer le lien ? L\'ancien ne fonctionnera plus.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-danger-outline" type="submit">♻️ Régénérer mon lien</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

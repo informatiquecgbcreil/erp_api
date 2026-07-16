@@ -1,0 +1,139 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+<div class="page-shell dense-list-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Projets et actions</h1>
+      <p class="page-subtitle">Retrouve les projets, leur état d’avancement et leur suivi budgétaire depuis une vue unique.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('projets.finance_secteur') }}">Pilotage annuel</a>
+      <a class="btn" href="{{ url_for('projets.objectifs_referentiel') }}">Objectifs sectoriels</a>
+      <a class="btn" href="{{ url_for('projets.projets_export_xlsx', archives=1 if voir_archives else None) }}">⬇ Export Excel</a>
+      {% if voir_archives %}
+        <a class="btn" href="{{ url_for('projets.projets_list') }}">← Projets actifs</a>
+      {% else %}
+        <a class="btn" href="{{ url_for('projets.projets_list', archives=1) }}">Archives{% if nb_archives %} ({{ nb_archives }}){% endif %}</a>
+      {% endif %}
+      <a class="btn ok" href="{{ url_for('projets.projets_new') }}">Ajouter un projet</a>
+    </div>
+  </div>
+  {% if voir_archives %}<div class="callout-soft">Vous consultez les projets <strong>archivés</strong>. Ils n'apparaissent plus dans la liste active mais restent restaurables.</div>{% endif %}
+
+  <div class="section-card compact">
+    <div class="table-toolbar">
+      <div class="muted">Chaque projet permet de regrouper les subventions liées, le compte-rendu, les activités rattachées et les éléments budgétaires associés.</div>
+    </div>
+    {{ ux.helper('Le compte-rendu est signalé dans la colonne dédiée. Ouvrez un projet pour gérer ses subventions, ses indicateurs et son budget détaillé.') }}
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Secteur</th>
+            <th>Projet</th>
+            <th>Compte-rendu</th>
+            <th>Demandé</th>
+            <th>Accordé</th>
+            <th>Reçu</th>
+            <th>Engagé</th>
+            <th>Reste</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in projets %}
+            <tr>
+              <td>{{ p.secteur }}</td>
+              <td><strong>{{ p.nom }}</strong><div class="muted">{{ (p.description or "")[:80] }}{% if (p.description or "")|length > 80 %}…{% endif %}</div></td>
+              <td>{% if p.cr_filename %}<span class="muted">Oui</span>{% else %}<span class="muted">Non</span>{% endif %}</td>
+              <td>{{ "%.2f"|format(p.total_demande or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_attribue or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_recu or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_engage or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_reste or 0) }}€</td>
+              <td>
+                <div class="inline-actions">
+                  <a class="btn" href="{{ url_for('projets.projets_edit', projet_id=p.id) }}">Voir le projet</a>
+                  <a class="btn" href="{{ url_for('projets.projet_indicateurs', projet_id=p.id) }}">Indicateurs</a>
+                  <a class="btn" href="{{ url_for('projets.projet_jalons', projet_id=p.id) }}">Jalons</a>
+                  <a class="btn ok" href="{{ url_for('projets.projet_finance', projet_id=p.id) }}">Finances</a>
+                  {% if voir_archives %}
+                    <form method="post" action="{{ url_for('projets.projets_restore', projet_id=p.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn" type="submit">Restaurer</button>
+                    </form>
+                    <form method="post" action="{{ url_for('projets.projets_delete', projet_id=p.id) }}" onsubmit="return confirm('Supprimer DÉFINITIVEMENT ce projet ? Cette action est irréversible.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit">Supprimer définitivement</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('projets.projets_duplicate', projet_id=p.id) }}" onsubmit="return confirm('Reconduire ce projet (copie de la structure) ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn" type="submit">Reconduire</button>
+                    </form>
+                    <form method="post" action="{{ url_for('projets.projets_archive', projet_id=p.id) }}" onsubmit="return confirm('Archiver ce projet ? Il restera consultable dans les archives.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn" type="submit">Archiver</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if projets|length == 0 %}
+            <tr><td colspan="9">{{ ui.empty_state(
+              "Aucun projet archivé" if voir_archives else "Aucun projet enregistré",
+              "Aucun ancien projet n’attend d’être consulté ou restauré." if voir_archives else "Créez un projet pour regrouper ses objectifs, activités, financements et bilans.",
+              url_for('projets.projets_list') if voir_archives else url_for('projets.projets_new'),
+              "Voir les projets actifs" if voir_archives else "Créer un projet",
+              "🗃️" if voir_archives else "🗂️"
+            ) }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Liste des projets (vue compacte)">
+      {% for p in projets %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ p.nom }}</strong>
+            <span class="chip">{{ p.secteur }}</span>
+          </header>
+          <p class="muted">{{ (p.description or "")[:120] }}{% if (p.description or "")|length > 120 %}…{% endif %}</p>
+          <dl class="responsive-card__grid">
+            <div><dt>Compte-rendu</dt><dd>{{ 'Oui' if p.cr_filename else 'Non' }}</dd></div>
+            <div><dt>Demandé / Accordé</dt><dd>{{ "%.2f"|format(p.total_demande or 0) }}€<br><span class="muted">{{ "%.2f"|format(p.total_attribue or 0) }}€</span></dd></div>
+            <div><dt>Reçu / Engagé</dt><dd>{{ "%.2f"|format(p.total_recu or 0) }}€<br><span class="muted">{{ "%.2f"|format(p.total_engage or 0) }}€</span></dd></div>
+            <div><dt>Reste</dt><dd><strong>{{ "%.2f"|format(p.total_reste or 0) }}€</strong></dd></div>
+          </dl>
+          <div class="inline-actions">
+            <a class="btn" href="{{ url_for('projets.projets_edit', projet_id=p.id) }}">Voir le projet</a>
+            <a class="btn" href="{{ url_for('projets.projet_jalons', projet_id=p.id) }}">Jalons</a>
+            {% if voir_archives %}
+              <form method="post" action="{{ url_for('projets.projets_restore', projet_id=p.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn" type="submit">Restaurer</button>
+              </form>
+            {% else %}
+              <form method="post" action="{{ url_for('projets.projets_archive', projet_id=p.id) }}" onsubmit="return confirm('Archiver ce projet ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn" type="submit">Archiver</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        {{ ui.empty_state(
+          "Aucun projet archivé" if voir_archives else "Aucun projet enregistré",
+          "Aucun ancien projet n’attend d’être consulté ou restauré." if voir_archives else "Créez un projet pour regrouper ses objectifs, activités, financements et bilans.",
+          url_for('projets.projets_list') if voir_archives else url_for('projets.projets_new'),
+          "Voir les projets actifs" if voir_archives else "Créer un projet",
+          "🗃️" if voir_archives else "🗂️"
+        ) }}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

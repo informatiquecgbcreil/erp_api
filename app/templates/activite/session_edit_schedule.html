@@ -1,0 +1,85 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+  <div class="stack">
+    <div class="card">
+      <h1 style="margin-top:0;">Corriger date/heure · {{ atelier.nom }}</h1>
+      <div class="muted">Cette correction reste possible même si des participants ont déjà émargé. Chaque modification est historisée.</div>
+
+      <form method="post" style="margin-top:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {% if session.session_type == 'INDIVIDUEL_MENSUEL' %}
+          <div class="grid" style="grid-template-columns:1fr 1fr 1fr; gap:12px;">
+            <div><label>Date RDV</label><input class="in" type="date" name="rdv_date" value="{{ session.rdv_date }}" required></div>
+            <div><label>Heure début</label><input class="in" type="text" name="rdv_debut" value="{{ session.rdv_debut or '' }}" placeholder="09:00"></div>
+            <div><label>Heure fin</label><input class="in" type="text" name="rdv_fin" value="{{ session.rdv_fin or '' }}" placeholder="09:45"></div>
+          </div>
+        {% else %}
+          <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr; gap:12px;">
+            <div><label>Date session</label><input class="in" type="date" name="date_session" value="{{ session.date_session }}" required></div>
+            <div><label>Heure début</label><input class="in" type="text" name="heure_debut" value="{{ session.heure_debut or '' }}" placeholder="14:00"></div>
+            <div><label>Heure fin</label><input class="in" type="text" name="heure_fin" value="{{ session.heure_fin or '' }}" placeholder="16:00"></div>
+            <div><label>Capacité</label><input class="in" type="number" name="capacite" value="{{ session.capacite if session.capacite is not none else (atelier.capacite_defaut or '') }}" min="0"></div>
+          </div>
+        {% endif %}
+
+        <div class="spacer"></div>
+        <label>Raison de modification (obligatoire)</label>
+        <textarea class="in" name="edit_reason" rows="3" placeholder="Ex: erreur de saisie constatée après émargement, session déplacée suite à fermeture du site..." required></textarea>
+
+        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:10px;">
+          <button class="btn" type="submit">Enregistrer la correction</button>
+          <a class="btn" href="{{ url_for('activite.emargement', session_id=session.id) }}">Retour émargement</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Historique des corrections</h2>
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th>Quand</th>
+              <th>Avant</th>
+              <th>Après</th>
+              <th>Raison</th>
+              <th>Par</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in edits %}
+              <tr>
+                <td>{{ e.edited_at }}</td>
+                <td>{{ e.old_date }} {{ e.old_start or '' }}{% if e.old_end %}-{{ e.old_end }}{% endif %}</td>
+                <td>{{ e.new_date }} {{ e.new_start or '' }}{% if e.new_end %}-{{ e.new_end }}{% endif %}</td>
+                <td>{{ e.reason }}</td>
+                <td>{{ e.editor.nom if e.editor and e.editor.nom else (e.editor.email if e.editor else '—') }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="muted">Aucune correction enregistrée.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Historique des corrections (vue compacte)">
+        {% for e in edits %}
+          <article class="responsive-card">
+            <header class="responsive-card__head">
+              <strong>{{ e.edited_at }}</strong>
+              <span class="chip">{{ e.editor.nom if e.editor and e.editor.nom else (e.editor.email if e.editor else '—') }}</span>
+            </header>
+            <dl class="responsive-card__grid">
+              <div><dt>Avant</dt><dd>{{ e.old_date }} {{ e.old_start or '' }}{% if e.old_end %}-{{ e.old_end }}{% endif %}</dd></div>
+              <div><dt>Après</dt><dd>{{ e.new_date }} {{ e.new_start or '' }}{% if e.new_end %}-{{ e.new_end }}{% endif %}</dd></div>
+              <div><dt>Raison</dt><dd>{{ e.reason }}</dd></div>
+            </dl>
+          </article>
+        {% else %}
+          <div class="quick-empty"><strong>Aucune correction enregistrée.</strong></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

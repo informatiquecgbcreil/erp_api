@@ -1,0 +1,110 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>Villes et quartiers</h1>
+        <p class="muted">Retrouve les quartiers utilisés dans les fiches et les statistiques, puis mets-les à jour si besoin.</p>
+      </div>
+      <div class="inline" style="gap:8px;">
+        <a class="btn" href="{{ url_for('quartiers.carte') }}">🗺️ Carte des habitants</a>
+        <a class="btn" href="{{ url_for('quartiers.stats') }}">📊 Voir les statistiques</a>
+      </div>
+    </div>
+  </div>
+
+  {% if can('quartiers:edit') %}
+  <div class="card">
+    <h2>Ajouter une ville ou un quartier</h2>
+    <form method="post" action="{{ url_for('quartiers.create') }}" class="stack" style="gap:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <input class="in" name="ville" placeholder="Ville" style="min-width:180px;" required>
+        <input class="in" name="nom" placeholder="Nom du quartier" style="min-width:220px;" required>
+        <label class="inline" style="gap:6px; align-items:center;">
+          <input type="checkbox" name="is_qpv" value="1">
+          <span>QPV {{ ux.tooltip("Quartier Prioritaire de la politique de la Ville : zone classée par l'État ouvrant droit à des financements spécifiques. Cochez si le quartier figure sur la liste officielle des QPV. C'est un indicateur clé pour la CAF et la Ville.") }}</span>
+        </label>
+      </div>
+      <textarea class="in" name="description" placeholder="Description (optionnel)" rows="3"></textarea>
+      <div>
+        <button class="btn" type="submit">➕ Ajouter</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Ville</th>
+            <th>Quartier</th>
+            <th>QPV</th>
+            <th>Description</th>
+            <th style="width:220px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in quartiers %}
+            <tr>
+              <td>{{ q.ville }}</td>
+              <td><strong>{{ q.nom }}</strong></td>
+              <td>{% if q.is_qpv %}<span class="tag">QPV</span>{% else %}—{% endif %}</td>
+              <td class="muted">{{ q.description or "—" }}</td>
+              <td>
+                <div class="inline" style="gap:8px; flex-wrap:wrap;">
+                  {% if can('quartiers:edit') %}
+                    <a class="btn" href="{{ url_for('quartiers.edit', quartier_id=q.id) }}">Voir / modifier</a>
+                  {% endif %}
+                  {% if can('quartiers:delete') %}
+                    <form method="post" action="{{ url_for('quartiers.delete', quartier_id=q.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce quartier ?');">🗑️ Supprimer</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if quartiers|length == 0 %}
+            <tr><td colspan="5" class="muted">Aucun quartier enregistré.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Liste des quartiers (vue compacte)">
+      {% for q in quartiers %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ q.nom }}</strong>
+            <span class="chip">{{ q.ville }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>QPV</dt><dd>{% if q.is_qpv %}<span class="tag">QPV</span>{% else %}—{% endif %}</dd></div>
+            <div><dt>Description</dt><dd class="muted">{{ q.description or "—" }}</dd></div>
+          </dl>
+          <div class="inline-actions">
+            {% if can('quartiers:edit') %}
+              <a class="btn" href="{{ url_for('quartiers.edit', quartier_id=q.id) }}">Voir / modifier</a>
+            {% endif %}
+            {% if can('quartiers:delete') %}
+              <form method="post" action="{{ url_for('quartiers.delete', quartier_id=q.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce quartier ?');">🗑️ Supprimer</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        <div class="quick-empty"><strong>Aucun quartier enregistré.</strong>Ajoutez une ville/quartier pour enrichir vos statistiques.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

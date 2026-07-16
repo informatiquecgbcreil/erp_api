@@ -1,0 +1,341 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>Modifier une dépense</h1>
+    <p>{% if sub %}<strong>{{ sub.nom }}</strong>{% else %}<strong>Source à compléter</strong>{% endif %}{% if ligne %} · Ligne : {{ ligne.compte }} · {{ ligne.libelle }}{% endif %}</p>
+
+    <div class="kpi">
+      <div class="box"><div class="muted">Réalisé sur la ligne</div><div class="v">{{ "%.2f"|format(alloue) }}€</div></div>
+      <div class="box"><div class="muted">Engagé sur la ligne</div><div class="v">{{ "%.2f"|format(engage) }}€</div></div>
+      <div class="box"><div class="muted">Reste sur la ligne</div><div class="v">{{ "%.2f"|format(reste) }}€</div></div>
+      <div class="box"><div class="muted">Montant de cette dépense</div><div class="v">{{ "%.2f"|format(dep.montant or 0) }}€</div></div>
+      <div class="box"><div class="muted">Total affecté</div><div class="v">{{ "%.2f"|format(total_affecte or 0) }}€</div></div>
+      <div class="box"><div class="muted">Reste à affecter</div><div class="v">{{ "%.2f"|format(reste_a_affecter or 0) }}€</div></div>
+      <div class="box"><div class="muted">Type</div><div class="v">{{ dep.type_depense }}</div></div>
+      <div class="box"><div class="muted">Date</div><div class="v">{{ dep.date_paiement or "-" }}</div></div>
+    </div>
+  </div>
+
+
+
+  <div class="card">
+    <h2>Répartition / imputation multi-financeurs</h2>
+    <p class="muted">La dépense reste unique, mais tu peux la répartir entre plusieurs enveloppes : CAF, Politique de la ville, FONJEP, fonds propres, etc.</p>
+
+    <div class="kpi">
+      <div class="box"><div class="muted">Montant dépense</div><div class="v">{{ "%.2f"|format(dep.montant or 0) }}€</div></div>
+      <div class="box"><div class="muted">Total affecté</div><div class="v">{{ "%.2f"|format(total_affecte or 0) }}€</div></div>
+      <div class="box"><div class="muted">Reste à affecter</div><div class="v">{{ "%.2f"|format(reste_a_affecter or 0) }}€</div></div>
+      <div class="box"><div class="muted">Statut</div><div class="v">{{ dep.statut_affectation }}</div></div>
+    </div>
+
+    <div class="tablewrap" style="margin-top:14px">
+      <table>
+        <thead><tr><th>Source</th><th>Ligne</th><th>Montant</th><th>Commentaire</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for a in affectations %}
+          <tr>
+            <td><strong>{{ a.source_label }}</strong><br><span class="muted">{{ a.source_type }}</span></td>
+            <td>{{ a.ligne_label }}</td>
+            <td colspan="2">
+              <form method="POST" class="inline" style="display:grid;grid-template-columns:140px 1fr auto;gap:8px;align-items:end;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="update_affectation">
+                <input type="hidden" name="affectation_id" value="{{ a.id }}">
+                <label>Montant<input name="montant" type="text" inputmode="decimal" data-money-input value="{{ "%.2f"|format(a.montant or 0) }}"></label>
+                <label>Commentaire<input name="commentaire" value="{{ a.commentaire or "" }}" placeholder="Facultatif"></label>
+                <button class="btn" type="submit">Modifier</button>
+              </form>
+            </td>
+            <td>
+              <form method="POST" onsubmit="return confirm('Retirer cette affectation ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete_affectation">
+                <input type="hidden" name="affectation_id" value="{{ a.id }}">
+                <button class="btn danger" type="submit">Retirer</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5"><div class="quick-empty">Aucune affectation. Cette dépense n’est encore imputée à aucune enveloppe.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="quick-info" style="margin-top:12px">
+      <strong>Mode split :</strong> si le total est déjà affecté à 100%, tu peux quand même ajouter une nouvelle source.
+      L’application réduira automatiquement l’affectation existante pour garder le total égal au montant de la dépense.
+      Exemple : dépense 400€ affectée à CAF 400€ → ajouter QPV 100€ donnera CAF 300€ + QPV 100€.
+    </div>
+
+    <div class="spacer"></div>
+    <h3>Ajouter une affectation complémentaire</h3>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add_affectation">
+      <div class="row two">
+        <div>
+          <label>Source</label>
+          <select name="source_type" id="affSourceType">
+            <option value="subvention">Subvention / financeur</option>
+            <option value="fonds_propres">Fonds propres / autofinancement</option>
+          </select>
+        </div>
+        <div><label>Montant à affecter</label><input name="montant" type="text" inputmode="decimal" data-money-input placeholder="Ex. 100"></div>
+      </div>
+
+      <div class="spacer"></div>
+      <div id="affLineBlock">
+        <label>Ligne de charge à imputer</label>
+        <select name="ligne_budget_id">
+          <option value="">Choisir une ligne</option>
+          {% for l in available_lines %}
+            <option value="{{ l.id }}">{{ l.source_sub.annee_exercice }} · {{ l.source_sub.nom }} — {{ l.compte }} {{ l.libelle }} · reste {{ "%.2f"|format(l.reste or 0) }}€</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div id="affFondsBlock" style="display:none">
+        <label>Libellé source</label>
+        <input name="libelle_source" value="Fonds propres">
+      </div>
+
+      <div class="spacer"></div>
+      <label>Commentaire</label>
+      <input name="commentaire" placeholder="Facultatif">
+      <div class="spacer"></div>
+      <button class="btn ok" type="submit">Ajouter l’affectation</button>
+    </form>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>Informations de la dépense</h2>
+
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="update">
+
+        <div class="row two">
+          <div><label>Libellé</label><input name="libelle" value="{{ dep.libelle }}"></div>
+          <div><label>Montant (€)</label><input name="montant" type="text" inputmode="decimal" autocomplete="off" value="{{ "%.2f"|format(dep.montant or 0) }}" data-money-input></div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="row two">
+          <div>
+            <label>Type de dépense</label>
+            <select name="type_depense">
+              {% for t in ["Fonctionnement","Investissement","Prestations","Déplacements","Autre"] %}
+                <option {% if dep.type_depense==t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div><label>Date de paiement</label><input name="date_paiement" type="date" value="{{ dep.date_paiement }}"></div>
+        </div>
+
+        <div class="spacer"></div>
+        <button class="btn ok" type="submit">Enregistrer les modifications</button>
+      </form>
+
+      <div class="spacer"></div>
+
+      <div class="inline">
+        <a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}">Retour au pilotage</a>
+        <form method="POST" action="{{ url_for('budget.depense_delete', depense_id=dep.id) }}" onsubmit="return confirm('Supprimer cette dépense ? Cette action est irréversible.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn danger" type="submit">Supprimer la dépense</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Justificatifs</h2>
+      <p class="muted">Ajoutez un justificatif si nécessaire. Formats acceptés : PDF, images et documents bureautiques.</p>
+
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="upload_doc">
+        <input type="file" name="document" required>
+        <div class="spacer"></div>
+        <button class="btn ok" type="submit">Ajouter le justificatif</button>
+      </form>
+
+      <div class="spacer"></div>
+
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Fichier</th><th>Date</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for doc in dep.documents %}
+              <tr>
+                <td>{{ doc.original_name }}</td>
+                <td class="muted">{{ doc.uploaded_at }}</td>
+                <td class="inline">
+                  <a class="btn" href="{{ url_for('budget.depense_doc_download', doc_id=doc.id) }}">Télécharger</a>
+                  <form method="POST" action="{{ url_for('budget.depense_doc_delete', doc_id=doc.id) }}" onsubmit="return confirm('Supprimer ce justificatif ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn danger" type="submit">Supprimer</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            {% if dep.documents|length == 0 %}
+              <tr><td colspan="3"><div class="quick-empty">Aucun justificatif n’est enregistré pour cette dépense.</div></td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Inventaire (optionnel)</h2>
+    <p class="muted">Associez cette dépense à une entrée d’inventaire existante ou créez une nouvelle fiche matériel.</p>
+
+    {% if inventaire_items %}
+      <div class="tablewrap" style="margin-bottom:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>ID interne</th>
+              <th>Désignation</th>
+              <th>État</th>
+              <th>Localisation</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in inventaire_items %}
+              <tr>
+                <td><strong>{{ it.id_interne }}</strong></td>
+                <td>{{ it.designation }}</td>
+                <td><span class="badge">{{ it.etat }}</span></td>
+                <td>{{ it.localisation or "—" }}</td>
+                <td style="text-align:right">
+                  <a class="btn" href="{{ url_for('inventaire_materiel.edit_item', item_id=it.id) }}">Ouvrir</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    {{ ux.helper('La création d’une fiche d’inventaire reprend par défaut le libellé et le montant de la dépense. Ajustez ces informations si nécessaire avant validation.') }}
+
+    <form method="POST" action="{{ url_for('inventaire_materiel.create_from_depense', depense_id=dep.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="grid two">
+        <div>
+          <label>Secteur</label>
+          <input name="secteur" value="{{ inventaire_secteur }}" {% if not can('scope:all_secteurs') %}readonly{% endif %}>
+        </div>
+        <div>
+          <label>Date d’entrée</label>
+          <input type="date" name="date_entree" value="{{ dep.date_paiement or '' }}">
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div>
+          <label>Désignation</label>
+          <input name="designation" placeholder="Ex. : ordinateur portable" value="{{ dep.libelle }}" required>
+        </div>
+        <div class="grid two" style="grid-template-columns:1fr 1fr; gap:10px">
+          <div>
+            <label>Quantité</label>
+            <input type="number" name="quantite" min="1" value="1">
+          </div>
+          <div>
+            <label>État</label>
+            <select name="etat">
+              {% for v in ["OK","A réparer","HS","Donné"] %}
+                <option value="{{ v }}">{{ v }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div>
+          <label>Catégorie</label>
+          <input name="categorie" placeholder="Informatique, mobilier…">
+        </div>
+        <div>
+          <label>Localisation</label>
+          <input name="localisation" placeholder="Salle, bureau…">
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div>
+          <label>Valeur unitaire (€)</label>
+          <input type="text" inputmode="decimal" autocomplete="off" name="valeur_unitaire" value="{{ "%.2f"|format(dep.montant or 0) if dep.montant else "" }}" data-money-input>
+        </div>
+        <div>
+          <label>Notes</label>
+          <input name="notes" placeholder="Garantie, prêt, contexte…">
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+      <button class="btn ok" type="submit">Créer l’entrée d’inventaire</button>
+    </form>
+  </div>
+</div>
+
+
+<script>
+(function(){
+  const type = document.getElementById('affSourceType');
+  const line = document.getElementById('affLineBlock');
+  const fonds = document.getElementById('affFondsBlock');
+  function refreshAffectationSource(){
+    if(!type || !line || !fonds){ return; }
+    const isFonds = type.value === 'fonds_propres';
+    line.style.display = isFonds ? 'none' : 'block';
+    fonds.style.display = isFonds ? 'block' : 'none';
+  }
+  if(type){
+    type.addEventListener('change', refreshAffectationSource);
+    refreshAffectationSource();
+  }
+})();
+</script>
+
+<script>
+(function(){
+  function normalizeMoneyInput(el){
+    if(!el || !el.value){ return; }
+    el.value = el.value
+      .replace(/\u00a0/g, '')
+      .replace(/\s+/g, '')
+      .replace(/€/g, '')
+      .replace(',', '.');
+  }
+
+  document.querySelectorAll('[data-money-input]').forEach(function(input){
+    input.addEventListener('focus', function(){
+      setTimeout(function(){ input.select(); }, 0);
+    });
+  });
+
+  document.querySelectorAll('form').forEach(function(form){
+    form.addEventListener('submit', function(){
+      form.querySelectorAll('[data-money-input]').forEach(normalizeMoneyInput);
+    });
+  });
+})();
+</script>
+
+{% endblock %}

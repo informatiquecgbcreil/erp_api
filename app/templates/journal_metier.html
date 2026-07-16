@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <section class="card">
+    <div class="inline" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div>
+        <h1>Journal métier transversal</h1>
+        <p class="muted">Historique lisible des actions à enjeu : modifications, exports, suppressions, dossiers financeurs et changements de droits.</p>
+      </div>
+      <a class="btn" href="{{ url_for('admin.journal_audit') }}">Vue technique</a>
+    </div>
+    <form method="get" class="inline" style="gap:8px; margin-top:10px; flex-wrap:wrap;">
+      <select class="in" name="action"><option value="">Toutes les actions</option>{% for a in actions %}<option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
+      <input class="in" name="cible" value="{{ cible or '' }}" placeholder="chercher une cible">
+      <button class="btn" type="submit">Filtrer</button>
+    </form>
+  </section>
+  <section class="card">
+    {% if entries %}
+      <div class="tablewrap"><table><thead><tr><th>Quand</th><th>Qui</th><th>Action</th><th>Objet</th><th>Détails</th></tr></thead><tbody>
+      {% for e in entries %}<tr><td>{{ e.created_at.strftime('%d/%m/%Y %H:%M') if e.created_at else '—' }}</td><td>{{ e.user_email or 'Système' }}</td><td><span class="status-badge status-info">{{ e.action }}</span></td><td>{{ e.cible or '—' }}</td><td class="muted" style="font-size:12px;max-width:420px;overflow-wrap:anywhere;">{{ e.details or '' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% else %}<p class="muted">Aucune action tracée pour ce filtre.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

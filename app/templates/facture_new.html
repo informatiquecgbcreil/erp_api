@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div class="page-shell long-form-shell stack">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1 class="page-title">Nouvelle facture</h1>
+        <p class="page-subtitle">Crée la facture, puis ajoute ses lignes. Le fichier justificatif reste optionnel à cette étape.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="btn" href="{{ url_for('inventaire.factures_list') }}">⬅ Retour aux factures</a>
+      </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="section-card">
+        <h2 class="section-title">Informations générales</h2>
+        <div class="form-grid-2">
+          {% if not is_resp %}
+            <div class="field-stack grow-2">
+              <label>Secteur principal</label>
+              <input name="secteur_principal" placeholder="ex : Numérique" value="{{ secteur_default }}" required>
+              <div class="help-inline">Pour les responsables secteur, ce champ est déterminé automatiquement.</div>
+            </div>
+          {% else %}
+            <input type="hidden" name="secteur_principal" value="{{ secteur_default }}">
+          {% endif %}
+
+          <div class="field-stack">
+            <label>Date de facture</label>
+            <input type="date" name="date_facture">
+          </div>
+
+          <div class="field-stack">
+            <label>Fournisseur</label>
+            <input name="fournisseur" placeholder="ex : LDLC / Amazon / Boulanger">
+          </div>
+
+          <div class="field-stack">
+            <label>Référence facture</label>
+            <input name="reference_facture" placeholder="ex : FA-2026-00123">
+          </div>
+
+          <div class="field-stack grow-2">
+            <label>Fichier justificatif (pdf / image)</label>
+            <input type="file" name="facture_file" accept=".pdf,.png,.jpg,.jpeg,.webp">
+            <div class="help-inline">Optionnel. Tu pourras l’ajouter plus tard si nécessaire.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card compact">
+        <div class="hero-actions">
+          <button class="btn ok" type="submit">Créer la facture</button>
+          <a class="btn" href="{{ url_for('inventaire.factures_list') }}">Annuler</a>
+        </div>
+      </div>
+    </form>
+  </div>
+{% endblock %}

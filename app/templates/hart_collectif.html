@@ -1,0 +1,175 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  /* --- Scène : un vrai escalier, la foule debout sur les marches --- */
+  .hartc-scene { border-radius:16px; padding:26px 18px 0 18px; overflow-x:auto;
+                 background: linear-gradient(180deg, #bfe3f5 0%, #e6f4fb 55%, #f6fbe9 100%); position:relative; }
+  html[data-theme="dark"] .hartc-scene { background: linear-gradient(180deg, #1d3347 0%, #24405a 55%, #29423a 100%); }
+  .hartc-soleil { position:absolute; top:12px; left:16px; font-size:34px; filter:drop-shadow(0 0 12px rgba(255,200,0,.55)); }
+  .hartc-steps { display:flex; align-items:flex-end; gap:5px; min-width:760px; position:relative; z-index:1; }
+  .hartc-step { flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+                text-decoration:none; color:inherit; }
+  .hartc-crowd { display:flex; flex-wrap:wrap-reverse; justify-content:center; align-content:flex-end; gap:0;
+                 min-height:52px; max-width:96px; font-size:17px; letter-spacing:-4px; line-height:1.05;
+                 filter:drop-shadow(0 2px 2px rgba(0,0,0,.25)); margin-bottom:-2px; }
+  .hartc-crowd .plus { letter-spacing:0; font-size:12px; font-weight:900; align-self:center;
+                       background:#fff; color:#333; border-radius:999px; padding:0 6px; margin-left:3px; }
+  .hartc-count { font-weight:900; font-size:15px; margin:2px 0; display:flex; gap:4px; align-items:center; }
+  .hartc-count .delta-up { color:#1e7d38; font-size:12px; } .hartc-count .delta-down { color:#c62828; font-size:12px; }
+  html[data-theme="dark"] .hartc-count { color:#fff; }
+  .hartc-block { width:100%; border-radius:12px 12px 0 0; color:#fff; font-weight:900; text-align:center;
+                 padding-top:5px; box-shadow: inset 0 -8px 0 rgba(0,0,0,.14), 0 -2px 6px rgba(0,0,0,.12); position:relative; }
+  .hartc-step:hover .hartc-block { filter:brightness(1.1); outline:3px solid #fff; outline-offset:-5px; }
+  .hartc-step.is-open .hartc-block { outline:3px dashed #fff; outline-offset:-5px; }
+  .hartc-step:last-child .hartc-block::after { content:"🚩"; position:absolute; top:-20px; right:6px; font-size:18px; }
+  .hartc-emoji { font-size:21px; display:block; }
+  .hartc-labels { display:flex; gap:5px; min-width:760px; margin-top:0; }
+  .hartc-label { flex:1 1 0; text-align:center; font-size:10.5px; font-weight:700; line-height:1.25; padding:6px 2px 8px 2px; }
+  .hartc-zones { display:flex; gap:5px; min-width:760px; margin-top:2px; padding-bottom:12px; }
+  .hartc-zone { text-align:center; font-weight:800; font-size:11px; letter-spacing:.05em; padding:5px 4px;
+                border-radius:8px; text-transform:uppercase; }
+  .hartc-zone.non { flex:3 1 0; background:rgba(120,120,120,.18); color:#666; }
+  .hartc-zone.oui { flex:5 1 0; background:rgba(46,139,100,.18); color:#1e6b4a; }
+  html[data-theme="dark"] .hartc-zone.non { color:#bbb; } html[data-theme="dark"] .hartc-zone.oui { color:#8fd8b5; }
+  .hart-num { width:40px; height:40px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+              font-weight:900; color:#fff; font-size:19px; }
+  .hart-detail-row { display:flex; justify-content:space-between; gap:8px; align-items:center;
+                     padding:6px 8px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  @media print { .no-print { display:none !important; } .hartc-scene { background:#fff; } }
+</style>
+
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🪜 L'escalier de la participation <span class="muted" style="font-weight:400; font-size:15px;">(échelle de Hart)</span></h1>
+      <p class="page-subtitle">
+        {% if stats.secteur %}Secteur <strong>{{ stats.secteur }}</strong>{% else %}Tous secteurs{% endif %}
+        · habitants ayant au moins une participation du {{ stats.date_from.strftime('%d/%m/%Y') }} au {{ stats.date_to.strftime('%d/%m/%Y') }}.
+        Niveau retenu : dernière évaluation connue à la fin de période (instant T).
+        <br><strong>L'échelle de Hart n'est pas calculée automatiquement</strong> : c'est une évaluation humaine,
+        que l'application propose au bon moment à partir du parcours de participation (première venue, puis toutes les {{ seuil_seances }} séances).
+      </p>
+    </div>
+    <div class="hero-actions no-print">
+      <button class="btn" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <section class="section-card no-print">
+    <form method="get" class="filters-grid" style="align-items:end;">
+      {% if portee_globale %}
+      <label class="field-stack"><span>Secteur</span>
+        <select class="in" name="secteur">
+          <option value="">Tous</option>
+          {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      <label class="field-stack"><span>Année</span><input class="in" type="number" name="annee" min="2000" max="2100" value="{{ annee or '' }}" placeholder="{{ date_from.year }}"></label>
+      <label class="field-stack"><span>ou du</span><input class="in" type="date" name="from" value="{{ request.args.get('from','') }}"></label>
+      <label class="field-stack"><span>au</span><input class="in" type="date" name="to" value="{{ request.args.get('to','') }}"></label>
+      <label class="ui-checkline" style="align-self:center;"><input type="checkbox" name="comparer" value="1" {% if comparer %}checked{% endif %}> Comparer (N-1 par défaut)</label>
+      {% if comparer %}
+        <label class="field-stack"><span>Comparé : du</span><input class="in" type="date" name="cmp_from" value="{{ request.args.get('cmp_from','') }}"></label>
+        <label class="field-stack"><span>au</span><input class="in" type="date" name="cmp_to" value="{{ request.args.get('cmp_to','') }}"></label>
+      {% endif %}
+      <button class="btn ok" type="submit">Afficher</button>
+    </form>
+  </section>
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Habitants actifs</div><strong>{{ stats.total_actifs }}</strong></div>
+    <div class="kpi-box"><div class="muted">Positionnés</div><strong>{{ stats.total_evalues }}</strong>
+      {% if cmp_ctx and cmp_ctx.delta_evalues %}<span class="{{ 'delta-up' if cmp_ctx.delta_evalues > 0 else 'delta-down' }}">({{ '%+d'|format(cmp_ctx.delta_evalues) }})</span>{% endif %}</div>
+    <div class="kpi-box"><div class="muted">Niveau moyen</div>
+      <strong>{% if stats.moyenne is not none %}{{ stats.moyenne }}/8{% else %}—{% endif %}</strong>
+      {% if cmp_ctx and cmp_ctx.delta_moyenne is not none %}
+        <span class="{{ 'delta-up' if cmp_ctx.delta_moyenne >= 0 else 'delta-down' }}" style="font-size:13px;">
+          {{ '%+.2f'|format(cmp_ctx.delta_moyenne) }} vs période comparée</span>
+      {% endif %}
+    </div>
+    <div class="kpi-box"><div class="muted">En participation effective (≥ 4)</div>
+      <strong>{% if stats.taux_participation is not none %}{{ stats.taux_participation }}%{% else %}—{% endif %}</strong></div>
+  </div>
+
+  <section class="section-card">
+    <h2 class="section-title">La montée des marches</h2>
+    <div class="hartc-scene">
+      <span class="hartc-soleil" aria-hidden="true">☀️</span>
+      <div class="hartc-steps">
+        {% for d in stats.detail %}
+          <a class="hartc-step {% if niveau_detail == d.niveau %}is-open{% endif %}"
+             href="{{ url_for('main.hart_collectif', **dict(request.args, niveau=d.niveau)) }}#detail"
+             title="Échelle de Hart, barreau {{ d.niveau }} : {{ d.libelle }} — {{ d.description }} ({{ d.count }} habitant(s))">
+            <div class="hartc-crowd" aria-hidden="true">
+              {%- if d.count -%}
+                {%- for _ in range([d.count, 14] | min) -%}🧍{%- endfor -%}
+                {%- if d.count > 14 %}<span class="plus">+{{ d.count - 14 }}</span>{% endif -%}
+              {%- endif -%}
+            </div>
+            <div class="hartc-count">{{ d.count }}
+              {% if cmp_ctx %}
+                {% set dv = cmp_ctx.deltas.get(d.niveau, 0) %}
+                {% if dv > 0 %}<span class="delta-up">▲{{ dv }}</span>{% elif dv < 0 %}<span class="delta-down">▼{{ -dv }}</span>{% endif %}
+              {% endif %}
+            </div>
+            <div class="hartc-block" style="background: {{ d.couleur }}; height: {{ 46 + d.niveau * 13 }}px;">
+              <span class="hartc-emoji">{{ d.emoji }}</span>{{ d.niveau }}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+      <div class="hartc-labels">
+        {% for d in stats.detail %}
+          <div class="hartc-label" title="{{ d.libelle }}">« {{ d.habitant }} »</div>
+        {% endfor %}
+      </div>
+      <div class="hartc-zones">
+        <div class="hartc-zone non">NON-PARTICIPATION</div>
+        <div class="hartc-zone oui">PARTICIPATION EFFECTIVE ↑</div>
+      </div>
+    </div>
+    <p class="muted no-print" style="font-size:12px; margin-top:8px;">Clique sur une marche pour voir qui s'y trouve. Chaque silhouette 🧍 est un habitant positionné sur la marche (dernier positionnement connu sur la période).</p>
+    {% if stats.non_evalues %}
+      <div class="callout-soft" style="margin-top:14px;">
+        <strong>{{ stats.non_evalues|length }} habitant(s) actifs jamais positionnés.</strong>
+        L'évaluation initiale se fait à la première venue (bandeau sur l'émargement), puis toutes les {{ seuil_seances }} séances.
+        <details><summary>Voir la liste</summary>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
+            {% for p in stats.non_evalues %}
+              <a class="pill" href="{{ url_for('pedagogie.participant_passeport', participant_id=p.id, tab='participation') }}">{{ p.prenom }} {{ p.nom }}</a>
+            {% endfor %}
+          </div>
+        </details>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if niveau_detail %}
+    {% set d = (stats.detail | selectattr('niveau', 'equalto', niveau_detail) | list | first) %}
+    {% if d %}
+    <section class="section-card" id="detail">
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <h2 style="margin:0;"><span class="hart-num" style="display:inline-flex; background:{{ d.couleur }};">{{ d.emoji }}</span> Marche {{ d.niveau }} · « {{ d.habitant }} » — {{ d.count }} habitant(s)</h2>
+          <p class="muted">Échelle de Hart : {{ d.libelle }} — {{ d.description }}</p>
+        </div>
+        <a class="btn no-print" href="{{ url_for('main.hart_collectif', **dict(request.args, niveau=None)) }}">Fermer le détail</a>
+      </div>
+      {% for row in d.evaluations %}
+        <div class="hart-detail-row">
+          <div>
+            <a href="{{ url_for('pedagogie.participant_passeport', participant_id=row.participant.id, tab='participation') }}"><strong>{{ row.participant.prenom }} {{ row.participant.nom }}</strong></a>
+            <span class="muted">— {{ row.evaluation.type_label }} · {{ row.evaluation.date_evaluation.strftime('%d/%m/%Y') }}{% if row.evaluation.secteur %} · {{ row.evaluation.secteur }}{% endif %}</span>
+          </div>
+          {% if row.evaluation.temoignage %}<em class="muted">« {{ row.evaluation.temoignage }} »</em>{% endif %}
+          <a class="btn no-print" href="{{ url_for('pedagogie.participant_passeport', participant_id=row.participant.id, tab='participation') }}">Passeport</a>
+        </div>
+      {% else %}
+        <div class="quick-empty"><strong>Aucun habitant à cet étage sur la période.</strong></div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

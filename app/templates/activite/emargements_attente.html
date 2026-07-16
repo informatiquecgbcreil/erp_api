@@ -1,0 +1,80 @@
+{% extends "layout.html" %}
+{% block title %}Émargements en attente{% endblock %}
+{% block body %}
+<style>
+  .attente-groupe{ margin-top:16px; }
+  .attente-groupe h2{ margin:0 0 8px; font-size:1.05rem; }
+  .attente-liste{ display:flex; flex-direction:column; gap:6px; }
+  .attente-item{
+    display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center;
+    border:1px solid var(--border, #e3e6ef); border-radius:10px;
+    padding:8px 12px; background:var(--panel, #fff);
+  }
+  .attente-item .date{ font-weight:700; min-width:92px; }
+  .attente-retard{
+    font-size:.78rem; font-weight:600; padding:2px 9px; border-radius:999px;
+    background:rgba(255,170,40,.18);
+  }
+  .attente-retard[data-grave="1"]{ background:rgba(255,90,80,.18); }
+  .attente-item .actions{ margin-left:auto; display:flex; gap:6px; align-items:center; }
+  .attente-item .actions form{ margin:0; }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">⏳ Émargements en attente</h1>
+      <p class="ui-subtitle page-subtitle">
+        Les séances passées où aucune présence n'est saisie : soit la feuille n'est pas revenue
+        (relance l'animateur), soit elle attend d'être saisie (grille de rattrapage).
+      </p>
+    </div>
+    <div class="ui-actions inline-actions">
+      <a class="btn" href="{{ url_for('activite.saisie_grille') }}">🗓️ Saisie en grille</a>
+      <a class="btn" href="{{ url_for('activite.index') }}">Ateliers</a>
+    </div>
+  </section>
+
+  {% if total %}
+    <div class="helper-banner" style="margin-top:10px;">
+      <strong>{{ total }} séance{{ 's' if total > 1 else '' }} sans présence</strong>
+      <span class="muted">Sur les 12 derniers mois. Une séance qui n'a réellement accueilli personne peut être annulée depuis sa page.</span>
+    </div>
+
+    {% for g in groupes %}
+      <section class="attente-groupe">
+        <h2>{{ g.atelier.nom if g.atelier else 'Atelier' }} <span class="muted">· {{ g.atelier.secteur if g.atelier else '' }} · {{ g.seances|length }} séance{{ 's' if g.seances|length > 1 else '' }}</span></h2>
+        <div class="attente-liste">
+          {% for item in g.seances %}
+            <div class="attente-item">
+              <span class="date">{{ item.date.strftime('%d/%m/%Y') }}</span>
+              <span class="attente-retard" data-grave="{{ 1 if item.retard_jours > 30 else 0 }}">
+                en retard de {{ item.retard_jours }} jour{{ 's' if item.retard_jours > 1 else '' }}
+              </span>
+              <span class="actions">
+                <a class="btn" href="{{ url_for('activite.saisie_grille', atelier_id=item.session.atelier_id, mois=item.date.strftime('%Y-%m')) }}">Saisir (grille)</a>
+                <a class="btn" href="{{ url_for('activite.emargement', session_id=item.session.id) }}">Feuille détaillée</a>
+                {% if can('emargement:edit') %}
+                  {% if item.relance_posee %}
+                    <span class="muted" title="Un rappel est déjà dans « À traiter »">🔔 relancé</span>
+                  {% else %}
+                    <form method="post" action="{{ url_for('activite.emargements_relancer') }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="session_id" value="{{ item.session.id }}">
+                      <button class="btn" type="submit" title="Pose un rappel « feuille à récupérer » dans À traiter">🔔 Relancer</button>
+                    </form>
+                  {% endif %}
+                {% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+  {% else %}
+    <div class="quick-empty" style="margin-top:14px;">
+      <strong>Tout est à jour 🎉</strong>
+      Aucune séance passée sans présence sur les 12 derniers mois.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

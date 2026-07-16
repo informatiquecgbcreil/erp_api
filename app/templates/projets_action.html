@@ -1,0 +1,257 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .project-action-page { gap:18px; }
+  .project-action-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .project-action-grid { display:grid; grid-template-columns:minmax(0, 1.25fr) minmax(300px, .75fr); gap:14px; align-items:start; }
+  .project-action-form-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+  .project-action-form-grid .wide { grid-column:1 / -1; }
+  .project-action-read { display:grid; grid-template-columns:minmax(0, 1fr) minmax(280px, .7fr); gap:14px; align-items:start; }
+  .project-action-panel { border:1px solid rgba(15,23,42,.12); border-radius:8px; padding:14px; background:#fff; }
+  .project-action-panel h2 { margin-top:0; }
+  .project-action-panel--wide { grid-column:1 / -1; }
+  .project-action-facts { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
+  .project-action-fact { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:10px 12px; background:rgba(15,23,42,.03); }
+  .project-action-fact__label { color:#64748b; font-size:12px; margin-bottom:3px; }
+  .project-action-status { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:999px; font-size:12px; background:rgba(15,23,42,.08); color:#334155; }
+  .project-action-status--ok { background:rgba(34,197,94,.14); color:#166534; }
+  .project-action-status--info { background:rgba(59,130,246,.13); color:#1d4ed8; }
+  .project-action-status--warn { background:rgba(245,158,11,.16); color:#92400e; }
+  .project-action-status--bad { background:rgba(239,68,68,.13); color:#991b1b; }
+  .project-action-score { font-size:38px; font-weight:800; line-height:1; }
+  .project-action-alerts { display:grid; gap:8px; margin-top:12px; }
+  .project-action-alert { border:1px solid rgba(15,23,42,.10); border-left:4px solid #94a3b8; border-radius:8px; padding:10px 12px; background:#fff; }
+  .project-action-alert--ok { border-left-color:#22c55e; }
+  .project-action-alert--info { border-left-color:#3b82f6; }
+  .project-action-alert--warn { border-left-color:#f59e0b; }
+  .project-action-alert--bad { border-left-color:#ef4444; }
+  .project-action-alert__title { font-weight:800; margin-bottom:3px; }
+  .project-action-narrative { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+  .project-action-narrative .wide { grid-column:1 / -1; }
+  .project-action-text { white-space:pre-wrap; margin:4px 0 0; }
+  .project-action-linked { border:1px solid rgba(15,23,42,.12); border-radius:8px; padding:14px; background:rgba(15,23,42,.03); margin-top:12px; }
+  .project-action-checks { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; }
+  .project-action-check { display:flex; gap:10px; align-items:flex-start; border:1px solid rgba(15,23,42,.12); border-radius:8px; padding:10px 12px; background:#fff; }
+  .project-action-check input { margin-top:3px; }
+  @media (max-width: 980px) {
+    .project-action-grid { grid-template-columns:1fr; }
+    .project-action-form-grid { grid-template-columns:1fr; }
+    .project-action-read { grid-template-columns:1fr; }
+    .project-action-narrative { grid-template-columns:1fr; }
+  }
+  @media print {
+    body { background:#fff !important; }
+    .topbar, .flash, .project-action-actions, .no-print, form { display:none !important; }
+    .monster-shell, .wide-shell { max-width:none !important; padding:0 !important; }
+    .monster-card, .monster-hero, .project-action-panel { box-shadow:none !important; border:1px solid #ddd !important; break-inside:avoid; }
+  }
+</style>
+
+<div class="monster-shell wide-shell project-action-page">
+  <div class="monster-hero">
+    <div class="monster-head">
+      <div>
+        <h1>Fiche action</h1>
+        <p><strong>{{ action.titre }}</strong> · {{ projet.nom }}</p>
+      </div>
+      <div class="project-action-actions">
+        <form method="get" class="inline no-print">
+          <label class="field-stack" style="margin:0;">Année
+            <select class="in" name="year" onchange="this.form.submit()">
+              {% for y in years %}
+                <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </form>
+        <a class="btn ok" href="{{ url_for('projets.projet_action_fiche_document', projet_id=projet.id, action_id=action.id, year=year) }}">Fiche prête</a>
+        <a class="btn" href="{{ url_for('projets.projet_action_fiche_editer', projet_id=projet.id, action_id=action.id) }}">Fiche action (format imposé)</a>
+        <a class="btn" href="{{ url_for('projets.projet_synthese', projet_id=projet.id, year=year) }}">Retour synthèse</a>
+        <a class="btn" href="{{ url_for('statsimpact.dashboard', secteur=projet.secteur) }}{% for atelier_id in action_atelier_ids %}&atelier_ids={{ atelier_id }}{% endfor %}&date_from={{ period_start }}&date_to={{ period_end }}">Ouvrir les résultats</a>
+        <button class="btn no-print" type="button" onclick="window.print()">Imprimer</button>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="kpi-grid-flex">
+      <div class="box"><div class="muted">Ateliers liés</div><div class="v">{{ action_atelier_ids|length }}</div></div>
+      <div class="box"><div class="muted">Participants</div><div class="v">{{ stats.kpi.uniques or 0 }}</div></div>
+      <div class="box"><div class="muted">Présences</div><div class="v">{{ stats.kpi.presences or 0 }}</div></div>
+      <div class="box"><div class="muted">Séances</div><div class="v">{{ stats.kpi.sessions or 0 }}</div></div>
+      <div class="box"><div class="muted">QPV</div><div class="v">{{ stats.demo.qpv.qpv or 0 }}</div></div>
+      <div class="box"><div class="muted">Période stats</div><div class="v" style="font-size:16px;">{{ period_start.strftime("%d/%m/%Y") }} → {{ period_end.strftime("%d/%m/%Y") }}</div></div>
+    </div>
+  </div>
+
+  <div class="project-action-read">
+    <section class="project-action-panel">
+      <h2>Repères de l'action</h2>
+      <div class="project-action-facts">
+        <div class="project-action-fact"><div class="project-action-fact__label">Type</div><strong>{{ action_categories.get(action.categorie, action.categorie) }}</strong></div>
+        <div class="project-action-fact"><div class="project-action-fact__label">Statut</div><strong>{{ action_statuts.get(action.statut, action.statut) }}</strong></div>
+        <div class="project-action-fact"><div class="project-action-fact__label">Référent</div><strong>{{ action.referent or "Non renseigné" }}</strong></div>
+        <div class="project-action-fact"><div class="project-action-fact__label">Lieu</div><strong>{{ action.lieu or "Non renseigné" }}</strong></div>
+        <div class="project-action-fact"><div class="project-action-fact__label">Période</div><strong>{{ action.date_debut.strftime("%d/%m/%Y") if action.date_debut else "?" }} → {{ action.date_fin.strftime("%d/%m/%Y") if action.date_fin else "?" }}</strong></div>
+        <div class="project-action-fact"><div class="project-action-fact__label">Ateliers suivis</div><strong>{{ action_atelier_ids|length }}</strong></div>
+      </div>
+    </section>
+
+    <section class="project-action-panel">
+      <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+        <div>
+          <h2>Complétude</h2>
+          <div class="muted">Points non bloquants avant partage ou impression.</div>
+        </div>
+        <span class="project-action-status project-action-status--{{ action_quality.status }}">{{ action_quality.label }}</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="kpi-grid-flex">
+        <div class="kpi-box"><div class="label">Score</div><div class="project-action-score">{{ action_quality.score }}</div></div>
+        <div class="kpi-box"><div class="label">Points</div><div class="value">{{ action_quality.issues|length }}</div></div>
+      </div>
+      <div class="project-action-alerts">
+        {% for issue in action_quality.issues[:4] %}
+          <div class="project-action-alert project-action-alert--{{ issue.severity }}">
+            <div class="project-action-alert__title">{{ issue.title }}</div>
+            <div class="muted">{{ issue.detail }}</div>
+          </div>
+        {% endfor %}
+        {% if action_quality.issues|length == 0 %}
+          <div class="project-action-alert project-action-alert--ok">
+            <div class="project-action-alert__title">Fiche prête à partager</div>
+            <div class="muted">Aucun point de complétude important n'est détecté.</div>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="project-action-panel project-action-panel--wide">
+      <h2>Lecture de l'action</h2>
+      <div class="project-action-narrative">
+        <div class="wide">
+          <strong>Description</strong>
+          <p class="project-action-text">{{ action.description or "Non renseigné" }}</p>
+        </div>
+        <div>
+          <strong>Objectifs</strong>
+          <p class="project-action-text">{{ action.objectifs or "Non renseigné" }}</p>
+        </div>
+        <div>
+          <strong>Public visé</strong>
+          <p class="project-action-text">{{ action.public_vise or "Non renseigné" }}</p>
+        </div>
+        <div>
+          <strong>Territoire / QPV</strong>
+          <p class="project-action-text">{{ action.territoire or "Non renseigné" }}</p>
+        </div>
+        <div>
+          <strong>Partenaires</strong>
+          <p class="project-action-text">{{ action.partenaires_text or "Non renseigné" }}</p>
+        </div>
+        <div class="wide">
+          <strong>Bilan qualitatif</strong>
+          <p class="project-action-text">{{ action.bilan_qualitatif or "Non renseigné" }}</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="project-action-grid">
+    <section class="monster-card">
+      <h2>Contenu de l'action</h2>
+      {% if can_edit_project %}
+        <form method="post" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="update_project_action">
+          <div class="project-action-form-grid">
+            <label class="field-stack wide">Titre<input class="in" name="titre" value="{{ action.titre }}" required></label>
+            <label class="field-stack">Type
+              <select class="in" name="categorie">
+                {% for key,label in action_categories.items() %}
+                  <option value="{{ key }}" {% if action.categorie == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field-stack">Statut
+              <select class="in" name="statut">
+                {% for key,label in action_statuts.items() %}
+                  <option value="{{ key }}" {% if action.statut == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field-stack">Référent<input class="in" name="referent" value="{{ action.referent or '' }}"></label>
+            <label class="field-stack">Lieu<input class="in" name="lieu" value="{{ action.lieu or '' }}"></label>
+            <label class="field-stack">Début<input class="in" type="date" name="date_debut" value="{{ action.date_debut or '' }}"></label>
+            <label class="field-stack">Fin<input class="in" type="date" name="date_fin" value="{{ action.date_fin or '' }}"></label>
+            <label class="field-stack wide">Description<textarea class="in" name="description" rows="4">{{ action.description or '' }}</textarea></label>
+            <label class="field-stack wide">Objectifs de l'action<textarea class="in" name="objectifs" rows="3">{{ action.objectifs or '' }}</textarea></label>
+            <label class="field-stack">Public visé<textarea class="in" name="public_vise" rows="3">{{ action.public_vise or '' }}</textarea></label>
+            <label class="field-stack">Territoire / QPV<textarea class="in" name="territoire" rows="3">{{ action.territoire or '' }}</textarea></label>
+            <label class="field-stack wide">Partenaires impliqués<textarea class="in" name="partenaires_text" rows="3">{{ action.partenaires_text or '' }}</textarea></label>
+            <label class="field-stack wide">Bilan qualitatif<textarea class="in" name="bilan_qualitatif" rows="4">{{ action.bilan_qualitatif or '' }}</textarea></label>
+          </div>
+
+          <div class="project-action-linked">
+            <h3 style="margin-top:0;">Ateliers rattachés aux résultats</h3>
+            <p class="muted">Ces liens servent uniquement à calculer les chiffres de cette fiche action depuis les présences existantes.</p>
+            <div class="project-action-checks">
+              {% for atelier in ateliers %}
+                <label class="project-action-check">
+                  <input type="checkbox" name="atelier_ids" value="{{ atelier.id }}" {% if atelier.id in action_atelier_ids %}checked{% endif %}>
+                  <span><strong>{{ atelier.nom }}</strong><br><span class="muted">{{ atelier.type_atelier }}</span></span>
+                </label>
+              {% endfor %}
+              {% if ateliers|length == 0 %}
+                <div class="empty-state">Aucun atelier n'est lié au projet. Ajoute d'abord les ateliers depuis la fiche projet.</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="inline-actions">
+            <button class="btn ok" type="submit">Enregistrer</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="tablewrap clean wide">
+          <table>
+            <tbody>
+              <tr><th>Type</th><td>{{ action_categories.get(action.categorie, action.categorie) }}</td></tr>
+              <tr><th>Statut</th><td>{{ action_statuts.get(action.statut, action.statut) }}</td></tr>
+              <tr><th>Référent</th><td>{{ action.referent or "Non renseigné" }}</td></tr>
+              <tr><th>Lieu</th><td>{{ action.lieu or "Non renseigné" }}</td></tr>
+              <tr><th>Période</th><td>{{ action.date_debut or "?" }} → {{ action.date_fin or "?" }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Description</h3><p style="white-space:pre-wrap;">{{ action.description or "Non renseigné" }}</p>
+        <h3>Objectifs</h3><p style="white-space:pre-wrap;">{{ action.objectifs or "Non renseigné" }}</p>
+        <h3>Bilan qualitatif</h3><p style="white-space:pre-wrap;">{{ action.bilan_qualitatif or "Non renseigné" }}</p>
+      {% endif %}
+    </section>
+
+    <aside class="monster-card">
+      <h2>Résultats de l’action</h2>
+      <p class="muted">Cette action ne crée pas une nouvelle source de statistiques. Elle filtre les ateliers liés sur sa période.</p>
+      <div class="tablewrap clean wide">
+        <table>
+          <tbody>
+            <tr><th>Présences</th><td>{{ stats.kpi.presences or 0 }}</td></tr>
+            <tr><th>Participants uniques</th><td>{{ stats.kpi.uniques or 0 }}</td></tr>
+            <tr><th>Participants revenus</th><td>{{ stats.freq.returning or 0 }}</td></tr>
+            <tr><th>Âge moyen</th><td>{% if stats.demo.age_avg is not none %}{{ stats.demo.age_avg }} ans{% else %}N/A{% endif %}</td></tr>
+            <tr><th>QPV</th><td>{{ stats.demo.qpv.qpv or 0 }} QPV · {{ stats.demo.qpv.hors_qpv or 0 }} hors · {{ stats.demo.qpv.inconnu or 0 }} inconnu</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      {% if can_edit_project %}
+        <form method="post" style="margin-top:14px;" onsubmit="return confirm('Supprimer cette fiche action ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="delete_project_action">
+          <button class="btn danger" type="submit">Supprimer la fiche action</button>
+        </form>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+{% endblock %}

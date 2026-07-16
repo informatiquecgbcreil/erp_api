@@ -1,0 +1,292 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Statistiques des quartiers</h1>
+      <p class="page-subtitle">Choisissez un quartier, une période et un angle de lecture pour comprendre ce qui se passe vraiment sur le terrain.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('quartiers.index') }}">⬅️ Retour aux villes et quartiers</a>
+    </div>
+  </div>
+
+  <div class="filters-panel reading-width">
+    <div class="table-toolbar">
+      <h2 class="section-title" style="margin:0">Filtres d’analyse</h2>
+      {% if quartier %}<span class="context-pill">{{ quartier.ville }} — {{ quartier.nom }}</span>{% endif %}
+    </div>
+    <p class="muted" style="margin-top:0">L’idée est simple : tu choisis un quartier, puis tu regardes ce qui s’est passé sur une période donnée.</p>
+
+    <form method="get" class="filters-grid stretch-input">
+      <div class="field-stack grow-2">
+        <label>Quartier</label>
+        <select class="in" name="quartier_id" style="min-width:260px;">
+          <option value="">— Choisir un quartier —</option>
+          {% for q in quartiers %}
+            <option value="{{ q.id }}" {% if quartier and q.id == quartier.id %}selected{% endif %}>{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-stack">
+        <label>Période</label>
+        <select class="in" name="period" id="quartier-period-select">
+          <option value="tout" {% if period == 'tout' %}selected{% endif %}>Tout l'historique</option>
+          {% for a in annees %}
+            <option value="{{ a }}" {% if period == a|string %}selected{% endif %}>Année {{ a }} (présence)</option>
+          {% endfor %}
+          <option value="30" {% if period == '30' %}selected{% endif %}>30 derniers jours</option>
+          <option value="90" {% if period == '90' %}selected{% endif %}>90 derniers jours</option>
+          <option value="180" {% if period == '180' %}selected{% endif %}>180 derniers jours</option>
+          <option value="365" {% if period == '365' %}selected{% endif %}>12 derniers mois</option>
+          <option value="year" {% if period == 'year' %}selected{% endif %}>Année en cours</option>
+          <option value="custom" {% if period == 'custom' %}selected{% endif %}>Personnalisée</option>
+        </select>
+      </div>
+      <div class="field-stack quartier-date-field" {% if period != 'custom' %}style="display:none"{% endif %}>
+        <label>Du</label>
+        <input class="in" type="date" name="date_from" value="{{ date_from }}">
+      </div>
+      <div class="field-stack quartier-date-field" {% if period != 'custom' %}style="display:none"{% endif %}>
+        <label>Au</label>
+        <input class="in" type="date" name="date_to" value="{{ date_to }}">
+      </div>
+      <div class="field-stack">
+        <label>Secteur</label>
+        <select class="in" name="secteur">
+          <option value="">Tous les secteurs</option>
+          {% for secteur in secteur_choices %}
+            <option value="{{ secteur }}" {% if secteur_filter == secteur %}selected{% endif %}>{{ secteur }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-stack">
+        <label>Type de public</label>
+        <select class="in" name="type_public">
+          <option value="">Tous les publics</option>
+          {% for public in type_public_choices %}
+            <option value="{{ public }}" {% if type_public_filter == public %}selected{% endif %}>{{ public }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-stack">
+        <button class="btn ok" type="submit">Afficher l’analyse</button>
+      </div>
+      <div class="field-stack">
+        <a class="btn" href="{{ url_for('quartiers.stats', quartier_id=quartier.id if quartier else None) if quartier else url_for('quartiers.stats') }}">Réinitialiser</a>
+      </div>
+    </form>
+  </div>
+
+  {% if quartier %}
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2 style="margin-top:0">{{ quartier.ville }} — {{ quartier.nom }}{% if quartier.is_qpv %} <span class="tag">QPV</span>{% endif %}</h2>
+        <p class="muted" style="margin:0">{{ quartier.description or "Aucune description renseignée pour ce quartier." }}</p>
+      </div>
+      <div class="inline-actions">
+        <a class="btn" href="{{ url_for('participants.list_participants', quartier_id=quartier.id) }}">Voir les participants du quartier</a>
+        {% if can('quartiers:edit') %}<a class="btn" href="{{ url_for('quartiers.edit', quartier_id=quartier.id) }}">Modifier le quartier</a>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if stats %}
+  <div class="context-banner">
+    <span class="context-badge"><strong>Période</strong> · {{ stats.filters_summary.period_label }}</span>
+    <span class="context-badge"><strong>Secteur</strong> · {{ stats.filters_summary.secteur or 'Tous' }}</span>
+    <span class="context-badge"><strong>Public</strong> · {{ stats.filters_summary.type_public or 'Tous' }}</span>
+  </div>
+
+  <div class="page-kpis">
+    <div class="metric-card"><div class="metric-label">Habitants suivis</div><div class="metric-value">{{ stats.participant_count }}</div><div class="metric-help">Fiches rattachées à ce quartier</div></div>
+    <div class="metric-card"><div class="metric-label">Actifs sur la période</div><div class="metric-value">{{ stats.active_participants_count }}</div><div class="metric-help">Participants vus en atelier</div></div>
+    <div class="metric-card"><div class="metric-label">Présences</div><div class="metric-value">{{ stats.presence_count }}</div><div class="metric-help">Présences enregistrées</div></div>
+    <div class="metric-card"><div class="metric-label">Nouveaux habitants suivis</div><div class="metric-value">{{ stats.new_participants_count }}</div><div class="metric-help">Créés sur la période</div></div>
+    <div class="metric-card"><div class="metric-label">Ateliers touchés</div><div class="metric-value">{{ stats.ateliers_count }}</div><div class="metric-help">Ateliers ayant accueilli ce quartier</div></div>
+    <div class="metric-card"><div class="metric-label">Taux d’activité</div><div class="metric-value">{{ stats.taux_activite }}%</div><div class="metric-help">Part des personnes vues sur la période</div></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Repère rapide</h3>
+    <p class="muted" style="margin-bottom:0">
+      {% if stats.active_participants_count == 0 %}
+        Aucune activité enregistrée sur cette période pour ce quartier. C’est souvent le bon moment pour vérifier si le filtre de dates est trop serré… ou s’il faut relancer une action sur le terrain.
+      {% else %}
+        {{ stats.active_participants_count }} personne(s) du quartier ont participé à au moins un atelier sur la période, pour {{ stats.presence_count }} présence(s) réparties sur {{ stats.ateliers_count }} atelier(s).
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="table-toolbar">
+      <h3 class="section-title" style="margin:0">Répartition par secteur</h3>
+      <a class="btn" href="{{ stats.participants_url }}">Voir les fiches</a>
+    </div>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Secteur</th>
+            <th>Participants actifs</th>
+            <th>Présences</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.secteurs %}
+            <tr>
+              <td>{{ row[0] or 'Non renseigné' }}</td>
+              <td><span class="tag">{{ row[1] }}</span></td>
+              <td><span class="tag">{{ row[2] }}</span></td>
+            </tr>
+          {% endfor %}
+          {% if stats.secteurs|length == 0 %}
+            <tr><td colspan="3" class="muted">Aucune présence sur cette période pour les filtres choisis.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-toolbar">
+      <h3 class="section-title" style="margin:0">Ateliers les plus fréquentés</h3>
+      <span class="context-pill">Top usages du quartier</span>
+    </div>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Atelier</th>
+            <th>Participants actifs</th>
+            <th>Présences</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.ateliers %}
+            <tr>
+              <td>{{ row[0] }}</td>
+              <td><span class="tag">{{ row[1] }}</span></td>
+              <td><span class="tag">{{ row[2] }}</span></td>
+            </tr>
+          {% endfor %}
+          {% if stats.ateliers|length == 0 %}
+            <tr><td colspan="3" class="muted">Aucun atelier lié à ce quartier sur la période sélectionnée.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Présences dans le temps</h3>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Mois</th>
+            <th>Présences</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.months %}
+            <tr>
+              <td>{{ row[0] }}</td>
+              <td><span class="tag">{{ row[1] }}</span></td>
+            </tr>
+          {% endfor %}
+          {% if stats.months|length == 0 %}
+            <tr><td colspan="2" class="muted">Pas de chronologie exploitable pour cette période.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-toolbar">
+      <h3 class="section-title" style="margin:0">Personnes les plus vues</h3>
+      <a class="btn" href="{{ stats.participants_url }}">Ouvrir les fiches du quartier</a>
+    </div>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Personne</th>
+            <th>Ville</th>
+            <th>Public</th>
+            <th>Présences</th>
+            <th data-nosort="1">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in stats.top_participants %}
+            <tr>
+              <td>{{ item.label }}</td>
+              <td>{{ item.ville or '—' }}</td>
+              <td>{{ item.type_public or '—' }}</td>
+              <td><span class="tag">{{ item.presences }}</span></td>
+              <td><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=item.id) }}">Voir la fiche</a></td>
+            </tr>
+          {% endfor %}
+          {% if stats.top_participants|length == 0 %}
+            <tr><td colspan="5" class="muted">Aucune fiche active à afficher pour cette période.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Répartition des profils</h3>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Genre</th>
+            <th>Participants</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for label, count in stats.gender_counts.items() %}
+            <tr>
+              <td>{{ label }}</td>
+              <td><span class="tag">{{ count }}</span></td>
+            </tr>
+          {% endfor %}
+          {% if stats.gender_counts|length == 0 %}
+            <tr><td colspan="2" class="muted">Aucune donnée disponible.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% elif quartier %}
+  <div class="quick-empty">
+    <strong>Pas encore de données exploitables.</strong>
+    Le quartier existe bien, mais rien n’est remonté avec les filtres choisis. Essaie une période plus large ou enlève un filtre.
+  </div>
+  {% else %}
+  <div class="quick-empty">
+    <strong>Choisis un quartier pour démarrer.</strong>
+    Une fois le quartier sélectionné, la page affichera les personnes suivies, les présences, les ateliers touchés et une chronologie simple.
+  </div>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  const periodSelect = document.getElementById('quartier-period-select');
+  if(!periodSelect) return;
+  const dateFields = Array.from(document.querySelectorAll('.quartier-date-field'));
+  function sync(){
+    const show = periodSelect.value === 'custom';
+    dateFields.forEach((el)=>{ el.style.display = show ? '' : 'none'; });
+  }
+  periodSelect.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1 style="margin-top:0;">Plan de projet</h1>
+    <p class="muted">Lier Projet → Atelier → Modules autorisés pour éviter toute ressaisie en terrain.</p>
+
+    <form method="post" class="grid" style="grid-template-columns:1fr 1fr 1fr auto; gap:12px; align-items:end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add_link">
+      <div>
+        <label>Projet</label>
+        <select class="in" name="projet_id" required>
+          <option value="">—</option>
+          {% for p in projets %}<option value="{{ p.id }}" {% if projet_id == p.id %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Atelier</label>
+        <select class="in" name="atelier_id" required>
+          <option value="">—</option>
+          {% for a in ateliers %}<option value="{{ a.id }}">{{ a.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Module autorisé</label>
+        <select class="in" name="module_id" required>
+          <option value="">—</option>
+          {% for m in modules %}<option value="{{ m.id }}">{{ m.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn ok" type="submit">Ajouter</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Liens actifs</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Projet</th><th>Atelier</th><th>Module</th><th></th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>{{ row.projet.nom }}</td>
+            <td>{{ row.atelier.nom }}</td>
+            <td>{{ row.module.nom }}</td>
+            <td>
+              <form method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete_link">
+                <input type="hidden" name="row_id" value="{{ row.id }}">
+                <button class="btn danger" type="submit">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="muted">Aucun lien.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

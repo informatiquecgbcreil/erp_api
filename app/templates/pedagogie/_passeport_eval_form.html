@@ -1,0 +1,78 @@
+{# app/templates/pedagogie/_passeport_eval_form.html #}
+
+<div class="card" style="margin:0; padding:0; border:none;">
+  <form method="post"
+        action="{{ url_for('pedagogie.participant_passeport_evaluation', participant_id=participant.id) }}?tab=evaluate">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="secteur" value="{{ sec }}">
+
+    <div class="grid" style="grid-template-columns:1.3fr 0.7fr; gap:12px;">
+      <div>
+        <label>Compétence</label>
+        <input class="in" id="compSearch" placeholder="🔎 Filtrer (code, intitulé, référentiel…)" autocomplete="off" style="margin-bottom:6px;">
+        <select class="in" id="competence_id" name="competence_id" required size="1">
+          <option value="">— Choisir une compétence —</option>
+          {% for c in all_competences %}
+            <option value="{{ c.id }}">{{ c.referentiel.nom if c.referentiel else 'Sans référentiel' }} · {{ c.code }} — {{ c.nom }}</option>
+          {% endfor %}
+        </select>
+        <div class="muted" style="margin-top:6px;">Tapez pour filtrer la liste, puis choisissez la compétence.</div>
+      </div>
+      <script>
+        (function(){
+          var input=document.getElementById('compSearch');
+          var sel=document.getElementById('competence_id');
+          if(!input||!sel) return;
+          var all=Array.prototype.slice.call(sel.options).map(function(o){return {v:o.value,t:o.text};});
+          input.addEventListener('input',function(){
+            var ql=input.value.trim().toLowerCase();
+            var cur=sel.value;
+            sel.innerHTML='';
+            all.forEach(function(o){
+              if(o.v==='' || o.t.toLowerCase().indexOf(ql)>=0){
+                var opt=document.createElement('option');opt.value=o.v;opt.textContent=o.t;sel.appendChild(opt);
+              }
+            });
+            sel.value=cur;
+            // Ouvre la liste filtrée pour un choix rapide (sauf si une seule option utile).
+            sel.size = Math.min(8, Math.max(1, sel.options.length));
+          });
+          sel.addEventListener('change',function(){ sel.size=1; });
+          sel.addEventListener('blur',function(){ sel.size=1; });
+        })();
+      </script>
+
+      <div>
+        <label>Niveau</label>
+        <select class="in" name="etat" required>
+          <option value="0">0 — À faire / non évalué</option>
+          <option value="1">1 — En cours</option>
+          <option value="2">2 — Acquis</option>
+          <option value="3">3 — Maîtrisé</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <label>Commentaire (optionnel)</label>
+    <input class="in" name="commentaire" placeholder="Observation rapide, difficulté, contexte…">
+
+    <div class="spacer"></div>
+
+    <label>Rattacher à une session (optionnel)</label>
+    <select class="in" name="session_id">
+      <option value="0">— Hors session —</option>
+      {% for ss in session_choices %}
+        {% set d = ss.date_session or ss.rdv_date or ss.created_at %}
+        <option value="{{ ss.id }}">
+          #{{ ss.id }} · {{ ss.nom if ss.nom else (ss.atelier.nom if ss.atelier else 'Session') }} · {{ d if d else '' }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <div class="spacer"></div>
+
+    <button class="btn ok" type="submit">Enregistrer l’évaluation</button>
+  </form>
+</div>

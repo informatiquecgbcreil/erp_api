@@ -1,0 +1,98 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div>
+      <h2 class="mb-1">RBAC Test</h2>
+      <div class="text-muted small">Diagnostic des rôles et permissions effectifs (utilisateur connecté).</div>
+    </div>
+    <div class="text-end">
+      <div class="badge bg-secondary">Permissions: {{ granted_perms }}/{{ total_perms }}</div>
+      <a class="btn btn-sm btn-outline-secondary ms-2" href="{{ url_for('main.dashboard') }}">Retour dashboard</a>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="small text-muted">Utilisateur</div>
+          <div><strong>{{ user_info.nom or "—" }}</strong></div>
+          <div class="small">{{ user_info.email or "—" }}</div>
+          <div class="small text-muted">ID: {{ user_info.id }}</div>
+        </div>
+        <div class="col-md-4">
+          <div class="small text-muted">Secteur assigné</div>
+          <div><strong>{{ user_info.secteur_assigne or "—" }}</strong></div>
+          <div class="small text-muted mt-2">Legacy role (compat)</div>
+          <div><strong>{{ user_info.legacy_role or "—" }}</strong></div>
+        </div>
+        <div class="col-md-4">
+          <div class="small text-muted">Rôles RBAC</div>
+          {% if user_info.role_codes and user_info.role_codes|length %}
+            <div class="d-flex flex-wrap gap-1">
+              {% for r in user_info.role_codes %}
+                <span class="badge bg-primary">{{ r }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted">—</div>
+          {% endif %}
+
+          <div class="small text-muted mt-3">Astuce</div>
+          <div class="small">
+            Si tu vois des <span class="badge bg-danger">REFUS</span> alors que tu penses avoir le droit,
+            c'est soit une permission manquante, soit un filtre "secteur" dans la route.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="accordion mt-3" id="rbacAccordion">
+    {% for cat, plist in perms_by_cat.items() %}
+      {% set cat_id = "cat_" ~ loop.index %}
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="{{ cat_id }}_h">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#{{ cat_id }}_c" aria-expanded="false" aria-controls="{{ cat_id }}_c">
+            {{ cat }} <span class="ms-2 text-muted small">({{ plist|length }})</span>
+          </button>
+        </h2>
+        <div id="{{ cat_id }}_c" class="accordion-collapse collapse" aria-labelledby="{{ cat_id }}_h" data-bs-parent="#rbacAccordion">
+          <div class="accordion-body">
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th style="min-width: 220px;">Permission (code)</th>
+                    <th>Libellé</th>
+                    <th class="text-end" style="min-width: 120px;">Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for p in plist %}
+                    <tr>
+                      <td><code>{{ p.code }}</code></td>
+                      <td>{{ p.label }}</td>
+                      <td class="text-end">
+                        {% if p.granted %}
+                          <span class="badge bg-success">OK</span>
+                        {% else %}
+                          <span class="badge bg-danger">REFUS</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

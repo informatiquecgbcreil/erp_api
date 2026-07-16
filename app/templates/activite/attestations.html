@@ -1,0 +1,216 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<style>
+  .attestation-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:16px;align-items:start}
+  .attestation-filter{margin-top:12px}
+  .attestation-person-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;max-height:520px;overflow:auto;padding:2px}
+  .attestation-person{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;border:1px solid var(--ui-line);border-radius:8px;background:var(--ui-card);color:var(--text);padding:12px;min-width:0}
+  .attestation-person:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--ui-line));background:color-mix(in srgb,var(--accent) 6%,var(--ui-card))}
+  .attestation-person input{margin-top:3px}
+  .attestation-person strong,.attestation-person span{overflow-wrap:anywhere}
+  .attestation-options{display:grid;gap:8px}
+  .attestation-options .ui-checkline{align-items:flex-start}
+  .attestation-sticky{position:sticky;top:92px;display:grid;gap:16px}
+  .attestation-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin:12px 0}
+  .attestation-actions-left,.attestation-actions-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  @media(max-width:980px){.attestation-layout{grid-template-columns:1fr}.attestation-sticky{position:static}.attestation-person-grid{max-height:none}}
+</style>
+
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="ui-header__main section-head">
+      <div>
+        <h1 class="ui-title" style="margin:0;">Attestations de présence</h1>
+        <p class="ui-subtitle muted">Générez des attestations à partir des présences d’émargement enregistrées.</p>
+      </div>
+      <div class="ui-actions section-actions">
+        <a class="btn" href="{{ url_for('activite.participants') }}">Retour participants</a>
+        <a class="btn" href="{{ url_for('activite.index') }}">Activités</a>
+      </div>
+    </div>
+    {{ ux.callout('Source des données', 'Les heures, séances et activités viennent uniquement des présences d’émargement. Elles constituent la base de référence des résultats.', 'info') }}
+  </section>
+
+  <section class="ui-panel filters-panel">
+    <div class="ui-section-head section-head">
+      <div>
+        <h2 style="margin:0;">Filtrer la liste</h2>
+        <div class="muted">Secteur et recherche participant.</div>
+      </div>
+    </div>
+    <form method="get" action="{{ url_for('activite.attestations') }}" class="ui-form-grid attestation-filter" data-filter-summary="true">
+      {% if can_choose_secteur %}
+      <label class="field-stack">
+        <span>Secteur</span>
+        <select class="in" name="secteur">
+          <option value="" {% if not secteur %}selected{% endif %}>Tous secteurs</option>
+          {% for item in secteur_options %}
+            <option value="{{ item }}" {% if item == secteur %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      <label class="field-stack wide">
+        <span>Recherche</span>
+        <input class="in" name="q" value="{{ q }}" placeholder="Nom, prénom, e-mail ou téléphone">
+      </label>
+      <div class="field-stack field-actions">
+        <span>&nbsp;</span>
+        <button class="btn ok" type="submit">Filtrer</button>
+      </div>
+      {% if q or secteur %}
+      <div class="field-stack field-actions">
+        <span>&nbsp;</span>
+        <a class="btn" href="{{ url_for('activite.attestations') }}">Réinitialiser</a>
+      </div>
+      {% endif %}
+    </form>
+  </section>
+
+  <form method="post" id="attestationForm" class="attestation-layout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="secteur" value="{{ secteur }}">
+    <input type="hidden" name="q" value="{{ q }}">
+
+    <section class="ui-panel section-card">
+      <div class="ui-section-head section-head">
+        <div>
+          <h2 style="margin:0;">Participants</h2>
+          <div class="muted">{{ participants|length }} personne(s) disponible(s) sur le périmètre.</div>
+        </div>
+        <span class="chip"><span data-att-count>0</span> sélectionné(s)</span>
+      </div>
+
+      <div class="attestation-actions">
+        <div class="attestation-actions-left">
+          <button class="btn" type="button" data-att-select="all">Tout sélectionner</button>
+          <button class="btn" type="button" data-att-select="none">Tout décocher</button>
+        </div>
+        {% if selected_ids|length %}
+          <span class="muted">{{ selected_ids|length }} préselectionné(s)</span>
+        {% endif %}
+      </div>
+
+      <div class="attestation-person-grid">
+        {% for p in participants %}
+          <label class="attestation-person">
+            <input type="checkbox" name="participant_ids" value="{{ p.id }}" {% if p.id in selected_ids %}checked{% endif %}>
+            <span>
+              <strong>{{ p.prenom }} {{ p.nom }}</strong>
+              <span class="muted" style="display:block;font-size:12px;">#{{ p.id }} · {{ p.email or p.telephone or 'Contact non renseigné' }}</span>
+              <span class="muted" style="display:block;font-size:12px;">{{ p.ville or 'Ville non renseignée' }}{% if p.quartier %} · {{ p.quartier.nom }}{% endif %}</span>
+            </span>
+          </label>
+        {% else %}
+          <div class="quick-empty"><strong>Aucun participant à afficher.</strong>Modifiez le filtre ou vérifiez les présences d’émargement du secteur.</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <aside class="attestation-sticky">
+      <section class="ui-panel section-card">
+        <div class="ui-section-head section-head">
+          <div>
+            <h2 style="margin:0;">Période</h2>
+            <div class="muted">Par défaut, l’année en cours.</div>
+          </div>
+        </div>
+        <div class="ui-form-grid" style="margin-top:12px;">
+          <label class="field-stack">
+            <span>Début</span>
+            <input class="in" type="date" name="date_from" value="{{ date_from.isoformat() if date_from else '' }}">
+          </label>
+          <label class="field-stack">
+            <span>Fin</span>
+            <input class="in" type="date" name="date_to" value="{{ date_to.isoformat() if date_to else '' }}">
+          </label>
+        </div>
+      </section>
+
+      <section class="ui-panel section-card">
+        <div class="ui-section-head section-head">
+          <div>
+            <h2 style="margin:0;">Contenu</h2>
+            <div class="muted">Éléments imprimés dans le texte.</div>
+          </div>
+        </div>
+        <div class="attestation-options" style="margin-top:12px;">
+          <label class="ui-checkline"><input type="checkbox" name="include_period" value="1" {% if options.include_period %}checked{% endif %}> Période prise en compte</label>
+          <label class="ui-checkline"><input type="checkbox" name="include_hours" value="1" {% if options.include_hours %}checked{% endif %}> Nombre d’heures</label>
+          <label class="ui-checkline"><input type="checkbox" name="include_sessions" value="1" {% if options.include_sessions %}checked{% endif %}> Nombre de séances</label>
+          <label class="ui-checkline"><input type="checkbox" name="include_ateliers_count" value="1" {% if options.include_ateliers_count %}checked{% endif %}> Nombre d’activités différentes</label>
+          <label class="ui-checkline"><input type="checkbox" name="include_activities_detail" value="1" {% if options.include_activities_detail %}checked{% endif %}> Détail par activité</label>
+          <label class="ui-checkline"><input type="checkbox" name="include_source" value="1" {% if options.include_source %}checked{% endif %}> Mention émargement</label>
+        </div>
+      </section>
+
+      <details class="details-card section-card">
+        <summary>Coordonnées et signature</summary>
+        <div class="details-body">
+          <div class="ui-form-grid">
+            <label class="field-stack wide">
+              <span>Nom de la structure</span>
+              <input class="in" name="centre_name" value="{{ document.centre_name }}">
+            </label>
+            <label class="field-stack">
+              <span>Déterminant dans le texte</span>
+              <select class="in" name="centre_determiner">
+                {% for item in ['du', 'de la', "de l'", 'des', 'de'] %}
+                  <option value="{{ item }}" {% if document.centre_determiner == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field-stack wide">
+              <span>Nom dans le texte</span>
+              <input class="in" name="centre_text_name" value="{{ document.centre_text_name }}" placeholder="Ex. Centre Georges Brassens">
+            </label>
+            <label class="field-stack wide">
+              <span>Coordonnées</span>
+              <textarea class="in" name="centre_address" rows="3">{{ document.centre_address }}</textarea>
+            </label>
+            <label class="field-stack wide">
+              <span>Contact</span>
+              <input class="in" name="centre_contact" value="{{ document.centre_contact }}" placeholder="Téléphone, e-mail">
+            </label>
+            <label class="field-stack wide">
+              <span>Signataire</span>
+              <input class="in" name="signatory_title" value="{{ document.signatory_title }}">
+            </label>
+            <label class="field-stack">
+              <span>Ville de signature</span>
+              <input class="in" name="city" value="{{ document.city }}">
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <section class="ui-panel section-card">
+        <button class="btn ok" type="submit" style="width:100%;">Générer les attestations</button>
+      </section>
+    </aside>
+  </form>
+</div>
+
+<script>
+(function(){
+  const form = document.getElementById('attestationForm');
+  if(!form) return;
+  const boxes = Array.from(form.querySelectorAll('input[name="participant_ids"]'));
+  const count = form.querySelector('[data-att-count]');
+  function refresh(){
+    const total = boxes.filter(box => box.checked).length;
+    if(count) count.textContent = String(total);
+  }
+  form.querySelectorAll('[data-att-select]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-att-select');
+      boxes.forEach(box => box.checked = mode === 'all');
+      refresh();
+    });
+  });
+  boxes.forEach(box => box.addEventListener('change', refresh));
+  refresh();
+})();
+</script>
+{% endblock %}

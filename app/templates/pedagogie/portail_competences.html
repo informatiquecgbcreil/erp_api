@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>Exercices du portail → compétences</h1>
+    <p class="muted">
+      Reliez chaque exercice du portail des apprenants à une compétence de l'ERP, avec un
+      seuil de réussite (%). Un exercice est « réussi » si le participant a au moins une
+      tentative au-dessus du seuil. La progression ainsi déduite <strong>enrichit</strong> les
+      compétences dans le passeport, <strong>sans remplacer</strong> les évaluations de l'équipe.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Synchronisation</h2>
+    {% if portail_configure %}
+      <p class="muted">
+        Récupère les derniers résultats du portail (scores, durées) et met à jour les stats.
+        {% if sync_state and sync_state.last_run_at %}
+          Dernière synchro : {{ sync_state.last_run_at.strftime('%d/%m/%Y à %H:%M') }}{% if sync_state.last_status %} — {{ sync_state.last_status }}{% endif %}.
+        {% else %}
+          Aucune synchronisation encore effectuée.
+        {% endif %}
+      </p>
+      <form method="post" action="{{ url_for('pedagogie.portail_competences_sync') }}" data-no-scroll-restore>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" data-pending-text="Synchronisation en cours…">🔄 Synchroniser maintenant</button>
+      </form>
+      <p class="ux-helper" style="margin-top:6px;">La synchro automatique (tâche planifiée) reste active ; ce bouton force une mise à jour immédiate.</p>
+    {% else %}
+      <div class="ux-callout ux-callout--warning">
+        <div class="ux-callout__title">Portail non configuré</div>
+        <div class="ux-callout__text">Renseignez PORTAIL_BASE_URL et PORTAIL_TOKEN sur le serveur pour activer la synchronisation.</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Ajouter une correspondance</h2>
+    <form method="post" action="{{ url_for('pedagogie.portail_competences_add') }}" class="form-grid-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-stack">
+        <label for="activity">Exercice du portail</label>
+        <input class="in" id="activity" name="activity" list="activities-list" placeholder="Nom de l'exercice" required>
+        <datalist id="activities-list">
+          {% for a in activities %}<option value="{{ a }}">{% endfor %}
+        </datalist>
+        <span class="help-text">Choisissez un exercice déjà reçu, ou saisissez son nom exact.</span>
+      </div>
+      <div class="field-stack">
+        <label for="competence_id">Compétence</label>
+        <select class="in" id="competence_id" name="competence_id" required>
+          <option value="">— choisir —</option>
+          {% for c in competences %}
+            <option value="{{ c.id }}">{{ c.code }} · {{ c.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-stack">
+        <label for="seuil_pct">Seuil de réussite (%)</label>
+        <input class="in" id="seuil_pct" name="seuil_pct" type="number" min="0" max="100" value="80">
+        <button class="btn" type="submit" style="margin-top:8px;">Ajouter</button>
+      </div>
+    </form>
+    {% if not activities %}
+      <p class="muted" style="margin-top:8px;">Aucun exercice encore reçu du portail. Lancez une synchronisation, ou saisissez le nom de l'exercice à la main.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">{{ mappings|length }} correspondance(s)</h2>
+    {% if mappings %}
+      <div class="tablewrap">
+      <table class="table">
+        <thead>
+          <tr><th>Exercice</th><th>Compétence</th><th>Seuil</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for m in mappings %}
+            <tr>
+              <td>{{ m.activity }}</td>
+              <td>{% if m.competence %}{{ m.competence.code }} · {{ m.competence.nom }}{% else %}—{% endif %}</td>
+              <td>{{ m.seuil_pct }} %</td>
+              <td>
+                <form method="post" action="{{ url_for('pedagogie.portail_competences_delete', map_id=m.id) }}"
+                      onsubmit="return confirm('Supprimer cette correspondance ?');" style="margin:0;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn danger" type="submit">Supprimer</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="muted">Aucune correspondance définie pour le moment.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,442 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+<div class="monster-shell budget-pilotage-shell wide-shell finance-shell finance-shell--single">
+
+  <div class="monster-hero">
+    <div class="card-header" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+      <div>
+        <h1 class="monster-title">Pilotage de la subvention</h1>
+        <p class="card-subtitle" style="margin:6px 0 0 0;">
+          <strong>{{ sub.nom }}</strong>
+          {% if sub.financeur %} — Financeur : <strong>{{ sub.financeur }}</strong>{% endif %}
+          — Secteur : <strong>{{ sub.secteur }}</strong>
+          {% if sub.annee_exercice %} — Exercice : <strong>{{ sub.annee_exercice }}</strong>{% endif %}
+          — <span class="status-badge" data-status="{{ sub.statut_cycle }}">{{ sub.statut_label }}</span>
+        </p>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <a class="btn" href="{{ url_for('main.subventions_list') }}">← Retour à la liste</a>
+        <a class="btn" href="{{ url_for('main.subvention_bilan', subvention_id=sub.id) }}">Bilan</a>
+        <a class="btn" href="{{ url_for('main.subvention_historique', subvention_id=sub.id) }}">Historique</a>
+        <a class="btn" href="{{ url_for('main.subvention_justificatif', subvention_id=sub.id) }}">📊 Justificatif</a>
+        <form method="POST" action="{{ url_for('main.subvention_delete', subvention_id=sub.id) }}" style="margin:0;" onsubmit="return confirm('Supprimer cette subvention ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn danger" type="submit">Supprimer</button>
+        </form>
+      </div>
+    </div>
+
+    {% if warnings and warnings|length %}
+      <div style="padding:0 16px 16px 16px;">
+        <div class="monster-card" style="border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); background: color-mix(in srgb, var(--warn) 10%, transparent);">
+          <div class="card-header">
+            <h3 class="card-title" style="margin:0;">À surveiller</h3>
+          </div>
+          <div style="padding: 0 16px 16px 16px;">
+            <ul style="margin:0; padding-left:18px;">
+              {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div style="padding: 0 16px 16px 16px;">
+      <div class="finance-kpis">
+        <div class="finance-kpi"><div class="finance-kpi__label">Demandé {{ ux.tooltip("Le montant sollicité auprès du financeur dans votre dossier de demande.") }}</div><div class="finance-kpi__value">{{ (sub.montant_demande or 0)|float|round(2) }}€</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Attribué {{ ux.tooltip("Le montant accordé par le financeur (notification ou convention). Peut être inférieur au demandé.") }}</div><div class="finance-kpi__value">{{ (sub.montant_attribue or 0)|float|round(2) }}€</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Reçu {{ ux.tooltip("Le montant réellement arrivé sur le compte bancaire à ce jour (les versements arrivent souvent en plusieurs fois).") }}</div><div class="finance-kpi__value">{{ (sub.montant_recu or 0)|float|round(2) }}€</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Base lignes {{ ux.tooltip("La somme des lignes de budget créées ci-dessous. Elle doit normalement correspondre au montant attribué.") }}</div><div class="finance-kpi__value">{{ (total_base or 0)|float|round(2) }}€</div></div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 18px 16px;">
+      <div class="monster-card">
+        <div class="card-header"><h3 class="card-title" style="margin:0;">Dossier &amp; cycle de vie</h3></div>
+        <div style="padding: 0 16px 16px 16px;">
+          <form method="POST" action="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}" class="finance-form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_dossier">
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Financeur</div>
+              <input name="financeur" value="{{ sub.financeur or '' }}" placeholder="ex : CAF, Région, Ville…" style="width:100%;">
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Référence dossier</div>
+              <input name="reference" value="{{ sub.reference or '' }}" placeholder="n° convention / dossier" style="width:100%;">
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Statut du cycle</div>
+              <select name="statut_cycle" style="width:100%;">
+                {% for val, lib in statuts %}
+                  <option value="{{ val }}" {% if (sub.statut_cycle or 'sollicitee') == val %}selected{% endif %}>{{ lib }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Date de dépôt</div>
+              <input name="date_depot" type="date" value="{{ sub.date_depot.isoformat() if sub.date_depot else '' }}" style="width:100%;">
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Date de décision</div>
+              <input name="date_decision" type="date" value="{{ sub.date_decision.isoformat() if sub.date_decision else '' }}" style="width:100%;">
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Versement attendu</div>
+              <input name="date_versement_prevu" type="date" value="{{ sub.date_versement_prevu.isoformat() if sub.date_versement_prevu else '' }}" style="width:100%;">
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Bilan à rendre</div>
+              <input name="date_bilan_prevu" type="date" value="{{ sub.date_bilan_prevu.isoformat() if sub.date_bilan_prevu else '' }}" style="width:100%;">
+            </label>
+            <button class="btn ok" type="submit">Enregistrer le dossier</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 18px 16px;">
+      <div class="monster-card">
+        <div class="card-header"><h3 class="card-title" style="margin:0;">Activités financées <span class="muted" style="font-weight:400;">(justificatif financeur)</span></h3></div>
+        <div style="padding: 0 16px 16px 16px;">
+          {% if liens_ateliers %}
+            <div class="tablewrap clean">
+              <table>
+                <thead><tr><th>Atelier</th><th>Part de la subvention</th><th>Justification</th><th></th></tr></thead>
+                <tbody>
+                  {% for lien in liens_ateliers %}
+                    <tr>
+                      <td><strong>{{ lien.atelier.nom if lien.atelier else '?' }}</strong></td>
+                      <td>{{ '%g'|format(lien.poids_pct) }} %</td>
+                      <td class="muted">{{ lien.justification or '—' }}</td>
+                      <td>
+                        <form method="post" onsubmit="return confirm('Détacher cet atelier ?');" style="display:inline;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="action" value="del_atelier">
+                          <input type="hidden" name="lien_id" value="{{ lien.id }}">
+                          <button class="btn danger" type="submit" style="padding:2px 8px;">🗑</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <div style="margin-top:8px;">
+              <a class="btn ok" href="{{ url_for('main.subvention_justificatif', subvention_id=sub.id) }}">📊 Voir le justificatif chiffré</a>
+            </div>
+          {% else %}
+            <p class="muted">Aucun atelier rattaché : rattache les ateliers que cette subvention finance pour générer automatiquement le justificatif (séances, heures, participants, coût unitaire).</p>
+          {% endif %}
+          {% if ateliers_disponibles %}
+            <form method="post" class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="add_atelier">
+              <label class="field-stack"><span>Atelier</span>
+                <select class="in" name="atelier_id" required>
+                  <option value="">— Choisir —</option>
+                  {% for a in ateliers_disponibles %}<option value="{{ a.id }}">{{ a.nom }}</option>{% endfor %}
+                </select>
+              </label>
+              <label class="field-stack"><span>Part (%)</span><input class="in" name="poids_pct" inputmode="decimal" value="100" style="width:90px;"></label>
+              <label class="field-stack" style="flex:1 1 240px;"><span>Justification (optionnel)</span><input class="in" name="justification" placeholder="Ex : 40 jeunes QPV, hors temps scolaire"></label>
+              <button class="btn" type="submit">Rattacher</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 18px 16px;">
+      <div class="monster-card">
+        <div class="card-header"><h3 class="card-title" style="margin:0;">Mettre à jour les montants globaux</h3></div>
+        <div style="padding: 0 16px 16px 16px;">
+          <form method="POST" action="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}" class="finance-form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_montants">
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Demandé (€)</div>
+              <input name="montant_demande" type="number" step="0.01" value="{{ (sub.montant_demande or 0)|float }}" style="width:100%;">
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Attribué (€)</div>
+              <input name="montant_attribue" type="number" step="0.01" value="{{ (sub.montant_attribue or 0)|float }}" style="width:100%;">
+            </label>
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Reçu (€)</div>
+              <input name="montant_recu" type="number" step="0.01" value="{{ (sub.montant_recu or 0)|float }}" style="width:100%;">
+            </label>
+            <button class="btn ok" type="submit">Enregistrer</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 18px 16px;">
+      <div class="full-stack">
+        <div class="monster-card">
+          <div class="card-header"><h3 class="card-title" style="margin:0;">Lier à des projets</h3></div>
+          <div style="padding: 0 16px 16px 16px;">
+            <div class="finance-scroll-guard tablewrap clean wide">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Projet</th>
+                    <th style="width:120px;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for p in projets %}
+                    <tr>
+                      <td>{{ p.nom }}</td>
+                      <td>
+                        <form method="POST" action="{{ url_for('main.subvention_toggle_projet', subvention_id=sub.id) }}" style="margin:0;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="projet_id" value="{{ p.id }}">
+                          {% if p.id in linked_ids %}
+                            <button class="btn warn" type="submit">Délier</button>
+                          {% else %}
+                            <button class="btn ok" type="submit">Lier</button>
+                          {% endif %}
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="monster-card">
+          <div class="card-header"><h3 class="card-title" style="margin:0;">Répartition automatique</h3></div>
+          <div style="padding: 0 16px 16px 16px; display:flex; flex-direction:column; gap:10px;">
+
+            <div style="font-size:13px; color:var(--muted);">
+              Renseigne le <strong>montant réalisé</strong> sur chaque ligne. Les modes disponibles permettent de copier la base, d’appliquer un prorata (sur le reçu ou l’accordé) ou de remettre les valeurs à zéro.
+            </div>
+
+            <div class="action-strip">
+              <form method="POST" action="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="auto_ventilation">
+                <input type="hidden" name="mode" value="copy_base">
+                <input type="hidden" name="target" value="recu">
+                <button class="btn" type="submit">Copier base → réel</button>
+              </form>
+
+              <form method="POST" action="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="auto_ventilation">
+                <input type="hidden" name="mode" value="prorata_base">
+                <input type="hidden" name="target" value="recu">
+                <button class="btn ok" type="submit">Appliquer au prorata (reçu)</button>
+              </form>
+
+              <form method="POST" action="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="auto_ventilation">
+                <input type="hidden" name="mode" value="prorata_base">
+                <input type="hidden" name="target" value="attribue">
+                <button class="btn" type="submit">Prorata (attribué)</button>
+              </form>
+
+              <form method="POST" action="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="auto_ventilation">
+                <input type="hidden" name="mode" value="reset">
+                <input type="hidden" name="target" value="recu">
+                <button class="btn danger" type="submit">Remettre le réalisé à zéro</button>
+              </form>
+            </div>
+
+            <div class="monster-card" style="padding: 12px 14px; background: color-mix(in srgb, var(--surface) 92%, transparent);">
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Aperçu théorique</div>
+              <div class="finance-single-col" style="margin-top:8px;">
+                <div>
+                  <div style="font-weight:800;">Reçu</div>
+                  <div style="font-size:12px; color:var(--muted);">Pro-rata sur {{ (sub.montant_recu or 0)|float|round(2) }}€</div>
+                </div>
+                <div>
+                  <div style="font-weight:800;">Attribué</div>
+                  <div style="font-size:12px; color:var(--muted);">Pro-rata sur {{ (sub.montant_attribue or 0)|float|round(2) }}€</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 18px 16px;">
+      <div class="monster-card">
+        <div class="card-header"><h3 class="card-title" style="margin:0;">Ajouter une ligne budgétaire</h3></div>
+        <div style="padding: 0 16px 16px 16px;">
+          <form method="POST" action="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}" class="finance-form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_ligne">
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Ligne type</div>
+              <select name="categorie_ref_id" style="width:100%;" data-ref-budget-line>
+                <option value="">Saisie libre</option>
+                {% for c in categories_ref %}
+                  <option value="{{ c.id }}"
+                          data-nature="{{ c.nature }}"
+                          data-compte="{{ c.compte.code }} - {{ c.compte.libelle }}"
+                          data-libelle="{{ c.libelle }}"
+                          data-montant="{{ c.montant_defaut or 0 }}">
+                    {{ 'Produit' if c.nature == 'produit' else 'Charge' }} · {{ c.compte.code }} - {{ c.compte.libelle }} > {{ c.libelle }}
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Compte</div>
+              <input name="compte" value="60" style="width:100%;" data-ref-compte>
+            </label>
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Libellé</div>
+              <input name="libelle" placeholder="ex: Prestation / Achat / Participation..." style="width:100%;" data-ref-libelle>
+            </label>
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Base (€)</div>
+              <input name="montant_base" type="number" step="0.01" value="0" style="width:100%;" data-ref-montant>
+            </label>
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Réel (€)</div>
+              <input name="montant_reel" type="number" step="0.01" value="0" style="width:100%;">
+            </label>
+
+            <label>
+              <div style="font-size:12px; color:var(--muted); font-weight:700;">Nature</div>
+              <select name="nature" style="width:100%;" data-ref-nature>
+                <option value="charge" selected>Charge</option>
+                <option value="produit">Produit</option>
+              </select>
+            </label>
+
+            <button class="btn ok" type="submit">Ajouter la ligne</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 18px 16px;">
+      <div class="monster-card">
+        <div class="card-header"><h3 class="card-title" style="margin:0;">Lignes</h3></div>
+        <div style="padding: 0 16px 16px 16px;">
+          <div class="finance-scroll-guard tablewrap clean wide">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nature</th>
+                  <th>Compte</th>
+                  <th>Libellé</th>
+                  <th style="text-align:right;">Base</th>
+                  <th style="text-align:right;">Réel</th>
+                  <th style="width:260px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+              {% for l in sub.lignes %}
+                <tr>
+                  <td>
+                    <span class="status-badge" data-status="{{ l.nature or 'charge' }}">{{ (l.nature or 'charge') }}</span>
+                  </td>
+                  <td>{{ l.compte }}</td>
+                  <td>{{ l.libelle }}</td>
+                  <td style="text-align:right;">{{ (l.montant_base or 0)|float|round(2) }}€</td>
+                  <td style="text-align:right;">{{ (l.montant_reel or 0)|float|round(2) }}€</td>
+                  <td>
+                    {#
+                      IMPORTANT : ne pas imbriquer de <form> dans un <form>.
+                      C'est du HTML invalide : le navigateur soumet alors le formulaire parent,
+                      ce qui explique le symptôme « Ligne modifiée » au lieu de « Ligne supprimée ».
+
+                      Solution : un seul formulaire, et le bouton "Supprimer" surchargera l'action
+                      via formaction.
+                    #}
+                    <form method="POST" action="{{ url_for('main.ligne_edit', ligne_id=l.id) }}" class="finance-form-grid finance-form-grid--lines">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                      <select name="categorie_ref_id" data-ref-budget-line>
+                        <option value="">Référentiel</option>
+                        {% for c in categories_ref %}
+                          <option value="{{ c.id }}"
+                                  data-nature="{{ c.nature }}"
+                                  data-compte="{{ c.compte.code }} - {{ c.compte.libelle }}"
+                                  data-libelle="{{ c.libelle }}"
+                                  data-montant="{{ c.montant_defaut or 0 }}">
+                            {{ c.compte.code }} > {{ c.libelle }}
+                          </option>
+                        {% endfor %}
+                      </select>
+
+                      <select name="nature" data-ref-nature>
+                        <option value="charge" {% if (l.nature or 'charge') == 'charge' %}selected{% endif %}>charge</option>
+                        <option value="produit" {% if (l.nature or '') == 'produit' %}selected{% endif %}>produit</option>
+                      </select>
+                      <input name="libelle" value="{{ l.libelle }}" data-ref-libelle>
+                      <input name="compte" value="{{ l.compte }}" data-ref-compte>
+                      <input name="montant_base" type="number" step="0.01" value="{{ (l.montant_base or 0)|float }}" data-ref-montant>
+                      <input name="montant_reel" type="number" step="0.01" value="{{ (l.montant_reel or 0)|float }}">
+
+                      <div class="finance-actions" style="grid-column:1 / -1; justify-content:flex-end;">
+                        <button class="btn" type="submit">Enregistrer</button>
+                        <button
+                          class="btn danger"
+                          type="submit"
+                          formaction="{{ url_for('main.ligne_delete', ligne_id=l.id) }}"
+                          formmethod="POST"
+                          onclick="return confirm('Supprimer cette ligne budgétaire ? Cette action est irréversible.');"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<script>
+(function(){
+  function applyRefLine(select){
+    const opt = select.options[select.selectedIndex];
+    const form = select.closest('form');
+    if(!form || !opt || !opt.value){ return; }
+    const nature = form.querySelector('[data-ref-nature]');
+    const compte = form.querySelector('[data-ref-compte]');
+    const libelle = form.querySelector('[data-ref-libelle]');
+    const montant = form.querySelector('[data-ref-montant]');
+    if(nature && opt.dataset.nature){ nature.value = opt.dataset.nature; }
+    if(compte && opt.dataset.compte){ compte.value = opt.dataset.compte; }
+    if(libelle && opt.dataset.libelle){ libelle.value = opt.dataset.libelle; }
+    if(montant && opt.dataset.montant && (!montant.value || montant.value === '0')){ montant.value = opt.dataset.montant; }
+  }
+  document.querySelectorAll('[data-ref-budget-line]').forEach(function(sel){
+    sel.addEventListener('change', function(){ applyRefLine(sel); });
+  });
+})();
+</script>
+
+{% endblock %}

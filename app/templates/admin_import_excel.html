@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell long-form-shell content-shell">
+  <section class="hero-card">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1>Administration avancée · import Excel des présences</h1>
+        <p class="muted">Outil réservé aux utilisateurs à l'aise avec l'application. Il permet d'importer un fichier Excel pour créer ateliers, séances et présences.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <div class="ux-callout" style="margin-bottom:14px;">
+      <div class="ux-callout__title">Avant de lancer un import</div>
+      <div class="ux-callout__text">Commencez par un test sans enregistrement. Les séances créées par import ne contiennent pas d'horaires si le fichier source ne les prévoit pas.</div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="filters-panel">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-3">
+        <label class="field-stack">
+          <span>Secteur</span>
+          <input class="in" type="text" name="secteur" value="{{ secteur or 'NUMERIQUE' }}">
+        </label>
+        <label class="field-stack">
+          <span>Fichier Excel (.xlsx)</span>
+          <input class="in" type="file" name="xlsx_file" accept=".xlsx" required>
+        </label>
+        <label class="field-stack">
+          <span>Mode d'import</span>
+          <select class="in" name="dry_run">
+            <option value="1" {% if dry_run %}selected{% endif %}>Test uniquement (rien n'est enregistré)</option>
+            <option value="0" {% if not dry_run %}selected{% endif %}>Import réel (écriture en base)</option>
+          </select>
+        </label>
+      </div>
+      <div class="hero-actions"><button class="btn ok" type="submit">Lancer l'import</button></div>
+    </form>
+  </section>
+
+  {% if stats %}
+  <section class="section-card">
+    <div class="page-header"><div class="page-title-wrap"><h2>Résultat de l'import</h2><p class="muted">Résumé global puis détail par onglet du fichier.</p></div></div>
+    <div class="choice-pills">
+      <span class="chip">Onglets traités <strong>{{ stats.sheets_processed }}</strong></span>
+      <span class="chip">Participants créés <strong>{{ stats.participants_created }}</strong></span>
+      <span class="chip">Séances créées <strong>{{ stats.sessions_created }}</strong></span>
+      <span class="chip">Présences créées <strong>{{ stats.presences_created }}</strong></span>
+      <span class="chip">Doublons ignorés <strong>{{ stats.presences_skipped_duplicates }}</strong></span>
+    </div>
+
+    {% if stats.warnings and stats.warnings|length %}
+      <div class="callout-soft warnish">
+        <strong>Points à vérifier</strong>
+        <ul>{% for w in stats.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+
+    <details class="details-card" open>
+      <summary>Détails par onglet</summary>
+      <div class="stack">
+        {% for k, s in stats.sheets.items() %}
+          <article class="soft-panel">
+            <h3>{{ k }}</h3>
+            <div class="choice-pills">
+              <span class="chip">Lignes participants <strong>{{ s.participants }}</strong></span>
+              <span class="chip">Séances créées <strong>{{ s.sessions }}</strong></span>
+              <span class="chip">Présences créées <strong>{{ s.presences }}</strong></span>
+            </div>
+            {% if s.warnings and s.warnings|length %}<div class="muted"><b>Points à vérifier :</b><ul>{% for w in s.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    </details>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

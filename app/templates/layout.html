@@ -1,0 +1,1667 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ APP_NAME }}</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/feedback-kit.css') }}">
+
+      <link rel="stylesheet" href="{{ url_for('static', filename='css/p03e-responsive.css') }}">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
+  <style>
+    :root{
+      color-scheme: light dark;
+
+      --bg: #0b1020;
+      --bg-grad-1: #070b16;
+      --bg-grad-2: #0b1020;
+
+      --surface: rgba(18,26,51,.78);
+      --surface-strong: #121a33;
+      --surface-soft: rgba(255,255,255,.04);
+
+      --text: #e8ecff;
+      --muted: #9aa6d6;
+
+      --border: rgba(255,255,255,.10);
+      --border-soft: rgba(255,255,255,.12);
+      --border-hard: rgba(255,255,255,.18);
+
+      --accent: #6aa5ff;
+      --danger: #ff6a6a;
+      --ok: #52d17c;
+      --warn: #ffcc66;
+
+      --shadow: 0 10px 30px rgba(0,0,0,.25);
+
+      --input-bg: rgba(255,255,255,.05);
+      --input-text: var(--text);
+      --input-border: var(--border-soft);
+
+      --option-bg: var(--surface-strong);
+      --option-text: var(--text);
+
+      --focus: rgba(106,165,255,.35);
+    }
+
+    html[data-theme="light"]{
+      color-scheme: light;
+
+      --bg: #f4f6fb;
+      --bg-grad-1: #ffffff;
+      --bg-grad-2: #eef2ff;
+
+      --surface: #ffffff;
+      --surface-strong: #ffffff;
+      --surface-soft: #f6f8ff;
+
+      --text: #0f172a;
+      --muted: #475569;
+
+      --border: rgba(15,23,42,.12);
+      --border-soft: rgba(15,23,42,.16);
+      --border-hard: rgba(15,23,42,.22);
+
+      --accent: #1d4ed8;
+      --danger: #dc2626;
+      --ok: #16a34a;
+      --warn: #d97706;
+
+      --shadow: 0 10px 26px rgba(2,6,23,.08);
+
+      --input-bg: #ffffff;
+      --input-text: var(--text);
+      --input-border: rgba(15,23,42,.20);
+
+      --option-bg: #ffffff;
+      --option-text: var(--text);
+
+      --focus: rgba(29,78,216,.18);
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family: system-ui, "Segoe UI", Roboto, Arial;
+      background: linear-gradient(180deg, var(--bg-grad-1), var(--bg-grad-2));
+      color: var(--text);
+    }
+
+    a{ color:inherit; text-decoration:none; }
+    a:hover{ text-decoration: underline; }
+
+    .wrap{ max-width:1180px; margin:0 auto; padding:14px 16px; }
+    .container{ max-width:1180px; margin:0 auto; padding:18px 16px 46px; }
+
+    .topbar{
+      position:sticky; top:0; z-index:10;
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid color-mix(in srgb, var(--border) 85%, transparent);
+    }
+
+    .nav{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .brand{ font-weight:900; letter-spacing:.3px; margin-right:10px; }
+
+    .nav-group{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      padding:4px 0;
+    }
+
+    .nav-group + .nav-group{
+      padding-left:10px;
+      margin-left:6px;
+      border-left:1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    }
+
+    .nav-group-title{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.5px;
+      color: var(--muted);
+      font-weight:700;
+      margin-right:4px;
+    }
+
+    .nav-more{
+      position:relative;
+    }
+
+    .nav-more summary{
+      list-style:none;
+    }
+
+    .nav-more summary::-webkit-details-marker{
+      display:none;
+    }
+
+    .nav-more-panel{
+      position:absolute;
+      top:48px;
+      left:0;
+      min-width:240px;
+      padding:12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      z-index:20;
+    }
+
+    .nav-more-panel .pill{
+      width:100%;
+      text-align:left;
+    }
+
+    .nav-more-heading{
+      width:100%;
+      margin:6px 0 0;
+      padding-top:6px;
+      border-top:1px solid color-mix(in srgb, var(--border) 80%, transparent);
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.5px;
+      color:var(--muted);
+      font-weight:900;
+    }
+    .nav-more-heading:first-child{
+      margin-top:0;
+      padding-top:0;
+      border-top:0;
+    }
+
+    .pill{
+      padding:8px 12px;
+      border:1px solid var(--border-soft);
+      border-radius:999px;
+      background: color-mix(in srgb, var(--surface) 70%, transparent);
+      cursor:pointer;
+      user-select:none;
+      transition:border-color .15s ease, background .15s ease;
+    }
+
+    .pill:hover{ border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+    .pill.active{
+      border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+      background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    }
+
+    .right{ margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .global-search{ position:relative; min-width:280px; max-width:420px; width:min(40vw, 420px); }
+    .global-search input{
+      width:100%;
+      border:1px solid var(--input-border);
+      border-radius:999px;
+      background: var(--input-bg);
+      color: var(--input-text);
+      padding:9px 14px;
+      font-size:14px;
+    }
+    .global-search input:focus{
+      outline:2px solid var(--focus);
+      outline-offset:1px;
+    }
+    .global-search__panel{
+      position:absolute;
+      top:calc(100% + 8px);
+      left:0;
+      right:0;
+      border:1px solid var(--border-soft);
+      border-radius:14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      max-height:320px;
+      overflow:auto;
+      z-index:30;
+      display:none;
+    }
+    .global-search__panel.visible{ display:block; }
+    .global-search__item{
+      display:block;
+      padding:10px 12px;
+      border-bottom:1px solid color-mix(in srgb, var(--border) 70%, transparent);
+      text-decoration:none !important;
+    }
+    .global-search__item:last-child{ border-bottom:none; }
+    .global-search__item:hover{
+      background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+    }
+    .global-search__item.is-active{
+      background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+      outline:1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .global-search__section{
+      padding:8px 0 4px;
+      border-bottom:1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    }
+    .global-search__section:last-child{ border-bottom:none; padding-bottom:0; }
+    .global-search__section-title{
+      font-size:11px;
+      font-weight:800;
+      color:var(--muted);
+      letter-spacing:.4px;
+      text-transform:uppercase;
+      padding:0 12px 6px;
+    }
+    .global-search__type{ font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; letter-spacing:.3px; }
+    .global-search__label{ font-weight:700; margin-top:2px; }
+    .global-search__meta{ font-size:12px; color:var(--muted); margin-top:2px; }
+    .global-search mark{
+      background: color-mix(in srgb, var(--accent) 22%, transparent);
+      color: inherit;
+      border-radius:4px;
+      padding:0 2px;
+    }
+    .global-search__empty{ padding:10px 12px; color:var(--muted); font-size:13px; }
+    .global-search__facets{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      padding:8px 10px 6px;
+      border-bottom:1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    }
+    .global-search__facet{
+      border:1px solid var(--border-soft);
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
+      color:var(--text);
+      border-radius:999px;
+      font-size:12px;
+      padding:4px 8px;
+      cursor:pointer;
+    }
+    .global-search__facet.is-active{
+      border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+      background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+    }
+
+    .tag{
+      font-size:12px; color: var(--muted);
+      border:1px dashed color-mix(in srgb, var(--border-hard) 70%, transparent);
+      padding:6px 10px; border-radius:999px;
+      background: color-mix(in srgb, var(--surface) 78%, transparent);
+    }
+
+    .stack{ display:flex; flex-direction:column; gap:14px; }
+    .spacer{ height:12px; }
+
+    .flash{ border-radius:12px; padding:10px 12px; border:1px solid var(--border); background: var(--surface-soft); }
+    .flash.success{ border-color: color-mix(in srgb, var(--ok) 60%, var(--border)); }
+    .flash.danger{ border-color: color-mix(in srgb, var(--danger) 60%, var(--border)); }
+    .flash.warning{ border-color: color-mix(in srgb, var(--warn) 60%, var(--border)); }
+
+    #themeToggle{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-width:44px;
+      font-weight:700;
+    }
+
+
+    .ux-callout{
+      border:1px solid var(--border-soft);
+      border-left:4px solid var(--accent);
+      border-radius:14px;
+      padding:12px 14px;
+      background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+      box-shadow: 0 2px 10px rgba(0,0,0,.03);
+    }
+    .ux-callout--warning{ border-left-color: var(--warn); }
+    .ux-callout--danger{ border-left-color: var(--danger); }
+    .ux-callout--success{ border-left-color: var(--ok); }
+    .ux-callout__title{ font-weight:800; margin-bottom:4px; }
+    .ux-callout__text{ color: var(--muted); line-height:1.45; }
+    .ux-helper{
+      margin-top:6px;
+      color: var(--muted);
+      font-size:12px;
+      line-height:1.4;
+    }
+    .ux-tooltip-trigger{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:18px;
+      height:18px;
+      margin-left:6px;
+      border:1px solid var(--border-hard);
+      border-radius:999px;
+      color: var(--muted);
+      font-size:11px;
+      font-weight:700;
+      cursor:help;
+      vertical-align:middle;
+      background: color-mix(in srgb, var(--surface) 86%, transparent);
+    }
+    .ux-tooltip-trigger:focus{ outline:2px solid var(--focus); outline-offset:2px; }
+
+    .context-banner{
+      border:1px solid var(--border-soft);
+      border-radius:14px;
+      padding:10px 12px;
+      background: color-mix(in srgb, var(--surface-soft) 90%, transparent);
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+      margin-bottom:12px;
+    }
+    .context-badge{
+      border:1px solid var(--border-soft);
+      border-radius:999px;
+      padding:6px 10px;
+      font-size:12px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      color: var(--text);
+    }
+    .context-badge strong{ font-weight:800; }
+    .breadcrumb{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:6px;
+      margin-bottom:10px;
+      color: var(--muted);
+      font-size:13px;
+    }
+    .breadcrumb__item{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+    .breadcrumb__sep{
+      opacity:.7;
+      font-size:11px;
+    }
+
+    .sr-only{
+      position:absolute;
+      width:1px;
+      height:1px;
+      padding:0;
+      margin:-1px;
+      overflow:hidden;
+      clip:rect(0,0,0,0);
+      white-space:nowrap;
+      border:0;
+    }
+    .nav-quick{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .nav-quick-label{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.5px;
+      color:var(--muted);
+      font-weight:800;
+      margin-right:2px;
+    }
+    .mode-switch{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid var(--border-soft);
+      background: color-mix(in srgb, var(--surface) 90%, transparent);
+    }
+    .mode-switch__label{
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+    }
+    .mode-switch .pill{ padding:6px 10px; }
+    .easy-banner{
+      margin:10px 0 0;
+      border:1px solid var(--border-soft);
+      border-radius:14px;
+      padding:10px 12px;
+      background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:8px;
+    }
+    .easy-banner__title{ font-weight:800; }
+    .easy-banner__text{ color:var(--muted); font-size:13px; }
+    .context-banner--simple{ gap:6px; }
+    .context-banner--simple .context-badge{ font-size:11px; }
+
+  
+    .nav-more-panel{
+      max-height:min(72vh, 620px);
+      overflow:auto;
+      overscroll-behavior:contain;
+    }
+    .nav-category-row{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:8px;
+    }
+    .nav-category-row .nav-more{margin:0;}
+    .nav-category-row .nav-more > summary.pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+    .nav-category-row .nav-more > summary.pill::after{
+      content:"▾";
+      font-size:10px;
+      opacity:.75;
+    }
+
+
+    /* Aide contextuelle : l'utilité de la page reste visible, les étapes se déplient. */
+    .aide-page{border:1px solid var(--border-soft);border-radius:14px;margin:0 0 14px;background:color-mix(in srgb, var(--surface-soft) 88%, transparent);padding:12px 14px}
+    .aide-page__intro{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
+    .aide-page__icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);font-size:18px}
+    .aide-page__label{display:block;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+    .aide-page__resume{margin:0;line-height:1.5;max-width:90ch}
+    .aide-page__details{margin:8px 0 0 44px}
+    .aide-page__details > summary{cursor:pointer;width:max-content;max-width:100%;font-weight:700;color:var(--accent);user-select:none}
+    .aide-page__corps{padding:8px 0 0}
+    .aide-page__corps p{margin:6px 0;line-height:1.5;max-width:80ch}
+    .aide-page__corps ol{margin:6px 0 6px 20px;line-height:1.6}
+    .aide-page__astuce{opacity:.85}
+    @media(max-width:560px){.aide-page__details{margin-left:0}.aide-page{padding:11px 12px}}
+
+    /* Fil d'Ariane : page courante mise en valeur, niveaux cliquables soulignés au survol */
+    .breadcrumb__current{ color:var(--text); font-weight:700; }
+    .breadcrumb a.breadcrumb__item:hover{ text-decoration:underline; }
+
+    /* Confort de lecture (accessibilité).
+       Taille : on agrandit le contenu principal via 'zoom' (robuste sur Edge/Chrome,
+       les navigateurs internes ; n'affecte pas la barre de navigation).
+       Contraste : on renforce les variables de couleur (texte secondaire, bordures). */
+    html[data-text-size="large"]  #main-content{ zoom:1.12; }
+    html[data-text-size="xlarge"] #main-content{ zoom:1.25; }
+    html[data-contrast="more"]{
+      --muted:#1f2937;
+      --border:rgba(15,23,42,.34);
+      --border-soft:rgba(15,23,42,.40);
+      --border-hard:rgba(15,23,42,.52);
+      --focus:rgba(29,78,216,.42);
+    }
+    html[data-contrast="more"][data-theme="dark"]{
+      --muted:#e1e7ff;
+      --border:rgba(255,255,255,.34);
+      --border-soft:rgba(255,255,255,.42);
+      --border-hard:rgba(255,255,255,.58);
+    }
+    html[data-contrast="more"] main a:not(.pill):not(.btn):not(.icon-btn):not(.quick-link-card){ text-decoration:underline; }
+    .a11y-panel{ min-width:230px; }
+    .a11y-panel .nav-more-heading{ font-weight:900; }
+    .a11y-row{ display:flex; gap:6px; flex-wrap:wrap; width:100%; }
+    .a11y-row .pill{ flex:1 1 auto; text-align:center; }
+</style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ux-final.css', v='20260610-ui-kit-v3') }}">
+  <script>
+    /* Applique tôt les préférences d'accessibilité (taille du texte, contraste)
+       afin d'éviter tout clignotement au chargement de la page. */
+    (function(){
+      try{
+        var r = document.documentElement;
+        var ts = localStorage.getItem('a11y-text-size');
+        if(ts && ts !== 'normal'){ r.setAttribute('data-text-size', ts); }
+        var ct = localStorage.getItem('a11y-contrast');
+        if(ct && ct !== 'normal'){ r.setAttribute('data-contrast', ct); }
+      }catch(e){}
+    })();
+  </script>
+  {% block head_extra %}{% endblock %}
+</head>
+
+<body>
+  <a class="skip-link" href="#main-content">Aller au contenu</a>
+  {% set ep = request.endpoint or '' %}
+  {% set embed = request.args.get('embed') %}
+  {% set ui_mode = UI_MODE if UI_MODE is defined else 'simple' %}
+  {% set ui_simplified = UI_SIMPLIFIED if UI_SIMPLIFIED is defined else true %}
+
+  {% if not embed %}
+  <div class="topbar">
+    <div class="wrap">
+      <div class="nav">
+        <div class="brand" style="display:flex;align-items:center;gap:8px;">{% if APP_LOGO_URL %}<img src="{{ APP_LOGO_URL }}" alt="Logo application" style="height:28px;width:28px;object-fit:contain;border-radius:6px;">{% endif %}<span>{{ APP_NAME }}</span></div>
+
+        {% if current_user.is_authenticated %}
+          <button class="mobile-menu-toggle" type="button" data-mobile-menu-toggle aria-expanded="false" aria-controls="mobileNavPanel">
+            <span class="mobile-menu-icon" aria-hidden="true"></span>
+            <span>Menu</span>
+          </button>
+
+          {% set is_finance = ep.startswith('projets.finance') or ep.startswith('budget.') or ep.startswith('main.subventions') or ep.startswith('previsionnel.') %}
+          {% set is_publics = ep == 'main.hub_publics' or ep.startswith('participants.') or ep.startswith('insertion.') or ep.startswith('quartiers.') %}
+          {% set is_presences = ep.startswith('activite.') or ep.startswith('kiosk.') %}
+          {% set is_activites = ep == 'main.hub_activites' or ep.startswith('statsimpact.') or ep.startswith('pedagogie.') %}
+          {% set is_bilans = ep == 'main.hub_bilans' or ep == 'main.documents_exports' or ep.startswith('main.stats_bilans') or ep.startswith('main.bilan_global') or ep.startswith('main.stats') or ep.startswith('bilans.') or ep.startswith('questionnaires.') %}
+          {% set is_ressources = ep == 'main.hub_ressources' or ep.startswith('inventaire_materiel.') or ep.startswith('partenaires.') %}
+          {% set is_admin_area = ep.startswith('admin.') or ep.startswith('main.controle') %}
+          {% set is_suivi = ep == 'main.suivi_rappels' %}
+
+          {% if ui_simplified %}
+            <div class="nav-quick desktop-nav-links">
+              <div class="nav-quick-label">Menu simple</div>
+              {% if can('dashboard:view') %}
+                <a class="pill {% if ep.startswith('main.dashboard') %}active{% endif %}" href="{{ url_for('main.dashboard') }}">Accueil</a>
+                <a class="pill {% if is_suivi %}active{% endif %}" href="{{ url_for('main.suivi_rappels') }}">À traiter</a>
+                <a class="pill {% if ep == 'main.parcours_metier' %}active{% endif %}" href="{{ url_for('main.parcours_metier') }}">Parcours métiers</a>
+              {% endif %}
+              {% if can('participants:view') or can('participants:view_all') %}
+                <a class="pill {% if ep.startswith('participants.') %}active{% endif %}" href="{{ url_for('main.hub_publics') }}">Participants</a>
+              {% endif %}
+              {% if can('emargement:view') %}
+                <a class="pill {% if is_presences %}active{% endif %}" href="{{ url_for('activite.index') }}">Présences</a>
+              {% endif %}
+              {% if can('statsimpact:view') or can('stats:view') %}
+                <a class="pill {% if is_activites %}active{% endif %}" href="{{ url_for('main.hub_activites') }}">Activités</a>
+              {% elif can('pedagogie:view') %}
+                <a class="pill {% if is_activites %}active{% endif %}" href="{{ url_for('main.hub_activites') }}">Activités</a>
+              {% endif %}
+              {% if can('projets:view') or can('subventions:view') or can('depenses:view') %}
+                <a class="pill {% if is_finance %}active{% endif %}" href="{{ url_for('projets.finance_home') }}">Finances</a>
+              {% endif %}
+              {% if can('stats:view') %}
+                <a class="pill {% if is_bilans %}active{% endif %}" href="{{ url_for('main.hub_bilans') }}">Bilans</a>
+              {% elif can('bilans:view') %}
+                <a class="pill {% if is_bilans %}active{% endif %}" href="{{ url_for('main.hub_bilans') }}">Bilans</a>
+              {% endif %}
+              <details class="nav-more">
+                <summary class="pill {% if is_publics or is_ressources or is_admin_area %}active{% endif %}">Plus</summary>
+                <div class="nav-more-panel">
+                  {% if can('insertion:view') %}
+                    <a class="pill {% if ep.startswith('insertion.') %}active{% endif %}" href="{{ url_for('insertion.index') }}">Insertion</a>
+                  {% endif %}
+                  {% if can('quartiers:view') %}
+                    <a class="pill {% if ep.startswith('quartiers.') %}active{% endif %}" href="{{ url_for('quartiers.index') }}">Quartiers</a>
+                    <a class="pill {% if ep == 'quartiers.carte' %}active{% endif %}" href="{{ url_for('quartiers.carte') }}">Carte des habitants</a>
+                  {% endif %}
+                  {% if can('pedagogie:view') %}
+                    <a class="pill {% if ep.startswith('pedagogie.') %}active{% endif %}" href="{{ url_for('pedagogie.index') }}">Apprentissages</a>
+                  {% endif %}
+                  {% if can('inventaire:view') %}
+                    <a class="pill {% if ep.startswith('inventaire_materiel.') %}active{% endif %}" href="{{ url_for('inventaire_materiel.list_items') }}">Inventaire</a>
+                  {% endif %}
+                  {% if can('partenaires:view') %}
+                    <a class="pill {% if ep.startswith('partenaires.') and ep != 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.index') }}">Partenaires</a>
+                    <a class="pill {% if ep == 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.carte') }}">Carte des partenaires</a>
+                  {% endif %}
+                  {% if can('questionnaires:view') %}
+                    <a class="pill {% if ep.startswith('questionnaires.') %}active{% endif %}" href="{{ url_for('questionnaires.index') }}">Questionnaires</a>
+                  {% endif %}
+                  {% if can('admin:users') or can('admin:rbac') or can('controle:view') %}
+                    <div class="nav-more-heading">Administration</div>
+                    {% if can('admin:users') %}
+                      <a class="pill {% if ep.startswith('admin.users') %}active{% endif %}" href="{{ url_for('admin.users') }}">Équipe</a>
+                    {% endif %}
+                    {% if can('admin:rbac') %}
+                      <a class="pill {% if ep.startswith('admin.droits') %}active{% endif %}" href="{{ url_for('admin.droits') }}">Droits d’accès</a>
+                      <a class="pill {% if ep == 'admin.sante_systeme' %}active{% endif %}" href="{{ url_for('admin.sante_systeme') }}">État de l’application</a>
+                      <a class="pill {% if ep == 'admin.journal_audit' %}active{% endif %}" href="{{ url_for('admin.journal_audit') }}">Historique sensible</a>
+                      <a class="pill {% if ep == 'admin.notifications' %}active{% endif %}" href="{{ url_for('admin.notifications') }}">Notifications</a>
+                    {% endif %}
+                    {% if can('controle:view') %}
+                      <a class="pill {% if ep == 'main.controle' %}active{% endif %}" href="{{ url_for('main.controle') }}">Contrôle</a>
+                  <a class="pill {% if ep == 'main.controle_navigation' %}active{% endif %}" href="{{ url_for('main.controle_navigation') }}">Vérifier les liens</a>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+
+          {% elif not current_user.has_role("admin_tech") %}
+            <div class="nav-category-row desktop-nav-links">
+              {% if can('dashboard:view') %}
+                <a class="pill {% if ep.startswith('main.dashboard') %}active{% endif %}" href="{{ url_for('main.dashboard') }}">Accueil</a>
+                <a class="pill {% if is_suivi %}active{% endif %}" href="{{ url_for('main.suivi_rappels') }}">À traiter</a>
+                <a class="pill {% if ep == 'main.parcours_metier' %}active{% endif %}" href="{{ url_for('main.parcours_metier') }}">Parcours métiers</a>
+              {% endif %}
+
+              <details class="nav-more">
+                <summary class="pill {% if is_publics %}active{% endif %}">Publics</summary>
+                <div class="nav-more-panel">
+                  <a class="pill {% if ep == 'main.hub_publics' %}active{% endif %}" href="{{ url_for('main.hub_publics') }}">Accueil publics</a>
+                  {% if can('participants:view') or can('participants:view_all') %}
+                    <a class="pill {% if ep.startswith('participants.') %}active{% endif %}" href="{{ url_for('main.hub_publics') }}">Participants</a>
+                  {% endif %}
+                  {% if can('insertion:view') %}
+                    <a class="pill {% if ep.startswith('insertion.') %}active{% endif %}" href="{{ url_for('insertion.index') }}">Insertion</a>
+                  {% endif %}
+                  {% if can('quartiers:view') %}
+                    <a class="pill {% if ep.startswith('quartiers.') %}active{% endif %}" href="{{ url_for('quartiers.index') }}">Quartiers</a>
+                    <a class="pill {% if ep == 'quartiers.carte' %}active{% endif %}" href="{{ url_for('quartiers.carte') }}">Carte des habitants</a>
+                  {% endif %}
+                </div>
+              </details>
+
+              <details class="nav-more">
+                <summary class="pill {% if is_presences or is_activites %}active{% endif %}">Activités</summary>
+                <div class="nav-more-panel">
+                  <a class="pill {% if ep == 'main.hub_activites' %}active{% endif %}" href="{{ url_for('main.hub_activites') }}">Accueil activités</a>
+                  {% if can('emargement:view') %}
+                    <a class="pill {% if is_presences %}active{% endif %}" href="{{ url_for('activite.index') }}">Présences / émargement</a>
+                    <a class="pill {% if ep.startswith('main.mon_agenda') %}active{% endif %}" href="{{ url_for('main.mon_agenda') }}">📅 Mon agenda (synchro)</a>
+                  {% endif %}
+                  {% if can('statsimpact:view') or can('stats:view') %}
+                    <a class="pill {% if ep.startswith('statsimpact.') %}active{% endif %}" href="{{ url_for('statsimpact.dashboard') }}">Fréquentation &amp; résultats</a>
+                  {% endif %}
+                  {% if can('pedagogie:view') %}
+                    <a class="pill {% if ep.startswith('pedagogie.') and not ep.startswith('pedagogie.suivi_pedagogique') %}active{% endif %}" href="{{ url_for('pedagogie.index') }}">Apprentissages</a>
+                    <a class="pill {% if ep.startswith('pedagogie.suivi_pedagogique') %}active{% endif %}" href="{{ url_for('pedagogie.suivi_pedagogique') }}">Suivi pédagogique</a>
+                  {% endif %}
+                </div>
+              </details>
+
+              <details class="nav-more">
+                <summary class="pill {% if is_finance %}active{% endif %}">Finances</summary>
+                <div class="nav-more-panel">
+                  {% if can('projets:view') or can('subventions:view') or can('depenses:view') %}
+                    <a class="pill {% if ep == 'projets.finance_home' %}active{% endif %}" href="{{ url_for('projets.finance_home') }}">Accueil finances</a>
+                  {% endif %}
+                  {% if can('projets:view') %}
+                    <a class="pill {% if ep == 'projets.finance_simple' %}active{% endif %}" href="{{ url_for('projets.finance_simple') }}">Vue simple</a>
+                    <a class="pill {% if ep == 'projets.finance_secteur' %}active{% endif %}" href="{{ url_for('projets.finance_secteur') }}">Pilotage annuel</a>
+                  {% endif %}
+                  {% if can('subventions:view') %}
+                    <a class="pill {% if ep.startswith('previsionnel.') and ep != 'previsionnel.generateur' %}active{% endif %}" href="{{ url_for('previsionnel.index') }}">Budgets demandés</a>
+                    <a class="pill {% if ep == 'previsionnel.generateur' %}active{% endif %}" href="{{ url_for('previsionnel.generateur') }}">Générateur de budget</a>
+                    <a class="pill {% if ep.startswith('main.subventions') %}active{% endif %}" href="{{ url_for('main.subventions_list') }}">Financements accordés</a>
+                  {% endif %}
+                  {% if can('depenses:view') %}
+                    <a class="pill {% if ep.startswith('budget.') %}active{% endif %}" href="{{ url_for('budget.depenses_list') }}">Dépenses</a>
+                  {% endif %}
+                  {% if can('projets:view') %}
+                    <a class="pill {% if ep.startswith('projets.projets') or ep.startswith('projets.projet_') %}active{% endif %}" href="{{ url_for('projets.projets_list') }}">Projets financés</a>
+                  {% endif %}
+                </div>
+              </details>
+
+              <details class="nav-more">
+                <summary class="pill {% if is_bilans %}active{% endif %}">Bilans</summary>
+                <div class="nav-more-panel">
+                  <a class="pill {% if ep == 'main.hub_bilans' %}active{% endif %}" href="{{ url_for('main.hub_bilans') }}">Accueil bilans</a>
+                  <a class="pill {% if ep == 'main.documents_exports' %}active{% endif %}" href="{{ url_for('main.documents_exports') }}">Documents prêts</a>
+                  {% if can('stats:view') %}
+                    <a class="pill {% if ep.startswith('main.stats_bilans') or ep.startswith('main.bilan_global') or ep.startswith('main.stats') %}active{% endif %}" href="{{ url_for('main.stats_bilans') }}">Résultats &amp; bilans</a>
+                  {% endif %}
+                  {% if can('bilans:view') %}
+                    <a class="pill {% if ep.startswith('bilans.') %}active{% endif %}" href="{{ url_for('bilans.bilans_lourds', year=2026) }}">Bilans complets</a>
+                  {% endif %}
+                  {% if can('questionnaires:view') %}
+                    <a class="pill {% if ep.startswith('questionnaires.') %}active{% endif %}" href="{{ url_for('questionnaires.index') }}">Questionnaires d’impact</a>
+                  {% endif %}
+                  {% if can('transitions:view') %}
+                    <a class="pill {% if ep.startswith('transitions.') %}active{% endif %}" href="{{ url_for('transitions.dashboard') }}">🌱 Transitions</a>
+                  {% endif %}
+                </div>
+              </details>
+
+              <details class="nav-more">
+                <summary class="pill {% if is_ressources %}active{% endif %}">Ressources</summary>
+                <div class="nav-more-panel">
+                  <a class="pill {% if ep == 'main.hub_ressources' %}active{% endif %}" href="{{ url_for('main.hub_ressources') }}">Accueil ressources</a>
+                  {% if can('participants:view') %}
+                    <a class="pill {% if ep == 'main.hart_collectif' %}active{% endif %}" href="{{ url_for('main.hart_collectif') }}">Participation des habitants</a>
+                    <a class="pill {% if ep == 'main.benevolat' %}active{% endif %}" href="{{ url_for('main.benevolat') }}">Bénévolat</a>
+                  {% endif %}
+                  {% if can('rh:view') %}
+                    <a class="pill {% if ep == 'main.rh' %}active{% endif %}" href="{{ url_for('main.rh') }}">Équipe salariée</a>
+                  {% endif %}
+                  {% if can('dons:view') %}
+                    <a class="pill {% if ep in ('main.dons_registre', 'main.don_recu') %}active{% endif %}" href="{{ url_for('main.dons_registre') }}">Dons &amp; reçus fiscaux</a>
+                  {% endif %}
+                  {% if can('cotisations:view') %}
+                    <a class="pill {% if ep == 'main.impayes' %}active{% endif %}" href="{{ url_for('main.impayes') }}">Impayés (adhésions &amp; participation)</a>
+                  {% endif %}
+                  {% if can('cotisations:tarifs') %}
+                    <a class="pill {% if ep == 'main.tarifs_cotisations' %}active{% endif %}" href="{{ url_for('main.tarifs_cotisations') }}">Tarifs adhésions &amp; participation</a>
+                  {% endif %}
+                  {% if can('caisse:view') %}
+                    <a class="pill {% if ep.startswith('main.caisse') %}active{% endif %}" href="{{ url_for('main.caisse') }}">Caisse</a>
+                  {% endif %}
+                  {% if can('stats:view') %}
+                    <a class="pill {% if ep == 'main.cout_unitaire' %}active{% endif %}" href="{{ url_for('main.cout_unitaire') }}">Coût unitaire</a>
+                  {% endif %}
+                  {% if can('inventaire:view') %}
+                    <a class="pill {% if ep.startswith('inventaire_materiel.') %}active{% endif %}" href="{{ url_for('inventaire_materiel.list_items') }}">Inventaire matériel</a>
+                  {% endif %}
+                  {% if can('partenaires:view') %}
+                    <a class="pill {% if ep.startswith('partenaires.') and ep != 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.index') }}">Annuaire partenaires</a>
+                    <a class="pill {% if ep == 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.carte') }}">Carte des partenaires</a>
+                  {% endif %}
+                </div>
+              </details>
+
+              <details class="nav-more">
+                <summary class="pill {% if is_admin_area %}active{% endif %}">Administration</summary>
+                <div class="nav-more-panel">
+                  {% if can('admin:users') %}
+                    <a class="pill {% if ep.startswith('admin.users') %}active{% endif %}" href="{{ url_for('admin.users') }}">Équipe</a>
+                  {% endif %}
+                  {% if can('admin:rbac') %}
+                    <a class="pill {% if ep.startswith('admin.droits') %}active{% endif %}" href="{{ url_for('admin.droits') }}">Droits d’accès</a>
+                    <a class="pill {% if ep == 'admin.sante_systeme' %}active{% endif %}" href="{{ url_for('admin.sante_systeme') }}">État de l’application</a>
+                    <a class="pill {% if ep == 'admin.journal_audit' %}active{% endif %}" href="{{ url_for('admin.journal_audit') }}">Historique sensible</a>
+                    <a class="pill {% if ep.startswith('admin.referentiels') %}active{% endif %}" href="{{ url_for('admin.referentiels') }}">Listes de compétences</a>
+                    <a class="pill {% if ep.startswith('admin.instance_settings') %}active{% endif %}" href="{{ url_for('admin.instance_settings') }}">Nom et logo</a>
+                    <a class="pill {% if ep == 'admin.sauvegardes' %}active{% endif %}" href="{{ url_for('admin.sauvegardes') }}">Sauvegardes</a>
+                    <a class="pill {% if ep == 'admin.notifications' %}active{% endif %}" href="{{ url_for('admin.notifications') }}">Notifications</a>
+                  {% endif %}
+                  {% if can('secteurs:edit') %}
+                    <a class="pill {% if ep.startswith('admin.secteurs') %}active{% endif %}" href="{{ safe_url_for('admin.secteurs') }}">Secteurs</a>
+                  {% endif %}
+                  {% if can('controle:view') %}
+                    <a class="pill {% if ep == 'main.controle' %}active{% endif %}" href="{{ url_for('main.controle') }}">Contrôle</a>
+                  <a class="pill {% if ep == 'main.controle_navigation' %}active{% endif %}" href="{{ url_for('main.controle_navigation') }}">Vérifier les liens</a>
+                  {% endif %}
+                  {% if can('ateliers:sync') %}
+                    <a class="pill {% if request.endpoint == 'admin.import_excel' %}active{% endif %}" href="{{ url_for('admin.import_excel') }}">Importer depuis Excel</a>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+
+          {% else %}
+            <div class="nav-category-row desktop-nav-links">
+              <a class="pill {% if ep.startswith('main.dashboard') %}active{% endif %}" href="{{ url_for('main.dashboard') }}">Accueil</a>
+              <a class="pill {% if is_suivi %}active{% endif %}" href="{{ url_for('main.suivi_rappels') }}">À traiter</a>
+              <a class="pill {% if ep == 'main.parcours_metier' %}active{% endif %}" href="{{ url_for('main.parcours_metier') }}">Parcours métiers</a>
+              <details class="nav-more">
+                <summary class="pill {% if is_admin_area %}active{% endif %}">Administration</summary>
+                <div class="nav-more-panel">
+                  <a class="pill {% if ep.startswith('admin.users') %}active{% endif %}" href="{{ url_for('admin.users') }}">Équipe</a>
+                  {% if can('admin:rbac') %}
+                    <a class="pill {% if ep.startswith('admin.droits') %}active{% endif %}" href="{{ url_for('admin.droits') }}">Droits d’accès</a>
+                    <a class="pill {% if ep == 'admin.sante_systeme' %}active{% endif %}" href="{{ url_for('admin.sante_systeme') }}">État de l’application</a>
+                    <a class="pill {% if ep == 'admin.journal_audit' %}active{% endif %}" href="{{ url_for('admin.journal_audit') }}">Historique sensible</a>
+                    <a class="pill {% if ep.startswith('admin.referentiels') %}active{% endif %}" href="{{ url_for('admin.referentiels') }}">Listes de compétences</a>
+                    <a class="pill {% if ep.startswith('admin.instance_settings') %}active{% endif %}" href="{{ url_for('admin.instance_settings') }}">Nom et logo</a>
+                    <a class="pill {% if ep == 'admin.sauvegardes' %}active{% endif %}" href="{{ url_for('admin.sauvegardes') }}">Sauvegardes</a>
+                    <a class="pill {% if ep == 'admin.notifications' %}active{% endif %}" href="{{ url_for('admin.notifications') }}">Notifications</a>
+                  {% endif %}
+                  {% if can('secteurs:edit') %}
+                    <a class="pill {% if ep.startswith('admin.secteurs') %}active{% endif %}" href="{{ safe_url_for('admin.secteurs') }}">Secteurs</a>
+                  {% endif %}
+                  {% if can('controle:view') %}
+                    <a class="pill {% if ep == 'main.controle' %}active{% endif %}" href="{{ url_for('main.controle') }}">Contrôle</a>
+                  <a class="pill {% if ep == 'main.controle_navigation' %}active{% endif %}" href="{{ url_for('main.controle_navigation') }}">Vérifier les liens</a>
+                  {% endif %}
+                  {% if can('ateliers:sync') %}
+                    <a class="pill {% if request.endpoint == 'admin.import_excel' %}active{% endif %}" href="{{ url_for('admin.import_excel') }}">Importer depuis Excel</a>
+                  {% endif %}
+                </div>
+              </details>
+              <details class="nav-more">
+                <summary class="pill">Ressources</summary>
+                <div class="nav-more-panel">
+                  {% if can('quartiers:view') %}
+                    <a class="pill {% if ep.startswith('quartiers.') %}active{% endif %}" href="{{ url_for('quartiers.index') }}">Quartiers</a>
+                    <a class="pill {% if ep == 'quartiers.carte' %}active{% endif %}" href="{{ url_for('quartiers.carte') }}">Carte des habitants</a>
+                  {% endif %}
+                  {% if can('questionnaires:view') %}
+                    <a class="pill {% if ep.startswith('questionnaires.') %}active{% endif %}" href="{{ url_for('questionnaires.index') }}">Questionnaires</a>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+          {% endif %}
+
+          <div id="mobileNavPanel" class="mobile-nav-panel" hidden aria-label="Navigation principale"></div>
+
+          <div class="right">
+            <div class="global-search">
+              <label for="global-search-input" class="sr-only">Recherche globale</label>
+              <input id="global-search-input" type="search" placeholder="Rechercher une personne, un atelier, un quartier…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="global-search-results" />
+              <div id="global-search-results" class="global-search__panel" role="listbox" aria-label="Résultats de recherche"></div>
+            </div>
+            <form method="post" action="{{ url_for('main.set_ui_mode') }}" class="mode-switch">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+              <span class="mode-switch__label">Affichage</span>
+              <button class="pill {% if ui_simplified %}active{% endif %}" type="submit" name="mode" value="simple">Simple</button>
+              <button class="pill {% if not ui_simplified %}active{% endif %}" type="submit" name="mode" value="expert">Expert</button>
+            </form>
+            <details class="nav-more a11y-menu" id="a11yMenu">
+              <summary class="pill" title="Confort de lecture : taille du texte et contraste" aria-label="Confort de lecture">Aa</summary>
+              <div class="nav-more-panel a11y-panel">
+                <div class="nav-more-heading">Taille du texte</div>
+                <div class="a11y-row">
+                  <button type="button" class="pill" data-text-size="normal">Normal</button>
+                  <button type="button" class="pill" data-text-size="large">Grand</button>
+                  <button type="button" class="pill" data-text-size="xlarge">Très grand</button>
+                </div>
+                <div class="nav-more-heading">Contraste</div>
+                <div class="a11y-row">
+                  <button type="button" class="pill" data-contrast="normal">Standard</button>
+                  <button type="button" class="pill" data-contrast="more">Renforcé</button>
+                </div>
+              </div>
+            </details>
+            <button class="pill theme-toggle" id="themeToggle" type="button" title="Changer de thème" aria-label="Changer de thème">🌙</button>
+            <a class="pill" href="{{ url_for('aide.notice') }}" title="Ouvrir la notice d'utilisation" aria-label="Aide et notice d'utilisation">❓ Aide</a>
+
+            <div class="tag">
+              {{ current_user.nom }}
+              {% if current_user.secteur_assigne %} · {{ current_user.secteur_assigne }}{% endif %}
+            </div>
+
+            <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="pill" type="submit">Déconnexion</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if current_user.is_authenticated and ui_simplified and not embed %}
+  <div class="wrap">
+    <div class="easy-banner" aria-label="Mode simplifié activé">
+      <div class="easy-banner__title">Mode simplifié actif</div>
+      <div class="easy-banner__text">Tu vois d’abord les actions utiles au quotidien. Passe en mode expert si tu veux toutes les pages en permanence.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <main id="main-content" class="container" tabindex="-1">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="stack flash-stack">
+          {% for category, msg in messages %}
+            {% set tone = 'info' %}
+            {% if category in ['success', 'ok'] %}{% set tone = 'success' %}{% endif %}
+            {% if category in ['warning', 'warn'] %}{% set tone = 'warning' %}{% endif %}
+            {% if category in ['danger', 'error'] %}{% set tone = 'danger' %}{% endif %}
+            <div class="flash flash-{{ tone }} {{ category }}" data-flash="1" data-flash-tone="{{ tone }}">
+              <div class="flash__icon" aria-hidden="true"></div>
+              <div class="flash__body">{{ msg }}</div>
+              <button type="button" class="flash__close" data-flash-close aria-label="Fermer">×</button>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="spacer"></div>
+      {% endif %}
+    {% endwith %}
+
+    {% if current_user.is_authenticated %}
+      {% set endpoint_module = (ep.split('.', 1)[0] if '.' in ep else ep) %}
+      {% set module_labels = {
+        'main': 'Pilotage',
+        'budget': 'Finances',
+        'projets': 'Projets & finances',
+        'previsionnel': 'Finances',
+        'participants': 'Publics & parcours',
+        'insertion': 'Publics & parcours',
+        'activite': 'Activités & présences',
+        'kiosk': 'Présences',
+        'statsimpact': 'Activités & présences',
+        'pedagogie': 'Pédagogie',
+        'bilans': 'Bilans & exports',
+        'inventaire': 'Ressources',
+        'inventaire_materiel': 'Ressources',
+        'quartiers': 'Publics & parcours',
+        'partenaires': 'Ressources',
+        'questionnaires': 'Bilans & exports',
+        'admin': 'Administration',
+        'auth': 'Connexion',
+        'setup': 'Initialisation',
+        'launcher': 'Portail'
+      } %}
+      {% set perm_hints = {
+        'main': 'dashboard:view',
+        'budget': 'depenses:view',
+        'projets': 'projets:view',
+        'previsionnel': 'subventions:view',
+        'participants': 'participants:view',
+        'insertion': 'insertion:view',
+        'activite': 'emargement:view',
+        'kiosk': 'emargement:view',
+        'statsimpact': 'statsimpact:view',
+        'pedagogie': 'pedagogie:view',
+        'bilans': 'bilans:view',
+        'inventaire': 'inventaire:view',
+        'inventaire_materiel': 'inventaire:view',
+        'quartiers': 'quartiers:view',
+        'partenaires': 'partenaires:view',
+        'questionnaires': 'questionnaires:view',
+        'admin': 'admin:users'
+      } %}
+      {% set role_code = (current_user.role_codes[0] if current_user.role_codes else '') %}
+      {% set role_labels = {
+        'direction': 'Direction',
+        'directrice': 'Direction',
+        'finance': 'Finance',
+        'admin_tech': 'Admin technique',
+        'responsable_secteur': 'Responsable secteur'
+      } %}
+
+      {% if ep != 'main.dashboard' %}
+        {% set endpoint_action = ep.split('.', 1)[1] if '.' in ep else '' %}
+        {% set action_redondante = endpoint_action in ['', 'index', 'home', 'dashboard'] or endpoint_action.startswith('hub_') or endpoint_action.endswith('_home') or endpoint_action.endswith('_index') %}
+        {% set verbes_crumb = {'edit': 'Modifier', 'new': 'Créer', 'create': 'Créer', 'add': 'Ajouter', 'list': 'Liste', 'detail': 'Détail', 'view': 'Consulter', 'import': 'Import', 'export': 'Export', 'print': 'Impression'} %}
+        {% set module_hubs = {
+          'main': 'main.dashboard',
+          'participants': 'main.hub_publics',
+          'insertion': 'insertion.index',
+          'quartiers': 'quartiers.index',
+          'activite': 'activite.index',
+          'kiosk': 'activite.index',
+          'statsimpact': 'main.hub_activites',
+          'pedagogie': 'pedagogie.index',
+          'projets': 'projets.finance_home',
+          'budget': 'projets.finance_home',
+          'previsionnel': 'previsionnel.index',
+          'bilans': 'main.hub_bilans',
+          'questionnaires': 'main.hub_bilans',
+          'inventaire': 'inventaire_materiel.list_items',
+          'inventaire_materiel': 'inventaire_materiel.list_items',
+          'partenaires': 'partenaires.index',
+          'admin': 'admin.users'
+        } %}
+        {% set module_hub = safe_url_for(module_hubs.get(endpoint_module, 'invalide.endpoint'), fallback='') %}
+        {% set module_label = module_labels.get(endpoint_module, endpoint_module|capitalize) %}
+        <nav class="breadcrumb" aria-label="Fil d’Ariane">
+          <a class="breadcrumb__item breadcrumb__home" href="{{ url_for('main.dashboard') }}">Accueil</a>
+          <span class="breadcrumb__sep">›</span>
+          {% if module_hub %}
+            <a class="breadcrumb__item" href="{{ module_hub }}">{{ module_label }}</a>
+          {% else %}
+            <span class="breadcrumb__item">{{ module_label }}</span>
+          {% endif %}
+          {% if AIDE_PAGE and AIDE_PAGE.titre %}
+            <span class="breadcrumb__sep">›</span>
+            <a class="breadcrumb__item breadcrumb__current" aria-current="page" href="{{ request.path }}">{{ AIDE_PAGE.titre }}</a>
+          {% elif endpoint_action and not action_redondante %}
+            {% set premier = endpoint_action.split('_')[0] %}
+            {% set reste = endpoint_action.split('_')[1:] | join(' ') %}
+            <span class="breadcrumb__sep">›</span>
+            <a class="breadcrumb__item breadcrumb__current" aria-current="page" href="{{ request.path }}">{{ (verbes_crumb.get(premier, premier) ~ (' ' ~ reste if reste else '')) | trim | capitalize }}</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+
+      <section class="context-banner {% if ui_simplified %}context-banner--simple{% endif %}" aria-label="Contexte de visibilité">
+        <span class="context-badge"><strong>Rôle</strong> · {{ role_labels.get(role_code, role_code or 'Utilisateur') }}</span>
+        <span class="context-badge"><strong>Portée</strong> · {% if can('scope:all_secteurs') %}Tous secteurs{% else %}{{ current_user.secteur_assigne or 'Secteur non défini' }}{% endif %}</span>
+        {% set hint = perm_hints.get(endpoint_module) %}
+        {% if hint and not ui_simplified %}
+          <span class="context-badge"><strong>Pourquoi je vois cette page</strong> · accès prévu par votre rôle</span>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% include "_guide_bandeau.html" %}
+
+    {% if AIDE_PAGE %}
+      <section class="aide-page no-print" aria-label="Aide pour cette page">
+        <div class="aide-page__intro">
+          <span class="aide-page__icon" aria-hidden="true">?</span>
+          <div>
+            <strong class="aide-page__label">À quoi sert cette page ?</strong>
+            <p class="aide-page__resume">{{ AIDE_PAGE.resume }}</p>
+          </div>
+        </div>
+        {% if AIDE_PAGE.etapes or AIDE_PAGE.astuce %}
+          <details class="aide-page__details">
+            <summary>Voir comment faire — {{ AIDE_PAGE.titre }}</summary>
+            <div class="aide-page__corps">
+              {% if AIDE_PAGE.etapes %}
+                <ol>
+                  {% for etape in AIDE_PAGE.etapes %}<li>{{ etape }}</li>{% endfor %}
+                </ol>
+              {% endif %}
+              {% if AIDE_PAGE.astuce %}
+                <p class="aide-page__astuce">💡 {{ AIDE_PAGE.astuce }}</p>
+              {% endif %}
+              <p><a href="{{ url_for('aide.notice') }}">Ouvrir la notice complète →</a></p>
+            </div>
+          </details>
+        {% endif %}
+      </section>
+    {% endif %}
+    {% block body %}{% endblock %}
+  </main>
+
+  <script>
+  (function(){
+    const input = document.getElementById("global-search-input");
+    const panel = document.getElementById("global-search-results");
+    if(!input || !panel) return;
+
+    let debounce = null;
+    let lastValue = "";
+    let activeIndex = -1;
+    let facetType = "all";
+    let lastPayload = null;
+    let keepPanelOpen = false;
+
+    function escHtml(value){
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function highlighted(value){
+      const txt = String(value || "");
+      const raw = (input.value || "").trim().split(/\s+/).filter(Boolean);
+      const tokens = raw.filter((part)=>!part.toLowerCase().startsWith("type:") && !part.toLowerCase().startsWith("secteur:"));
+      if(!tokens.length) return escHtml(txt);
+      let out = escHtml(txt);
+      tokens.forEach((token) => {
+        const safe = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const reg = new RegExp(`(${safe})`, "ig");
+        out = out.replace(reg, "<mark>$1</mark>");
+      });
+      return out;
+    }
+
+    function hidePanel(){
+      panel.classList.remove("visible");
+      panel.innerHTML = "";
+      activeIndex = -1;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      lastPayload = null;
+    }
+
+    function effectiveTerm(){
+      const raw = (input.value || "").trim();
+      if(!raw) return "";
+      if(facetType && facetType !== "all"){
+        return `type:${facetType.toLowerCase()} ${raw}`.trim();
+      }
+      return raw;
+    }
+
+    function groupedItems(items){
+      const groups = new Map();
+      items.forEach((item) => {
+        const key = item.type || "Autres";
+        if(!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+      });
+      return Array.from(groups.entries());
+    }
+
+    function refreshActiveItem(){
+      const anchors = Array.from(panel.querySelectorAll(".global-search__item"));
+      anchors.forEach((node, idx) => {
+        const selected = idx === activeIndex;
+        node.classList.toggle("is-active", selected);
+        node.setAttribute("aria-selected", selected ? "true" : "false");
+        if(selected){
+          input.setAttribute("aria-activedescendant", node.id);
+          node.scrollIntoView({block: "nearest"});
+        }
+      });
+    }
+
+    function render(payload){
+      const facets = payload?.facets || {};
+      const items = payload?.results || [];
+      lastPayload = payload || {results: [], facets: {}};
+      const filteredItems = facetType === "all" ? items : items.filter((item) => item.type === facetType);
+      const duration = Number(payload?.debug?.duration_ms || 0);
+      const metaInfo = duration ? `<div class="global-search__empty">Résultats en ${duration} ms.</div>` : "";
+      const typeFacets = facets.types || {};
+      const knownTypes = Array.from(new Set(["Participant", "Atelier", "Projet", "Quartier", ...Object.keys(typeFacets)]));
+      const facetButtons = [
+        `<button type="button" class="global-search__facet ${facetType === "all" ? "is-active" : ""}" data-facet-type="all">Tout (${items.length})</button>`,
+        ...knownTypes.map((type) => `
+          <button type="button" class="global-search__facet ${facetType === type ? "is-active" : ""}" data-facet-type="${type}">${type}${typeFacets[type] ? ` (${typeFacets[type]})` : ""}</button>
+        `)
+      ].join("");
+      const currentTerm = (input.value || "").trim();
+      const fullResultsUrl = currentTerm ? `/recherche?q=${encodeURIComponent(effectiveTerm())}` : "#";
+
+      if(!items.length){
+        panel.innerHTML = `
+          <div class="global-search__facets">${facetButtons}</div>
+          ${metaInfo}
+          <div class="global-search__empty">${currentTerm ? 'Aucun résultat pour cette recherche.' : 'Commence à taper pour lancer la recherche.'}</div>
+        `;
+        panel.classList.add("visible");
+        input.setAttribute("aria-expanded", "true");
+      } else if(!filteredItems.length){
+        panel.innerHTML = `
+          <div class="global-search__facets">${facetButtons}</div>
+          ${metaInfo}
+          <div class="global-search__empty">Aucun résultat pour ce filtre.</div>
+          ${currentTerm ? `<div class="global-search__empty"><a href="${fullResultsUrl}">Voir tous les résultats sur une page dédiée</a></div>` : ''}
+        `;
+        panel.classList.add("visible");
+        input.setAttribute("aria-expanded", "true");
+      } else {
+        let index = 0;
+        panel.innerHTML = `
+          <div class="global-search__facets">${facetButtons}</div>
+          ${metaInfo}
+          ${groupedItems(filteredItems).map(([type, group]) => `
+          <section class="global-search__section" aria-label="${type}">
+            <div class="global-search__section-title">${type}</div>
+            ${group.map((item) => {
+              const itemId = `global-search-item-${index++}`;
+              return `
+                <a id="${itemId}" class="global-search__item" role="option" aria-selected="false" href="${item.url}">
+                  <div class="global-search__type">${escHtml(item.type)}</div>
+                  <div class="global-search__label">${highlighted(item.label)}</div>
+                  <div class="global-search__meta">${highlighted(item.meta || '')}</div>
+                </a>
+              `;
+            }).join("")}
+          </section>
+        `).join("")}
+          ${currentTerm ? `<div class="global-search__empty"><a href="${fullResultsUrl}">Voir tous les résultats sur une page dédiée</a></div>` : ''}
+        `;
+        panel.classList.add("visible");
+        input.setAttribute("aria-expanded", "true");
+        activeIndex = -1;
+      }
+
+      panel.querySelectorAll("[data-facet-type]").forEach((btn) => {
+        btn.addEventListener("mousedown", (event) => {
+          keepPanelOpen = true;
+          event.preventDefault();
+        });
+        btn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          facetType = btn.getAttribute("data-facet-type") || "all";
+          const termNow = (input.value || "").trim();
+          if(termNow.length >= 2){
+            search(termNow);
+          } else {
+            render(lastPayload || {results: [], facets: {}});
+          }
+          requestAnimationFrame(() => {
+            input.focus();
+            keepPanelOpen = false;
+          });
+        });
+      });
+    }
+
+    async function search(term){
+      try{
+        const response = await fetch(`/api/global-search?q=${encodeURIComponent(effectiveTerm())}`, {
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+        if(!response.ok){
+          hidePanel();
+          return;
+        }
+        const data = await response.json();
+        if((input.value || "").trim() !== term){
+          return;
+        }
+        facetType = "all";
+        render(data || {});
+      }catch(_err){
+        hidePanel();
+      }
+    }
+
+    input.addEventListener("input", () => {
+      const term = (input.value || "").trim();
+      if(term === lastValue) return;
+      lastValue = term;
+      if(debounce) window.clearTimeout(debounce);
+      if(term.length < 2){
+        render(lastPayload || {results: [], facets: {}});
+        return;
+      }
+      debounce = window.setTimeout(() => search(term), 170);
+    });
+
+    input.addEventListener("focus", () => {
+      render(lastPayload || {results: [], facets: {}});
+    });
+
+    document.addEventListener("click", (event) => {
+      if(keepPanelOpen){
+        keepPanelOpen = false;
+        return;
+      }
+      if(event.target === input || panel.contains(event.target)){
+        return;
+      }
+      hidePanel();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      const key = (event.key || "").toLowerCase();
+      if((event.ctrlKey || event.metaKey) && key === "k"){
+        event.preventDefault();
+        input.focus();
+        input.select();
+      }
+    });
+
+    input.addEventListener("keydown", (event) => {
+      const anchors = Array.from(panel.querySelectorAll(".global-search__item"));
+      if((event.key === "ArrowDown" || event.key === "ArrowUp") && anchors.length){
+        event.preventDefault();
+        if(event.key === "ArrowDown"){
+          activeIndex = (activeIndex + 1) % anchors.length;
+        }else{
+          activeIndex = activeIndex <= 0 ? anchors.length - 1 : activeIndex - 1;
+        }
+        refreshActiveItem();
+        return;
+      }
+      if(event.key === "Enter" && activeIndex >= 0 && anchors[activeIndex]){
+        event.preventDefault();
+        window.location.href = anchors[activeIndex].getAttribute("href");
+        return;
+      }
+      if(event.key === "Escape"){
+        hidePanel();
+      }
+    });
+  })();
+  </script>
+
+  <script>
+  (function(){
+    const root = document.documentElement;
+    const btn  = document.getElementById("themeToggle");
+    if(!btn) return;
+
+    function apply(theme){
+      root.setAttribute("data-theme", theme);
+      localStorage.setItem("theme", theme);
+      btn.textContent = theme === "dark" ? "☀" : "🌙";
+      btn.title = theme === "dark" ? "Passer en thème clair" : "Passer en thème sombre";
+      btn.setAttribute("aria-label", btn.title);
+      btn.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+    }
+
+    const saved = localStorage.getItem("theme");
+    if(saved){
+      apply(saved);
+    }else{
+      apply("light");
+    }
+
+    btn.addEventListener("click", ()=>{
+      const current = root.getAttribute("data-theme") || "dark";
+      apply(current === "dark" ? "light" : "dark");
+    });
+  })();
+  </script>
+
+  <script>
+  /* Menu « Confort de lecture » : taille du texte et contraste, persistés. */
+  (function(){
+    const root = document.documentElement;
+    const menu = document.getElementById("a11yMenu");
+    if(!menu) return;
+
+    function syncActive(group){
+      const attr = "data-" + group;
+      const current = root.getAttribute(attr) || "normal";
+      menu.querySelectorAll("[" + attr + "]").forEach((btn)=>{
+        const on = btn.getAttribute(attr) === current;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    function apply(group, value, fallback){
+      const attr = "data-" + group;
+      if(value && value !== fallback){ root.setAttribute(attr, value); }
+      else { root.removeAttribute(attr); value = fallback; }
+      try{ localStorage.setItem("a11y-" + group, value); }catch(e){}
+      syncActive(group);
+    }
+
+    menu.querySelectorAll("[data-text-size]").forEach((btn)=>{
+      btn.addEventListener("click", ()=> apply("text-size", btn.getAttribute("data-text-size"), "normal"));
+    });
+    menu.querySelectorAll("[data-contrast]").forEach((btn)=>{
+      btn.addEventListener("click", ()=> apply("contrast", btn.getAttribute("data-contrast"), "normal"));
+    });
+
+    syncActive("text-size");
+    syncActive("contrast");
+  })();
+  </script>
+
+  <script>
+  (function(){
+    function normalize(value){
+      return (value || "").trim().toLowerCase();
+    }
+
+    function applyFilter(select, villeValue){
+      const ville = normalize(villeValue);
+      let selectedHidden = false;
+      select.querySelectorAll("option").forEach((opt) => {
+        const optVille = opt.getAttribute("data-ville");
+        if (!opt.value || !optVille) {
+          opt.hidden = false;
+          return;
+        }
+        const match = !ville || normalize(optVille) === ville;
+        opt.hidden = !match;
+        if (opt.selected && !match) {
+          selectedHidden = true;
+        }
+      });
+      if (selectedHidden) {
+        select.value = "";
+      }
+    }
+
+    document.querySelectorAll("[data-quartier-select]").forEach((select) => {
+      const scope = select.closest("form") || document;
+      const villeInput = scope.querySelector("[data-ville-input]");
+      if (!villeInput) {
+        return;
+      }
+      const run = () => applyFilter(select, villeInput.value);
+      villeInput.addEventListener("input", run);
+      villeInput.addEventListener("change", run);
+      run();
+    });
+  })();
+  </script>
+
+  
+  <script>
+  (function(){
+    function cellValue(row, idx){
+      const cell = row.children[idx];
+      return cell ? (cell.getAttribute('data-sort') || cell.textContent || '').trim() : '';
+    }
+    function detectType(values){
+      const cleaned = values.filter(Boolean);
+      if (!cleaned.length) return 'text';
+      const numish = cleaned.every(v => /^[-+]?\d+[\d\s.,%€]*$/.test(v.replace(/\u00a0/g,' ')));
+      if (numish) return 'number';
+      const datish = cleaned.every(v => !isNaN(Date.parse(v.replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/, '$3-$2-$1'))));
+      if (datish) return 'date';
+      return 'text';
+    }
+    function toNumber(v){
+      return parseFloat(v.replace(/\s/g,'').replace(/[€%]/g,'').replace(/\.(?=\d{3}(?:\D|$))/g,'').replace(',', '.')) || 0;
+    }
+    function toDate(v){
+      const fr = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (fr) return new Date(+fr[3], +fr[2]-1, +fr[1]).getTime();
+      const t = Date.parse(v);
+      return isNaN(t) ? 0 : t;
+    }
+    function sortTable(table, idx, dir){
+      const tbody = table.tBodies[0]; if (!tbody) return;
+      const rows = Array.from(tbody.rows);
+      const values = rows.map(r => cellValue(r, idx));
+      const type = detectType(values);
+      rows.sort((a,b)=>{
+        const va = cellValue(a, idx), vb = cellValue(b, idx);
+        let cmp = 0;
+        if (type === 'number') cmp = toNumber(va) - toNumber(vb);
+        else if (type === 'date') cmp = toDate(va) - toDate(vb);
+        else cmp = va.localeCompare(vb, 'fr', {numeric:true, sensitivity:'base'});
+        return dir === 'asc' ? cmp : -cmp;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    }
+    document.querySelectorAll('table.js-sortable').forEach((table)=>{
+      const headRow = table.tHead && table.tHead.rows[0];
+      if (!headRow) return;
+      Array.from(headRow.cells).forEach((th, idx)=>{
+        if (th.getAttribute('data-nosort') === '1') return;
+        th.classList.add('sortable');
+        th.addEventListener('click', ()=>{
+          const current = th.classList.contains('is-sorted') && th.classList.contains('asc') ? 'desc' : 'asc';
+          Array.from(headRow.cells).forEach(x=>x.classList.remove('is-sorted','asc','desc'));
+          th.classList.add('is-sorted', current);
+          sortTable(table, idx, current);
+        });
+      });
+    });
+
+    function labelFor(input){
+      const id = input.id;
+      if (id) {
+        const lab = document.querySelector(`label[for="${CSS.escape(id)}"]`);
+        if (lab) return lab.textContent.trim();
+      }
+      const wrap = input.closest('.field, .field-stack, .stack, div');
+      const lab = wrap ? wrap.querySelector('label') : null;
+      return lab ? lab.textContent.trim() : (input.name || 'Filtre');
+    }
+    function buildSummary(form){
+      const target = form.parentElement.querySelector('[data-filter-summary-target]') || form.querySelector('[data-filter-summary-target]');
+      if (!target) return;
+      target.innerHTML='';
+      const inputs = form.querySelectorAll('input[name], select[name], textarea[name]');
+      inputs.forEach(input=>{
+        if (input.type === 'hidden' || input.type === 'submit' || input.disabled) return;
+        let value = '';
+        if (input.tagName === 'SELECT') {
+          if (input.multiple) value = Array.from(input.selectedOptions).map(o=>o.textContent.trim()).filter(Boolean).join(', ');
+          else value = input.value ? input.options[input.selectedIndex]?.textContent.trim() || input.value : '';
+        } else if ((input.type === 'checkbox' || input.type === 'radio')) {
+          if (input.checked) value = input.value || 'Oui';
+        } else value = (input.value || '').trim();
+        if (!value) return;
+        const chip = document.createElement('span');
+        chip.className = 'filter-chip';
+        chip.innerHTML = `<b>${labelFor(input)}</b><span>${value}</span><button type="button" aria-label="Effacer">×</button>`;
+        chip.querySelector('button').addEventListener('click', ()=>{
+          if (input.tagName === 'SELECT') input.value = '';
+          else if (input.type === 'checkbox' || input.type === 'radio') input.checked = false;
+          else input.value = '';
+          buildSummary(form);
+        });
+        target.appendChild(chip);
+      });
+    }
+    document.querySelectorAll('form[data-filter-summary="true"]').forEach((form)=>{
+      const target = document.createElement('div');
+      target.className = 'filter-summary';
+      target.setAttribute('data-filter-summary-target','1');
+      form.insertAdjacentElement('afterend', target);
+      form.addEventListener('input', ()=>buildSummary(form));
+      form.addEventListener('change', ()=>buildSummary(form));
+      buildSummary(form);
+    });
+  })();
+  </script>
+
+
+  <div id="toast-viewport" class="toast-viewport" aria-label="Notifications"></div>
+  <div id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="sr-alert" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+  <script src="{{ url_for('static', filename='js/feedback-kit.js') }}?v=20260701-submit-fix"></script>
+
+  {% block scripts_extra %}{% endblock %}
+
+<script>
+  (function(){
+    const toggle = document.querySelector('[data-mobile-menu-toggle]');
+    const panel = document.getElementById('mobileNavPanel');
+
+    function makeSection(title){
+      const section = document.createElement('section');
+      section.className = 'mobile-nav-section';
+      const heading = document.createElement('div');
+      heading.className = 'mobile-nav-title';
+      heading.textContent = title || 'Menu';
+      section.appendChild(heading);
+      return section;
+    }
+
+    function addLink(section, sourceLink){
+      if(!sourceLink || !sourceLink.href){ return; }
+      const link = document.createElement('a');
+      link.className = 'mobile-nav-link';
+      if(sourceLink.classList.contains('active')){ link.classList.add('active'); }
+      link.href = sourceLink.href;
+      link.textContent = (sourceLink.textContent || '').trim();
+      section.appendChild(link);
+    }
+
+    function buildMobileMenu(){
+      if(!panel || panel.dataset.ready === '1'){ return; }
+      const roots = document.querySelectorAll('.desktop-nav-links');
+      roots.forEach(function(root){
+        const directLinks = Array.from(root.children).filter(function(child){
+          return child.matches && child.matches('a.pill');
+        });
+        if(directLinks.length){
+          const titleNode = root.querySelector('.nav-quick-label');
+          const section = makeSection(titleNode ? titleNode.textContent.trim() : 'Essentiel');
+          directLinks.forEach(function(link){ addLink(section, link); });
+          panel.appendChild(section);
+        }
+
+        Array.from(root.querySelectorAll(':scope > details.nav-more')).forEach(function(details){
+          const summary = details.querySelector('summary');
+          const links = Array.from(details.querySelectorAll('.nav-more-panel a.pill'));
+          if(!links.length){ return; }
+          const section = makeSection(summary ? summary.textContent.trim() : 'Plus');
+          links.forEach(function(link){ addLink(section, link); });
+          panel.appendChild(section);
+        });
+      });
+      panel.dataset.ready = '1';
+    }
+
+    function setMobileMenu(open){
+      if(!toggle || !panel){ return; }
+      buildMobileMenu();
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.classList.toggle('is-open', open);
+    }
+
+    if(toggle && panel){
+      toggle.addEventListener('click', function(){
+        setMobileMenu(panel.hidden);
+      });
+      panel.addEventListener('click', function(event){
+        if(event.target.closest && event.target.closest('a')){ setMobileMenu(false); }
+      });
+      document.addEventListener('keydown', function(event){
+        if(event.key === 'Escape'){ setMobileMenu(false); }
+      });
+      if(window.matchMedia){
+        const desktopMedia = window.matchMedia('(min-width: 1121px)');
+        desktopMedia.addEventListener('change', function(event){
+          if(event.matches){ setMobileMenu(false); }
+        });
+      }
+    }
+
+    function closeNavDetails(except){
+      document.querySelectorAll('.nav-more[open]').forEach(function(details){
+        if(details !== except){ details.removeAttribute('open'); }
+    });
+  }
+
+  document.addEventListener('toggle', function(event){
+    const details = event.target;
+    if(!(details instanceof HTMLDetailsElement)){ return; }
+    if(!details.classList.contains('nav-more')){ return; }
+    if(details.open){ closeNavDetails(details); }
+  }, true);
+
+  document.addEventListener('click', function(event){
+    const target = event.target;
+    if(!target.closest || !target.closest('.nav-more')){
+      closeNavDetails(null);
+      return;
+    }
+
+    if(target.closest('.nav-more-panel a')){
+      closeNavDetails(null);
+    }
+  });
+
+  document.addEventListener('keydown', function(event){
+    if(event.key === 'Escape'){ closeNavDetails(null); }
+  });
+})();
+</script>
+
+<script>
+  /* ------------------------------------------------------------------
+     Maintien de la position de défilement après une action.
+     Beaucoup de formulaires suivent le motif POST -> redirection -> GET :
+     la page se recharge et revient tout en haut, obligeant à re-défiler.
+     Ici, avant chaque envoi de formulaire on mémorise la position ; après
+     le rechargement de la MÊME page, on la restaure. Global, sans toucher
+     aux routes. Échappatoire : ajouter data-no-scroll-restore sur un form.
+     ------------------------------------------------------------------ */
+  (function(){
+    if(!('sessionStorage' in window)) return;
+    var CLE = 'scrollpos:' + location.pathname;
+    var FRAICHEUR_MS = 10000;
+
+    function memoriser(){
+      try {
+        sessionStorage.setItem(CLE, JSON.stringify({
+          y: window.scrollY || window.pageYOffset || 0,
+          t: Date.now()
+        }));
+      } catch (e) { /* quota / mode privé : on ignore */ }
+    }
+
+    // Capture à l'envoi de n'importe quel formulaire (sauf opt-out / nouvel onglet).
+    document.addEventListener('submit', function(ev){
+      var f = ev.target;
+      if(!f || f.tagName !== 'FORM') return;
+      if(f.hasAttribute('data-no-scroll-restore')) return;
+      if((f.getAttribute('target') || '') === '_blank') return;
+      memoriser();
+    }, true);
+
+    // Restauration après le rechargement de la même page.
+    function restaurer(){
+      var brut = null;
+      try { brut = sessionStorage.getItem(CLE); } catch (e) { return; }
+      if(!brut) return;
+      try { sessionStorage.removeItem(CLE); } catch (e) {}
+      var data;
+      try { data = JSON.parse(brut); } catch (e) { return; }
+      if(!data || typeof data.y !== 'number') return;
+      if(Date.now() - (data.t || 0) > FRAICHEUR_MS) return; // trop ancien
+      if(data.y <= 0) return;
+      // Après le rendu : on se replace là où on était (sans animation).
+      requestAnimationFrame(function(){
+        requestAnimationFrame(function(){ window.scrollTo(0, data.y); });
+      });
+    }
+
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', restaurer);
+    } else {
+      restaurer();
+    }
+  })();
+</script>
+
+</body>
+</html>

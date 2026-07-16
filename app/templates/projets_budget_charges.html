@@ -1,0 +1,189 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    {% include "_projet_budget_header.html" %}
+
+    {% set totals = namespace(prev=0, reel=0, ventile=0, engage=0, reste=0) %}
+    {% for c in charges %}
+      {% set totals.prev = totals.prev + (c.montant_previsionnel or 0) %}
+      {% set totals.reel = totals.reel + (c.montant_reel or 0) %}
+      {% set totals.ventile = totals.ventile + (c.ventile or 0) %}
+      {% set totals.engage = totals.engage + (c.engage or 0) %}
+      {% set totals.reste = totals.reste + (c.reste_a_financer or 0) %}
+    {% endfor %}
+
+    {% set total_prev = totals.prev %}
+    {% set total_reel = totals.reel %}
+    {% set total_ventile = totals.ventile %}
+    {% set total_reste = totals.reste %}
+    {% set pct_ventile = (total_ventile / total_prev * 100) if total_prev else 0 %}
+    {% set pct_reste = (total_reste / total_prev * 100) if total_prev else 0 %}
+
+    {% set watch = namespace(reste_lignes=0, depasse=0) %}
+    {% for c in charges %}
+      {% if (c.reste_a_financer or 0) > 0 %}
+        {% set watch.reste_lignes = watch.reste_lignes + 1 %}
+      {% endif %}
+      {% if (c.montant_reel or 0) > (c.montant_previsionnel or 0) and (c.montant_previsionnel or 0) > 0 %}
+        {% set watch.depasse = watch.depasse + 1 %}
+      {% endif %}
+    {% endfor %}
+
+    <div style="margin-top:12px;">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="muted">Charges prévisionnelles</div>
+          <div class="kpi-value">{{ "%.2f"|format(total_prev or 0) }}€</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="muted">Charges ventilées</div>
+          <div class="kpi-value">{{ "%.2f"|format(total_ventile or 0) }}€</div>
+          <div class="kpi-sub">{{ "%.0f"|format(pct_ventile) }}% des charges</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="muted">Reste à financer</div>
+          <div class="kpi-value {{ 'kpi-value--danger' if pct_reste >= 25 else ('kpi-value--warn' if total_reste > 0 else '') }}">
+            {{ "%.2f"|format(total_reste or 0) }}€
+          </div>
+          <div class="kpi-sub">{{ "%.0f"|format(pct_reste) }}% du budget</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="muted">Montant réalisé</div>
+          <div class="kpi-value">{{ "%.2f"|format(total_reel or 0) }}€</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="section-title">Couverture des charges</div>
+        <div class="meter" aria-label="Couverture des charges">
+          <div class="meter__fill meter__fill--ok" style="width:{{ pct_ventile }}%"></div>
+        </div>
+        <div class="balance-legend">
+          <div class="muted">Couvert : <strong>{{ "%.2f"|format(total_ventile or 0) }}€</strong> ({{ "%.0f"|format(pct_ventile) }}%)</div>
+          <div class="muted">À financer : <strong>{{ "%.2f"|format(total_reste or 0) }}€</strong> ({{ "%.0f"|format(pct_reste) }}%)</div>
+        </div>
+      </div>
+
+      {% if watch.reste_lignes or watch.depasse %}
+      <div class="callout callout--warn" style="margin-top:12px;">
+        <div class="callout__title">À surveiller</div>
+        <ul class="watch-list">
+          {% if watch.reste_lignes %}
+            <li><span class="pill pill--warn">{{ watch.reste_lignes }}</span> ligne(s) présentent encore un reste à financer.</li>
+          {% endif %}
+          {% if watch.depasse %}
+            <li><span class="pill pill--warn">{{ watch.depasse }}</span> ligne(s) dépassent le prévisionnel (réalisé &gt; prévisionnel).</li>
+          {% endif %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="spacer"></div>
+
+    <form method="post" class="row three">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input name="libelle" placeholder="Libellé (ex. : animateur – 0,5 ETP)" required>
+      <select name="bloc">
+        <option value="directe">Directe</option>
+        <option value="indirecte">Indirecte</option>
+      </select>
+      <input name="code_plan" placeholder="Code comptable (60, 61, 62, 64…)" value="60">
+      <input name="montant_previsionnel" type="number" step="0.01" placeholder="Prévisionnel (€)">
+      <input name="montant_reel" type="number" step="0.01" placeholder="Montant réalisé (€) – optionnel">
+      <input name="commentaire" placeholder="Commentaire (option)">
+      <button class="btn ok" type="submit">Ajouter la charge</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Bloc</th>
+            <th>Code</th>
+            <th>Libellé</th>
+            <th class="num">Prévisionnel</th>
+            <th class="num">Réel</th>
+            <th class="num">Ventilé</th>
+            <th class="num">Reste à financer</th>
+            <th class="num">Engagé</th>
+            <th class="num">Reste à engager</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody>
+        {% for c in charges %}
+          {% set base = (c.montant_previsionnel or 0) %}
+          {% set v = (c.ventile or 0) %}
+          {% set pct_ligne = (v / base * 100) if base else 0 %}
+          {% if pct_ligne > 100 %}{% set pct_ligne = 100 %}{% endif %}
+          {% set reste = (c.reste_a_financer or 0) %}
+
+          <tr>
+            <td>{{ c.bloc }}</td>
+            <td>{{ c.code_plan }}</td>
+            <td>{{ c.libelle }}</td>
+
+            <td class="num mono">{{ "%.2f"|format(base) }}€</td>
+            <td class="num mono">{{ "%.2f"|format(c.montant_reel or 0) }}€</td>
+
+            <td class="num">
+              <div class="cell-money">
+                <div class="cell-money__main mono">{{ "%.2f"|format(v) }}€</div>
+                <div class="meter meter--thin" aria-label="Couverture de la ligne">
+                  <div class="meter__fill meter__fill--ok" style="width:{{ "%.0f"|format(pct_ligne) }}%"></div>
+                </div>
+                <div class="cell-money__sub muted">{{ "%.0f"|format(pct_ligne) }}%</div>
+              </div>
+            </td>
+
+            <td class="num">
+			  {% set base2 = (base if base else 0) %}
+			  {% set pct_reste_ligne = (reste / base2 * 100) if base2 else 0 %}
+			  {% if pct_reste_ligne > 100 %}{% set pct_reste_ligne = 100 %}{% endif %}
+
+			  <div class="cell-money">
+				<div class="cell-money__main mono">
+				  <span class="pill {{ 'pill--danger' if pct_reste_ligne >= 25 else ('pill--warn' if reste > 0 else 'pill--ok') }}">
+					{{ "%.2f"|format(reste) }}€
+				  </span>
+				</div>
+
+				<div class="meter meter--thin" aria-label="Reste à financer (ligne)">
+				  <div class="meter__fill meter__fill--warn" style="width:{{ "%.0f"|format(pct_reste_ligne) }}%"></div>
+				</div>
+
+				<div class="cell-money__sub muted">{{ "%.0f"|format(pct_reste_ligne) }}% du prévisionnel</div>
+			  </div>
+			</td>
+
+
+            <td class="num mono">{{ "%.2f"|format(c.engage or 0) }}€</td>
+            <td class="num mono">{{ "%.2f"|format(c.reste_a_engager or 0) }}€</td>
+
+            <td class="actions" style="white-space:nowrap">
+              <a class="btn" href="{{ url_for('projets.projet_budget_charge_edit', projet_id=projet.id, charge_id=c.id) }}">✏️</a>
+              <form method="post" action="{{ url_for('projets.projet_budget_charge_delete', projet_id=projet.id, charge_id=c.id) }}" style="display:inline" onsubmit="return confirm('Supprimer cette charge ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn" type="submit">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="10"><div class="quick-empty"><strong>Aucune charge n’est encore enregistrée.</strong>Ajoutez une ligne pour commencer la construction du budget prévisionnel.</div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

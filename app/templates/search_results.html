@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block body %}
+{% set safe_results = results if results is iterable else [] %}
+{% set safe_grouped = grouped_results if grouped_results is mapping else {} %}
+<div class="stack">
+  <div class="card" style="padding:16px;">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+      <div>
+        <h1 style="margin:0 0 8px;">Résultats de recherche</h1>
+        <div class="muted">Requête : <strong>{{ query or '—' }}</strong></div>
+      </div>
+      <div class="muted">Temps de réponse : {{ (debug.duration_ms if debug is mapping else 0) or 0 }} ms</div>
+    </div>
+    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+      <span class="tag">{{ safe_results|length }} résultat(s)</span>
+      {% if selected_type %}<span class="tag">Type : {{ selected_type }}</span>{% endif %}
+      {% for type_name, count in ((facets.types if facets is mapping and facets.types is defined else {}) or {}).items() %}
+        <span class="tag">{{ type_name }} : {{ count }}</span>
+      {% endfor %}
+      {% if meta is mapping and meta.requested_secteur %}<span class="tag">Secteur : {{ meta.requested_secteur }}</span>{% endif %}
+      {% if meta is mapping and meta.requested_quartier %}<span class="tag">Quartier : {{ meta.requested_quartier }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if safe_results %}
+    {% if safe_grouped %}
+      {% for group_name, group_items in safe_grouped.items() %}
+        <div class="card" style="padding:12px 16px;">
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:.4px; font-weight:800; color:var(--muted);">{{ group_name }}</div>
+        </div>
+        {% for item in group_items %}
+          <a class="card" href="{{ item.url if item.url else '#' }}" style="padding:14px 16px; display:block; text-decoration:none;">
+            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+              <div>
+                <div style="font-size:18px; font-weight:800; margin-top:2px;">{{ item.label or 'Résultat sans titre' }}</div>
+                {% if item.meta %}<div class="muted" style="margin-top:6px;">{{ item.meta }}</div>{% endif %}
+              </div>
+              <div class="tag">Voir la fiche</div>
+            </div>
+          </a>
+        {% endfor %}
+      {% endfor %}
+    {% else %}
+      {% for item in safe_results %}
+        <a class="card" href="{{ item.url if item.url else '#' }}" style="padding:14px 16px; display:block; text-decoration:none;">
+          <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+            <div>
+              <div class="muted" style="font-size:12px; text-transform:uppercase; font-weight:800; letter-spacing:.3px;">{{ item.type or 'Résultat' }}</div>
+              <div style="font-size:18px; font-weight:800; margin-top:4px;">{{ item.label or 'Résultat sans titre' }}</div>
+              {% if item.meta %}<div class="muted" style="margin-top:6px;">{{ item.meta }}</div>{% endif %}
+            </div>
+            <div class="tag">Voir la fiche</div>
+          </div>
+        </a>
+      {% endfor %}
+    {% endif %}
+  {% else %}
+    <div class="card" style="padding:18px;">
+      <div style="font-weight:800; margin-bottom:6px;">Aucun résultat</div>
+      <div class="muted">Essaie un nom, un mail, un téléphone, un quartier, une ville, un secteur ou un filtre du type <code>type:participant</code>, <code>secteur:Insertion</code>, <code>quartier:Rouher</code>.</div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

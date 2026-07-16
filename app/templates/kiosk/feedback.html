@@ -1,0 +1,77 @@
+{% extends 'kiosk/base.html' %}
+{% block header_title %}Donner mon avis{% endblock %}
+{% block body %}
+
+  <div class="k-card">
+    <h1 class="k-card__title">Votre ressenti 💬</h1>
+    <p class="k-card__sub">{{ session_label }}</p>
+    <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_session', token=token) }}">← Retour à l'émargement</a>
+  </div>
+
+  {% if questionnaires %}
+    <form method="post" id="feedbackForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="k-card">
+        <div class="k-grid2">
+          <div>
+            <label class="k-label">Questionnaire</label>
+            <select class="k-select" name="questionnaire_id" onchange="this.form.submit()">
+              {% for q in questionnaires %}
+                <option value="{{ q.id }}" {% if selected_questionnaire and selected_questionnaire.id == q.id %}selected{% endif %}>{{ q.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="k-label">Votre nom (facultatif)</label>
+            <select class="k-select" name="participant_id">
+              <option value="">Réponse anonyme</option>
+              {% for p in presences %}
+                <option value="{{ p.id }}">{{ p.nom }} {{ p.prenom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {% for question in questions %}
+        <div class="k-card">
+          <label class="k-label" style="font-size:18px;">{{ question.label }}</label>
+          {% if question.kind == 'scale' %}
+            <div class="k-choices">
+              {% for i in [1,2,3,4,5] %}
+                <label class="k-choice">
+                  <input type="radio" name="question_{{ question.id }}" value="{{ i }}">
+                  <span>{{ i }}</span>
+                </label>
+              {% endfor %}
+            </div>
+            <p class="k-hint">1 = pas du tout · 5 = tout à fait</p>
+          {% elif question.kind == 'yesno' %}
+            <div class="k-choices">
+              <label class="k-choice"><input type="radio" name="question_{{ question.id }}" value="oui"><span>👍 Oui</span></label>
+              <label class="k-choice"><input type="radio" name="question_{{ question.id }}" value="non"><span>👎 Non</span></label>
+            </div>
+          {% elif question.kind == 'multi' %}
+            <div class="k-choices">
+              {% for opt in options_map.get(question.id, []) %}
+                <label class="k-choice"><input type="checkbox" name="question_{{ question.id }}" value="{{ opt }}"><span>{{ opt }}</span></label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <textarea class="k-textarea" name="question_{{ question.id }}" rows="3" placeholder="Votre réponse…"></textarea>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <div class="k-actionbar">
+        <button class="k-btn k-btn--lg" type="submit">Envoyer mon avis</button>
+      </div>
+    </form>
+  {% else %}
+    <div class="k-card">
+      <p class="k-card__sub" style="margin:0;">Aucun questionnaire n'est proposé pour cette séance.</p>
+    </div>
+  {% endif %}
+
+{% endblock %}

@@ -1,0 +1,169 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<style>
+  .si-wrap{max-width:1200px;margin:0 auto;}
+  .si-hero{background:linear-gradient(135deg,#0f62fe,#6c5ce7);color:#fff;border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+  .si-hero h1{margin:0 0 6px 0;}
+  .si-hero p{margin:0;opacity:.92}
+
+  .si-card{background:#fff;border:1px solid #e6e9f5;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 6px 16px rgba(15,98,254,0.06)}
+  .si-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+  .si-row > div{min-width:160px}
+  .si-row label{font-weight:600;font-size:13px}
+
+  .si-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .si-btn{display:inline-block;padding:10px 14px;border-radius:10px;border:1px solid #dfe3f0;background:#f7f9fc;text-decoration:none;font-weight:700;cursor:pointer}
+  .si-btn.primary{background:#0f62fe;border-color:#0f62fe;color:#fff;box-shadow:0 6px 12px rgba(15,98,254,0.2)}
+  .si-btn.ok{background:#1f9d55;border-color:#1f9d55;color:#fff}
+
+  .si-muted{color:#666;font-size:13px}
+  .si-help{color:#666;font-size:12px;margin-top:4px}
+  details summary{cursor:pointer;font-weight:700}
+  .si-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .si-tag{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;border:1px solid #dfe6ff;color:#2b2b2b;padding:6px 10px;border-radius:999px;font-weight:600;font-size:12px}
+</style>
+
+<div class="si-wrap">
+  <div class="si-hero">
+    <h1>Stats & Impacts — Exports</h1>
+    <p>Objectif : tu filtres, tu exportes. Pas 58 boutons, pas 4 formulaires qui se battent. 🤝</p>
+  </div>
+
+  {#
+    Form unique : il ne sert qu'à poser les filtres dans l'URL.
+    IMPORTANT : on garde tab=magato pour rester sur l'espace export.
+  #}
+  <div class="si-card">
+    <form method="get">
+      <input type="hidden" name="tab" value="magato">
+      <div class="si-row">
+        {% if secteurs and secteurs|length > 0 %}
+        <div>
+          <label>Secteur</label><br>
+          <select name="secteur">
+            <option value="">Tous</option>
+            {% for s in secteurs %}
+              <option value="{{ s }}" {% if flt.secteur==s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <div>
+          <label>Atelier</label><br>
+          <select name="atelier_id">
+            <option value="">Tous</option>
+            {% for a in ateliers %}
+              <option value="{{ a.id }}" {% if flt.atelier_id==a.id %}selected{% endif %}>
+                {{ a.secteur }} — {{ a.nom }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label>Du</label><br>
+          {% set date_from_value = flt.date_from.isoformat() if flt.date_from else "" %}
+          <input type="date" name="date_from" value="{{ date_from_value }}">
+          <div class="si-help">Vide = année courante (automatique)</div>
+        </div>
+
+        <div>
+          <label>Au</label><br>
+          {% set date_to_value = flt.date_to.isoformat() if flt.date_to else "" %}
+          <input type="date" name="date_to" value="{{ date_to_value }}">
+          <div class="si-help">Vide = année courante (automatique)</div>
+        </div>
+
+        <div>
+          <label>Groupement</label><br>
+          <select name="group_by">
+            {% for g in ["DAY","MONTH","QUARTER","YEAR"] %}
+              <option value="{{ g }}" {% if flt.group_by==g %}selected{% endif %}>{{ g }}</option>
+            {% endfor %}
+          </select>
+          <div class="si-help">Utilisé par certaines stats internes</div>
+        </div>
+
+        <div>
+          <button class="si-btn primary" type="submit">Appliquer</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="si-tags">
+      <span class="si-tag">Période : {{ flt.date_from }} → {{ flt.date_to }}</span>
+      <span class="si-tag">Secteur : {{ flt.secteur or "Tous" }}</span>
+      <span class="si-tag">Atelier : {% if flt.atelier_id %}#{{ flt.atelier_id }}{% else %}Tous{% endif %}</span>
+    </div>
+  </div>
+
+  {# Zone Export : 3 boutons principaux #}
+  <div class="si-card">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:900;font-size:18px;">Exports</div>
+        <div class="si-muted">Les exports reprennent exactement les filtres ci-dessus.</div>
+      </div>
+      <div class="si-actions">
+        <a class="si-btn ok" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ request.query_string.decode('utf-8') }}">Exporter XLSX (Magatomatique)</a>
+        <a class="si-btn" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ request.query_string.decode('utf-8') }}&export_mode=per_atelier">XLSX annuel (1 feuille / atelier)</a>
+        <a class="si-btn" href="{{ url_for('statsimpact.magatomatique_export_csv') }}?{{ request.query_string.decode('utf-8') }}">Exporter CSV (défaut)</a>
+      </div>
+    </div>
+
+    <div class="si-help" style="margin-top:10px;">
+      • CSV par défaut = une ligne par présence (participant × session), avec colonnes : Nom, Prénom, Atelier, Secteur, Date, Type session.
+      <br>
+      • XLSX annuel = 1 feuille par atelier, colonnes = toutes les sessions de l'atelier, lignes = participants (présence = 1).
+    </div>
+  </div>
+
+  {# CSV sur mesure (optionnel) : collapsible, mais pas obligatoire #}
+  <div class="si-card">
+    <details>
+      <summary>CSV sur mesure (optionnel) — si tu veux choisir des colonnes</summary>
+      <div class="si-muted" style="margin:8px 0 10px 0;">Toujours 1 ligne = 1 présence (participant × session). Si tu ne touches à rien, le CSV par défaut suffit.</div>
+
+      <form method="get" action="{{ url_for('statsimpact.magatomatique_export_csv') }}">
+        {# on conserve les filtres existants #}
+        <input type="hidden" name="tab" value="magato">
+        {% if flt.secteur %}<input type="hidden" name="secteur" value="{{ flt.secteur }}">{% endif %}
+        {% if flt.atelier_id %}<input type="hidden" name="atelier_id" value="{{ flt.atelier_id }}">{% endif %}
+        <input type="hidden" name="date_from" value="{{ flt.date_from or '' }}">
+        <input type="hidden" name="date_to" value="{{ flt.date_to or '' }}">
+
+        <div class="si-row" style="align-items:flex-start;">
+          {% for group in csv_field_groups or [] %}
+            <div style="flex:1;min-width:240px;">
+              <div style="font-weight:800;margin-bottom:6px;">{{ group.label }}</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                {% for field in group.fields %}
+                  <label class="si-muted" style="display:flex;gap:8px;align-items:center;">
+                    <input type="checkbox" name="fields" value="{{ field.key }}" {% if field.key in csv_default_fields %}checked{% endif %}>
+                    {{ field.label }}
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="si-btn primary" type="submit">Exporter CSV sur mesure</button>
+        </div>
+      </form>
+    </details>
+  </div>
+
+  <div class="si-card">
+    <div style="font-weight:900;margin-bottom:6px;">Aide rapide</div>
+    <div class="si-muted">
+      Si tu veux une export "CAF / AAP-ready" en mode tableau de présence par atelier (colonnes = sessions), utilise : <b>XLSX annuel (1 feuille / atelier)</b>.
+      <br>
+      Si tu veux juste un export brut pour Excel / stats : <b>CSV défaut</b> ou <b>XLSX Magatomatique</b>.
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card">
+  <h1>Gestion des droits</h1>
+  <p class="muted">
+    Cette ancienne page RBAC a été remplacée par l’écran unifié de gestion des droits.
+  </p>
+  <div class="inline" style="gap:8px;flex-wrap:wrap;">
+    <a class="btn ok" href="{{ url_for('admin.droits') }}">Ouvrir les droits</a>
+    <a class="btn" href="{{ url_for('admin.users') }}">Gérer l’équipe</a>
+  </div>
+</div>
+{% endblock %}

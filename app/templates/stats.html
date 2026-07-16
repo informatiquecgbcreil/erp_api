@@ -1,0 +1,218 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack stats-page">
+  <section class="screen-hero stats-hero">
+    <div class="toolbar-inline stats-hero__top">
+      <div>
+        <h1 style="margin:0;">Stats</h1>
+        <p class="muted" style="margin:.35rem 0 0;">Vue synthèse des subventions, comptes et projets.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="btn" href="{{ url_for('main.comparaison', annee=selected_annee) }}">📊 Comparaison N/N-1</a>
+        <a class="btn" href="{{ url_for('main.export_depenses_csv') }}">Exporter dépenses CSV</a>
+      </div>
+    </div>
+
+    <div class="screen-grid-kpis stats-kpis">
+      <div class="screen-kpi"><div class="screen-kpi__label">Total reçu</div><div class="screen-kpi__value">{{ "%.2f"|format(total_recu or 0) }}€</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Total engagé</div><div class="screen-kpi__value">{{ "%.2f"|format(total_engage or 0) }}€</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Total reste</div><div class="screen-kpi__value">{{ "%.2f"|format(total_reste or 0) }}€</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Secteurs</div><div class="screen-kpi__value">{{ by_secteur|length }}</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Comptes</div><div class="screen-kpi__value">{{ by_compte|length }}</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Projets</div><div class="screen-kpi__value">{{ by_projet|length }}</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Conso ind.</div><div class="screen-kpi__value">{{ "%.3f"|format(eco_conso_stats.total_kwh or 0) }} kWh</div><small class="muted">Présences équipées : {{ eco_conso_stats.presences_count or 0 }}</small></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">CO₂ ind.</div><div class="screen-kpi__value">{{ "%.3f"|format(eco_conso_stats.total_co2 or 0) }} kg</div><small class="muted">Habitants : {{ eco_conso_stats.participants_count or 0 }}</small></div>
+    </div>
+
+    <form method="GET" class="filters-panel stats-filters" data-filter-summary="true">
+      <div class="toolbar-inline stats-filters__grid">
+        <div class="field-stack">
+          <label for="annee">Année</label>
+          <select id="annee" name="annee">
+            <option value="">-- toutes --</option>
+            {% for a in all_annees %}
+              <option value="{{ a }}" {% if selected_annee == a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field-stack">
+          <label for="secteur">Secteur</label>
+          <select id="secteur" name="secteur">
+            <option value="">-- tous --</option>
+            {% for s in all_secteurs %}
+              <option value="{{ s }}" {% if selected_secteur == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field-stack stats-filters__project">
+          <label for="projet_id">Projet</label>
+          <select id="projet_id" name="projet_id">
+            <option value="">-- tous --</option>
+            {% for p in projets_for_filter %}
+              <option value="{{ p.id }}" {% if selected_projet_id and (selected_projet_id|string) == (p.id|string) %}selected{% endif %}>{{ p.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if request.args.get('embed') %}
+          <input type="hidden" name="embed" value="{{ request.args.get('embed') }}">
+        {% endif %}
+        {% if request.args.get('tab') %}
+          <input type="hidden" name="tab" value="{{ request.args.get('tab') }}">
+        {% endif %}
+
+        <div class="stats-filters__actions">
+          <button class="btn ok" type="submit">Appliquer</button>
+          <a class="btn" href="{{ url_for('main.stats') }}">Reset</a>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  {% if selected_projet and project_indicators|length %}
+    <section class="soft-section">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Indicateurs — {{ selected_projet.nom }}</h2>
+          <div class="muted">Calculés automatiquement à partir des ateliers liés au projet.</div>
+        </div>
+      </div>
+      <div class="screen-grid-kpis stats-kpis">
+        {% for it in project_indicators %}
+          <div class="screen-kpi {% if it.status %}status-chip status-chip--{{ it.status }}{% endif %}">
+            <div class="screen-kpi__label">{{ it.label }}</div>
+            <div class="screen-kpi__value">{% if it.display_value %}{{ it.display_value }}{% elif it.value is none %}—{% else %}{{ it.value }}{{ it.unit }}{% endif %}</div>
+            {% if it.target is not none %}
+              <div class="muted" style="margin-top:8px;font-size:12px;">Objectif {{ it.target_symbol or '≥' }} {{ it.target }}{{ it.unit }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <div class="stats-stack">
+  <section class="soft-section">
+      <div class="section-head"><div><h2 style="margin:0;">Par secteur</h2><div class="muted">Comparaison reçu / engagé / reste.</div></div></div>
+      <div class="stats-legend" aria-label="Légende lecture visuelle"><span class="stats-legend__item"><i class="stats-legend__swatch stats-legend__swatch--engage"></i>Engagé</span><span class="stats-legend__item"><i class="stats-legend__swatch stats-legend__swatch--reste"></i>Reste</span></div>
+      {% if by_secteur|length %}
+        <div class="tablewrap">
+          <table class="js-sortable stats-table stats-table--sector">
+            <thead><tr><th>Secteur</th><th>Reçu</th><th>Engagé</th><th>Reste</th><th class="stats-table__lecture">Lecture</th></tr></thead>
+            <tbody>
+              {% for sec, v in by_secteur.items() %}
+                {% set total = (v.recu or 0) if (v.recu or 0) > 0 else ((v.engage or 0) + (v.reste or 0)) %}
+                {% set engage_pct = ((v.engage or 0) / total * 100) if total else 0 %}
+                {% set reste_pct = ((v.reste or 0) / total * 100) if total else 0 %}
+                <tr>
+                  <td><strong>{{ sec }}</strong></td>
+                  <td>{{ "%.2f"|format(v.recu or 0) }}€</td>
+                  <td>{{ "%.2f"|format(v.engage or 0) }}€</td>
+                  <td>{{ "%.2f"|format(v.reste or 0) }}€</td>
+                  <td>
+                    <div class="stats-mini-bar" role="img" aria-label="Engagé {{ "%.1f"|format(engage_pct) }} pourcent, reste {{ "%.1f"|format(reste_pct) }} pourcent" title="Engagé {{ "%.1f"|format(engage_pct) }}% · Reste {{ "%.1f"|format(reste_pct) }}%">
+                      <span class="stats-mini-bar__segment stats-mini-bar__segment--engage" style="width:{{ engage_pct }}%"></span>
+                      <span class="stats-mini-bar__segment stats-mini-bar__segment--reste" style="width:{{ reste_pct }}%"></span>
+                    </div>
+                    <div class="stats-mini-bar-labels"><span>Engagé {{ "%.0f"|format(engage_pct) }}%</span><span>Reste {{ "%.0f"|format(reste_pct) }}%</span></div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-hint">Aucune donnée secteur pour les filtres courants.</div>
+      {% endif %}
+    </section>
+
+    <section class="soft-section">
+      <div class="section-head"><div><h2 style="margin:0;">Éco-conso individuelle</h2><div class="muted">Consommation issue des matériels attribués aux présences dans l’émargement.</div></div></div>
+      {% if eco_conso_stats.by_secteur %}
+        <div class="tablewrap">
+          <table class="js-sortable stats-table">
+            <thead><tr><th>Secteur</th><th>kWh</th><th>CO₂ kg</th><th>Présences équipées</th><th>Habitants concernés</th><th>Séances</th></tr></thead>
+            <tbody>
+              {% for row in eco_conso_stats.by_secteur %}
+                <tr>
+                  <td><strong>{{ row.secteur }}</strong></td>
+                  <td>{{ "%.3f"|format(row.kwh or 0) }}</td>
+                  <td>{{ "%.3f"|format(row.co2_kg or 0) }}</td>
+                  <td>{{ row.presences_count }}</td>
+                  <td>{{ row.participants_count }}</td>
+                  <td>{{ row.sessions_count }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-hint">Aucune consommation individuelle enregistrée pour les filtres courants.</div>
+      {% endif %}
+    </section>
+
+    <section class="soft-section">
+      <div class="section-head"><div><h2 style="margin:0;">Par compte</h2><div class="muted">Vue consolidée des lignes comptables.</div></div></div>
+      {% if by_compte|length %}
+        <div class="tablewrap">
+          <table class="js-sortable stats-table">
+            <thead><tr><th>Compte</th><th>Réel</th><th>Engagé</th><th>Reste</th></tr></thead>
+            <tbody>
+              {% for c, v in by_compte.items() %}
+                <tr>
+                  <td><strong>{{ c }}</strong></td>
+                  <td>{{ "%.2f"|format(v.reel or 0) }}€</td>
+                  <td>{{ "%.2f"|format(v.engage or 0) }}€</td>
+                  <td>{{ "%.2f"|format(v.reste or 0) }}€</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-hint">Aucune donnée compte pour les filtres courants.</div>
+      {% endif %}
+    </section>
+  </section>
+
+  <section class="soft-section">
+    <div class="section-head"><div><h2 style="margin:0;">Par projet</h2><div class="muted">Vue de synthèse financeurs / projets.</div></div></div>
+    {% if by_projet|length %}
+      <div class="tablewrap">
+        <table class="js-sortable stats-table stats-table--projects">
+          <thead>
+            <tr>
+              <th>Secteur</th>
+              <th>Projet</th>
+              <th>Demandé</th>
+              <th>Attribué</th>
+              <th>Reçu</th>
+              <th>Lignes réel</th>
+              <th>Engagé</th>
+              <th>Reste</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in by_projet %}
+              <tr>
+                <td>{{ p.secteur }}</td>
+                <td><strong>{{ p.nom }}</strong></td>
+                <td>{{ "%.2f"|format(p.demande or 0) }}€</td>
+                <td>{{ "%.2f"|format(p.attribue or 0) }}€</td>
+                <td>{{ "%.2f"|format(p.recu or 0) }}€</td>
+                <td>{{ "%.2f"|format(p.reel_lignes or 0) }}€</td>
+                <td>{{ "%.2f"|format(p.engage or 0) }}€</td>
+                <td>{{ "%.2f"|format(p.reste or 0) }}€</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-hint">Aucun projet visible avec les filtres actuels.</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

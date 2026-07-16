@@ -1,0 +1,126 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+@media print {
+  nav, .no-print { display: none !important; }
+  body { background: #fff; }
+  .card { box-shadow: none; border: none; }
+  table { page-break-inside: avoid; }
+}
+</style>
+{% endblock %}
+
+{% block body %}
+{% if forbidden %}
+  <div class="card">
+    <h1>Bilan subvention (impression)</h1>
+    <p class="muted">Accès réservé aux rôles finance/direction/responsable de secteur.</p>
+  </div>
+{% else %}
+  <div class="stack">
+    <div class="card no-print">
+      <div class="inline" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h1 style="margin:0;">Bilan financeur-ready</h1>
+          <p class="muted" style="margin:6px 0 0 0;">Généré le {{ generated_at }} — Exercice {{ year }}</p>
+        </div>
+        <div class="inline" style="gap:8px; flex-wrap:wrap;">
+          <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year, id=data.subvention.id) }}">← Retour</a>
+          <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
+          <a class="btn" href="{{ url_for('main.export_subvention_csv', subvention_id=data.subvention.id) }}">⬇️ CSV</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">{{ data.subvention.nom }}</h2>
+      <p class="muted">Secteur : <strong>{{ data.subvention.secteur }}</strong></p>
+
+      <div class="grid two">
+        <div class="card">
+          <h3>Montant accordé</h3>
+          <h2>{{ '%.2f'|format(data.kpis.montant_accorde) }} €</h2>
+        </div>
+        <div class="card">
+          <h3>Dépenses imputées</h3>
+          <h2>{{ '%.2f'|format(data.kpis.depenses) }} €</h2>
+        </div>
+        <div class="card">
+          <h3>Taux de consommation</h3>
+          <h2>{{ '%.1f'|format(data.kpis.taux) }} %</h2>
+        </div>
+        <div class="card">
+          <h3>Reste / écart</h3>
+          <h2>{{ '%.2f'|format(data.kpis.ecart) }} €</h2>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Dépenses imputées (détails)</h2>
+      {% if not data.depenses %}
+        <p class="muted">Aucune dépense imputée.</p>
+      {% else %}
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Fournisseur</th>
+              <th>Libellé</th>
+              <th>Compte</th>
+              <th>Ligne</th>
+              <th>Référence</th>
+              <th style="text-align:right;">Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in data.depenses %}
+              <tr>
+                <td>{{ d.date }}</td>
+                <td>{{ d.fournisseur }}</td>
+                <td>{{ d.libelle }}</td>
+                <td>{{ d.compte }}</td>
+                <td>{{ d.ligne }}</td>
+                <td>{{ d.reference }}</td>
+                <td style="text-align:right;">{{ '%.2f'|format(d.montant) }} €</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Matériel inventaire lié</h2>
+      {% if not data.materiel %}
+        <p class="muted">Aucun item inventaire rattaché à cette subvention.</p>
+      {% else %}
+        <table>
+          <thead>
+            <tr>
+              <th>ID interne</th>
+              <th>Désignation</th>
+              <th>État</th>
+              <th>Localisation</th>
+              <th style="text-align:right;">Valeur</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in data.materiel %}
+              <tr>
+                <td>{{ it.id_interne }}</td>
+                <td>{{ it.designation }}</td>
+                <td>{{ it.etat }}</td>
+                <td>{{ it.localisation }}</td>
+                <td style="text-align:right;">{% if it.valeur != '' %}{{ '%.2f'|format(it.valeur) }} €{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Échéancier — {{ projet.nom }}</h1>
+      <p class="page-subtitle">{{ projet.secteur }} · jalons et échéances de pilotage du projet.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('projets.projets_edit', projet_id=projet.id) }}">⬅ Retour au projet</a>
+    </div>
+  </div>
+
+  {% if en_retard %}
+    <div class="callout-soft" style="border-color: color-mix(in srgb, var(--danger) 55%, var(--border));">
+      <strong>{{ en_retard }} jalon(s) en retard.</strong> Échéance dépassée et non marqué comme fait.
+    </div>
+  {% endif %}
+
+  {% if can_edit %}
+  <div class="section-card">
+    <h2 class="section-title">Ajouter un jalon</h2>
+    <form method="post" class="form-grid-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add">
+      <label class="field-stack grow-2"><span>Libellé</span><input class="in" name="libelle" required placeholder="Ex : Dépôt du dossier, Comité de pilotage…"></label>
+      <label class="field-stack"><span>Échéance</span><input class="in" type="date" name="date_echeance"></label>
+      <label class="field-stack"><span>Ordre</span><input class="in" type="number" name="ordre" value="0" min="0"></label>
+      <div class="field-stack"><span>&nbsp;</span><button class="btn ok" type="submit">Ajouter</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="section-card compact">
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>État</th><th>Jalon</th><th>Échéance</th><th></th></tr></thead>
+        <tbody>
+          {% for j in jalons %}
+            {% set retard = (j.statut != 'fait' and j.date_echeance and j.date_echeance < today) %}
+            <tr>
+              <td>
+                {% if j.statut == 'fait' %}<span class="status-badge status-success">Fait</span>
+                {% elif retard %}<span class="status-badge status-danger">En retard</span>
+                {% else %}<span class="status-badge status-warning">À faire</span>{% endif %}
+              </td>
+              <td><strong>{{ j.libelle }}</strong></td>
+              <td>{{ j.date_echeance.strftime('%d/%m/%Y') if j.date_echeance else '—' }}</td>
+              <td>
+                {% if can_edit %}
+                <div class="inline-actions">
+                  <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="toggle">
+                    <input type="hidden" name="jalon_id" value="{{ j.id }}">
+                    <button class="btn" type="submit">{{ 'Rouvrir' if j.statut == 'fait' else 'Marquer fait' }}</button>
+                  </form>
+                  <form method="post" onsubmit="return confirm('Supprimer ce jalon ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="jalon_id" value="{{ j.id }}">
+                    <button class="btn danger" type="submit">Supprimer</button>
+                  </form>
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4"><div class="quick-empty"><strong>Aucun jalon défini.</strong>Ajoutez les échéances clés du projet (dépôt, comités, bilan…).</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

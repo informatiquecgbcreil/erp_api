@@ -1,0 +1,105 @@
+{% extends 'layout.html' %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+  <div class="stack">
+    <div class="form-card reading-width">
+      <div class="section-head">
+        <div>
+          <h1 style="margin-top:0;">Créer une session · {{ atelier.nom }}</h1>
+          <div class="muted">Renseignez la date, l’horaire et, si besoin, les modules pédagogiques associés à cette séance.</div>
+        </div>
+        <div class="section-actions"><a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Retour aux sessions</a></div>
+      </div>
+
+      {{ ux.callout('À savoir', 'Vous pouvez créer une session sans module. Si vous sélectionnez un ou plusieurs modules, leurs compétences seront rattachées automatiquement à la session.') }}
+
+      <form method="get" class="filters-panel" style="margin:14px 0 16px;">
+        <div class="filters-grid">
+          <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
+          <div class="field-stack">
+            <label>Projet {{ ux.tooltip('Permet de limiter la liste des modules à ceux autorisés pour le projet sélectionné.') }}</label>
+            <select class="in" name="projet_id" onchange="this.form.submit()">
+              <option value="">Tous les projets rattachés</option>
+              {% for p in projets_atelier|default([]) %}
+                <option value="{{ p.id }}" {% if projet_id == p.id %}selected{% endif %}>{{ p.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </form>
+
+      <form method="post" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {% if atelier.type_atelier == 'INDIVIDUEL_MENSUEL' %}
+          <div class="form-grid-3">
+            <div><label>Date du rendez-vous</label><input class="in" type="date" name="rdv_date" required></div>
+            <div><label>Heure de début</label><input class="in" type="text" name="rdv_debut" placeholder="09:00"></div>
+            <div><label>Heure de fin</label><input class="in" type="text" name="rdv_fin" placeholder="09:45"></div>
+          </div>
+        {% else %}
+          <div class="form-grid-4">
+            <div><label>Date de la séance</label><input class="in" type="date" name="date_session" required></div>
+            <div><label>Heure de début</label><input class="in" type="text" name="heure_debut" placeholder="14:00"></div>
+            <div><label>Heure de fin</label><input class="in" type="text" name="heure_fin" placeholder="16:00"></div>
+            <div><label>Capacité {{ ux.tooltip('Nombre maximal de participants attendus pour cette séance.') }}</label><input class="in" type="number" name="capacite" value="{{ atelier.capacite_defaut or '' }}" min="0"></div>
+          </div>
+        {% endif %}
+
+        <label class="inline" style="gap:8px; align-items:center; margin-top:10px;">
+          <input type="checkbox" name="est_evenement" value="1">
+          <span>🎉 Séance événementielle (fête de quartier, temps fort, sortie…) — comptée à part dans le volet événementiel du SENACS</span>
+        </label>
+
+<div class="section-card compact" style="margin-top:12px;">
+  <h2 style="margin-top:0;">Matériel utilisé</h2>
+  <div class="muted">Déclare uniquement le matériel réellement mobilisé pendant la séance. La consommation estimée sera calculée à partir du référentiel actif pour la date choisie.</div>
+  <div class="form-grid-3" style="margin-top:10px;">
+    {% for m in materiels|default([]) %}
+      <label class="field-stack" style="padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--surface);">
+        <span>{{ m.nom }}</span>
+        <input class="in" type="number" min="0" step="1" name="quantite_{{ m.id }}" value="0">
+      </label>
+    {% endfor %}
+  </div>
+</div>
+
+        <div class="spacer"></div>
+        <div class="field-stack">
+          <label>Modules de la séance {{ ux.tooltip('Maintenez la touche Ctrl ou Cmd pour sélectionner plusieurs modules.') }}</label>
+          <select class="in" id="module_ids" name="module_ids" multiple size="8">
+            {% for mod in modules|default([]) %}
+              <option value="{{ mod.id }}">{{ mod.nom }} ({{ mod.competences|length }} compétence{{ 's' if (mod.competences|length) > 1 else '' }})</option>
+            {% else %}
+              <option disabled>Aucun module n’est autorisé pour cet atelier ou ce projet.</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn ok" type="submit">Créer la session</button>
+          <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Annuler</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const modSelect = document.getElementById('module_ids');
+      if (!modSelect) return;
+      modSelect.addEventListener('change', () => {
+        const selected = Array.from(modSelect.selectedOptions);
+        const compIds = new Set();
+        selected.forEach(opt => {
+          const raw = (opt.dataset.compIds || '').split(',').map(x => x.trim()).filter(Boolean);
+          raw.forEach(id => compIds.add(id));
+        });
+        document.querySelectorAll('input[name="competence_ids"]').forEach(cb => {
+          if (compIds.has(cb.value)) cb.checked = true;
+        });
+      });
+    })();
+  </script>
+{% endblock %}

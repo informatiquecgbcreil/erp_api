@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>Publier le programme en ligne</h1>
+    <p class="muted">
+      Cette page envoie le programme des activités (page <code>programme.html</code>,
+      <strong>sans aucune donnée personnelle</strong>) vers votre hébergement, en
+      connexion <strong>sécurisée et sortante</strong> (FTPS). Votre application et
+      votre base de données ne sont jamais exposées sur internet.
+    </p>
+
+    {% if configuree %}
+      <p class="muted">
+        ✅ Publication configurée vers <strong>{{ config.host }}</strong>{% if config.dir %} (dossier <code>{{ config.dir }}</code>){% endif %},
+        fichier <code>{{ config.filename }}</code>.
+      </p>
+      {% if derniere %}
+        <p class="muted">Dernière publication : {{ derniere.strftime('%d/%m/%Y à %H:%M') }}.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('main.publication_programme_publier') }}" data-no-scroll-restore>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" data-pending-text="Publication en cours…">🌐 Publier maintenant</button>
+      </form>
+      {% if config.url_publique %}
+        <p class="ux-helper" style="margin-top:8px;">
+          Page publique : <a href="{{ config.url_publique }}" target="_blank" rel="noopener">{{ config.url_publique }}</a>
+        </p>
+      {% endif %}
+    {% else %}
+      <div class="ux-callout ux-callout--warning" style="margin-top:10px;">
+        <div class="ux-callout__title">Publication non configurée</div>
+        <div class="ux-callout__text">
+          Renseignez les identifiants FTP de votre hébergement dans le fichier de
+          configuration du serveur (<code>.env</code>), puis redémarrez l'application :
+          <ul>
+            <li><code>PROGRAMME_FTP_HOST</code> — l'adresse FTP (ex : <code>ftp.monsite.fr</code>)</li>
+            <li><code>PROGRAMME_FTP_USER</code> / <code>PROGRAMME_FTP_PASSWORD</code> — vos identifiants cPanel</li>
+            <li><code>PROGRAMME_FTP_DIR</code> — le dossier cible (ex : <code>public_html</code>)</li>
+            <li><code>PROGRAMME_FTP_FILENAME</code> — le nom du fichier (par défaut <code>programme.html</code>)</li>
+            <li><code>PROGRAMME_PUBLIC_URL</code> — l'adresse publique finale (facultatif, pour afficher le lien)</li>
+          </ul>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Mise à jour automatique</h2>
+    <p class="muted">
+      Pour que la page se mette à jour <strong>toute seule</strong>, planifiez l'exécution
+      régulière du script <code>tools/publish_programme.py</code> (par exemple chaque nuit),
+      exactement comme la sauvegarde. Vous pouvez aussi cliquer sur « Publier maintenant »
+      à tout moment.
+    </p>
+    <p class="ux-helper">
+      Vous pouvez également <a href="{{ url_for('main.programme_public_export') }}">télécharger le fichier</a>
+      pour le déposer manuellement.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

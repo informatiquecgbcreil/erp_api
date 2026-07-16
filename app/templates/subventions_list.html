@@ -1,0 +1,271 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+
+{#
+  Subventions — UI "AAP-like" (cards, KPI, callouts)
+  - Zéro changement backend : on garde la liste complète côté serveur.
+  - Filtrage simple côté navigateur (recherche + filtre année).
+#}
+
+{% set ns = namespace(count=0, total_demande=0, total_attribue=0, total_recu=0) %}
+{% for s in subs %}
+  {% set ns.count = ns.count + 1 %}
+  {% set ns.total_demande = ns.total_demande + (s.montant_demande or 0) %}
+  {% set ns.total_attribue = ns.total_attribue + (s.montant_attribue or 0) %}
+  {% set ns.total_recu = ns.total_recu + (s.montant_recu or 0) %}
+{% endfor %}
+
+{% set pct_recu_sur_attribue = (ns.total_recu / ns.total_attribue * 100) if ns.total_attribue else 0 %}
+{% set pct_attribue_sur_demande = (ns.total_attribue / ns.total_demande * 100) if ns.total_demande else 0 %}
+
+<div class="page-shell dense-list-shell wide-shell">
+  <section class="hero-card">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1>Subventions{% if voir_archives %} — archives{% endif %}</h1>
+        <p class="muted">{% if voir_archives %}Dossiers archivés{% else %}Liste des dossiers actifs{% endif %} pour l’exercice {{ selected_year }}. Ouvrez un dossier pour le pilotage, le bilan ou les exports.</p>
+      </div>
+      <div class="hero-actions">
+        <form method="get" action="{{ url_for('main.subventions_list') }}" class="inline-actions" data-filter-summary="true">
+          <label class="field-stack slim"><span>Exercice</span><select id="annee" name="annee">{% for y in available_years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></label>
+          <button class="btn" type="submit">Afficher</button>
+        </form>
+        <span class="context-pill">Création rapide disponible ci-dessous</span>
+        <a class="btn" href="{{ url_for('main.subventions_par_financeur', annee=selected_year) }}">Vue par financeur</a>
+        <a class="btn" href="{{ url_for('main.tresorerie', annee=selected_year) }}">💶 Trésorerie</a>
+        <a class="btn" href="{{ url_for('main.export_subventions_xlsx', annee=selected_year) }}">⬇ Export Excel</a>
+        {% if voir_archives %}
+          <a class="btn" href="{{ url_for('main.subventions_list', annee=selected_year) }}">← Dossiers actifs</a>
+        {% else %}
+          <a class="btn" href="{{ url_for('main.subventions_list', annee=selected_year, archives=1) }}">Archives{% if nb_archives %} ({{ nb_archives }}){% endif %}</a>
+        {% endif %}
+        <a class="btn" href="{{ url_for('budget.depenses_list') }}">Dépenses</a>
+        <a class="btn" href="{{ url_for('previsionnel.referentiel') }}">Référentiel budgétaire</a>
+      </div>
+    </div>
+    {% if not voir_archives %}
+    <div class="context-strip">
+      <form method="post" action="{{ url_for('main.subventions_reconduire') }}" class="inline-actions"
+            onsubmit="return confirm('Reconduire les subventions de {{ selected_year }} vers l\'année suivante ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee_source" value="{{ selected_year }}">
+        <span class="context-pill">Bascule annuelle :</span>
+        <label class="field-stack slim"><span>Reconduire {{ selected_year }} vers</span>
+          <input class="in" type="number" name="annee_cible" value="{{ selected_year + 1 }}" style="width:110px;"></label>
+        <button class="btn" type="submit">🔁 Reconduire les dossiers</button>
+      </form>
+    </div>
+    {% endif %}
+    <div class="kpi-grid-modern">
+      <div class="kpi-box"><div class="muted">Dossiers</div><strong>{{ ns.count }}</strong></div>
+      <div class="kpi-box"><div class="muted">Total demandé</div><strong>{{ '%.2f'|format(ns.total_demande) }}€</strong></div>
+      <div class="kpi-box"><div class="muted">Total attribué</div><strong>{{ '%.2f'|format(ns.total_attribue) }}€</strong></div>
+      <div class="kpi-box"><div class="muted">Total reçu</div><strong>{{ '%.2f'|format(ns.total_recu) }}€</strong></div>
+    </div>
+    <div class="context-strip">
+      <span class="context-pill">Attribué / demandé : {{ '%.0f'|format(pct_attribue_sur_demande) }}%</span>
+      <span class="context-pill">Reçu / attribué : {{ '%.0f'|format(pct_recu_sur_attribue) }}%</span>
+    </div>
+  </section>
+
+  {% if alertes and alertes|length %}
+  <section class="section-card" style="border-color: color-mix(in srgb, var(--warn) 55%, var(--border));">
+    <div class="page-header">
+      <div class="page-title-wrap"><h2>⏰ Échéances à surveiller</h2><p class="muted">Versements attendus, bilans à rendre et dossiers en attente de décision.</p></div>
+    </div>
+    <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:6px;">
+      {% for a in alertes %}
+        <li>
+          <span class="status-badge {{ 'status-danger' if a.niveau == 'danger' else 'status-warning' }}">{{ 'Retard' if a.niveau == 'danger' else 'Bientôt' }}</span>
+          <a href="{{ url_for('main.subvention_pilotage', subvention_id=a.sub.id) }}"><strong>{{ a.sub.financeur or a.sub.nom }}</strong></a> — {{ a.message }}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <div class="monster-grid">
+    <section class="section-card">
+      <div class="page-header">
+        <div class="page-title-wrap"><h2>Rechercher et filtrer</h2><p class="muted">Les filtres ci-dessous réduisent la liste affichée sans recharger la page.</p></div>
+      </div>
+      <div class="filters-panel">
+        <div class="filters-grid">
+          <label class="field-stack"><span>Recherche</span><input class="in" id="subvSearch" type="text" placeholder="Nom, secteur, année..."></label>
+          <label class="field-stack"><span>Année</span><select id="subvYear"><option value="">Toutes</option>{% for y in available_years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></label>
+          <label class="field-stack"><span>Secteur</span><select class="in" id="subvSect"><option value="">Tous</option>{% for sec in secteurs %}<option value="{{ sec }}">{{ sec }}</option>{% endfor %}</select></label>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-card" id="creer-subvention">
+      <div class="page-header">
+        <div class="page-title-wrap"><h2>Créer une subvention</h2><p class="muted">Une fois créée, vous pourrez y rattacher des projets, répartir les montants et suivre les dépenses.</p></div>
+      </div>
+      <form method="POST" action="{{ url_for('main.subvention_create') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid-2">
+          <label class="field-stack"><span>Nom</span><input class="in" name="nom" required placeholder="Ex : Politique de la Ville / P147"></label>
+          <label class="field-stack"><span>Année exercice</span><input class="in" name="annee_exercice" type="number" value="{{ selected_year or 2026 }}"></label>
+        </div>
+        <div class="spacer"></div>
+        <div class="form-grid-3">
+          <label class="field-stack"><span>Financeur</span><input class="in" name="financeur" placeholder="Ex : CAF, Région, Ville…"></label>
+          <label class="field-stack"><span>Statut</span>
+            <select class="in" name="statut_cycle">
+              {% for val, lib in statuts %}<option value="{{ val }}">{{ lib }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="field-stack"><span>Versement attendu</span><input class="in" name="date_versement_prevu" type="date"></label>
+        </div>
+        <div class="spacer"></div>
+        <div class="form-grid-3">
+          <label class="field-stack"><span>Secteur</span>
+            <select class="in" name="secteur" {% if not current_user or (not can('scope:all_secteurs')) %}disabled{% endif %}>
+              {% for sec in secteurs %}
+                <option value="{{ sec }}" {% if current_user and (not can('scope:all_secteurs')) and (current_user.secteur_assigne == sec) %}selected{% endif %}>{{ sec }}</option>
+              {% endfor %}
+            </select>
+            {% if current_user and (not can('scope:all_secteurs')) %}<input type="hidden" name="secteur" value="{{ current_user.secteur_assigne }}">{% endif %}
+          </label>
+          <label class="field-stack"><span>Demandé (€)</span><input class="in" name="montant_demande" type="number" step="0.01" value="0"></label>
+          <label class="field-stack"><span>Attribué (€)</span><input class="in" name="montant_attribue" type="number" step="0.01" value="0"></label>
+        </div>
+        <div class="spacer"></div>
+        <div class="form-grid-2">
+          <label class="field-stack"><span>Reçu (€)</span><input class="in" name="montant_recu" type="number" step="0.01" value="0"></label>
+          <div class="field-stack"><span>&nbsp;</span><button class="btn ok" type="submit">Créer la subvention</button></div>
+        </div>
+
+        {% if categories_ref %}
+        <div class="spacer"></div>
+        <details class="card" style="margin:0; padding:12px;">
+          <summary style="cursor:pointer; font-weight:800;">Préremplir les lignes budgétaires depuis le référentiel</summary>
+          <p class="muted">Optionnel : coche les charges/produits fréquents pour créer immédiatement les lignes de la subvention. Tu ajusteras ensuite les montants dans le pilotage.</p>
+          <div class="tablewrap clean" style="max-height:280px; overflow:auto;">
+            <table class="table">
+              <thead><tr><th></th><th>Nature</th><th>Compte</th><th>Catégorie</th><th>Montant défaut</th></tr></thead>
+              <tbody>
+                {% for c in categories_ref %}
+                <tr>
+                  <td><input type="checkbox" name="categorie_ref_id" value="{{ c.id }}"></td>
+                  <td>{{ 'Produit' if c.nature == 'produit' else 'Charge' }}</td>
+                  <td>{{ c.compte.code }} - {{ c.compte.libelle }}</td>
+                  <td><strong>{{ c.libelle }}</strong></td>
+                  <td>{{ '%.2f'|format(c.montant_defaut or 0) }} €</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+        {% endif %}
+      </form>
+    </section>
+  </div>
+
+  <section class="section-card">
+    <div class="page-header">
+      <div class="page-title-wrap"><h2>Dossiers</h2><p class="muted">Vue synthétique avec progression de réception des fonds et accès rapides aux écrans de suivi.</p></div>
+    </div>
+    <div class="tablewrap clean">
+      <table class="js-sortable" class="compact-table">
+        <thead><tr><th>Nom</th><th>Financeur</th><th>Secteur</th><th>Exercice</th><th>Statut</th><th>Demandé</th><th>Attribué</th><th>Reçu</th><th>Suivi</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for s in subs %}
+            {% set pct = ((s.montant_recu or 0) / (s.montant_attribue or 0) * 100) if (s.montant_attribue or 0) else 0 %}
+            <tr class="subvRow" data-search="{{ (s.nom ~ ' ' ~ (s.financeur or '') ~ ' ' ~ s.secteur ~ ' ' ~ s.annee_exercice)|lower }}" data-year="{{ s.annee_exercice }}" data-secteur="{{ s.secteur }}">
+              <td><strong>{{ s.nom }}</strong></td><td>{{ s.financeur or '—' }}</td><td>{{ s.secteur }}</td><td>{{ s.annee_exercice }}</td><td><span class="status-badge" data-status="{{ s.statut_cycle }}">{{ s.statut_label }}</span></td><td>{{ "%.2f"|format(s.montant_demande or 0) }}€</td><td>{{ "%.2f"|format(s.montant_attribue or 0) }}€</td><td><strong>{{ "%.2f"|format(s.montant_recu or 0) }}€</strong></td>
+              <td style="min-width:220px;"><div class="progress-shell"><div class="progress-fill {{ 'is-ok' if pct >= 80 else ('is-warn' if pct >= 30 else 'is-danger') }}" style="width:{{ pct }}%;">{{ "%.0f"|format(pct) }}%</div></div><div class="muted">reçu / attribué</div></td>
+              <td><div class="inline-actions"><span class="status-badge {{ "status-success" if pct >= 80 else ("status-warning" if pct >= 30 else "status-danger") }}">{{ "%.0f"|format(pct) }}% reçu</span><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=s.id) }}">Ouvrir</a><a class="btn" href="{{ url_for('main.subvention_bilan', subvention_id=s.id) }}">Bilan</a>
+                {% if voir_archives %}
+                  <form method="post" action="{{ url_for('main.subvention_restore', subvention_id=s.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn" type="submit">Restaurer</button></form>
+                {% else %}
+                  <form method="post" action="{{ url_for('main.subvention_archive', subvention_id=s.id) }}" onsubmit="return confirm('Archiver ce dossier ?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn" type="submit">Archiver</button></form>
+                {% endif %}
+              </div></td>
+            </tr>
+          {% endfor %}
+          {% if subs|length == 0 %}<tr><td colspan="10">{{ ui.empty_state(
+            "Aucune subvention archivée" if voir_archives else "Aucun financement enregistré pour cet exercice",
+            "Aucun ancien dossier n’attend d’être consulté." if voir_archives else "Créez la première subvention pour suivre le montant demandé, accordé, reçu et dépensé.",
+            url_for('main.subventions_list', annee=selected_year) if voir_archives else "#creer-subvention",
+            "Voir les dossiers actifs" if voir_archives else "Créer une subvention",
+            "💶"
+          ) }}</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Liste des subventions (vue compacte)">
+      {% for s in subs %}
+        {% set pct = ((s.montant_recu or 0) / (s.montant_attribue or 0) * 100) if (s.montant_attribue or 0) else 0 %}
+        <article class="responsive-card subvFilterItem" data-search="{{ (s.nom ~ ' ' ~ (s.financeur or '') ~ ' ' ~ s.secteur ~ ' ' ~ s.annee_exercice)|lower }}" data-year="{{ s.annee_exercice }}" data-secteur="{{ s.secteur }}">
+          <header class="responsive-card__head">
+            <strong>{{ s.nom }}</strong>
+            <span class="chip">{{ s.annee_exercice }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>Financeur</dt><dd>{{ s.financeur or '—' }}</dd></div>
+            <div><dt>Statut</dt><dd><span class="status-badge" data-status="{{ s.statut_cycle }}">{{ s.statut_label }}</span></dd></div>
+            <div><dt>Secteur</dt><dd>{{ s.secteur }}</dd></div>
+            <div><dt>Demandé</dt><dd>{{ "%.2f"|format(s.montant_demande or 0) }}€</dd></div>
+            <div><dt>Attribué</dt><dd>{{ "%.2f"|format(s.montant_attribue or 0) }}€</dd></div>
+            <div><dt>Reçu</dt><dd><strong>{{ "%.2f"|format(s.montant_recu or 0) }}€</strong></dd></div>
+          </dl>
+          <div class="progress-shell"><div class="progress-fill {{ 'is-ok' if pct >= 80 else ('is-warn' if pct >= 30 else 'is-danger') }}" style="width:{{ pct }}%;">{{ "%.0f"|format(pct) }}%</div></div>
+          <div class="inline-actions">
+            <span class="status-badge {{ 'status-success' if pct >= 80 else ('status-warning' if pct >= 30 else 'status-danger') }}">{{ "%.0f"|format(pct) }}% reçu</span>
+            <a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=s.id) }}">Ouvrir</a>
+            <a class="btn" href="{{ url_for('main.subvention_bilan', subvention_id=s.id) }}">Bilan</a>
+            {% if voir_archives %}
+              <form method="post" action="{{ url_for('main.subvention_restore', subvention_id=s.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn" type="submit">Restaurer</button></form>
+            {% else %}
+              <form method="post" action="{{ url_for('main.subvention_archive', subvention_id=s.id) }}" onsubmit="return confirm('Archiver ce dossier ?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn" type="submit">Archiver</button></form>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        {{ ui.empty_state(
+          "Aucune subvention archivée" if voir_archives else "Aucun financement enregistré pour cet exercice",
+          "Aucun ancien dossier n’attend d’être consulté." if voir_archives else "Créez la première subvention pour suivre le montant demandé, accordé, reçu et dépensé.",
+          url_for('main.subventions_list', annee=selected_year) if voir_archives else "#creer-subvention",
+          "Voir les dossiers actifs" if voir_archives else "Créer une subvention",
+          "💶"
+        ) }}
+      {% endfor %}
+    </div>
+    <div class="callout-soft" id="subvNoResult" style="display:none;">Aucun dossier ne correspond aux filtres sélectionnés.</div>
+  </section>
+</div>
+
+<script>
+  (function(){
+    const q = document.getElementById('subvSearch');
+    const y = document.getElementById('subvYear');
+    const s = document.getElementById('subvSect');
+    const rows = Array.from(document.querySelectorAll('.subvRow'));
+    const cards = Array.from(document.querySelectorAll('.subvFilterItem'));
+    const items = rows.concat(cards);
+    const no = document.getElementById('subvNoResult');
+    function apply(){
+      const needle = (q.value || '').trim().toLowerCase();
+      const year = (y.value || '').trim();
+      const sect = (s.value || '').trim().toLowerCase();
+      let visible = 0;
+      items.forEach(r => {
+        const hay = (r.getAttribute('data-search') || '').toLowerCase();
+        const ry = r.getAttribute('data-year') || '';
+        const rs = (r.getAttribute('data-secteur') || '').toLowerCase();
+        const show = (!needle || hay.includes(needle)) && (!year || ry === year) && (!sect || rs.toLowerCase().includes(sect));
+        r.style.display = show ? '' : 'none';
+        if(show) visible++;
+      });
+      no.style.display = visible ? 'none' : '';
+    }
+    [q,y,s].forEach(el => el && el.addEventListener('input', apply));
+    [y,s].forEach(el => el && el.addEventListener('change', apply));
+  })();
+</script>
+
+{% endblock %}

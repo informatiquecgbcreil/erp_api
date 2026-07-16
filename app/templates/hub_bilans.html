@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .hub-card{display:flex;flex-direction:column;gap:12px;min-height:210px}
+  .hub-card-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .hub-tag{white-space:nowrap}
+  .hub-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+  .hub-secondary{display:flex;gap:8px;flex-wrap:wrap}
+  @media(max-width:900px){.hub-actions .btn,.hub-secondary .btn{flex:1 1 auto}}
+</style>
+
+<div class="ui-page">
+  <section class="ui-header">
+    <div class="ui-header__body">
+      <h1 class="ui-title">{{ title }}</h1>
+      <p class="ui-subtitle">{{ intro }}</p>
+    </div>
+  </section>
+
+  <div class="ui-card-grid hub-grid">
+    {% for card in cards %}
+      <article class="ui-card hub-card">
+        <div class="hub-card-top">
+          <h2 class="ui-card__title">{{ card.title }}</h2>
+          <span class="ui-badge hub-tag">{{ card.tag }}</span>
+        </div>
+        <div class="ui-card__text">{{ card.subtitle }}</div>
+
+        <div class="hub-actions">
+          <a class="btn ok" href="{{ card.primary_url }}">{{ card.primary_label }}</a>
+        </div>
+
+        {% set secondary = card.secondary|select|list %}
+        {% if secondary %}
+          <div class="hub-secondary">
+            {% for item in secondary %}
+              <a class="btn" href="{{ item.url }}">{{ item.label }}</a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

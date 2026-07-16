@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .profile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .profile-card{display:flex;flex-direction:column;gap:12px;min-height:230px}
+  .profile-icon{font-size:2rem}.profile-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+</style>
+<div class="stack">
+  <section class="card">
+    <h1>Parcours par métier</h1>
+    <p class="muted">Choisissez votre situation réelle plutôt qu’un module technique. Chaque carte regroupe les actions les plus fréquentes de ce profil.</p>
+  </section>
+  <section class="profile-grid">
+    {% for profil in profils %}
+      <article class="card profile-card">
+        <div class="inline" style="justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div><h2 style="margin:0;">{{ profil.title }}</h2><p class="muted">{{ profil.intro }}</p></div>
+          <div class="profile-icon" aria-hidden="true">{{ profil.icon }}</div>
+        </div>
+        <div class="profile-actions">
+          {% for action in profil.actions %}
+            <a class="btn {{ 'ok' if action.primary else '' }}" href="{{ action.url }}">{{ action.label }}</a>
+          {% endfor %}
+        </div>
+      </article>
+    {% else %}
+      <div class="card"><p class="muted">Aucun parcours disponible avec vos droits actuels.</p></div>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

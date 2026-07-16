@@ -1,0 +1,213 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+  <div class="stack">
+    <div class="page-head">
+      <h1 style="margin:0;">Compétences et suivi · objectifs</h1>
+      <p class="muted" style="margin:6px 0 0 0;">Crée rapidement une chaîne d'objectifs ou ouvre les options avancées pour les cas particuliers.</p>
+      <p class="muted" style="margin:6px 0 0 0;">
+        Un objectif déjà utilisé dans une séance n’est plus supprimable : il reste conservé pour préserver l’historique pédagogique.
+      </p>
+      <div class="inline" style="gap:8px; margin-top:12px; flex-wrap:wrap;">
+        <a class="pill" href="{{ url_for('pedagogie.modules_pedagogiques') }}">Catalogue de modules</a>
+        <a class="pill" href="{{ url_for('pedagogie.plan_projet') }}">Plan de projet</a>
+        <a class="pill" href="{{ url_for('pedagogie.pilotage_objectifs') }}">Pilotage des objectifs</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Assistant rapide</h2>
+      <p class="muted">La méthode la plus simple pour créer un enchaînement complet : objectif général, objectif spécifique et objectif opérationnel.</p>
+      <form method="post" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="quick_create_parcours">
+
+        <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label>Intitulé de départ</label>
+            <input class="in" name="titre_base" placeholder="Ex. Gagner en autonomie numérique" required>
+          </div>
+          <div>
+            <label>Projet</label>
+            <select class="in" name="projet_id" required>
+              <option value="">—</option>
+              {% for p in projets %}
+                <option value="{{ p.id }}">{{ p.secteur }} · {{ p.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Atelier</label>
+            <select class="in" name="atelier_id" required>
+              <option value="">—</option>
+              {% for a in ateliers %}
+                <option value="{{ a.id }}">{{ a.secteur }} · {{ a.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Module pédagogique</label>
+            <select class="in" name="module_id" required>
+              <option value="">—</option>
+              {% for m in modules %}
+                <option value="{{ m.id }}">{{ m.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn ok" type="submit">Créer le parcours complet</button>
+        </div>
+      </form>
+    </div>
+
+    <details class="card">
+      <summary><strong>Mode avancé · créer un objectif précis</strong></summary>
+      <p class="muted" style="margin-top:10px;">Utilise ce formulaire seulement si l'assistant rapide ne suffit pas.</p>
+      <form method="post" class="stack" id="objectifForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="create_objectif">
+
+        <div>
+          <label>Type d'objectif</label>
+          <select class="in" name="type" id="objType" required>
+            <option value="">Choisir…</option>
+            <option value="general">Objectif général (OG)</option>
+            <option value="specifique">Objectif spécifique (OS)</option>
+            <option value="operationnel">Objectif opérationnel (OO)</option>
+          </select>
+        </div>
+
+        <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label>Titre</label>
+            <input class="in" name="titre" required>
+          </div>
+          <div>
+            <label>Seuil de validation (%)</label>
+            <input class="in" type="number" name="seuil_validation" min="0" max="100" step="1" value="60">
+          </div>
+        </div>
+
+        <div id="fieldProjet" style="display:none;">
+          <label>Projet associé</label>
+          <select class="in" name="projet_id">
+            <option value="">—</option>
+            {% for p in projets %}
+              <option value="{{ p.id }}">{{ p.secteur }} · {{ p.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div id="fieldAtelier" style="display:none;">
+          <label>Atelier associé</label>
+          <select class="in" name="atelier_id">
+            <option value="">—</option>
+            {% for a in ateliers %}
+              <option value="{{ a.id }}">{{ a.secteur }} · {{ a.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div id="fieldModule" style="display:none;">
+          <label>Module pédagogique associé</label>
+          <select class="in" name="module_id">
+            <option value="">—</option>
+            {% for m in modules %}
+              <option value="{{ m.id }}">{{ m.nom }}</option>
+            {% endfor %}
+          </select>
+          <div class="muted">Les compétences de l'objectif opérationnel sont déduites du module choisi.</div>
+        </div>
+
+        <div id="fieldSession" style="display:none;">
+          <label>Séance liée (optionnel)</label>
+          <select class="in" name="session_id">
+            <option value="">—</option>
+            {% for s in sessions %}
+              <option value="{{ s.id }}">{{ s.date_session }} {{ s.heure_debut or '' }} · {{ s.atelier.nom if s.atelier else ('Atelier #' ~ s.atelier_id) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <details>
+          <summary>Informations complémentaires</summary>
+          <label>Description</label>
+          <textarea class="in" name="description" rows="2"></textarea>
+          <label>Objectif parent (si besoin)</label>
+          <select class="in" name="parent_id">
+            <option value="">Aucun</option>
+            {% for obj in parent_options %}
+              <option value="{{ obj.id }}">{{ obj.titre }} ({{ obj.type }})</option>
+            {% endfor %}
+          </select>
+        </details>
+
+        <button class="btn ok" type="submit">Créer l'objectif</button>
+      </form>
+    </details>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Objectifs existants</h2>
+      <p class="muted">Retrouve ici les objectifs déjà créés pour les projets, ateliers ou modules.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Type</th><th>Titre</th><th>Rattachement</th><th>Parent</th><th></th></tr></thead>
+          <tbody>
+            {% for obj in objectifs %}
+              <tr>
+                <td><span class="badge">{{ obj.type }}</span></td>
+                <td><strong>{{ obj.titre }}</strong></td>
+                <td class="muted">
+                  {% if obj.projet %}Projet : {{ obj.projet.nom }}<br>{% endif %}
+                  {% if obj.atelier %}Atelier : {{ obj.atelier.nom }}<br>{% endif %}
+                  {% if obj.module %}Module : {{ obj.module.nom }}{% endif %}
+                </td>
+                <td>{{ obj.parent.titre if obj.parent else '—' }}</td>
+                <td>
+                  {% set usage = objectif_usage.get(obj.id) if objectif_usage else none %}
+                  {% if usage and usage.used %}
+                    <button class="btn" type="button" disabled>Utilisé</button>
+                    <div class="muted" style="font-size:.82rem; margin-top:4px;">
+                      {% if usage.suivis %}{{ usage.suivis }} suivi(s){% endif %}
+                      {% if usage.enfants %}{% if usage.suivis %} · {% endif %}{{ usage.enfants }} enfant(s){% endif %}
+                    </div>
+                  {% else %}
+                    <form method="post" onsubmit="return confirm('Supprimer cet objectif ? Cette action est possible uniquement s’il n’a pas encore été utilisé.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="action" value="delete_objectif">
+                      <input type="hidden" name="objectif_id" value="{{ obj.id }}">
+                      <button class="btn danger" type="submit">Supprimer</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="muted">Aucun objectif enregistré.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const typeSel = document.getElementById('objType');
+      const p = document.getElementById('fieldProjet');
+      const a = document.getElementById('fieldAtelier');
+      const m = document.getElementById('fieldModule');
+      const s = document.getElementById('fieldSession');
+      function refresh() {
+        const t = typeSel.value;
+        p.style.display = t === 'general' ? 'block' : 'none';
+        a.style.display = t === 'specifique' ? 'block' : 'none';
+        m.style.display = t === 'operationnel' ? 'block' : 'none';
+        s.style.display = t === 'operationnel' ? 'block' : 'none';
+      }
+      typeSel.addEventListener('change', refresh);
+      refresh();
+    })();
+  </script>
+{% endblock %}

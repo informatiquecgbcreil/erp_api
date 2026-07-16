@@ -1,0 +1,55 @@
+{% extends 'layout.html' %}
+{% block body %}
+{% set values = values or {} %}
+<div class="stack">
+  <div class="breadcrumb">
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.index') }}">Insertion</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.referentiels_overview') }}">Référentiels</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.referentiel_list', ref_type=ref_type) }}">{{ meta.title }}</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item">{{ 'Modifier' if row else 'Ajouter' }}</span>
+  </div>
+
+  <div class="page-head">
+    <h1 style="margin:0;">{{ 'Modifier' if row else 'Ajouter' }} {{ meta.singular }}</h1>
+    <p class="muted" style="margin:6px 0 0 0;">{{ meta.description }}</p>
+  </div>
+
+  <div class="card">
+    <form method="post" class="stack" style="gap:14px;max-width:760px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label for="label">Libellé</label>
+        <input class="in" id="label" type="text" name="label" value="{{ values.get('label', row.label if row else '') }}" required>
+      </div>
+
+      <div class="filters-grid" style="grid-template-columns:1fr 180px;">
+        <div>
+          <label for="code">Code</label>
+          <input class="in" id="code" type="text" name="code" value="{{ values.get('code', row.code if row else '') }}">
+        </div>
+        <div>
+          <label for="sort_order">Ordre d’affichage</label>
+          <input class="in" id="sort_order" type="number" name="sort_order" value="{{ values.get('sort_order', row.sort_order if row else 0) }}">
+        </div>
+      </div>
+
+      <div>
+        {% set active_val = values.get('is_active') %}
+        {% set checked = (active_val is not none and active_val) or (active_val is none and (row.is_active if row else true)) %}
+        <label style="display:flex;gap:8px;align-items:center;">
+          <input type="checkbox" name="is_active" value="1" {% if checked %}checked{% endif %}>
+          <span>Valeur active</span>
+        </label>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="pill active" type="submit">Enregistrer</button>
+        <a class="pill" href="{{ url_for('insertion.referentiel_list', ref_type=ref_type) }}">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

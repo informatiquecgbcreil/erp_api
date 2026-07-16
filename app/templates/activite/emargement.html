@@ -1,0 +1,1181 @@
+{% extends 'layout.html' %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block head_extra %}
+  <style>
+    .eval-modal .modal-dialog,
+    .bulk-eval-modal .modal-dialog {
+      max-width: min(1100px, calc(100vw - 24px));
+      margin: 1rem auto;
+    }
+    .eval-modal .modal-content,
+    .bulk-eval-modal .modal-content {
+      max-height: calc(100vh - 2rem);
+      border-radius: 16px;
+    }
+    .eval-modal .modal-body,
+    .bulk-eval-modal .modal-body {
+      overflow-y: auto;
+      max-height: calc(100vh - 190px);
+      padding-bottom: 1rem;
+    }
+    .eval-modal .modal-footer,
+    .bulk-eval-modal .modal-footer {
+      position: sticky;
+      bottom: 0;
+      background: var(--surface, #fff);
+      z-index: 1;
+      border-top: 1px solid rgba(0,0,0,.08);
+    }
+    .eval-modal .competence-card {
+      margin-bottom: 12px;
+    }
+
+    .conso-card-lite {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(130px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .conso-chip {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 7px 9px;
+      background: var(--surface-soft, #f8fafc);
+      line-height: 1.25;
+    }
+    .conso-chip__label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted, #64748b);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .conso-chip__value {
+      display: block;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .conso-line-form {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .conso-line-form select { min-width: 175px; }
+    .conso-line-form input[type=number] { width: 72px; }
+    .emargement-consumption-table th:nth-child(5),
+    .emargement-consumption-table td:nth-child(5) { min-width: 300px; }
+
+    .conso-period-form {
+      display: grid;
+      grid-template-columns: minmax(190px, 1.2fr) repeat(2, minmax(150px, .8fr)) auto;
+      gap: 8px;
+      align-items: end;
+      margin: 10px 0 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface, #fff);
+    }
+    .conso-period-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: var(--surface, #fff);
+      font-weight: 700;
+      color: var(--muted, #64748b);
+    }
+    @media (max-width: 860px) {
+      .conso-card-lite { grid-template-columns: 1fr; }
+      .conso-line-form select { min-width: 100%; }
+      .conso-period-form { grid-template-columns: 1fr; }
+    }
+  </style>
+{% endblock %}
+
+{% block body %}
+<div class="emargement-shell stack-lg">
+  <section class="page-hero">
+    <div class="hero-top">
+      <div>
+        <h1 style="margin:0;">Émargement · {{ atelier.nom }}</h1>
+        <div class="muted">
+          {% if session.session_type == 'COLLECTIF' %}
+            {{ session.date_session }} {{ session.heure_debut or '' }}{% if session.heure_fin %}-{{ session.heure_fin }}{% endif %}
+            · Capacité: {{ session.capacite or atelier.capacite_defaut or '—' }}
+          {% else %}
+            RDV : {{ session.rdv_date }} {{ session.rdv_debut or '' }}{% if session.rdv_fin %}-{{ session.rdv_fin }}{% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="hero-actions toolbar-line">
+        <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Retour aux sessions</a>
+        <a class="btn" href="{{ url_for('activite.session_edit_schedule', session_id=session.id) }}">Modifier la date et l'horaire</a>
+        <span class="status-badge {{ 'status-success' if session.kiosk_open else 'status-warning' }}">{{ 'Pointage tablette ouvert' if session.kiosk_open else 'Pointage tablette fermé' }}</span>
+        <form method="post" action="{{ url_for('activite.session_toggle_evenement', session_id=session.id) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn" type="submit" title="Les séances événementielles sont comptées à part dans le volet événementiel du SENACS.">
+            {{ '🎉 Événement ✓ (retirer)' if session.est_evenement else '🎉 Marquer comme événement' }}
+          </button>
+        </form>
+        {% if session.session_type == 'COLLECTIF' %}
+          <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=session.id) }}">Générer la feuille PDF</a>
+        {% endif %}
+        {# KIOSQUE PUBLIC #}
+        {% if session.kiosk_open %}
+          <a class="btn" href="{{ url_for('kiosk.kiosk_home') }}" target="_blank">Ouvrir le pointage tablette</a>
+          <a class="btn" href="{{ url_for('kiosk.kiosk_session', token=session.kiosk_token) }}" target="_blank">Ouvrir cette séance</a>
+          <form method="post" action="{{ url_for('activite.kiosk_close', session_id=session.id) }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+            <button class="btn" type="submit">Fermer le pointage tablette</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('activite.kiosk_open', session_id=session.id) }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+            <button class="btn" type="submit">Ouvrir le pointage tablette</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <section class="section-card">
+    {{ ux.callout("Flux conseillé", "Commencez par enregistrer les présences, puis utilisez l'évaluation individuelle ou l'évaluation groupée selon le niveau de détail attendu. Le pointage tablette est utile lorsque les participants signent eux-mêmes sur un poste dédié.") }}
+    {% set has_presences = presences and presences|length > 0 %}
+    {% set has_competences = session_competences and session_competences|length > 0 %}
+    <div class="inline-actions" style="margin-top:10px; gap:8px; flex-wrap:wrap;">
+      <span class="status-badge {{ 'status-success' if session.kiosk_open else 'status-warning' }}">
+        1) Pointage tablette {{ 'terminé' if session.kiosk_open else 'à faire' }}
+      </span>
+      <span class="status-badge {{ 'status-success' if has_presences else 'status-warning' }}">
+        2) Présences {{ 'terminé' if has_presences else 'à faire' }}
+      </span>
+      <span class="status-badge {{ 'status-success' if (has_presences and has_competences) else 'status-warning' }}">
+        3) Évaluation / clôture {{ 'prête' if (has_presences and has_competences) else 'à préparer' }}
+      </span>
+    </div>
+  </section>
+
+  {% if hart_dues %}
+  <section class="section-card" id="hart-dues" style="border-color: color-mix(in srgb, var(--warn,#f59e0b) 55%, var(--border));">
+    <h2 style="margin-top:0;">🪜 Échelle de Hart — {{ hart_dues|length }} évaluation(s) à poser</h2>
+    <p class="muted" style="margin-top:-6px;">Première venue = évaluation initiale ; ensuite proposée toutes les 5 séances. <strong>Rien n'est calculé automatiquement</strong> : c'est toi qui positionnes la personne, l'application signale seulement le bon moment. Recueille un témoignage si possible.</p>
+    {% for due in hart_dues %}
+      <details style="border-top:1px solid var(--border); padding:8px 0;">
+        <summary style="cursor:pointer;">
+          <strong>{{ due.participant.prenom }} {{ due.participant.nom }}</strong>
+          — {{ 'première venue (évaluation initiale)' if due.motif == 'initiale' else ('suivi : ' ~ due.nb_seances ~ ' séances depuis la dernière évaluation') }}
+          {% if due.derniere %}<span class="muted">(dernier niveau : {{ due.derniere.niveau }})</span>{% endif %}
+        </summary>
+        <form method="post" action="{{ url_for('main.hart_evaluer', participant_id=due.participant.id) }}" class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('activite.emargement', session_id=session.id) }}#hart-dues">
+          <input type="hidden" name="type_evaluation" value="{{ 'initiale' if due.motif == 'initiale' else 'suivi' }}">
+          <input type="hidden" name="secteur" value="{{ session.secteur }}">
+          <label class="field-stack"><span>Étape</span>
+            <select class="in" name="niveau" required>
+              <option value="">—</option>
+              {% for niv in hart_niveaux %}
+                <option value="{{ niv.niveau }}" title="{{ niv.libelle }} — {{ niv.description }}" {% if due.derniere and due.derniere.niveau == niv.niveau %}selected{% endif %}>{{ niv.niveau }} {{ niv.emoji }} {{ niv.habitant }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack" style="flex:1 1 220px;"><span>Témoignage (optionnel)</span><input class="in" name="temoignage" placeholder="Sa parole, telle quelle…"></label>
+          <label class="field-stack" style="flex:1 1 220px;"><span>Remarque pro (optionnel)</span><input class="in" name="remarque_pro"></label>
+          <button class="btn ok" type="submit">Positionner</button>
+          <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=due.participant.id, tab='participation') }}">Passeport</a>
+        </form>
+      </details>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+<section class="section-card">
+  <div class="section-head">
+    <div>
+      <h2 style="margin:0;">Consommation estimée</h2>
+      <div class="muted">Référentiel : {{ session_conso.config.label if session_conso and session_conso.config else 'Aucune configuration active' }}</div>
+    </div>
+  </div>
+  <div class="finance-kpis" style="margin-top:10px;">
+    <div class="finance-kpi"><div class="finance-kpi__label">Énergie estimée</div><div class="finance-kpi__value">{{ '%.3f'|format(session_conso.total_kwh or 0) }} kWh</div></div>
+    <div class="finance-kpi"><div class="finance-kpi__label">CO₂ estimé</div><div class="finance-kpi__value">{{ '%.3f'|format(session_conso.co2_kg or 0) }} kg</div></div>
+    <div class="finance-kpi"><div class="finance-kpi__label">Équipements déclarés</div><div class="finance-kpi__value">{{ session_conso.materiels_count or 0 }}</div></div>
+  </div>
+  <form method="post" class="stack" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+    <input type="hidden" name="action" value="update_session_materiels">
+    <div class="form-grid-3">
+      {% for m in materiels|default([]) %}
+        {% set current_qty = 0 %}
+        {% for sm in session.materiels %}
+          {% if sm.materiel_id == m.id %}{% set current_qty = sm.quantite %}{% endif %}
+        {% endfor %}
+        <label class="field-stack" style="padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--surface);">
+          <span>{{ m.nom }}</span>
+          <input class="in" type="number" min="0" step="1" name="quantite_{{ m.id }}" value="{{ current_qty }}">
+        </label>
+      {% endfor %}
+    </div>
+    <div class="form-actions">
+      <button class="btn ok" type="submit">Mettre à jour le matériel utilisé</button>
+    </div>
+  </form>
+  {% if session_conso.details %}
+    <div class="tablewrap clean" style="margin-top:12px;">
+      <table class="table">
+        <thead><tr><th>Matériel</th><th>Quantité</th><th>Puissance</th><th>kWh</th></tr></thead>
+        <tbody>
+          {% for d in session_conso.details %}
+            <tr><td>{{ d.nom }}</td><td>{{ d.quantite }}</td><td>{{ d.watts }} W</td><td>{{ d.kwh }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+  <div class="spacer"></div>
+  <div class="card" style="background:var(--surface-soft);">
+    <div class="section-head" style="align-items:flex-start;">
+      <div>
+        <h3 style="margin:0;">Consommation individuelle des présences</h3>
+        <p class="muted" style="margin:4px 0 0;">
+          <span class="conso-period-badge">{{ conso_period_ctx.label if conso_period_ctx else 'Période' }}</span>
+          {% if conso_period_start and conso_period_end %}
+            du {{ conso_period_start.strftime('%d/%m/%Y') }} au {{ conso_period_end.strftime('%d/%m/%Y') }} inclus.
+          {% else %}
+            Période non définie.
+          {% endif %}
+          Valeurs indicatives pour le suivi pédagogique/statistique.
+        </p>
+      </div>
+    </div>
+
+    <form method="get" class="conso-period-form">
+      <label class="field-stack">
+        <span>Période de mesure</span>
+        <select class="in" name="conso_period_mode">
+          {% for key, label in conso_period_ctx.modes.items() %}
+            <option value="{{ key }}" {% if key == conso_period_mode %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">
+        <span>Début personnalisé</span>
+        <input class="in" type="date" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      </label>
+      <label class="field-stack">
+        <span>Fin personnalisée</span>
+        <input class="in" type="date" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+      </label>
+      <button class="btn ok" type="submit">Actualiser la période</button>
+      <div class="muted" style="grid-column:1/-1;">
+        Pour l’émargement, le cumul est plafonné à la date de la séance : pas de consommation future qui vient polluer une feuille déjà passée. Les dates manuelles sont utilisées seulement avec “Période personnalisée”.
+      </div>
+    </form>
+
+    <div class="muted" style="margin:8px 0 10px;">
+      Ce bloc sert au remplissage rapide. Le réglage fin par personne se fait ensuite dans le tableau des présences.
+    </div>
+    <form method="post" class="row" style="gap:8px; flex-wrap:wrap; align-items:end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+      <input type="hidden" name="action" value="apply_presence_consumption">
+      <label class="field-stack" style="min-width:280px;">
+        <span>Matériels à appliquer à toutes les présences</span>
+        <select class="in" name="materiel_individuel_ids" multiple size="5" title="Ctrl+clic pour sélectionner plusieurs matériels">
+          {% for m in materiels|default([]) %}
+            <option value="{{ m.id }}" {% if m.id == default_materiel_id %}selected{% endif %}>{{ m.nom }}</option>
+          {% endfor %}
+        </select>
+        <span class="muted">Ctrl+clic pour plusieurs choix : tour fixe + écran, portable + imprimante, etc.</span>
+      </label>
+      <label class="field-stack" style="width:150px;">
+        <span>Quantité par matériel</span>
+        <input class="in" type="number" min="1" step="1" name="quantite_individuelle" value="1">
+      </label>
+      <button class="btn ok" type="submit">Appliquer à tous</button>
+    </form>
+    <form method="post" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+      <input type="hidden" name="action" value="clear_presence_consumption">
+      <button class="btn" type="submit">Effacer toutes les consommations individuelles de cette séance</button>
+    </form>
+  </div>
+</section>
+
+
+  {% if session.session_type == 'COLLECTIF' %}
+  <section class="section-card">
+    <h2 style="margin-top:0;">Documents de session</h2>
+    <div class="row" style="gap:10px; flex-wrap:wrap;">
+      <a class="btn" href="{{ url_for('activite.download_collectif_archive', session_id=session.id, kind='docx', conso_period_mode=conso_period_mode, conso_period_start=conso_period_start_value, conso_period_end=conso_period_end_value) }}">Télécharger DOCX</a>
+      <a class="btn" href="{{ url_for('activite.download_collectif_archive', session_id=session.id, kind='pdf', conso_period_mode=conso_period_mode, conso_period_start=conso_period_start_value, conso_period_end=conso_period_end_value) }}">Télécharger PDF</a>
+    </div>
+    <div class="spacer"></div>
+    <div class="emargement-form-grid">
+      <form method="post" action="{{ url_for('activite.upload_collectif_corrected', session_id=session.id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+        <label>Déposer une version corrigée (DOCX ou PDF)</label>
+        <div class="row" style="gap:8px; flex-wrap:wrap;">
+          <input class="in" type="file" name="file" accept=".docx,.pdf" required>
+          <button class="btn" type="submit">Envoyer</button>
+        </div>
+        <div class="muted">Déposez ici une version corrigée si vous avez ajusté le document après téléchargement. La version déposée sera utilisée pour les prochains téléchargements.</div>
+      </form>
+      <form method="post" action="{{ url_for('activite.email_collectif_archive', session_id=session.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+        <label>Envoyer par e-mail (si la messagerie est configurée)</label>
+        <input class="in" name="to" placeholder="destinataire@exemple.fr" required>
+        <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <button class="btn" type="submit">Envoyer</button>
+        </div>
+        <div class="muted">Le PDF est envoyé en priorité lorsqu'il est disponible. À défaut, le document DOCX est envoyé.</div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if session.kiosk_open %}
+  <section class="section-card">
+    <h2 style="margin-top:0;">Pointage tablette</h2>
+    <div class="muted">
+      Code de la séance : <strong id="kiosk-pin" style="font-size:20px;">{{ session.kiosk_pin or '—' }}</strong> <button type="button" class="btn copy-btn" data-copy-target="#kiosk-pin">Copier le code</button>
+    </div>
+    <div class="muted" style="margin-top:8px;">
+      Lien général du pointage : <code>{{ kiosk_home_url }}</code>
+      <br>
+      Lien direct de cette séance : <code id="kiosk-link">{{ kiosk_session_url }}</code> <button type="button" class="btn copy-btn" data-copy-target="#kiosk-link">Copier le lien</button>
+    </div>
+    <div style="margin-top:14px; display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+      <img alt="QR code de cette séance"
+           style="width:180px; height:180px; background:#fff; border:1px solid var(--border-soft); border-radius:12px; padding:6px;"
+           src="{{ url_for('launcher.launcher_qr', u=kiosk_session_url) }}">
+      <div class="muted" style="max-width:44ch;">
+        Les participants <strong>scannent ce QR code</strong> pour émarger depuis leur téléphone
+        (connecté au Wi-Fi / réseau du centre) : ils cherchent leur nom et signent, sans toucher au terminal partagé.
+        <br>
+        <a href="{{ url_for('launcher.launcher_qr', u=kiosk_session_url) }}" target="_blank" rel="noopener">Afficher le QR en grand</a>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="section-card" id="signature-distance">
+    <h2 style="margin-top:0;">✍️ Signatures à distance</h2>
+    <div class="muted" style="max-width:78ch;">
+      Pour les séances hors les murs ou les grands groupes : saisis d'abord les présences (ici ou
+      via la grille), puis génère un <strong>lien personnel</strong> par personne — chacun signe depuis
+      son propre téléphone, où qu'il soit. Chaque lien ne fonctionne qu'une fois et meurt après signature.
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <form method="post" action="{{ url_for('activite.signature_liens_generer', session_id=session.id) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit">🔗 Générer les liens pour les présences non signées ({{ nb_sans_signature }})</button>
+      </form>
+    </div>
+    {% if signature_liens %}
+      <div class="tablewrap" style="margin-top:12px;">
+        <table>
+          <thead><tr><th>Participant</th><th>Lien personnel de signature</th><th></th></tr></thead>
+          <tbody>
+            {% for l in signature_liens %}
+              <tr>
+                <td><strong>{{ l.presence.participant.nom }} {{ l.presence.participant.prenom }}</strong></td>
+                <td><code id="sig-lien-{{ l.presence.id }}" style="font-size:.8rem; word-break:break-all;">{{ l.url }}</code></td>
+                <td><button type="button" class="btn copy-btn" data-copy-target="#sig-lien-{{ l.presence.id }}">Copier</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <details style="margin-top:8px;">
+        <summary class="mini-link" style="cursor:pointer;">Copier tous les liens d'un coup (à coller dans WhatsApp/SMS)</summary>
+        <textarea class="in" rows="6" readonly onclick="this.select();" style="width:100%; font-size:.8rem; margin-top:6px;">{% for l in signature_liens %}{{ l.presence.participant.prenom }} {{ l.presence.participant.nom }} : {{ l.url }}
+{% endfor %}</textarea>
+      </details>
+    {% endif %}
+  </section>
+
+  {% if schedule_edits %}
+  <section class="section-card">
+    <h2 style="margin-top:0;">Traçabilité des corrections de planning</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Quand</th><th>Avant</th><th>Après</th><th>Raison</th><th>Par</th></tr>
+        </thead>
+        <tbody>
+          {% for e in schedule_edits %}
+            <tr>
+              <td>{{ e.edited_at }}</td>
+              <td>{{ e.old_date }} {{ e.old_start or '' }}{% if e.old_end %}-{{ e.old_end }}{% endif %}</td>
+              <td>{{ e.new_date }} {{ e.new_start or '' }}{% if e.new_end %}-{{ e.new_end }}{% endif %}</td>
+              <td>{{ e.reason }}</td>
+              <td>{{ e.editor.nom if e.editor and e.editor.nom else (e.editor.email if e.editor else '—') }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2 style="margin-top:0;">Modules pédagogiques de la séance</h2>
+    <div class="muted">Associez les modules réellement travaillés pendant cette séance pour préparer les compétences proposées lors de l’évaluation.</div>
+
+    <form method="post" class="mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+      <input type="hidden" name="action" value="update_session_modules">
+
+      {% if modules_available and modules_available|length %}
+        <div class="grid" style="grid-template-columns:repeat(3,minmax(220px,1fr)); gap:10px;">
+          {% for mod in modules_available %}
+            <label class="row" style="gap:8px; align-items:center; border:1px solid rgba(0,0,0,.08); padding:8px 10px; border-radius:10px;">
+              <input type="checkbox" name="module_ids" value="{{ mod.id }}" {% if mod.id in current_module_ids %}checked{% endif %}>
+              <div>
+                <strong>{{ mod.nom }}</strong>
+                {% if mod.description %}<div class="muted" style="font-size:12px;">{{ mod.description }}</div>{% endif %}
+              </div>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="spacer"></div>
+        <button class="btn ok" type="submit">Mettre à jour les modules</button>
+      {% else %}
+        <div class="muted">Aucun module n'est disponible pour cet atelier. Vérifiez le rattachement projet → atelier → module.</div>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if inscrits_a_pointer %}
+  <section class="section-card">
+    <h2 style="margin-top:0;">📋 {{ inscrits_a_pointer|length }} inscrit·e·s pas encore pointé·e·s</h2>
+    <p class="muted" style="margin:4px 0 10px;">
+      Personnes inscrites à l'avance (séance ou atelier entier) sans ligne d'émargement.
+      <a href="{{ url_for('activite.inscriptions_session', session_id=session.id) }}">Gérer les inscriptions de la séance</a>
+    </p>
+    <div class="inline" style="gap:8px; flex-wrap:wrap;">
+      {% for i in inscrits_a_pointer %}
+        <form method="post" action="{{ url_for('activite.inscription_pointer', session_id=session.id) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="participant_id" value="{{ i.participant_id }}">
+          <input type="hidden" name="retour" value="emargement">
+          <button class="btn" type="submit" title="Créer la ligne d'émargement pour cette personne">
+            ✔ {{ i.participant.nom }} {{ i.participant.prenom }}
+          </button>
+        </form>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="grid" style="grid-template-columns:1fr; gap:12px;">
+    <div class="card">
+      <h2 style="margin-top:0;">Enregistrer une présence</h2>
+
+      <form method="post" id="emargeForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+        <input type="hidden" name="action" value="emarger">
+        <input type="hidden" name="signature_data" id="signature_data">
+
+        <div class="emargement-form-grid">
+          <div>
+            <label>Participant</label>
+            <input type="hidden" name="participant_id" id="participant_id">
+            <input type="text" class="in" id="participantSearch" autocomplete="off"
+                   placeholder="Tapez un nom, prénom, ville…"
+                   data-search-url="{{ url_for('participants.search_participants') }}">
+            <div id="participantResults" class="emarge-ac-results"></div>
+            <div class="muted">Tapez pour rechercher, puis cliquez sur la personne. (Pas dans la liste ? Créez la fiche plus bas.)</div>
+          </div>
+
+          <div>
+            <label>Motif</label>
+            <select class="in" name="motif">
+              <option value="">—</option>
+              {% for m in motifs %}
+                <option value="{{ m }}">{{ m }}</option>
+              {% endfor %}
+              <option value="Autre">Autre</option>
+            </select>
+            <input class="in" type="text" name="motif_autre" placeholder="Si nécessaire, précisez le motif" style="margin-top:8px;">
+            <label style="margin-top:10px; display:block;">Statut</label>
+            <select class="in" name="presence_type">
+              <option value="present">Présent</option>
+              <option value="retard">En retard</option>
+              <option value="absent_excuse">Absent excusé</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Matériels individuels utilisés</label>
+            <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+              <select class="in" name="materiel_individuel_ids" multiple size="5" style="min-width:240px;" title="Ctrl+clic pour sélectionner plusieurs matériels">
+                {% for m in materiels|default([]) %}
+                  <option value="{{ m.id }}" {% if m.id == default_materiel_id %}selected{% endif %}>{{ m.nom }}</option>
+                {% endfor %}
+              </select>
+              <input class="in" type="number" min="1" step="1" name="quantite_individuelle" value="1" style="width:110px;" title="Quantité par matériel sélectionné">
+            </div>
+            <div class="muted">Ctrl+clic pour sélectionner plusieurs matériels. Exemple : tour fixe + écran, ou portable + imprimante. Sans sélection, l’app garde l’automatisme du matériel déclaré sur la séance.</div>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <label>Signature</label>
+        <div style="border:1px solid var(--border); border-radius:14px; padding:10px; background: var(--surface-soft);">
+          <canvas id="sig" width="700" height="180" style="width:100%; height:180px; background:white; border-radius:10px;"></canvas>
+          <div class="row" style="gap:10px; margin-top:10px; flex-wrap:wrap;">
+            <button class="btn" type="button" id="clearSig">Effacer</button>
+            <button class="btn" type="submit">Enregistrer la présence</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <style>
+      .emarge-ac-results{position:relative;}
+      .emarge-ac-results .ac-list{position:absolute;z-index:60;left:0;right:0;background:var(--surface,#fff);border:1px solid var(--border,#ccc);border-radius:10px;max-height:280px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.14);}
+      .emarge-ac-results .ac-item{padding:9px 11px;cursor:pointer;border-bottom:1px solid var(--border,#eee);}
+      .emarge-ac-results .ac-item:last-child{border-bottom:none;}
+      .emarge-ac-results .ac-item:hover{background:var(--surface-soft,#eef);}
+    </style>
+    <script>
+      (function(){
+        var input=document.getElementById('participantSearch');
+        var hidden=document.getElementById('participant_id');
+        var box=document.getElementById('participantResults');
+        if(!input||!hidden||!box) return;
+        var url=input.getAttribute('data-search-url');
+        var timer=null;
+        function clear(){ box.innerHTML=''; }
+        function choose(it){ hidden.value=it.id; input.value=(it.nom||'')+' '+(it.prenom||'')+(it.ville?(' · '+it.ville):''); clear(); }
+        function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+        function render(items){
+          if(!items.length){ box.innerHTML='<div class="ac-list"><div class="ac-item muted">Aucun résultat — créez la fiche plus bas.</div></div>'; return; }
+          var html='<div class="ac-list">';
+          items.forEach(function(it){
+            html+='<div class="ac-item" data-id="'+it.id+'"><strong>'+esc(it.nom)+' '+esc(it.prenom)+'</strong>'+
+              (it.ville?(' <span class="muted">· '+esc(it.ville)+'</span>'):'')+
+              (it.annee_naissance?(' <span class="muted">('+it.annee_naissance+')</span>'):'')+'</div>';
+          });
+          box.innerHTML=html+'</div>';
+          Array.prototype.forEach.call(box.querySelectorAll('.ac-item[data-id]'),function(el){
+            el.addEventListener('click',function(){ var id=el.getAttribute('data-id'); var it=items.filter(function(x){return String(x.id)===id;})[0]; if(it) choose(it); });
+          });
+        }
+        input.addEventListener('input',function(){
+          hidden.value='';
+          var q=input.value.trim();
+          if(timer) clearTimeout(timer);
+          if(q.length<2){ clear(); return; }
+          timer=setTimeout(function(){
+            fetch(url+'?q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}})
+              .then(function(r){return r.json();}).then(function(d){ render(d.items||[]); }).catch(function(){ clear(); });
+          },200);
+        });
+        document.addEventListener('click',function(e){ if(!box.contains(e.target)&&e.target!==input) clear(); });
+        var form=document.getElementById('emargeForm');
+        if(form){ form.addEventListener('submit',function(e){ if(!hidden.value){ e.preventDefault(); e.stopImmediatePropagation(); alert('Choisissez d\'abord un participant dans la recherche.'); input.focus(); } }, true); }
+      })();
+    </script>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <h2 style="margin-top:0;">Présences déjà enregistrées</h2>
+        {% if session_competences and presences %}
+          <div class="row" style="gap:10px; flex-wrap:wrap;">
+            <a class="btn" href="{{ url_for('activite.evaluation_batch', session_id=session.id) }}">Évaluer en grille</a>
+            <button class="btn" type="button" id="openBulkEval">Évaluer la sélection</button>
+            <form method="post" style="margin:0;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+              <input type="hidden" name="action" value="bulk_validate">
+              <button class="btn ok" type="submit">Tout valider</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tablewrap">
+        <table class="emargement-consumption-table">
+          <thead>
+            <tr>
+              <th style="width:44px;">
+                <input type="checkbox" id="selectAllPresences" title="Tout sélectionner" />
+              </th>
+              <th>Participant</th>
+              <th>Motif</th>
+              <th>Signature</th>
+              <th>Consommation individuelle</th>
+              <th>Horodatage</th>
+              <th>Évaluation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pr in presences %}
+              <tr>
+                <td>
+                  {# FIX CRITIQUE: on envoie participant_id (pas pr.participant.id) #}
+                  <input type="checkbox" class="presenceCheck" value="{{ pr.participant_id }}" />
+                </td>
+                <td>
+                  <strong>{{ pr.participant.nom }} {{ pr.participant.prenom }}</strong>
+                  {% if pr.participant.ville %}<br><span class="muted">{{ pr.participant.ville }}</span>{% endif %}
+                </td>
+                <td>
+                  {{ pr.motif or '' }}
+                  {% if pr.motif_autre %}<br><span class="muted">{{ pr.motif_autre }}</span>{% endif %}
+                  <div class="row" style="gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap;">
+                    <form method="post" style="margin:0;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+                      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+                      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+                      <input type="hidden" name="action" value="update_presence_type">
+                      <input type="hidden" name="presence_id" value="{{ pr.id }}">
+                      <select class="in" name="presence_type" onchange="this.form.submit()" style="font-size:.8rem; padding:2px 6px;">
+                        <option value="present" {% if pr.presence_type == 'present' %}selected{% endif %}>Présent</option>
+                        <option value="retard" {% if pr.presence_type == 'retard' %}selected{% endif %}>Retard</option>
+                        <option value="absent_excuse" {% if pr.presence_type == 'absent_excuse' %}selected{% endif %}>Absent excusé</option>
+                      </select>
+                    </form>
+                    <form method="post" style="margin:0;" onsubmit="return confirm('Retirer cette présence ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+                      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+                      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+                      <input type="hidden" name="action" value="delete_presence">
+                      <input type="hidden" name="presence_id" value="{{ pr.id }}">
+                      <button class="btn danger" type="submit" title="Retirer cette présence">🗑</button>
+                    </form>
+                  </div>
+                </td>
+                <td>
+                  {% if pr.signature_path %}<span class="muted">OK</span>{% else %}<span class="muted">—</span>{% endif %}
+                </td>
+                {% set pr_conso = presence_conso_map.get(pr.id, {}) %}
+                {% set cumul_conso = participant_conso_cumul_map.get(pr.participant_id, {}) %}
+                <td>
+                  <div class="conso-card-lite">
+                    <div class="conso-chip">
+                      <span class="conso-chip__label">Séance</span>
+                      <span class="conso-chip__value">{{ '%.3f'|format(pr_conso.get('kwh', 0) or 0) }} kWh</span>
+                      <span class="muted">{{ pr_conso.get('materiels', '—') }}</span>
+                    </div>
+                    <div class="conso-chip">
+                      <span class="conso-chip__label">Cumul période</span>
+                      <span class="conso-chip__value">{{ '%.3f'|format(cumul_conso.get('kwh', 0) or 0) }} kWh</span>
+                      <span class="muted">{{ '%.3f'|format(cumul_conso.get('co2_kg', 0) or 0) }} kg CO₂</span>
+                    </div>
+                  </div>
+                  <form method="post" class="conso-line-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+                    <input type="hidden" name="action" value="update_presence_consumption">
+                    <input type="hidden" name="presence_id" value="{{ pr.id }}">
+                    {% set selected_materiel_ids = pr_conso.get('materiel_ids', []) %}
+                    <select class="in" name="materiel_individuel_ids" multiple size="5" title="Ctrl+clic pour sélectionner plusieurs matériels utilisés par ce participant">
+                      {% for m in materiels|default([]) %}
+                        <option value="{{ m.id }}" {% if m.id in selected_materiel_ids %}selected{% endif %}>{{ m.nom }}</option>
+                      {% endfor %}
+                    </select>
+                    <input class="in" type="number" min="0" step="1" name="quantite_individuelle" value="{{ pr_conso.get('quantite', 1) or 1 }}" title="Quantité par matériel sélectionné">
+                    <button class="btn" type="submit">Mettre à jour</button>
+                    <span class="muted" style="font-size:.8rem;">Aucune sélection = aucun matériel.</span>
+                  </form>
+                </td>
+                <td class="muted">{{ pr.created_at }}</td>
+                <td>
+                  {% if session_competences %}
+                    <button class="btn ok" type="button" data-bs-toggle="modal" data-bs-target="#evalModal{{ pr.participant.id }}">
+                      Évaluer individuellement
+                    </button>
+                    <a class="btn" href="{{ url_for('activite.evaluation_batch', session_id=session.id) }}#p{{ pr.participant.id }}">Grille batch</a>
+                  {% else %}
+                    <span class="muted">Aucune compétence</span>
+                  {% endif %}
+                  <button class="btn" type="button" data-bs-toggle="modal" data-bs-target="#passportNoteModal{{ pr.participant.id }}">
+                    Ajouter une note au passeport
+                  </button>
+                  <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=pr.participant.id) }}">Passeport</a>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="muted">Aucune présence n'a encore été enregistrée.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if session_competences and presences %}
+      <!-- Modal : évaluer une sélection de participants -->
+      <div class="modal bulk-eval-modal" id="bulkEvalModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content" style="border-radius:16px;">
+            <div class="modal-header">
+              <h5 class="modal-title">Évaluer la sélection</h5>
+              <button type="button" class="btn" data-bs-dismiss="modal">Fermer</button>
+            </div>
+            <div class="modal-body">
+              <form method="post" id="bulkEvalForm" action="{{ url_for('activite.emargement', session_id=session.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+                <input type="hidden" name="action" value="bulk_eval_selected">
+
+                <p class="muted" style="margin-top:0;">
+                  Sélectionnez plusieurs participants dans le tableau, choisissez les compétences concernées puis appliquez le même niveau d'évaluation à l'ensemble de la sélection.
+                </p>
+
+                <div class="grid" style="grid-template-columns: 1fr 1fr; gap:12px;">
+                  <div>
+                    <label>État appliqué</label>
+                    <select class="in" name="etat" required>
+                      <option value="0">0 · Non observé</option>
+                      <option value="1">1 · En cours</option>
+                      <option value="2" selected>2 · Acquis</option>
+                      <option value="3">3 · Maîtrisé</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Commentaire facultatif</label>
+                    <input class="in" name="commentaire" placeholder="Commentaire identique pour la sélection">
+                  </div>
+                </div>
+
+                <div class="spacer"></div>
+                <label>Compétences à appliquer</label>
+                <div class="grid" style="grid-template-columns:repeat(2,minmax(220px,1fr)); gap:8px;">
+                  {% for c in session_competences %}
+                    <label style="display:flex; gap:8px; align-items:center;">
+                      <input type="checkbox" name="competence_ids" value="{{ c.id }}">
+                      <span>{{ c.code }} · {{ c.nom }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+
+                <!-- Les participant_ids sont injectés en JS à partir des checkboxes du tableau -->
+                <div id="bulkEvalSelected"></div>
+
+                <div class="spacer"></div>
+                <div class="row" style="gap:10px; align-items:center;">
+                  <button class="btn ok" type="submit" id="bulkApplyBtn" disabled>
+                    Appliquer à <span id="bulkCount">0</span> participant(s)
+                  </button>
+                  <button class="btn" type="button" data-bs-dismiss="modal">Annuler</button>
+                </div>
+              </form>
+              <div class="muted" style="margin-top:8px;">
+                Le bouton « Tout valider » permet de sélectionner rapidement l'ensemble des participants affichés.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 style="margin-top:0;">Créer un participant</h2>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+        <input type="hidden" name="action" value="add_participant">
+        <div class="emargement-form-grid">
+          <div>
+            <label>Nom</label>
+            <input class="in" name="nom" required>
+          </div>
+          <div>
+            <label>Prénom</label>
+            <input class="in" name="prenom" required>
+          </div>
+          <div>
+            <label>Ville</label>
+            <input class="in" name="ville" placeholder="Creil" data-ville-input>
+          </div>
+          <div>
+            <label>Quartier</label>
+            <select class="in" name="quartier_id" data-quartier-select>
+              <option value="">—</option>
+              {% for q in quartiers %}
+                <option value="{{ q.id }}" data-ville="{{ q.ville }}">{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Type de public (H/S/B/A/P)</label>
+            <select class="in" name="type_public">
+              <option value="H" selected>H</option>
+              <option value="S">S</option>
+              <option value="B">B</option>
+              <option value="A">A</option>
+              <option value="P">P</option>
+            </select>
+          </div>
+          <div>
+            <label>Email (optionnel)</label>
+            <input class="in" type="email" name="email" placeholder="prenom.nom@example.com">
+          </div>
+          <div>
+            <label>Téléphone (optionnel)</label>
+            <input class="in" type="tel" name="telephone" placeholder="06 12 34 56 78">
+          </div>
+          <div>
+            <label>Date de naissance</label>
+            <input class="in" type="date" name="date_naissance" placeholder="YYYY-MM-DD">
+          </div>
+          <div>
+            <label>Genre</label>
+            <select class="in" name="genre">
+              <option value="">—</option>
+              <option value="Femme">Femme</option>
+              <option value="Homme">Homme</option>
+              <option value="Autre">Autre</option>
+              <option value="Préférez ne pas répondre">Préférez ne pas répondre</option>
+            </select>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn" type="submit">Créer le participant</button>
+        <div class="muted">Le participant pourra ensuite être complété ou corrigé depuis la gestion des participants.</div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% for pr in presences %}
+  <div class="modal fade" id="passportNoteModal{{ pr.participant.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Note rapide · {{ pr.participant.nom }} {{ pr.participant.prenom }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <form method="post">
+          <div class="modal-body">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+            <input type="hidden" name="action" value="quick_passport_note">
+            <input type="hidden" name="participant_id" value="{{ pr.participant.id }}">
+            <label>Texte</label>
+            <textarea class="in" name="contenu" rows="3" required placeholder="Observation rapide"></textarea>
+            <div class="spacer"></div>
+            <label>Catégorie</label>
+            <select class="in" name="categorie">
+              <option value="session">Séance</option>
+              <option value="progression">Progression</option>
+              <option value="participation">Participation</option>
+              <option value="temoignage">Témoignage</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn" data-bs-dismiss="modal">Annuler</button>
+            <button type="submit" class="btn ok">Enregistrer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% if session_competences %}
+    <div class="modal fade eval-modal" id="evalModal{{ pr.participant.id }}" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Évaluation · {{ pr.participant.nom }} {{ pr.participant.prenom }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+          </div>
+          <form method="post">
+            <div class="modal-body">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+              <input type="hidden" name="action" value="save_evaluation">
+              <input type="hidden" name="participant_id" value="{{ pr.participant.id }}">
+              {% for payload in objectifs_payload %}
+                <div class="card" style="margin-bottom:12px;">
+                  <strong>{{ payload.objectif.titre }}</strong>
+                  <div class="muted">{{ payload.objectif.description or '' }}</div>
+                  {% if payload.competences %}
+                    <div class="spacer"></div>
+                    {% for comp in payload.competences %}
+                      {% set eval = evaluation_map.get((pr.participant.id, comp.id)) %}
+                      <div style="margin-bottom:10px;">
+                        <div>
+                          <strong>{{ comp.code }} · {{ comp.nom }}</strong>
+                          <div class="muted">{{ comp.description or '' }}</div>
+                        </div>
+                        <input type="hidden" name="competence_ids" value="{{ comp.id }}">
+                        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:8px;">
+                          <label class="badge bg-danger">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="0" {% if eval and eval.etat == 0 %}checked{% endif %}>
+                            0 · Non abordé
+                          </label>
+                          <label class="badge bg-warning text-dark">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="1" {% if eval and eval.etat == 1 %}checked{% endif %}>
+                            1 · Vu / compris
+                          </label>
+                          <label class="badge bg-success">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="2" {% if eval and eval.etat == 2 %}checked{% endif %}>
+                            2 · Fait avec aide
+                          </label>
+                          <label class="badge bg-primary">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="3" {% if eval and eval.etat == 3 %}checked{% endif %}>
+                            3 · Fait seul
+                          </label>
+                        </div>
+                        <div class="spacer"></div>
+                        <input class="in" type="text" name="commentaire_{{ comp.id }}" placeholder="Commentaire facultatif" value="{{ eval.commentaire if eval and eval.commentaire else '' }}">
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    <div class="muted">Aucune compétence liée à cet objectif.</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+
+              {% if not objectifs_payload and session_competences %}
+                <div class="card" style="margin-bottom:12px;">
+                  <strong>Compétences de la séance</strong>
+                  <div class="muted">Aucun objectif n'est encore défini pour cette séance. Les compétences issues des modules restent toutefois évaluables.</div>
+                  <div class="spacer"></div>
+                  {% for comp in session_competences %}
+                    {% set eval = evaluation_map.get((pr.participant.id, comp.id)) %}
+                    <div style="margin-bottom:10px;">
+                      <div>
+                        <strong>{{ comp.code }} · {{ comp.nom }}</strong>
+                        <div class="muted">{{ comp.description or '' }}</div>
+                      </div>
+                      <input type="hidden" name="competence_ids" value="{{ comp.id }}">
+                      <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:8px;">
+                        <label class="badge bg-danger"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="0" {% if eval and eval.etat == 0 %}checked{% endif %}>0 · Non abordé</label>
+                        <label class="badge bg-warning text-dark"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="1" {% if eval and eval.etat == 1 %}checked{% endif %}>1 · Vu / compris</label>
+                        <label class="badge bg-success"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="2" {% if eval and eval.etat == 2 %}checked{% endif %}>2 · Fait avec aide</label>
+                        <label class="badge bg-primary"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="3" {% if eval and eval.etat == 3 %}checked{% endif %}>3 · Fait seul</label>
+                      </div>
+                      <div class="spacer"></div>
+                      <input class="in" type="text" name="commentaire_{{ comp.id }}" placeholder="Commentaire facultatif" value="{{ eval.commentaire if eval and eval.commentaire else '' }}">
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn" data-bs-dismiss="modal">Annuler</button>
+              <button type="submit" class="btn ok">Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endfor %}
+
+<script>
+(() => {
+  const canvas = document.getElementById('sig');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let last = null;
+
+  // Le canvas gère lui-même le geste (pas de défilement pendant qu'on signe).
+  canvas.style.touchAction = 'none';
+
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+    const cy = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+    const x = cx - r.left, y = cy - r.top;
+    return {x: x * (canvas.width/r.width), y: y * (canvas.height/r.height)};
+  }
+  function trace(p){
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
+  }
+
+  if(window.PointerEvent){
+    // Souris, doigt ET stylet actif dans un seul flux : setPointerCapture +
+    // touch-action:none empêchent la page de défiler pendant la signature.
+    canvas.addEventListener('pointerdown', (e) => {
+      drawing = true; last = pos(e);
+      try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+      e.preventDefault();
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if(!drawing) return; trace(pos(e)); e.preventDefault();
+    });
+    const stop = (e) => {
+      if(!drawing) return;
+      drawing = false; last = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+      e.preventDefault();
+    };
+    canvas.addEventListener('pointerup', stop);
+    canvas.addEventListener('pointercancel', stop);
+    canvas.addEventListener('pointerleave', stop);
+  } else {
+    const start = (e) => { drawing = true; last = pos(e); e.preventDefault(); };
+    const move = (e) => { if(!drawing) return; trace(pos(e)); e.preventDefault(); };
+    const end = (e) => { drawing = false; last = null; if(e.cancelable) e.preventDefault(); };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, {passive:false});
+    canvas.addEventListener('touchmove', move, {passive:false});
+    canvas.addEventListener('touchend', end, {passive:false});
+  }
+
+  const clearBtn = document.getElementById('clearSig');
+  if(clearBtn){
+    clearBtn.addEventListener('click', () => {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+    });
+  }
+
+  const form = document.getElementById('emargeForm');
+  if(form){
+    form.addEventListener('submit', () => {
+      const out = document.getElementById('signature_data');
+      if(out) out.value = canvas.toDataURL('image/png');
+    });
+  }
+})();
+</script>
+{% endblock %}
+
+{% block scripts_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  (function(){
+    const selectAll = document.getElementById('selectAllPresences');
+    const checks = Array.from(document.querySelectorAll('.presenceCheck'));
+    const container = document.getElementById('bulkEvalSelected');
+    const form = document.getElementById('bulkEvalForm');
+    const openBtn = document.getElementById('openBulkEval');
+    const modalEl = document.getElementById('bulkEvalModal');
+
+    const bulkCount = document.getElementById('bulkCount');
+    const bulkApplyBtn = document.getElementById('bulkApplyBtn');
+
+    function selectedChecks(){
+      return checks.filter(c => c.checked);
+    }
+
+    function syncHidden(){
+      if(!container) return;
+      container.innerHTML = '';
+
+      const selected = selectedChecks();
+      selected.forEach(c => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'participant_ids';
+        input.value = c.value;
+        container.appendChild(input);
+      });
+
+      if(bulkCount) bulkCount.textContent = selected.length;
+      if(bulkApplyBtn) bulkApplyBtn.disabled = (selected.length === 0);
+    }
+
+    if(selectAll){
+      selectAll.addEventListener('change', () => {
+        checks.forEach(c => c.checked = selectAll.checked);
+        syncHidden();
+      });
+    }
+
+    checks.forEach(c => c.addEventListener('change', () => {
+      if(selectAll){
+        const allOn = checks.length > 0 && checks.every(x => x.checked);
+        const anyOn = checks.some(x => x.checked);
+        selectAll.indeterminate = anyOn && !allOn;
+        selectAll.checked = allOn;
+      }
+      syncHidden();
+    }));
+
+    // Ouverture du modal : on refuse si 0 sélection
+    if(openBtn && modalEl){
+      openBtn.addEventListener('click', () => {
+        const n = selectedChecks().length;
+        if(n === 0){
+          alert('Coche au moins un participant dans la liste avant d’évaluer la sélection.');
+          return;
+        }
+        syncHidden();
+        const m = new bootstrap.Modal(modalEl);
+        m.show();
+      });
+    }
+
+    // Empêche l'envoi si rien n'est coché (UX)
+    if(form){
+      form.addEventListener('submit', (e) => {
+        const selected = selectedChecks();
+        if(selected.length === 0){
+          e.preventDefault();
+          alert('Sélectionne au moins un participant dans la liste.');
+          return;
+        }
+        syncHidden();
+      });
+    }
+
+    // Sync au chargement
+    syncHidden();
+  })();
+  </script>
+{% endblock %}

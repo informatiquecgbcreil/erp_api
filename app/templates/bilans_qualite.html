@@ -1,0 +1,71 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+  {% if forbidden %}
+    <div class="card">
+      <h1>Bilans et pilotage · Qualité de gestion</h1>
+      <p class="muted">Accès réservé aux rôles finance/direction/responsable de secteur.</p>
+    </div>
+  {% else %}
+    <div class="stack">
+      <div class="card">
+        <div class="inline" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div class="inline" style="gap:12px; flex-wrap:wrap; align-items:baseline;">
+              <h1 style="margin:0;">Qualité de gestion</h1>
+              <form method="get" action="{{ url_for('bilans.qualite') }}" class="inline" style="gap:8px;">
+                <label for="year" class="muted">Exercice</label>
+                <select id="year" name="year" onchange="this.form.submit()">
+                  {% for y in years %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                  {% endfor %}
+                </select>
+                <noscript><button class="btn" type="submit">Afficher</button></noscript>
+              </form>
+            </div>
+            <p class="muted">
+              Indicateurs non bloquants pour repérer les zones où la qualité de gestion peut être améliorée.
+            </p>
+          </div>
+          <div class="inline" style="gap:8px; flex-wrap:wrap;">
+            <a class="btn" href="{{ url_for('bilans.dashboard', year=year) }}">← Tableau de bord</a>
+            <a class="btn" href="{{ url_for('bilans.bilan_secteur', year=year) }}">📊 Bilan par secteur</a>
+            <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year) }}">🧾 Bilan par subvention</a>
+            <a class="btn" href="{{ url_for('bilans.inventaire', year=year) }}">📦 Inventaire</a>
+          </div>
+        </div>
+      </div>
+
+      {{ ux.callout("Comment utiliser cette vue", "Les indicateurs de qualité de gestion n’ont pas vocation à bloquer la saisie. Ils servent à identifier les points à reprendre pour fiabiliser les bilans, les ventilations et le suivi du matériel.") }}
+
+<div class="grid two">
+        <div class="card">
+          <h3>Lignes “à ventiler”</h3>
+          <h2>{{ data.a_ventiler.nb }}</h2>
+          <p class="muted">Montant : <strong>{{ '%.2f'|format(data.a_ventiler.montant) }} €</strong></p>
+          <p class="muted">Âge moyen : <strong>{{ data.a_ventiler.age_moyen_jours }} jours</strong></p>
+        </div>
+        <div class="card">
+          <h3>Dépenses hors subvention</h3>
+          <h2>{{ data.hors_subvention.nb }}</h2>
+          <p class="muted">Montant : <strong>{{ '%.2f'|format(data.hors_subvention.montant) }} €</strong></p>
+          <p class="muted">Par exemple : fonds propres ou autres imputations hors subvention.</p>
+        </div>
+        <div class="card">
+          <h3>Factures sans inventaire lié</h3>
+          <h2>{{ data.factures.sans_inventaire }}</h2>
+          <p class="muted">Indicateur utile pour améliorer la traçabilité du patrimoine.</p>
+        </div>
+        <div class="card">
+          <h3>Conseils rapides</h3>
+          <ul>
+            <li>Si le volume « à ventiler » augmente, la lecture financière devient moins fiable.</li>
+            <li>Si les dépenses hors subvention augmentent, notez clairement leur origine : fonds propres, don, reliquat ou autre.</li>
+            <li>Si des factures restent sans inventaire lié, la traçabilité du matériel est partielle.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

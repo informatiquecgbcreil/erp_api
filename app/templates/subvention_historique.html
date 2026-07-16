@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Historique — {{ sub.nom }}</h1>
+      <p class="page-subtitle">
+        {% if sub.financeur %}{{ sub.financeur }} · {% endif %}{{ sub.secteur }} · exercice {{ sub.annee_exercice }}
+      </p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}">⬅ Retour au pilotage</a>
+    </div>
+  </div>
+
+  <div class="section-card compact">
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>Date</th><th>Auteur</th><th>Action</th><th>Détails</th></tr></thead>
+        <tbody>
+          {% for l in lignes %}
+            <tr>
+              <td>{{ l.entry.created_at.strftime('%d/%m/%Y %H:%M') if l.entry.created_at else '—' }}</td>
+              <td>{{ l.entry.user_email or '—' }}</td>
+              <td><span class="tag">{{ l.entry.action }}</span></td>
+              <td class="muted">
+                {% if l.details %}
+                  {% for k, v in l.details.items() %}<strong>{{ k }}</strong> : {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4"><div class="quick-empty"><strong>Aucun événement enregistré</strong>pour ce dossier.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

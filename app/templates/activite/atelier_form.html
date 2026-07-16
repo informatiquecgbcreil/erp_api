@@ -1,0 +1,143 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+  <div class="stack">
+    <div class="card">
+      <h1 style="margin-top:0;">
+        {% if atelier %}Paramètres atelier{% else %}Nouvel atelier{% endif %}
+      </h1>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if not atelier and peut_choisir_secteur %}
+          <div style="margin-bottom:12px;">
+            <label>Secteur de l'activité</label>
+            <select class="in" name="secteur" required>
+              <option value="">— Choisir un secteur —</option>
+              {% for s in secteurs_disponibles %}
+                <option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        {% endif %}
+
+        {# ---- Portée : propre au secteur ou intersecteur ---- #}
+        <div class="section-card" style="margin-bottom:12px; padding:12px 14px; border:1px solid rgba(90,120,255,.25); border-radius:10px;">
+          <label class="case" style="display:flex; gap:8px; align-items:flex-start; font-weight:600;">
+            <input type="checkbox" name="est_intersecteur" value="1" id="est-intersecteur"
+                   {% if atelier and atelier.est_intersecteur %}checked{% endif %}
+                   onchange="document.getElementById('bloc-secteur-stats').style.display = this.checked ? 'block' : 'none';">
+            <span>Atelier <strong>intersecteur</strong> (animation globale, temps forts partagés)</span>
+          </label>
+          <div class="muted" style="font-size:.83rem; margin:4px 0 0 26px;">
+            Visible et utilisable par <strong>tous les secteurs</strong> (émargement, séances, grille).
+            Les statistiques sont imputées au secteur choisi ci-dessous — pas forcément le tien.
+          </div>
+          <div id="bloc-secteur-stats" style="margin:8px 0 0 26px; display:{% if atelier and atelier.est_intersecteur %}block{% else %}none{% endif %};">
+            <label>Secteur d'imputation des statistiques</label>
+            <select class="in" name="secteur_stats">
+              {% for s in tous_secteurs %}
+                <option value="{{ s }}" {% if (atelier and atelier.secteur == s) or (not atelier and secteur == s) %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label>Nom</label>
+            <input class="in" type="text" name="nom" value="{{ atelier.nom if atelier else '' }}" required>
+          </div>
+          <div>
+            <label>Type</label>
+            <select class="in" name="type_atelier">
+              <option value="COLLECTIF" {% if atelier and atelier.type_atelier=='COLLECTIF' %}selected{% endif %}>Collectif</option>
+              <option value="INDIVIDUEL_MENSUEL" {% if atelier and atelier.type_atelier=='INDIVIDUEL_MENSUEL' %}selected{% endif %}>Individuel (feuille mensuelle)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label>Modèle d’émargement collectif</label>
+            <select class="in" name="modele_emargement_collectif_key">
+              <option value="">Aucun modèle spécifique</option>
+              {% if emargement_collectif_has_custom %}<option value="__CUSTOM__" selected>Conserver le modèle DOCX personnalisé existant</option>{% endif %}
+              {% for key, label in emargement_collectif_options %}
+                <option value="{{ key }}" {% if emargement_collectif_selected == key %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <div class="muted">Utilisé pour les feuilles collectives. Le moteur « Collectif par dispositif (N&B) » est adapté au secteur insertion.</div>
+          </div>
+          <div>
+            <label>Modèle d’émargement individuel</label>
+            <select class="in" name="modele_emargement_individuel_key">
+              <option value="">Aucun modèle spécifique</option>
+              {% if emargement_individuel_has_custom %}<option value="__CUSTOM__" selected>Conserver le modèle DOCX personnalisé existant</option>{% endif %}
+              {% for key, label in emargement_individuel_options %}
+                <option value="{{ key }}" {% if emargement_individuel_selected == key %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <div class="muted">Utilisé pour les feuilles mensuelles de rendez-vous individuels.</div>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <label>Description</label>
+        <textarea class="in" name="description" rows="3">{{ atelier.description if atelier else '' }}</textarea>
+
+        <div class="spacer"></div>
+
+        <div class="grid" style="grid-template-columns:1fr 1fr 1fr; gap:12px;">
+          <div>
+            <label>Durée par défaut (min)</label>
+            <input class="in" type="number" name="duree_defaut_minutes" value="{{ atelier.duree_defaut_minutes if atelier else '' }}" min="0">
+          </div>
+          <div>
+            <label>Capacité défaut (collectif)</label>
+            {# Default hint: in Numérique, collective workshops are typically 12 places #}
+            <input class="in" type="number" name="capacite_defaut" value="{{ atelier.capacite_defaut if atelier else (12 if secteur in ['Numérique','Numerique'] else '') }}" min="0">
+            <div class="muted">Utilisé pour pré-remplir les séances collectives (modifiable séance par séance).</div>
+          </div>
+          <div>
+            <label>Heures dispo/mois (individuel)</label>
+            <input class="in" type="number" step="0.25" name="heures_dispo_defaut_mois" value="{{ atelier.heures_dispo_defaut_mois if atelier else '' }}" min="0">
+            <div class="muted">Capacité de service mensuelle. Snapshot par mois au 1er RDV.</div>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" name="is_active" value="1" {% if atelier is none or atelier.is_active %}checked{% endif %}>
+              Atelier actif (inclus dans les stats "ateliers actifs")
+            </label>
+            <div class="muted">Décoche pour archiver sans supprimer (historique conservé).</div>
+          </div>
+          <div>
+            <label>Continuité statistique (atelier précédent renommé)</label>
+            <select class="in" name="continuity_parent_id">
+              <option value="">Aucune continuité</option>
+              {% for a in ateliers_continuite or [] %}
+                <option value="{{ a.id }}" {% if atelier and atelier.continuity_parent_id == a.id %}selected{% endif %}>{{ a.nom }}</option>
+              {% endfor %}
+            </select>
+            <div class="muted">Permet d'agréger les stats d'un atelier renommé d'une année à l'autre.</div>
+          </div>
+        </div>
+
+        <label>Motifs (liste déroulante) · sépare par « ; »</label>
+        <input class="in" type="text" name="motifs" value="{{ motifs_str if motifs_str is defined else '' }}" placeholder="CAF; FranceConnect; Impôts; CV">
+        <div class="muted">Le champ « Autre » restera disponible à côté.</div>
+
+        <div class="row" style="gap:10px; flex-wrap:wrap;">
+          <button class="btn" type="submit">Enregistrer</button>
+          <a class="btn" href="{{ url_for('activite.index') }}">Retour</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    <h1>Secteurs</h1>
+    <p class="muted">Gérez ici la liste des secteurs disponibles dans les formulaires et dans les restrictions d’accès.</p>
+  </div>
+
+  {{ ux.callout("Liste de référence", "Les secteurs créés ici alimentent les formulaires de l'application. Désactivez un secteur si vous ne souhaitez plus le proposer, sans perdre l'historique associé.") }}
+
+  <div class="grid two">
+    <div class="card">
+      <h2>Créer un secteur</h2>
+      <form method="POST" action="{{ url_for('admin.secteurs') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row two">
+          <div>
+            <label>Nom (label)</label>
+            <input name="label" required placeholder="Ex: Numérique, Jeunesse, Familles...">
+          </div>
+          <div>
+            <label>Code (optionnel)</label>
+            <input name="code" placeholder="Ex: numerique (sinon auto)">
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn ok" type="submit">Enregistrer le secteur</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Secteurs existants</h2>
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th>Actif</th>
+              <th>Label</th>
+              <th>Code</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in secteurs %}
+              <tr>
+                <td class="muted">{{ "✅" if s.is_active else "⛔" }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('admin.secteur_rename', secteur_id=s.id) }}" class="row" style="gap:.5rem;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input name="label" value="{{ s.label }}" style="min-width: 180px;">
+                    <button class="btn" type="submit">Renommer</button>
+                  </form>
+                </td>
+                <td class="muted">{{ s.code }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('admin.secteur_toggle', secteur_id=s.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn {{ 'danger' if s.is_active else 'ok' }}" type="submit">
+                      {{ 'Désactiver' if s.is_active else 'Activer' }}
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            {% if secteurs|length == 0 %}
+              <tr><td colspan="4" class="muted">Aucun secteur enregistré.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Secteurs existants (vue compacte)">
+        {% for s in secteurs %}
+          <article class="responsive-card">
+            <header class="responsive-card__head">
+              <strong>{{ s.label }}</strong>
+              <span class="chip">{{ "✅ Actif" if s.is_active else "⛔ Inactif" }}</span>
+            </header>
+            <dl class="responsive-card__grid"><div><dt>Code</dt><dd class="muted">{{ s.code }}</dd></div></dl>
+            <div class="inline-actions">
+              <form method="POST" action="{{ url_for('admin.secteur_rename', secteur_id=s.id) }}" class="inline-actions">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input name="label" value="{{ s.label }}">
+                <button class="btn" type="submit">Renommer</button>
+              </form>
+              <form method="POST" action="{{ url_for('admin.secteur_toggle', secteur_id=s.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn {{ 'danger' if s.is_active else 'ok' }}" type="submit">{{ 'Désactiver' if s.is_active else 'Activer' }}</button>
+              </form>
+            </div>
+          </article>
+        {% else %}
+          <div class="quick-empty"><strong>Aucun secteur enregistré.</strong>Créez un secteur pour alimenter les formulaires.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

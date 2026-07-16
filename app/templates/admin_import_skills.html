@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<div class="card" style="padding:16px; max-width:900px;">
+  <h1 style="margin:0 0 10px 0;">Importer un référentiel (CSV)</h1>
+
+  <p class="muted" style="margin-top:0;">
+    Format attendu : code, label, description, domain_code, domain_label, sort_order, actif
+  </p>
+
+  <form method="POST" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label>Code référentiel</label>
+      <input type="text" name="code" value="DIGCOMP_2_2" required>
+    </div>
+
+    <div>
+      <label>Nom référentiel</label>
+      <input type="text" name="nom" value="DigComp 2.2" required>
+    </div>
+
+    <div>
+      <label>CSV</label>
+      <!-- IMPORTANT : name="CSV" (majuscule) -->
+      <input type="file" name="CSV" accept=".csv,text/csv" required>
+    </div>
+
+    <button type="submit">Importer</button>
+  </form>
+
+  <hr>
+
+  <h3>Exemple</h3>
+  <pre style="white-space:pre-wrap; margin:0;">code,label,description,domain_code,domain_label,sort_order,actif
+2.1,Interagir via des technologies numériques,,2,Communication et collaboration,1,1
+2.2,Partager via des technologies numériques,,2,Communication et collaboration,2,1</pre>
+</div>
+{% endblock %}

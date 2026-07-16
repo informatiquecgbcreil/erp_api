@@ -1,0 +1,207 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .rh-edit summary { cursor:pointer; font-weight:700; }
+  @media print { .no-print { display:none !important; } }
+</style>
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">👥 RH — Salariés</h1>
+      <p class="page-subtitle">Réservé à la direction. Affecte chaque salarié à son secteur et à son poste : les ETP alimentent le SENACS et la masse salariale les finances.</p>
+    </div>
+    <div class="hero-actions no-print">
+      <form method="get" class="inline-actions">
+        <label class="field-stack slim"><span>Exercice</span>
+          <input class="in" type="number" name="annee" min="2000" max="2100" value="{{ annee }}" style="width:100px;" onchange="this.form.submit()">
+        </label>
+        <noscript><button class="btn" type="submit">Afficher</button></noscript>
+      </form>
+      {% if can_edit and recup_configured %}
+      <form method="post" action="{{ url_for('main.rh_recup_sync') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <button class="btn ok" type="submit" data-pending-text="Synchronisation…">🔄 Synchroniser Récup</button>
+      </form>
+      {% endif %}
+      <a class="btn" href="{{ url_for('main.rh_export_xlsx', annee=annee) }}">⬇ Export Excel</a>
+      <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
+    </div>
+  </div>
+
+  {% if recup_configured %}
+  <section class="section-card compact">
+    <div class="inline-actions" style="justify-content:space-between; align-items:center;">
+      <div>
+        <h2 class="section-title" style="margin-bottom:4px;">Données Récup — {{ annee }}</h2>
+        <div class="muted">
+          {{ stats.recup_count }} fiche(s) synchronisée(s) · frais kilométriques signés :
+          {{ '%.2f'|format(stats.recup_mileage_cents / 100) }} €
+          {% if stats.recup_last_sync %}· dernière synchro {{ stats.recup_last_sync.strftime('%d/%m/%Y à %H:%M') }}{% endif %}
+        </div>
+      </div>
+      {% if can_edit %}
+      <form method="post" action="{{ url_for('main.rh_recup_sync') }}" class="no-print">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <button class="btn" type="submit" data-pending-text="Synchronisation…">Actualiser</button>
+      </form>
+      {% endif %}
+    </div>
+    <p class="muted" style="font-size:12px; margin:8px 0 0;">
+      Les montants annuels saisis dans l'ERP restent prioritaires. À défaut, la masse salariale utilise
+      l'estimation Récup : coût horaire chargé × 35 h × semaines travaillées × ETP.
+    </p>
+  </section>
+  {% elif can_edit %}
+  <section class="section-card compact no-print">
+    <strong>Connexion Récup non configurée.</strong>
+    <span class="muted">Renseigne <code>RECUP_BASE_URL</code> et <code>RECUP_TOKEN</code> pour activer la synchronisation RH.</span>
+  </section>
+  {% endif %}
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Salariés actifs ({{ annee }})</div><strong>{{ stats.nb_actifs }}</strong></div>
+    <div class="kpi-box"><div class="muted">Total ETP</div><strong>{{ '%g'|format(stats.total_etp) }}</strong></div>
+    <div class="kpi-box"><div class="muted">Masse salariale (brut chargé)</div><strong>{{ '%.2f'|format(stats.masse_salariale) }} €</strong></div>
+    <div class="kpi-box"><div class="muted">Sans secteur affecté</div>
+      <strong {% if stats.non_affectes %}style="color:var(--danger,#dc2626);"{% endif %}>{{ stats.non_affectes }}</strong></div>
+  </div>
+
+  {% if stats.par_secteur %}
+  <section class="section-card compact">
+    <h2 class="section-title">Répartition par secteur ({{ annee }})</h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>Secteur</th><th>Salariés</th><th>ETP</th><th>Masse salariale</th></tr></thead>
+        <tbody>
+          {% for sec, d in stats.par_secteur.items() %}
+            <tr><td><strong>{{ sec }}</strong></td><td>{{ d.nb }}</td><td>{{ '%g'|format(d.etp) }}</td><td>{{ '%.2f'|format(d.masse) }} €</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if can_edit %}
+  <section class="section-card no-print">
+    <h2 class="section-title">Ajouter un salarié</h2>
+    <form method="post" action="{{ url_for('main.rh_salarie_create') }}" class="form-grid-4" style="align-items:end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-stack"><span>Nom *</span><input class="in" name="nom" required></label>
+      <label class="field-stack"><span>Prénom</span><input class="in" name="prenom"></label>
+      <label class="field-stack"><span>Poste dans le secteur</span><input class="in" name="poste" placeholder="Ex : animatrice famille"></label>
+      <label class="field-stack"><span>Secteur</span>
+        <select class="in" name="secteur"><option value="">— Non affecté —</option>
+          {% for s in secteurs %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack"><span>Contrat</span>
+        <select class="in" name="type_contrat">{% for val, lab in types_contrat %}<option value="{{ val }}">{{ lab }}</option>{% endfor %}</select>
+      </label>
+      <label class="field-stack"><span>ETP</span><input class="in" name="etp" inputmode="decimal" value="1"></label>
+      <label class="field-stack"><span>Salaire brut chargé annuel (€)</span><input class="in" name="salaire_brut_charge" inputmode="decimal"></label>
+      <label class="field-stack"><span>Date d'entrée</span><input class="in" type="date" name="date_entree"></label>
+      <div><button class="btn ok" type="submit">Ajouter</button></div>
+    </form>
+
+    <details style="margin-top:12px;">
+      <summary style="cursor:pointer; font-weight:700;">📥 Importer depuis votre outil RH (CSV)</summary>
+      <form method="post" action="{{ url_for('main.rh_import') }}" enctype="multipart/form-data" class="inline-actions" style="margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input class="in" type="file" name="fichier" accept=".csv,.txt" required>
+        <button class="btn" type="submit">Importer</button>
+      </form>
+      <p class="muted" style="font-size:12px; margin-top:6px;">
+        Colonnes reconnues : <code>reference;nom;prenom;poste;secteur;contrat;etp;salaire;date_entree;date_sortie</code>
+        (séparateur ; ou ,). La <strong>référence</strong> sert de clé : réimporter le même fichier met à jour les fiches au lieu de les dupliquer.
+      </p>
+    </details>
+  </section>
+  {% endif %}
+
+  <section class="section-card compact">
+    <h2 class="section-title">Salariés actifs ({{ annee }})</h2>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead><tr><th>Salarié</th><th>Poste</th><th>Secteur</th><th>Contrat</th><th>ETP</th><th>Salaire chargé</th><th>Récup / frais</th><th>Entrée / sortie</th><th></th></tr></thead>
+        <tbody>
+          {% for s in stats.actifs %}
+            {% set snap = stats.recup_snapshots.get(s.id) %}
+            <tr>
+              <td><strong>{{ s.prenom or '' }} {{ s.nom }}</strong>{% if s.source_ref %}<div class="muted" style="font-size:11px;">réf. {{ s.source_ref }}</div>{% endif %}{% if s.recup_active is sameas false %}<div class="status-badge status-danger">Compte Récup inactif</div>{% endif %}</td>
+              <td>{{ s.poste or '—' }}</td>
+              <td>{% if s.secteur %}{{ s.secteur }}{% else %}<span class="status-badge status-danger">Non affecté</span>{% endif %}</td>
+              <td>{{ s.contrat_label }}</td>
+              <td>{{ '%g'|format(s.etp) }}</td>
+              <td>
+                {% if s.salaire_brut_charge is not none %}
+                  {{ '%.2f'|format(s.salaire_brut_charge) }} €
+                {% elif snap and snap.annual_loaded_cost_eur(s.etp) is not none %}
+                  {{ '%.2f'|format(snap.annual_loaded_cost_eur(s.etp)) }} €
+                  <div class="muted" style="font-size:11px;">estimation Récup</div>
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if snap %}
+                  <strong>Solde {{ '%g'|format(snap.balance_minutes / 60) }} h</strong>
+                  <div class="muted" style="font-size:11px;">
+                    +{{ '%g'|format(snap.overtime_minutes / 60) }} h · prises {{ '%g'|format(snap.approved_recovery_minutes / 60) }} h
+                    {% if snap.pending_recovery_minutes %}· en attente {{ '%g'|format(snap.pending_recovery_minutes / 60) }} h{% endif %}
+                  </div>
+                  <div class="muted" style="font-size:11px;">{{ snap.mileage_distance_km }} km · {{ '%.2f'|format(snap.mileage_amount_cents / 100) }} €</div>
+                {% else %}—{% endif %}
+              </td>
+              <td class="muted">{{ s.date_entree.strftime('%d/%m/%Y') if s.date_entree else '—' }}{% if s.date_sortie %} → {{ s.date_sortie.strftime('%d/%m/%Y') }}{% endif %}</td>
+              <td>
+                {% if can_edit %}
+                <details class="rh-edit">
+                  <summary>✏️</summary>
+                  <form method="post" action="{{ url_for('main.rh_salarie_update', salarie_id=s.id) }}" class="stack" style="gap:6px; margin-top:6px; min-width:260px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input class="in" name="nom" value="{{ s.nom }}" required>
+                    <input class="in" name="prenom" value="{{ s.prenom or '' }}" placeholder="Prénom">
+                    <input class="in" name="poste" value="{{ s.poste or '' }}" placeholder="Poste">
+                    <select class="in" name="secteur"><option value="">— Non affecté —</option>
+                      {% for sec in secteurs %}<option value="{{ sec }}" {% if sec == s.secteur %}selected{% endif %}>{{ sec }}</option>{% endfor %}
+                    </select>
+                    <select class="in" name="type_contrat">
+                      {% for val, lab in types_contrat %}<option value="{{ val }}" {% if val == s.type_contrat %}selected{% endif %}>{{ lab }}</option>{% endfor %}
+                    </select>
+                    <input class="in" name="etp" value="{{ '%g'|format(s.etp) }}" title="ETP">
+                    <input class="in" name="salaire_brut_charge" value="{{ '%g'|format(s.salaire_brut_charge) if s.salaire_brut_charge else '' }}" placeholder="Salaire brut chargé (€)">
+                    <input class="in" type="date" name="date_entree" value="{{ s.date_entree.isoformat() if s.date_entree else '' }}" title="Date d'entrée">
+                    <input class="in" type="date" name="date_sortie" value="{{ s.date_sortie.isoformat() if s.date_sortie else '' }}" title="Date de sortie">
+                    <div class="inline-actions">
+                      <button class="btn ok" type="submit">Enregistrer</button>
+                    </div>
+                  </form>
+                  <form method="post" action="{{ url_for('main.rh_salarie_supprimer', salarie_id=s.id) }}" onsubmit="return confirm('Supprimer définitivement cette fiche ? Pour un départ, préférez la date de sortie.');" style="margin-top:4px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn danger" type="submit" style="padding:2px 8px;">🗑 Supprimer la fiche</button>
+                  </form>
+                </details>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9"><div class="quick-empty"><strong>Aucun salarié actif sur {{ annee }}.</strong>Ajoute les salariés ou importe-les depuis ton outil RH.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if stats.sortis %}
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer; font-weight:700;">Salariés hors exercice ({{ stats.sortis|length }})</summary>
+        <ul style="margin:8px 0 0 0; padding-left:18px;">
+          {% for s in stats.sortis %}
+            <li class="muted">{{ s.prenom or '' }} {{ s.nom }} — {{ s.poste or '—' }}{% if s.date_sortie %} (sorti·e le {{ s.date_sortie.strftime('%d/%m/%Y') }}){% endif %}</li>
+          {% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

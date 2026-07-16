@@ -1,0 +1,1493 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  @media print {
+    .no-print, .dashboard-toolbar form, .dashboard-toolbar .btn:not(.is-active) { display:none !important; }
+    a[href]::after { content:"" !important; }
+    .card, .ui-card, section { break-inside: avoid; }
+  }
+  .dashboard-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;justify-content:flex-end}
+  .dashboard-toolbar .btn.is-active{background:var(--accent, #4f46e5);color:#fff;border-color:var(--accent, #4f46e5)}
+  .chart-shell{
+    position:relative;
+    width:100%;
+    min-height:190px;
+    height:190px;
+    overflow:hidden;
+  }
+  .chart-shell--tall{min-height:230px;height:230px;}
+  .chart-shell canvas{
+    display:block;
+    width:100% !important;
+    max-width:100%;
+    height:190px !important;
+  }
+  .chart-shell--tall canvas{height:230px !important;}
+  body[data-device-mode="mobile"] .dashboard-toolbar{
+    justify-content:stretch;
+    align-items:stretch;
+  }
+  body[data-device-mode="mobile"] .dashboard-toolbar > .btn,
+  body[data-device-mode="mobile"] .dashboard-toolbar form,
+  body[data-device-mode="mobile"] .dashboard-toolbar form .btn{
+    width:100%;
+  }
+  body[data-device-mode="mobile"] .dashboard-toolbar form{
+    display:grid;
+    gap:8px;
+  }
+  body[data-device-mode="mobile"] .budget-year-input{
+    width:100% !important;
+  }
+  body[data-device-mode="mobile"] .chart-shell{
+    min-height:170px;
+    height:170px;
+  }
+  body[data-device-mode="mobile"] .chart-shell canvas{
+    height:170px !important;
+  }
+  body[data-device-mode="mobile"] .chart-shell--tall{
+    min-height:200px;
+    height:200px;
+  }
+  body[data-device-mode="mobile"] .chart-shell--tall canvas{
+    height:200px !important;
+  }
+  body[data-device-mode="tablet"] .chart-shell{
+    min-height:180px;
+    height:180px;
+  }
+
+  .intent-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:12px;
+  }
+  .intent-card{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    min-height:170px;
+    padding:16px;
+    text-decoration:none;
+    color:inherit;
+  }
+  .intent-card:hover{
+    transform:translateY(-1px);
+    box-shadow:0 12px 30px rgba(15,23,42,.10);
+  }
+  .intent-card__top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+  }
+  .intent-card__icon{
+    font-size:1.5rem;
+    line-height:1;
+  }
+  .intent-card__title{
+    font-weight:950;
+    font-size:1.05rem;
+  }
+  .intent-card__desc{
+    color:var(--muted,#667085);
+    line-height:1.38;
+    flex:1;
+  }
+  .intent-card__links{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    margin-top:auto;
+  }
+  .mini-link{
+    display:inline-flex;
+    align-items:center;
+    border:1px solid rgba(120,130,160,.25);
+    border-radius:999px;
+    padding:6px 9px;
+    font-size:.86rem;
+    font-weight:800;
+    color:inherit;
+    text-decoration:none;
+    background:rgba(255,255,255,.55);
+  }
+  .mini-link:hover{
+    background:rgba(120,130,160,.10);
+  }
+  .resume-strip{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:10px;
+    margin-top:12px;
+  }
+  .resume-pill{
+    border:1px solid rgba(120,130,160,.22);
+    border-radius:18px;
+    padding:12px;
+    background:rgba(255,255,255,.62);
+  }
+  .resume-pill .label{
+    color:var(--muted,#667085);
+    font-size:.84rem;
+    font-weight:800;
+  }
+  .resume-pill .value{
+    font-weight:950;
+    font-size:1.15rem;
+    margin-top:3px;
+  }
+  .resume-pill.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.07);}
+  .resume-pill.warn{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.07);}
+  .resume-pill.ok{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.07);}
+
+  .pilotage-board{
+    display:grid;
+    gap:12px;
+  }
+  .pilotage-overview{
+    display:grid;
+    grid-template-columns:minmax(220px, 320px) minmax(0, 1fr);
+    gap:12px;
+    align-items:stretch;
+  }
+  .pilotage-score{
+    border:1px solid rgba(120,130,160,.24);
+    border-radius:8px;
+    background:#fff;
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    min-width:0;
+  }
+  .pilotage-score__top{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    align-items:flex-start;
+  }
+  .pilotage-score__label{
+    color:var(--muted,#667085);
+    font-size:.86rem;
+    font-weight:800;
+  }
+  .pilotage-score__value{
+    font-size:2.2rem;
+    line-height:1;
+    font-weight:950;
+  }
+  .pilotage-score__badge{
+    border:1px solid rgba(120,130,160,.26);
+    border-radius:999px;
+    padding:5px 9px;
+    font-size:.82rem;
+    font-weight:900;
+    background:#f8fafc;
+    white-space:nowrap;
+  }
+  .pilotage-score__bar{
+    height:10px;
+    border-radius:999px;
+    background:#e5e7eb;
+    overflow:hidden;
+  }
+  .pilotage-score__bar span{
+    display:block;
+    height:100%;
+    border-radius:999px;
+    background:#16a34a;
+  }
+  .pilotage-score[data-tone="warn"] .pilotage-score__bar span{background:#d97706;}
+  .pilotage-score[data-tone="danger"] .pilotage-score__bar span{background:#dc2626;}
+  .pilotage-score[data-tone="warn"] .pilotage-score__badge{border-color:rgba(217,119,6,.35);background:#fff7ed;color:#9a3412;}
+  .pilotage-score[data-tone="danger"] .pilotage-score__badge{border-color:rgba(220,38,38,.35);background:#fef2f2;color:#991b1b;}
+  .pilotage-score[data-tone="ok"] .pilotage-score__badge{border-color:rgba(22,163,74,.35);background:#f0fdf4;color:#166534;}
+  .pilotage-focus{
+    border:1px solid rgba(120,130,160,.24);
+    border-radius:8px;
+    background:#fff;
+    padding:16px;
+    min-width:0;
+  }
+  .pilotage-focus__head{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    align-items:flex-start;
+    margin-bottom:10px;
+  }
+  .pilotage-focus__list{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:8px;
+  }
+  .pilotage-focus__item{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    gap:9px;
+    align-items:start;
+    min-width:0;
+    padding:10px;
+    border:1px solid rgba(120,130,160,.2);
+    border-radius:8px;
+    text-decoration:none;
+    color:inherit;
+    background:#f8fafc;
+  }
+  .pilotage-focus__item:hover{background:#f1f5f9;}
+  .pilotage-dot{
+    width:10px;
+    height:10px;
+    border-radius:999px;
+    background:#64748b;
+    margin-top:4px;
+  }
+  .pilotage-focus__item[data-tone="ok"] .pilotage-dot{background:#16a34a;}
+  .pilotage-focus__item[data-tone="warn"] .pilotage-dot{background:#d97706;}
+  .pilotage-focus__item[data-tone="danger"] .pilotage-dot{background:#dc2626;}
+  .pilotage-focus__title{
+    font-weight:950;
+    overflow-wrap:anywhere;
+  }
+  .pilotage-focus__text{
+    color:var(--muted,#667085);
+    font-size:.9rem;
+    line-height:1.35;
+    margin-top:2px;
+    overflow-wrap:anywhere;
+  }
+  .pilotage-modules{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:10px;
+  }
+  .pilotage-module{
+    border:1px solid rgba(120,130,160,.24);
+    border-top:4px solid #64748b;
+    border-radius:8px;
+    background:#fff;
+    padding:14px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    min-width:0;
+    min-height:190px;
+  }
+  .pilotage-module[data-tone="ok"]{border-top-color:#16a34a;}
+  .pilotage-module[data-tone="warn"]{border-top-color:#d97706;}
+  .pilotage-module[data-tone="danger"]{border-top-color:#dc2626;}
+  .pilotage-module[data-tone="info"]{border-top-color:#2563eb;}
+  .pilotage-module__title{
+    font-weight:950;
+    overflow-wrap:anywhere;
+  }
+  .pilotage-module__metric{
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+    flex-wrap:wrap;
+  }
+  .pilotage-module__metric strong{
+    font-size:1.8rem;
+    line-height:1;
+  }
+  .pilotage-module__metric span{
+    color:var(--muted,#667085);
+    font-weight:800;
+  }
+  .pilotage-module__detail,
+  .pilotage-module__note{
+    color:var(--muted,#667085);
+    line-height:1.35;
+    overflow-wrap:anywhere;
+  }
+  .pilotage-module__note{
+    font-size:.88rem;
+  }
+  .pilotage-module .mini-link{
+    width:max-content;
+    max-width:100%;
+    margin-top:auto;
+  }
+  .pilotage-routine{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+    gap:8px;
+  }
+  .pilotage-routine__item{
+    border:1px solid rgba(120,130,160,.22);
+    border-radius:8px;
+    padding:10px;
+    background:#fff;
+    text-decoration:none;
+    color:inherit;
+    min-width:0;
+  }
+  .pilotage-routine__item:hover{background:#f8fafc;}
+  .pilotage-routine__item[data-tone="ok"]{border-left:4px solid #16a34a;}
+  .pilotage-routine__item[data-tone="warn"]{border-left:4px solid #d97706;}
+  .pilotage-routine__item[data-tone="danger"]{border-left:4px solid #dc2626;}
+  .pilotage-routine__item[data-tone="info"]{border-left:4px solid #2563eb;}
+  .pilotage-routine__label{
+    color:var(--muted,#667085);
+    font-size:.82rem;
+    font-weight:850;
+  }
+  .pilotage-routine__value{
+    font-size:1.35rem;
+    font-weight:950;
+    margin-top:2px;
+  }
+  .pilotage-routine__text{
+    color:var(--muted,#667085);
+    font-size:.88rem;
+    overflow-wrap:anywhere;
+  }
+
+  @media(max-width:900px){
+    .resume-strip{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .pilotage-overview{grid-template-columns:1fr;}
+  }
+  @media(max-width:640px){
+    .intent-grid,.resume-strip{grid-template-columns:1fr;}
+    .intent-card{min-height:unset;}
+    .pilotage-focus__list,.pilotage-modules,.pilotage-routine{grid-template-columns:1fr;}
+  }
+</style>
+
+<div class="ui-page dashboard-page">
+  <section class="ui-header page-hero-soft">
+    <div class="ui-header__main page-header">
+      <div class="page-title-wrap">
+        <h1 class="ui-title page-title">Tableau de bord</h1>
+        <p class="ui-subtitle page-subtitle">Commence par une action rapide, puis reprends les éléments du jour sur {{ period_label }}.</p>
+      </div>
+      {% if ui_simplified %}
+      <div class="dashboard-toolbar">
+        <button type="button" class="btn no-print" onclick="window.print()" title="Imprimer ou enregistrer en PDF pour un CA / une AG">🖨️ Imprimer / PDF</button>
+      </div>
+      {% else %}
+      <div class="dashboard-toolbar">
+        <a class="btn {% if period_key == '30' %}is-active{% endif %}" href="{{ url_for('main.dashboard', period='30', budget_year=budget_year) }}">30 jours</a>
+        <a class="btn {% if period_key == '90' %}is-active{% endif %}" href="{{ url_for('main.dashboard', period='90', budget_year=budget_year) }}">90 jours</a>
+        <a class="btn {% if period_key == '365' %}is-active{% endif %}" href="{{ url_for('main.dashboard', period='365', budget_year=budget_year) }}">365 jours</a>
+        <a class="btn {% if period_key == 'year' %}is-active{% endif %}" href="{{ url_for('main.dashboard', period='year', budget_year=budget_year) }}">Année</a>
+        <button type="button" class="btn no-print" onclick="window.print()" title="Imprimer ou enregistrer en PDF pour un CA / une AG">🖨️ Imprimer / PDF</button>
+        <form method="get" action="{{ url_for('main.dashboard') }}" class="ui-actions inline-actions" data-filter-summary="true">
+          <input type="hidden" name="period" value="{{ period_key or '90' }}">
+          <label class="field-stack slim"><span>Exercice</span><input class="in budget-year-input" id="budget_year" name="budget_year" type="number" value="{{ budget_year }}" min="2000" max="2100" style="width:110px;"></label>
+          <button class="btn" type="submit">Mettre à jour</button>
+        </form>
+        {% if can('pedagogie:view') %}
+          <form method="post" action="{{ url_for('pedagogie.portail_competences_sync') }}" style="margin:0;" data-no-scroll-restore>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ url_for('main.dashboard') }}">
+            <button class="btn" type="submit" data-pending-text="Synchro…" title="Récupérer les derniers résultats du portail des apprenants">🔄 Synchroniser le portail</button>
+          </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    {% if mode == "admin_tech" %}
+      <div class="quick-empty"><strong>Mode administration technique</strong>Les raccourcis techniques sont affichés en priorité pour faciliter la maintenance.</div>
+    {% else %}
+      {% if not ui_simplified %}
+      <div class="helper-banner" style="margin-top:10px;">
+        <strong>Repère rapide</strong>
+        <span class="muted">Les chiffres détaillés restent disponibles plus bas. Ici, on privilégie d’abord les actions du quotidien.</span>
+      </div>
+      {% endif %}
+      <details class="details-card" style="margin-top:12px;">
+        <summary>Voir les chiffres clés</summary>
+        <div class="details-body">
+      <div class="ui-kpi-grid page-kpis">
+        <div class="ui-kpi-card metric-card"><div class="metric-label">Budget attribué</div><div class="metric-value kpi" data-count="{{ (kpis.attribue or 0) | round(0) }}">{{ "%.2f"|format(kpis.attribue or 0) }}€</div><div class="metric-help">Base annuelle</div></div>
+        <div class="ui-kpi-card metric-card"><div class="metric-label">Montant engagé</div><div class="metric-value kpi" data-count="{{ (kpis.engage or 0) | round(0) }}">{{ "%.2f"|format(kpis.engage or 0) }}€</div><div class="metric-help">Dépenses imputées</div></div>
+        <div class="ui-kpi-card metric-card"><div class="metric-label">Disponible</div><div class="metric-value kpi" data-count="{{ (kpis.reste or 0) | round(0) }}">{{ "%.2f"|format(kpis.reste or 0) }}€</div><div class="metric-help">Reste mobilisable</div></div>
+        <div class="ui-kpi-card metric-card"><div class="metric-label">Taux de consommation</div><div class="metric-value">{{ kpis.taux or 0 }}%</div><div class="kpi-rail"><span style="width:{{ (kpis.taux or 0) if (kpis.taux or 0) <= 100 else 100 }}%;"></span></div></div>
+        <div class="ui-kpi-card metric-card"><div class="metric-label">Séances</div><div class="metric-value kpi" data-count="{{ kpis.sessions or 0 }}">{{ kpis.sessions or 0 }}</div><div class="metric-help">Sur {{ period_label }}</div></div>
+        <div class="ui-kpi-card metric-card"><div class="metric-label">Participants uniques</div><div class="metric-value kpi" data-count="{{ kpis.uniques or 0 }}">{{ kpis.uniques or 0 }}</div><div class="metric-help">Sur {{ period_label }}</div></div>
+      </div>
+        </div>
+      </details>
+    {% endif %}
+  </section>
+
+  {% include "_poste_travail.html" %}
+
+  {% if mode != "admin_tech" and pilotage and ui_simplified %}
+  {# Mode simple : on garde uniquement « À traiter en premier », sans le score ni les modules. #}
+  <section class="ui-panel section-card" aria-label="À traiter en premier">
+    <div class="pilotage-focus">
+      <div class="pilotage-focus__head">
+        <div>
+          <h2 style="margin:0;">À traiter en premier</h2>
+          <div class="muted">Les signaux les plus utiles pour savoir où poser les yeux.</div>
+        </div>
+        <a class="mini-link" href="{{ url_for('main.suivi_rappels') }}">Centre de suivi</a>
+      </div>
+      <div class="pilotage-focus__list">
+        {% for item in pilotage.focus_items %}
+          <a class="pilotage-focus__item" data-tone="{{ item.tone }}" href="{{ item.url }}">
+            <span class="pilotage-dot" aria-hidden="true"></span>
+            <span>
+              <span class="pilotage-focus__title">{{ item.title }}</span>
+              <span class="pilotage-focus__text">{{ item.text }}</span>
+            </span>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mode != "admin_tech" and pilotage and not ui_simplified %}
+  <section class="pilotage-board" aria-label="Pilotage global">
+    <div class="pilotage-overview">
+      <div class="pilotage-score" data-tone="{{ pilotage.health_tone }}">
+        <div class="pilotage-score__top">
+          <div>
+            <div class="pilotage-score__label">État global · {{ pilotage.scope_label }}</div>
+            <div class="pilotage-score__value">{{ pilotage.health_score }}</div>
+          </div>
+          <div class="pilotage-score__badge">{{ pilotage.health_label }}</div>
+        </div>
+        <div class="pilotage-score__bar" aria-hidden="true"><span style="width:{{ pilotage.health_score if pilotage.health_score <= 100 else 100 }}%;"></span></div>
+        <div class="muted">Lecture rapide sur {{ pilotage.period_label }} et l'exercice {{ budget_year }}.</div>
+      </div>
+
+      <div class="pilotage-focus">
+        <div class="pilotage-focus__head">
+          <div>
+            <h2 style="margin:0;">À traiter en premier</h2>
+            <div class="muted">Les signaux les plus utiles pour savoir où poser les yeux.</div>
+          </div>
+          <a class="mini-link" href="{{ url_for('main.suivi_rappels') }}">Centre de suivi</a>
+        </div>
+        <div class="pilotage-focus__list">
+          {% for item in pilotage.focus_items %}
+            <a class="pilotage-focus__item" data-tone="{{ item.tone }}" href="{{ item.url }}">
+              <span class="pilotage-dot" aria-hidden="true"></span>
+              <span>
+                <span class="pilotage-focus__title">{{ item.title }}</span>
+                <span class="pilotage-focus__text">{{ item.text }}</span>
+              </span>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="pilotage-modules">
+      {% for module in pilotage.modules %}
+        <article class="pilotage-module" data-tone="{{ module.tone }}">
+          <div class="pilotage-module__title">{{ module.title }}</div>
+          <div class="pilotage-module__metric"><strong>{{ module.value }}</strong><span>{{ module.unit }}</span></div>
+          <div class="pilotage-module__detail">{{ module.detail }}</div>
+          <div class="pilotage-module__note">{{ module.note }}</div>
+          <a class="mini-link" href="{{ module.url }}">{{ module.action }}</a>
+        </article>
+      {% endfor %}
+    </div>
+
+    <div class="pilotage-routine">
+      {% for row in pilotage.routine %}
+        <a class="pilotage-routine__item" data-tone="{{ row.tone }}" href="{{ row.url }}">
+          <div class="pilotage-routine__label">{{ row.label }}</div>
+          <div class="pilotage-routine__value">{{ row.value }}</div>
+          <div class="pilotage-routine__text">{{ row.text }}</div>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mode != "admin_tech" and not ui_simplified %}
+  <section class="ui-panel section-card">
+    <div class="ui-section-head section-head">
+      <div>
+        <h2 style="margin:0;">Que voulez-vous faire ?</h2>
+        <div class="muted">Les grandes portes d’entrée de l’application, adaptées à vos droits.</div>
+      </div>
+      <div class="ui-actions inline-actions">
+        <a class="btn" href="{{ url_for('main.dashboard_customize') }}">Personnaliser</a>
+      </div>
+    </div>
+
+    <div class="intent-grid">
+      {% if can('projets:view') or can('subventions:view') or can('depenses:view') %}
+      <div class="ui-card intent-card">
+        <div class="intent-card__top">
+          <div>
+            <div class="intent-card__title">Piloter les finances</div>
+            <div class="intent-card__desc">Voir les enveloppes, saisir une dépense financée, contrôler les répartitions et exporter.</div>
+          </div>
+          <div class="intent-card__icon">💰</div>
+        </div>
+        <div class="intent-card__links">
+          <a class="mini-link" href="{{ url_for('projets.finance_home') }}">Accueil finances</a>
+          {% if can('projets:view') %}<a class="mini-link" href="{{ url_for('projets.finance_simple') }}">Vue simple</a>{% endif %}
+          {% if can('depenses:view') %}<a class="mini-link" href="{{ url_for('budget.depenses_list') }}">Dépenses</a>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if can('emargement:view') or can('statsimpact:view') or can('pedagogie:view') %}
+      <div class="ui-card intent-card">
+        <div class="intent-card__top">
+          <div>
+            <div class="intent-card__title">Gérer les activités</div>
+            <div class="intent-card__desc">Accéder aux présences, aux données ateliers et au suivi pédagogique.</div>
+          </div>
+          <div class="intent-card__icon">🧩</div>
+        </div>
+        <div class="intent-card__links">
+          <a class="mini-link" href="{{ url_for('main.hub_activites') }}">Accueil activités</a>
+          {% if can('emargement:view') %}<a class="mini-link" href="{{ url_for('activite.index') }}">Présences</a>{% endif %}
+          {% if can('participants:view') or can('participants:view_all') %}<a class="mini-link" href="{{ url_for('activite.attestations') }}">Attestations</a>{% endif %}
+          {% if can('statsimpact:view') or can('stats:view') %}<a class="mini-link" href="{{ url_for('statsimpact.dashboard') }}">Données</a>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if can('participants:view') or can('participants:view_all') or can('insertion:view') %}
+      <div class="ui-card intent-card">
+        <div class="intent-card__top">
+          <div>
+            <div class="intent-card__title">Suivre les publics</div>
+            <div class="intent-card__desc">Retrouver une fiche, créer un participant, suivre les parcours et les territoires.</div>
+          </div>
+          <div class="intent-card__icon">👥</div>
+        </div>
+        <div class="intent-card__links">
+          <a class="mini-link" href="{{ url_for('main.hub_publics') }}">Accueil publics</a>
+          {% if can('participants:view') or can('participants:view_all') %}<a class="mini-link" href="{{ url_for('participants.list_participants') }}">Participants</a>{% endif %}
+          {% if can('participants:view') or can('participants:view_all') %}<a class="mini-link" href="{{ url_for('activite.attestations') }}">Attestations</a>{% endif %}
+          {% if can('insertion:view') %}<a class="mini-link" href="{{ url_for('insertion.index') }}">Insertion</a>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if can('stats:view') or can('bilans:view') or can('questionnaires:view') %}
+      <div class="ui-card intent-card">
+        <div class="intent-card__top">
+          <div>
+            <div class="intent-card__title">Préparer les bilans</div>
+            <div class="intent-card__desc">Vérifier les données, consulter les indicateurs et préparer les exports financeurs.</div>
+          </div>
+          <div class="intent-card__icon">📊</div>
+        </div>
+        <div class="intent-card__links">
+          <a class="mini-link" href="{{ url_for('main.hub_bilans') }}">Accueil bilans</a>
+          {% if can('stats:view') %}<a class="mini-link" href="{{ url_for('main.stats_bilans') }}">Stats</a>{% endif %}
+          {% if can('bilans:view') %}<a class="mini-link" href="{{ url_for('bilans.dashboard', year=budget_year) }}">Bilans</a>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="resume-strip">
+      {% set alert_count = alerts|length if alerts else 0 %}
+      <div class="resume-pill {{ 'danger' if alert_count > 0 else 'ok' }}">
+        <div class="label">À vérifier</div>
+        <div class="value">{{ alert_count }} alerte{{ 's' if alert_count > 1 else '' }}</div>
+      </div>
+      <div class="resume-pill">
+        <div class="label">Séances</div>
+        <div class="value">{{ kpis.sessions or 0 }}</div>
+      </div>
+      <div class="resume-pill">
+        <div class="label">Participants uniques</div>
+        <div class="value">{{ kpis.uniques or 0 }}</div>
+      </div>
+      <div class="resume-pill {{ 'warn' if (kpis.taux or 0) >= 80 else 'ok' }}">
+        <div class="label">Consommation budget</div>
+        <div class="value">{{ kpis.taux or 0 }}%</div>
+      </div>
+    </div>
+  </section>
+  {% elif mode == "admin_tech" %}
+  <section class="ui-panel section-card">
+    <div class="ui-section-head section-head">
+      <div>
+        <h2 style="margin:0;">Administration rapide</h2>
+        <div class="muted">Les entrées utiles pour maintenir l’application propre.</div>
+      </div>
+    </div>
+    <div class="intent-grid">
+      <div class="ui-card intent-card">
+        <div class="intent-card__top">
+          <div>
+            <div class="intent-card__title">Contrôler l’application</div>
+            <div class="intent-card__desc">Lancer les contrôles techniques et repérer les liens cassés.</div>
+          </div>
+          <div class="intent-card__icon">🛠️</div>
+        </div>
+        <div class="intent-card__links">
+          {% if can('controle:view') %}<a class="mini-link" href="{{ url_for('main.controle') }}">Contrôle</a>{% endif %}
+          {% if can('controle:view') %}<a class="mini-link" href="{{ url_for('main.controle_navigation') }}">Vérifier les liens</a>{% endif %}
+          {% if can('admin:users') %}<a class="mini-link" href="{{ url_for('admin.users') }}">Équipe</a>{% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if not ui_simplified or (dashboard_prefs and dashboard_prefs.customized) %}
+  <section class="ui-panel section-card">
+    <div class="ui-section-head section-head">
+      <div>
+        <h2 style="margin:0;">Mes actions rapides</h2>
+        <div class="muted">Les raccourcis les plus utiles pour ton quotidien.</div>
+      </div>
+      <div class="ui-actions inline-actions">
+        <a class="btn" href="{{ url_for('main.dashboard_customize') }}">Personnaliser mon accueil</a>
+        <form method="post" action="{{ url_for('main.dashboard_reset') }}" onsubmit="return confirm('Remettre l’accueil par défaut ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+          <button class="btn btn-danger-outline" type="submit">Accueil par défaut</button>
+        </form>
+      </div>
+    </div>
+    {% if shortcuts and shortcuts|length %}
+      <div class="quick-links-grid">
+        {% for sc in shortcuts %}
+          <a class="quick-link-card" href="{{ sc.url }}">
+            <span class="eyebrow">{{ sc.icon or '➡️' }}</span>
+            <span class="title">{{ sc.label }}</span>
+            <span class="desc">{{ sc.hint or 'Accès direct au module concerné.' }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="quick-empty"><strong>Aucune action rapide</strong>Choisis tes raccourcis depuis “Personnaliser mon accueil”.</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if mode != "admin_tech" and not ui_simplified %}
+    <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:12px;">
+      <section class="ui-panel section-card">
+        <div class="ui-section-head section-head">
+          <div>
+            <h2 style="margin:0;">Aujourd’hui et à reprendre</h2>
+            <div class="muted">Les derniers éléments utiles pour reprendre le fil rapidement.</div>
+          </div>
+        </div>
+        <div class="recents-grid" style="grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));">
+          <div class="recent-card">
+            <h3>📅 Dernières séances</h3>
+            {% if recents and recents.sessions and recents.sessions|length %}
+              <div class="recent-list">
+                {% for s in recents.sessions[:4] %}
+                  <div class="recent-item"><strong>Atelier #{{ s.atelier_id }}</strong><span class="muted">{{ s.session_type }}{% if s.rdv_date or s.date_session %} · {{ s.rdv_date or s.date_session }}{% endif %}</span></div>
+                {% endfor %}
+              </div>
+            {% else %}<div class="quick-empty">Aucune séance récente.</div>{% endif %}
+          </div>
+          {% if can('participants:view') or can('participants:view_all') %}
+            <div class="recent-card">
+              <h3>👥 Dernières fiches</h3>
+              {% if recents and recents.participants and recents.participants|length %}
+                <div class="recent-list">
+                  {% for p in recents.participants[:4] %}
+                    <div class="recent-item"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="muted">Ajout récent</span></div>
+                  {% endfor %}
+                </div>
+              {% else %}<div class="quick-empty">Aucune fiche récente.</div>{% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </section>
+      <section class="ui-panel section-card">
+        <div class="ui-section-head section-head">
+          <div>
+            <h2 style="margin:0;">À vérifier</h2>
+            <div class="muted">Les points qui demandent ton attention rapidement.</div>
+          </div>
+        </div>
+        {% if alerts and alerts|length %}
+          <div class="alert-list">
+            {% for a in alerts[:5] %}
+              <div class="alert-item" data-level="{{ a.level or 'info' }}">
+                <div class="alert-item__icon" aria-hidden="true">{% if a.level == 'danger' %}!{% elif a.level == 'warning' %}⚠{% else %}i{% endif %}</div>
+                <div class="alert-item__body">
+                  {% if a.url %}<a href="{{ a.url }}">{{ a.text }}</a>{% else %}<strong>{{ a.text }}</strong>{% endif %}
+                  <span class="status-badge js-auto-status">{{ 'danger' if a.level == 'danger' else ('en attente' if a.level == 'warning' else 'info') }}</span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="quick-empty"><strong>Rien d’urgent</strong>Les points de contrôle immédiats sont corrects.</div>
+        {% endif %}
+      </section>
+    </div>
+
+    <div class="helper-banner" style="margin-bottom:12px;">
+      <strong>Détail rapide</strong>
+      <span class="muted">Les graphiques restent disponibles plus bas pour l’analyse. En mode simple, on garde d’abord les actions et les repères utiles.</span>
+    </div>
+
+    {% set ordered_widgets = (dashboard_widgets or []) %}
+    {% if not ordered_widgets %}
+      {% set ordered_widgets = [
+        {'key': 'alerts', 'visible': true, 'position': 1},
+        {'key': 'recents', 'visible': true, 'position': 2},
+        {'key': 'charts', 'visible': true, 'position': 3}
+      ] %}
+    {% endif %}
+
+    {% for widget in ordered_widgets if widget.visible %}
+      {% if widget.key == 'alerts' and not ui_simplified %}
+        <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:12px;">
+          <section class="ui-panel section-card">
+            <div class="ui-section-head section-head">
+              <div>
+                <h2 style="margin:0;">Alertes à vérifier</h2>
+                <div class="muted">À traiter en priorité.</div>
+              </div>
+            </div>
+            {% if alerts and alerts|length %}
+              <div class="alert-list">
+                {% for a in alerts %}
+                  <div class="alert-item" data-level="{{ a.level or 'info' }}">
+                    <div class="alert-item__icon" aria-hidden="true">{% if a.level == 'danger' %}!{% elif a.level == 'warning' %}⚠{% else %}i{% endif %}</div>
+                    <div class="alert-item__body">
+                      {% if a.url %}<a href="{{ a.url }}">{{ a.text }}</a>{% else %}<strong>{{ a.text }}</strong>{% endif %}
+                      <span class="status-badge js-auto-status">{{ 'danger' if a.level == 'danger' else ('en attente' if a.level == 'warning' else 'info') }}</span>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="quick-empty"><strong>Aucune alerte</strong>Les principaux contrôles sont conformes sur la période affichée.</div>
+            {% endif %}
+          </section>
+        </div>
+      {% elif widget.key == 'charts' %}
+        <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:12px;">
+          <div class="ui-card card chart-card">
+            <div class="chart-card__head"><h2 style="margin-top:0;">Budget</h2></div>
+            <p class="muted" style="margin-top:0;">Comparaison entre le montant engagé et le disponible.</p>
+            <div class="chart-shell"><canvas id="chartBudget" height="190"></canvas></div>
+            <div class="chart-meta" data-chart-meta="chartBudget"></div>
+            <div class="chart-fallback-note muted">Clique sur une part, une barre ou un point pour ouvrir le détail filtré.</div>
+          </div>
+          <div class="ui-card card chart-card">
+            <div class="chart-card__head"><h2 style="margin-top:0;">Dépenses</h2></div>
+            <p class="muted" style="margin-top:0;">Montant par mois sur les 6 derniers mois.</p>
+            <div class="chart-shell"><canvas id="chartDepenses" height="190"></canvas></div>
+            <div class="chart-meta" data-chart-meta="chartDepenses"></div>
+          </div>
+          <div class="ui-card card chart-card">
+            <div class="chart-card__head"><h2 style="margin-top:0;">Activité ateliers</h2></div>
+            <p class="muted" style="margin-top:0;">Séances réalisées sur les 6 derniers mois.</p>
+            <div class="chart-shell"><canvas id="chartSessions" height="190"></canvas></div>
+            <div class="chart-meta" data-chart-meta="chartSessions"></div>
+          </div>
+          <div class="ui-card card chart-card">
+            <div class="chart-card__head"><h2 style="margin-top:0;">Types de public</h2></div>
+            <p class="muted" style="margin-top:0;">Répartition des participants uniques sur {{ period_label }}.</p>
+            <div class="chart-shell"><canvas id="chartPublic" height="190"></canvas></div>
+            <div class="chart-meta" data-chart-meta="chartPublic"></div>
+          </div>
+        </div>
+
+        <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:12px; margin-top:12px;">
+          <div class="ui-card card chart-card">
+            <div class="chart-card__head"><h2 style="margin-top:0;">Répartition femmes / hommes</h2></div>
+            <p class="muted" style="margin-top:0;">Participants uniques, selon les informations renseignées.</p>
+            <div class="chart-shell"><canvas id="chartGender" height="190"></canvas></div>
+            <div class="chart-meta" data-chart-meta="chartGender"></div>
+          </div>
+          <div class="ui-card card chart-card">
+            <div class="chart-card__head"><h2 style="margin-top:0;">Répartition par âge</h2></div>
+            <p class="muted" style="margin-top:0;">Distribution par tranche d’âge sur {{ period_label }}.</p>
+            <div class="chart-shell chart-shell--tall"><canvas id="chartAges" height="230"></canvas></div>
+            <div class="chart-meta" data-chart-meta="chartAges"></div>
+          </div>
+          <div class="ui-card card chart-card">
+            <div class="chart-card__head"><h2 style="margin-top:0;">Villes et quartiers</h2></div>
+            <p class="muted" style="margin-top:0;">Camembert imbriqué : villes au centre, quartiers à l’extérieur.</p>
+            <div class="chart-shell chart-shell--tall"><canvas id="chartLocations" height="230"></canvas></div>
+            <div class="chart-meta" data-chart-meta="chartLocations"></div>
+          </div>
+        </div>
+      {% elif widget.key == 'recents' and not ui_simplified %}
+        <section class="ui-panel section-card">
+          <div class="ui-section-head section-head">
+            <div>
+              <h2 style="margin:0;">Éléments récents</h2>
+              <div class="muted">Derniers éléments enregistrés pour reprendre le suivi plus rapidement.</div>
+            </div>
+          </div>
+          <div class="recents-grid">
+            <div class="recent-card">
+              <h3>🧾 Dépenses</h3>
+              {% if recents and recents.depenses and recents.depenses|length %}
+                <div class="recent-list">
+                  {% for d in recents.depenses %}
+                    <div class="recent-item"><strong>{{ d.libelle }}</strong><span class="muted">{{ "%.2f"|format(d.montant or 0) }}€</span></div>
+                  {% endfor %}
+                </div>
+              {% else %}<div class="quick-empty">Aucune dépense récente.</div>{% endif %}
+            </div>
+            <div class="recent-card">
+              <h3>📅 Sessions</h3>
+              {% if recents and recents.sessions and recents.sessions|length %}
+                <div class="recent-list">
+                  {% for s in recents.sessions %}
+                    <div class="recent-item"><strong>Atelier #{{ s.atelier_id }}</strong><span class="muted">{{ s.session_type }}{% if s.rdv_date or s.date_session %} · {{ s.rdv_date or s.date_session }}{% endif %}</span></div>
+                  {% endfor %}
+                </div>
+              {% else %}<div class="quick-empty">Aucune session récente.</div>{% endif %}
+            </div>
+            <div class="recent-card">
+              <h3>👥 Participants</h3>
+              {% if recents and recents.participants and recents.participants|length %}
+                <div class="recent-list">
+                  {% for p in recents.participants %}
+                    <div class="recent-item"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="muted">Ajout récent</span></div>
+                  {% endfor %}
+                </div>
+              {% else %}<div class="quick-empty">Aucun participant récent.</div>{% endif %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+</div>
+<script>
+  (function() {
+    const els = document.querySelectorAll('.kpi[data-count]');
+    els.forEach(el => {
+      const target = Number(el.getAttribute('data-count') || '0');
+      if (!isFinite(target) || target <= 0) return;
+      const isMoney = (el.textContent || '').includes('€');
+      const duration = 650;
+      const start = performance.now();
+      function tick(t) {
+        const p = Math.min((t - start) / duration, 1);
+        const val = Math.floor(target * (0.2 + 0.8 * p));
+        el.textContent = isMoney ? val.toLocaleString('fr-FR') + '€' : val.toLocaleString('fr-FR');
+        if (p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    });
+  })();
+
+  const charts = {{ (charts or {}) | tojson }};
+  const chartStates = new Map();
+
+  function cssVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  function palette() {
+    return [
+      cssVar('--accent', '#4f46e5'),
+      cssVar('--ok', '#16a34a'),
+      cssVar('--warn', '#d97706'),
+      cssVar('--danger', '#dc2626'),
+      '#0ea5e9', '#8b5cf6', '#ec4899', '#14b8a6', '#64748b', '#22c55e'
+    ];
+  }
+
+  function hexToRgba(color, alpha) {
+    if (!color) return `rgba(79,70,229,${alpha})`;
+    if (color.startsWith('#')) {
+      let hex = color.slice(1);
+      if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+      if (hex.length === 6) {
+        const num = parseInt(hex, 16);
+        const r = (num >> 16) & 255;
+        const g = (num >> 8) & 255;
+        const b = num & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+    }
+    return color;
+  }
+
+  function getBaseCanvasHeight(canvas) {
+    if (!canvas) return 190;
+    const raw = parseInt(canvas.dataset.baseHeight || canvas.getAttribute('height') || '', 10);
+    const base = Number.isFinite(raw) && raw > 0 ? raw : 190;
+    canvas.dataset.baseHeight = String(base);
+    return base;
+  }
+
+  function setupCanvas(canvas) {
+    if (!canvas) return null;
+    const ratio = Math.max(1, window.devicePixelRatio || 1);
+    const rect = canvas.getBoundingClientRect();
+    const shell = canvas.closest('.chart-shell');
+    const attrWidth = parseInt(canvas.getAttribute('width') || '', 10);
+    const width = Math.max(
+      280,
+      Math.floor((shell && shell.clientWidth) || rect.width || (Number.isFinite(attrWidth) ? attrWidth : 0) || 320)
+    );
+    const height = Math.max(180, getBaseCanvasHeight(canvas));
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    canvas.style.width = '100%';
+    canvas.style.maxWidth = '100%';
+    canvas.style.height = height + 'px';
+    canvas.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    return { ctx, width, height };
+  }
+
+  function formatValue(v, money=true) {
+    const n = Number(v || 0);
+    return money
+      ? n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + '€'
+      : n.toLocaleString('fr-FR');
+  }
+
+  function getUi(canvas) {
+    const card = canvas.closest('.chart-card') || canvas.parentElement;
+    const shell = card.querySelector('.chart-shell') || card;
+    const meta = card.querySelector(`[data-chart-meta="${canvas.id}"]`);
+    return { card, shell, meta };
+  }
+
+  function setTooltip() {
+    return;
+  }
+
+  function clearTooltip() {
+    return;
+  }
+
+  function clearAllTooltips() {
+    return;
+  }
+
+  function buildChartSummary(items, money=true){
+    if (!items || !items.length) return "Ce qu’il faut retenir : aucune donnée exploitable sur la période.";
+    const sorted = [...items].sort((a,b)=>Number(b.value||0)-Number(a.value||0));
+    const top = sorted[0];
+    const total = sorted.reduce((acc, item)=> acc + Number(item.value || 0), 0);
+    if (!top) return "Ce qu’il faut retenir : aucune donnée exploitable sur la période.";
+    const pct = total > 0 ? Math.round((Number(top.value || 0) / total) * 100) : 0;
+    const topValue = top.rawText || (money ? formatValue(top.value, true) : formatValue(top.value, false));
+    return `Ce qu’il faut retenir : ${top.label || 'poste principal'} est en tête avec ${topValue} (${pct}% du total).`;
+  }
+
+  function setMeta(canvas, items, money=true) {
+    const { meta } = getUi(canvas);
+    if (!meta) return;
+    meta.innerHTML = '';
+    items.forEach(item => {
+      const el = document.createElement('span');
+      el.className = 'chart-meta__item';
+      const valueText = item.rawText || (money ? formatValue(item.value, true) : formatValue(item.value, false));
+      el.innerHTML = `<strong>${item.label}</strong><span>${valueText}</span>`;
+      meta.appendChild(el);
+    });
+
+    let summary = meta.parentElement.querySelector(`.chart-summary[data-summary-for="${canvas.id}"]`);
+    if (!summary) {
+      summary = document.createElement('p');
+      summary.className = 'chart-summary muted';
+      summary.setAttribute('data-summary-for', canvas.id);
+      summary.setAttribute('role', 'note');
+      meta.insertAdjacentElement('afterend', summary);
+    }
+    summary.textContent = buildChartSummary(items, money);
+  }
+
+  function drawLegendItems(canvas, items, money=true, handlers={}, options={}) {
+    const { card } = getUi(canvas);
+    if (!card) return;
+    let legend = card.querySelector('.chart-legend');
+    if (options.show === false) {
+      if (legend) legend.remove();
+      return;
+    }
+    if (!legend) {
+      legend = document.createElement('div');
+      legend.className = 'chart-legend';
+      card.appendChild(legend);
+    }
+    legend.innerHTML = '';
+    items.forEach((item, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chart-legend__item';
+      button.innerHTML = `<i style="background:${item.color}"></i><span>${item.label}</span><strong>${item.rawText || (money ? formatValue(item.value, true) : formatValue(item.value, false))}</strong>`;
+      if (typeof handlers.onEnter === 'function') button.addEventListener('mouseenter', () => { clearTooltip(canvas); handlers.onEnter(index, item); });
+      if (typeof handlers.onLeave === 'function') button.addEventListener('mouseleave', () => { clearTooltip(canvas); handlers.onLeave(index, item); });
+      if (typeof handlers.onClick === 'function') button.addEventListener('click', () => { clearTooltip(canvas); handlers.onClick(index, item); });
+      legend.appendChild(button);
+    });
+  }
+
+  function hitArc(cx, cy, r0, r1, start, end, x, y) {
+    const dx = x - cx, dy = y - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < r0 || dist > r1) return false;
+    let ang = Math.atan2(dy, dx);
+    if (ang < -Math.PI / 2) ang += Math.PI * 2;
+    let s = start, e = end;
+    while (e < s) e += Math.PI * 2;
+    while (ang < s) ang += Math.PI * 2;
+    return ang >= s && ang <= e;
+  }
+
+  function makeDoughnut(id, cfg) {
+    const canvas = document.getElementById(id);
+    if (!canvas || !cfg || !cfg.values || !cfg.values.length) return;
+    const area = setupCanvas(canvas); if (!area) return;
+    const { ctx, width, height } = area;
+    const state = chartStates.get(id) || {};
+    const money = cfg.money !== false;
+    const cx = width / 2, cy = height / 2;
+    const r = Math.min(width, height) * 0.31;
+    const inner = r * 0.58;
+    const totalRaw = cfg.values.reduce((a, b) => a + Math.max(0, Number(b || 0)), 0);
+    const total = totalRaw || 1;
+    const colors = palette();
+    let angle = -Math.PI / 2;
+    const hitboxes = [];
+    cfg.values.forEach((raw, i) => {
+      const value = Math.max(0, Number(raw || 0));
+      const slice = (value / total) * Math.PI * 2;
+      const hovered = state.hovered === i;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, angle, angle + slice);
+      ctx.arc(cx, cy, inner, angle + slice, angle, true);
+      ctx.closePath();
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.globalAlpha = hovered ? 1 : 0.9;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      if (hovered) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(255,255,255,.92)';
+        ctx.stroke();
+      }
+      hitboxes.push({ index:i, x:cx, y:cy, r0:inner, r1:r, start:angle, end:angle+slice, label:cfg.labels[i], value, url:(cfg.urls || [])[i] || null });
+      angle += slice;
+    });
+
+    ctx.fillStyle = cssVar('--text', '#111827');
+    ctx.font = '700 18px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(formatValue(totalRaw, money), cx, cy + 4);
+    ctx.font = '12px system-ui';
+    ctx.fillStyle = cssVar('--muted', '#64748b');
+    ctx.fillText(money ? 'total' : 'participants', cx, cy + 22);
+
+    chartStates.set(id, { ...state, type:'doughnut', hitboxes, redraw:() => makeDoughnut(id, cfg), money });
+    drawLegendItems(
+      canvas,
+      cfg.labels.map((label, i) => ({ label, color: colors[i % colors.length], value: cfg.values[i] })),
+      money,
+      {
+        onEnter: (i) => { const s = chartStates.get(id) || {}; s.hovered = i; chartStates.set(id, s); redraw(id); },
+        onLeave: () => { const s = chartStates.get(id) || {}; s.hovered = null; chartStates.set(id, s); redraw(id); clearTooltip(canvas); },
+        onClick: (i) => { const s = chartStates.get(id) || {}; s.hovered = i; chartStates.set(id, s); redraw(id); }
+      },
+      { show: cfg.showLegend !== false }
+    );
+    const values = cfg.values.map((v, i) => ({ label: cfg.labels[i], value: v })).sort((a, b) => Number(b.value) - Number(a.value)).slice(0, 4);
+    setMeta(canvas, values, money);
+  }
+
+  function makeBar(id, cfg) {
+    const canvas = document.getElementById(id);
+    if (!canvas || !cfg || !cfg.values || !cfg.values.length) return;
+    const area = setupCanvas(canvas); if (!area) return;
+    const { ctx, width, height } = area;
+    const state = chartStates.get(id) || {};
+    const money = cfg.money !== false;
+    const pad = { top: 16, right: 10, bottom: 34, left: 36 };
+    const chartW = width - pad.left - pad.right;
+    const chartH = height - pad.top - pad.bottom;
+    const max = Math.max(...cfg.values.map(v => Number(v || 0)), 1);
+    const colors = palette();
+    const n = cfg.values.length;
+    const gap = 12;
+    const barW = Math.max(20, (chartW - gap * (n - 1)) / n);
+    const hitboxes = [];
+
+    for (let g = 0; g < 4; g++) {
+      const y = pad.top + (chartH / 4) * g;
+      ctx.strokeStyle = 'rgba(148,163,184,.18)';
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + chartW, y); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(148,163,184,.25)';
+    ctx.beginPath(); ctx.moveTo(pad.left, pad.top + chartH); ctx.lineTo(pad.left + chartW, pad.top + chartH); ctx.stroke();
+
+    cfg.values.forEach((raw, i) => {
+      const v = Number(raw || 0);
+      const h = Math.max(2, (v / max) * (chartH - 8));
+      const x = pad.left + i * (barW + gap);
+      const y = pad.top + chartH - h;
+      const hovered = state.hovered === i;
+      ctx.fillStyle = colors[0];
+      ctx.globalAlpha = hovered ? 1 : 0.82;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, barW, h, 10);
+      else ctx.rect(x, y, barW, h);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      if (hovered) {
+        ctx.fillStyle = 'rgba(79,70,229,.10)';
+        ctx.fillRect(x - 4, pad.top, barW + 8, chartH);
+        ctx.fillStyle = cssVar('--text', '#111827');
+        ctx.font = '700 11px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(formatValue(v, money), x + barW / 2, Math.max(14, y - 6));
+      }
+      ctx.fillStyle = cssVar('--muted', '#64748b');
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText((cfg.labels[i] || '').toString().slice(0, 8), x + barW / 2, height - 10);
+      hitboxes.push({ index:i, x, y, w:barW, h, label:cfg.labels[i], value:v, url:(cfg.urls || [])[i] || null });
+    });
+
+    chartStates.set(id, { ...state, type:'bar', hitboxes, redraw:() => makeBar(id, cfg), money });
+    drawLegendItems(
+      canvas,
+      cfg.labels.map((label, i) => ({ label, color: colors[0], value: cfg.values[i] })),
+      money,
+      {
+        onEnter: (i) => { const s = chartStates.get(id) || {}; s.hovered = i; chartStates.set(id, s); redraw(id); },
+        onLeave: () => { const s = chartStates.get(id) || {}; s.hovered = null; chartStates.set(id, s); redraw(id); clearTooltip(canvas); },
+        onClick: (i) => { const s = chartStates.get(id) || {}; s.hovered = i; chartStates.set(id, s); redraw(id); }
+      }
+    );
+    const values = cfg.values.map((v, i) => ({ label: cfg.labels[i], value: v })).sort((a, b) => Number(b.value) - Number(a.value)).slice(0, 3);
+    setMeta(canvas, values, money);
+  }
+
+  function makeLine(id, cfg) {
+    const canvas = document.getElementById(id);
+    if (!canvas || !cfg || !cfg.values || !cfg.values.length) return;
+    const area = setupCanvas(canvas); if (!area) return;
+    const { ctx, width, height } = area;
+    const state = chartStates.get(id) || {};
+    const pad = { top: 16, right: 12, bottom: 34, left: 36 };
+    const chartW = width - pad.left - pad.right;
+    const chartH = height - pad.top - pad.bottom;
+    const max = Math.max(...cfg.values.map(v => Number(v || 0)), 1);
+    const pts = cfg.values.map((raw, i) => {
+      const v = Number(raw || 0);
+      return { x: pad.left + (chartW * i / Math.max(1, cfg.values.length - 1)), y: pad.top + chartH - (v / max) * (chartH - 8), v, label: cfg.labels[i] };
+    });
+
+    for (let g = 0; g < 4; g++) {
+      const y = pad.top + (chartH / 4) * g;
+      ctx.strokeStyle = 'rgba(148,163,184,.18)';
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + chartW, y); ctx.stroke();
+    }
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
+    grad.addColorStop(0, 'rgba(79,70,229,.28)');
+    grad.addColorStop(1, 'rgba(79,70,229,0)');
+
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length - 1].x, pad.top + chartH);
+    ctx.lineTo(pts[0].x, pad.top + chartH);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.strokeStyle = cssVar('--accent', '#4f46e5');
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.stroke();
+
+    pts.forEach((p, i) => {
+      const hovered = state.hovered === i;
+      ctx.fillStyle = cssVar('--accent', '#4f46e5');
+      ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = cssVar('--muted', '#64748b');
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText((cfg.labels[i] || '').toString().slice(0, 8), p.x, height - 10);
+      if (hovered) {
+        ctx.strokeStyle = 'rgba(79,70,229,.25)';
+        ctx.beginPath(); ctx.moveTo(p.x, pad.top); ctx.lineTo(p.x, pad.top + chartH); ctx.stroke();
+        ctx.fillStyle = cssVar('--text', '#111827');
+        ctx.font = '700 11px system-ui';
+        ctx.fillText(formatValue(p.v, false), p.x, Math.max(14, p.y - 10));
+      }
+    });
+
+    chartStates.set(id, { ...state, type:'line', hitboxes:pts.map((p, i) => ({ ...p, w: 12, h: 12, value: p.v, url:(cfg.urls || [])[i] || null })), redraw:() => makeLine(id, cfg), money:false });
+    const values = cfg.values.map((v, i) => ({ label: cfg.labels[i], value: v })).sort((a, b) => Number(b.value) - Number(a.value)).slice(0, 3);
+    setMeta(canvas, values, false);
+  }
+
+  function makeHorizontalBars(id, cfg) {
+    const canvas = document.getElementById(id);
+    if (!canvas || !cfg || !cfg.values || !cfg.values.length) return;
+    const area = setupCanvas(canvas); if (!area) return;
+    const { ctx, width, height } = area;
+    const state = chartStates.get(id) || {};
+    const money = false;
+    const pad = { top: 14, right: 40, bottom: 12, left: 96 };
+    const chartW = width - pad.left - pad.right;
+    const chartH = height - pad.top - pad.bottom;
+    const max = Math.max(...cfg.values.map(v => Number(v || 0)), 1);
+    const gap = 10;
+    const barH = Math.max(18, (chartH - gap * (cfg.values.length - 1)) / cfg.values.length);
+    const baseColor = cssVar('--accent', '#4f46e5');
+    const hitboxes = [];
+
+    for (let g = 1; g <= 4; g++) {
+      const x = pad.left + (chartW / 4) * g;
+      ctx.strokeStyle = 'rgba(148,163,184,.18)';
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + chartH); ctx.stroke();
+    }
+
+    cfg.values.forEach((raw, i) => {
+      const v = Number(raw || 0);
+      const y = pad.top + i * (barH + gap);
+      const w = Math.max(v > 0 ? 6 : 0, (v / max) * chartW);
+      const hovered = state.hovered === i;
+      ctx.fillStyle = hovered ? baseColor : hexToRgba(baseColor, .82);
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') ctx.roundRect(pad.left, y, w, barH, 10);
+      else ctx.rect(pad.left, y, w, barH);
+      ctx.fill();
+
+      ctx.fillStyle = cssVar('--text', '#111827');
+      ctx.font = '12px system-ui';
+      ctx.textAlign = 'right';
+      ctx.fillText(cfg.labels[i] || '', pad.left - 8, y + barH * 0.68);
+      ctx.textAlign = 'left';
+      ctx.fillText(formatValue(v, false), pad.left + w + 8, y + barH * 0.68);
+
+      hitboxes.push({ index:i, x:pad.left, y, w, h:barH, label:cfg.labels[i], value:v, url:(cfg.urls || [])[i] || null });
+    });
+
+    chartStates.set(id, { ...state, type:'hbar', hitboxes, redraw:() => makeHorizontalBars(id, cfg), money });
+    drawLegendItems(
+      canvas,
+      cfg.labels.map((label, i) => ({ label, color: baseColor, value: cfg.values[i] })),
+      false,
+      {
+        onEnter: (i) => { const s = chartStates.get(id) || {}; s.hovered = i; chartStates.set(id, s); redraw(id); },
+        onLeave: () => { const s = chartStates.get(id) || {}; s.hovered = null; chartStates.set(id, s); redraw(id); clearTooltip(canvas); },
+        onClick: (i) => { const s = chartStates.get(id) || {}; s.hovered = i; chartStates.set(id, s); redraw(id); }
+      },
+      { show: cfg.showLegend !== false }
+    );
+    const values = cfg.values.map((v, i) => ({ label: cfg.labels[i], value: v }));
+    if (Number(cfg.unknown || 0) > 0 && !(cfg.labels || []).includes('Âge non renseigné')) {
+      values.push({ label: 'Âge non renseigné', value: cfg.unknown });
+    }
+    setMeta(canvas, values, false);
+  }
+
+  function makeNestedDoughnut(id, cfg) {
+    const canvas = document.getElementById(id);
+    if (!canvas || !cfg || !cfg.inner_values || !cfg.inner_values.length) return;
+    const area = setupCanvas(canvas); if (!area) return;
+    const { ctx, width, height } = area;
+    const state = chartStates.get(id) || {};
+    const colors = palette();
+    const cx = width / 2, cy = height / 2;
+    const outerR = Math.min(width, height) * 0.39;
+    const midR = outerR * 0.72;
+    const innerHole = outerR * 0.30;
+    const innerTotalRaw = cfg.inner_values.reduce((a, b) => a + Math.max(0, Number(b || 0)), 0);
+    const innerTotal = innerTotalRaw || 1;
+    const selectedParent = Number.isInteger(state.selectedParent) ? state.selectedParent : null;
+    const hitboxes = [];
+
+    let innerAngle = -Math.PI / 2;
+    cfg.inner_values.forEach((raw, i) => {
+      const value = Math.max(0, Number(raw || 0));
+      const slice = (value / innerTotal) * Math.PI * 2;
+      const isDimmed = selectedParent !== null && selectedParent !== i;
+      const isHovered = state.hovered === `inner-${i}`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, midR - 6, innerAngle, innerAngle + slice);
+      ctx.arc(cx, cy, innerHole, innerAngle + slice, innerAngle, true);
+      ctx.closePath();
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.globalAlpha = isDimmed ? 0.2 : (isHovered ? 1 : 0.88);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      if (isHovered || selectedParent === i) {
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255,255,255,.92)';
+        ctx.stroke();
+      }
+      hitboxes.push({ index:`inner-${i}`, parentIndex:i, x:cx, y:cy, r0:innerHole, r1:midR - 6, start:innerAngle, end:innerAngle + slice, label:cfg.inner_labels[i], value, layer:'inner', url:(cfg.inner_urls || [])[i] || null });
+      innerAngle += slice;
+    });
+
+    let outerAngle = -Math.PI / 2;
+    cfg.outer_values.forEach((raw, i) => {
+      const value = Math.max(0, Number(raw || 0));
+      const slice = (value / innerTotal) * Math.PI * 2;
+      const parentIndex = Number(cfg.outer_parents[i] || 0);
+      const baseColor = colors[parentIndex % colors.length];
+      const isDimmed = selectedParent !== null && selectedParent !== parentIndex;
+      const isHovered = state.hovered === `outer-${i}`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, outerAngle, outerAngle + slice);
+      ctx.arc(cx, cy, midR + 6, outerAngle + slice, outerAngle, true);
+      ctx.closePath();
+      ctx.fillStyle = hexToRgba(baseColor, isDimmed ? 0.18 : 0.55);
+      ctx.fill();
+      if (isHovered || selectedParent === parentIndex) {
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = baseColor;
+        ctx.stroke();
+      }
+      const fullLabel = `${cfg.outer_city_labels[i]} · ${cfg.outer_labels[i]}`;
+      hitboxes.push({ index:`outer-${i}`, parentIndex, x:cx, y:cy, r0:midR + 6, r1:outerR, start:outerAngle, end:outerAngle + slice, label:fullLabel, value, layer:'outer', url:(cfg.outer_urls || [])[i] || null });
+      outerAngle += slice;
+    });
+
+    ctx.fillStyle = cssVar('--text', '#111827');
+    ctx.font = '700 16px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(formatValue(innerTotalRaw, false), cx, cy + 2);
+    ctx.font = '12px system-ui';
+    ctx.fillStyle = cssVar('--muted', '#64748b');
+    ctx.fillText('participants', cx, cy + 20);
+
+    chartStates.set(id, {
+      ...state,
+      type:'nested-doughnut',
+      hitboxes,
+      redraw:() => makeNestedDoughnut(id, cfg),
+      money:false,
+      selectedParent,
+    });
+
+    drawLegendItems(
+      canvas,
+      cfg.inner_labels.map((label, i) => ({ label, color: colors[i % colors.length], value: cfg.inner_values[i] })),
+      false,
+      {
+        onEnter: (i) => { const s = chartStates.get(id) || {}; s.hovered = `inner-${i}`; chartStates.set(id, s); redraw(id); },
+        onLeave: () => { const s = chartStates.get(id) || {}; s.hovered = null; chartStates.set(id, s); redraw(id); clearTooltip(canvas); },
+        onClick: (i) => {
+          const s = chartStates.get(id) || {};
+          s.selectedParent = s.selectedParent === i ? null : i;
+          s.hovered = `inner-${i}`;
+          chartStates.set(id, s);
+          redraw(id);
+        }
+      },
+      { show: cfg.showLegend !== false }
+    );
+
+    const topQuartiers = cfg.outer_values.map((v, i) => ({ label: `${cfg.outer_city_labels[i]} · ${cfg.outer_labels[i]}`, value: v })).sort((a, b) => Number(b.value) - Number(a.value)).slice(0, 4);
+    setMeta(canvas, topQuartiers, false);
+  }
+
+  function redraw(id) {
+    const state = chartStates.get(id);
+    if (state && typeof state.redraw === 'function') state.redraw();
+  }
+
+  function openHitTarget(hit) {
+    if (!hit || !hit.url || hit.url === '#') return false;
+    window.location.assign(hit.url);
+    return true;
+  }
+
+  function registerPointer(id) {
+    const canvas = document.getElementById(id);
+    if (!canvas || canvas.dataset.pointerWired === '1') return;
+    canvas.dataset.pointerWired = '1';
+    canvas.addEventListener('mousemove', (e) => {
+      const state = chartStates.get(id); if (!state) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      let hit = null;
+      if (state.type === 'doughnut' || state.type === 'nested-doughnut') {
+        hit = state.hitboxes.find(h => hitArc(h.x, h.y, h.r0, h.r1, h.start, h.end, x, y));
+      } else {
+        hit = state.hitboxes.find(h => x >= (h.x - 6) && x <= (h.x + (h.w || 12) + 6) && y >= (h.y || 0) && y <= ((h.y || 0) + (h.h || canvas.clientHeight)));
+      }
+      const hovered = hit ? hit.index : null;
+      canvas.style.cursor = hit && hit.url ? 'pointer' : 'default';
+      if (state.hovered !== hovered) {
+        state.hovered = hovered;
+        chartStates.set(id, state);
+        redraw(id);
+      }
+    });
+    canvas.addEventListener('mouseleave', () => {
+      const state = chartStates.get(id);
+      if (!state) return;
+      canvas.style.cursor = 'default';
+      state.hovered = null;
+      chartStates.set(id, state);
+      redraw(id);
+    });
+    canvas.addEventListener('click', (e) => {
+      const state = chartStates.get(id);
+      if (!state) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      let hit = null;
+      if (state.type === 'doughnut' || state.type === 'nested-doughnut') {
+        hit = state.hitboxes.find(h => hitArc(h.x, h.y, h.r0, h.r1, h.start, h.end, x, y));
+      } else {
+        hit = state.hitboxes.find(h => x >= (h.x - 6) && x <= (h.x + (h.w || 12) + 6) && y >= (h.y || 0) && y <= ((h.y || 0) + (h.h || canvas.clientHeight)));
+      }
+      openHitTarget(hit);
+    });
+  }
+
+  function bootDashboardCharts() {
+    makeDoughnut('chartBudget', { ...(charts.budget || charts.budget_donut || {}), money: true });
+    makeBar('chartDepenses', { ...(charts.depenses || charts.depenses_bar || {}), money: true });
+    makeLine('chartSessions', charts.sessions || charts.sessions_line);
+    makeDoughnut('chartPublic', { ...(charts.public || charts.public_pie || {}), money: false });
+    makeDoughnut('chartGender', { ...(charts.gender || {}), showLegend: false });
+    makeHorizontalBars('chartAges', { ...(charts.ages || {}), showLegend: false });
+    makeNestedDoughnut('chartLocations', charts.locations || {});
+  }
+
+  function wirePointers() {
+    ['chartBudget', 'chartDepenses', 'chartSessions', 'chartPublic', 'chartGender', 'chartAges', 'chartLocations'].forEach(registerPointer);
+  }
+
+  function initDashboardCharts() {
+    bootDashboardCharts();
+    wirePointers();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDashboardCharts, { once:true });
+  } else {
+    initDashboardCharts();
+  }
+
+  document.addEventListener('pointermove', (e) => {
+    if (e.target.closest('.chart-shell')) return;
+    clearAllTooltips();
+  });
+
+  window.addEventListener('scroll', clearAllTooltips, { passive:true });
+
+  window.addEventListener('resize', () => {
+    clearAllTooltips();
+    clearTimeout(window.__dashResize);
+    window.__dashResize = setTimeout(bootDashboardCharts, 120);
+  });
+</script>
+{% endblock %}

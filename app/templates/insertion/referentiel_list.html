@@ -1,0 +1,108 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="breadcrumb">
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.index') }}">Insertion</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.referentiels_overview') }}">Référentiels</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item">{{ meta.title }}</span>
+  </div>
+
+  <div class="page-head">
+    <h1 style="margin:0;">{{ meta.title }}</h1>
+    <p class="muted" style="margin:6px 0 0 0;">{{ meta.description }}</p>
+  </div>
+
+  <div class="card">
+    <form method="get" class="filters-grid" style="grid-template-columns:2fr auto auto auto;">
+      <div>
+        <label class="muted">Recherche</label>
+        <input class="in" type="text" name="q" value="{{ q }}" placeholder="Libellé ou code">
+      </div>
+      <div style="display:flex;align-items:end;">
+        <label style="display:flex;gap:8px;align-items:center;margin:0;">
+          <input type="checkbox" name="only_active" value="1" {% if only_active %}checked{% endif %}>
+          <span>Actifs seulement</span>
+        </label>
+      </div>
+      <div style="display:flex;align-items:end;gap:8px;">
+        <button class="pill active" type="submit">Filtrer</button>
+        <a class="pill" href="{{ url_for('insertion.referentiel_list', ref_type=ref_type) }}">Réinitialiser</a>
+      </div>
+      <div style="display:flex;align-items:end;justify-content:flex-end;">
+        {% if can_manage_refs %}
+        <a class="pill active" href="{{ url_for('insertion.referentiel_new', ref_type=ref_type) }}">Ajouter</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Liste des valeurs</div>
+    {% if rows %}
+      <div class="tablewrap clean">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Ordre</th>
+              <th>Libellé</th>
+              <th>Code</th>
+              <th>Statut</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td>{{ row.sort_order }}</td>
+              <td><strong>{{ row.label }}</strong></td>
+              <td>{{ row.code or '—' }}</td>
+              <td>{{ 'Actif' if row.is_active else 'Inactif' }}</td>
+              <td style="text-align:right;white-space:nowrap;">
+                {% if can_manage_refs %}
+                <a class="pill" href="{{ url_for('insertion.referentiel_edit', ref_type=ref_type, ref_id=row.id) }}">Modifier</a>
+                <form method="post" action="{{ url_for('insertion.referentiel_delete', ref_type=ref_type, ref_id=row.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette valeur ?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="pill danger" type="submit">Supprimer</button>
+                </form>
+                {% else %}
+                <span class="muted">Lecture seule</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Valeurs du référentiel (vue compacte)">
+        {% for row in rows %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ row.label }}</strong>
+            <span class="chip">{{ row.sort_order }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>Code</dt><dd>{{ row.code or '—' }}</dd></div>
+            <div><dt>Statut</dt><dd>{{ 'Actif' if row.is_active else 'Inactif' }}</dd></div>
+          </dl>
+          <div class="inline-actions">
+            {% if can_manage_refs %}
+            <a class="pill" href="{{ url_for('insertion.referentiel_edit', ref_type=ref_type, ref_id=row.id) }}">Modifier</a>
+            <form method="post" action="{{ url_for('insertion.referentiel_delete', ref_type=ref_type, ref_id=row.id) }}" onsubmit="return confirm('Supprimer cette valeur ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="pill danger" type="submit">Supprimer</button>
+            </form>
+            {% else %}
+            <span class="muted">Lecture seule</span>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">Aucune valeur ne correspond aux filtres sélectionnés.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

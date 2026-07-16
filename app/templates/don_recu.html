@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .recu-feuille { max-width: 820px; margin: 0 auto; background: #fff; color: #111;
+                  border: 1px solid #999; border-radius: 6px; padding: 28px 34px; }
+  .recu-feuille h2 { text-align:center; margin: 0 0 4px 0; }
+  .recu-feuille .cerfa { text-align:center; font-size: 12px; margin-bottom: 18px; }
+  .recu-bloc { border:1px solid #bbb; border-radius:4px; padding:10px 14px; margin-top:12px; }
+  .recu-bloc h3 { margin:0 0 6px 0; font-size:14px; text-transform:uppercase; letter-spacing:.04em; }
+  .recu-montant { font-size:18px; font-weight:900; }
+  .recu-sign { display:flex; justify-content:space-between; margin-top:26px; gap:20px; }
+  .recu-annule { position:relative; }
+  .recu-annule::after { content:"ANNULÉ"; position:absolute; inset:0; display:flex; align-items:center;
+                        justify-content:center; font-size:80px; font-weight:900; color:rgba(220,38,38,.25);
+                        transform:rotate(-22deg); pointer-events:none; }
+  @media print {
+    .no-print, nav, header, footer { display:none !important; }
+    .recu-feuille { border:none; padding:0; }
+    body { background:#fff; }
+  }
+</style>
+
+<div class="page-shell stack">
+  <div class="page-header no-print">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Reçu fiscal n° {{ don.numero }}</h1>
+      <p class="page-subtitle">Modèle CERFA 11580 — à imprimer ou enregistrer en PDF puis remettre au donateur.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('main.dons_registre', annee=don.annee) }}">⬅ Registre</a>
+      <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <div class="recu-feuille {% if don.est_annule %}recu-annule{% endif %}">
+    <h2>REÇU AU TITRE DES DONS<br>à certains organismes d'intérêt général</h2>
+    <div class="cerfa">
+      Articles 200, 238 bis et 978 du code général des impôts (CGI) — modèle CERFA n° 11580
+      <br><strong>Numéro d'ordre du reçu : {{ don.numero }}</strong>
+    </div>
+
+    <div class="recu-bloc">
+      <h3>Bénéficiaire des versements</h3>
+      <p style="margin:0;">
+        <strong>{{ organisme_nom }}</strong><br>
+        {% if organisme_adresse %}{{ organisme_adresse }}<br>{% endif %}
+        Objet : centre social agréé CAF — animation de la vie sociale, éducation populaire.<br>
+        Œuvre ou organisme d'intérêt général (art. 200-1 b et 238 bis-1 a du CGI).
+      </p>
+    </div>
+
+    <div class="recu-bloc">
+      <h3>Donateur</h3>
+      <p style="margin:0;">
+        {{ don.donateur_civilite or '' }} <strong>{{ don.donateur_prenom or '' }} {{ don.donateur_nom }}</strong><br>
+        {% if don.donateur_adresse %}{{ don.donateur_adresse }}<br>{% endif %}
+        {% if don.donateur_cp or don.donateur_ville %}{{ don.donateur_cp or '' }} {{ don.donateur_ville or '' }}{% endif %}
+      </p>
+    </div>
+
+    <div class="recu-bloc">
+      <h3>Don</h3>
+      <p style="margin:0;">
+        Le bénéficiaire reconnaît avoir reçu au titre des dons ouvrant droit à réduction d'impôt
+        ({{ 'article 200 du CGI — particuliers' if don.type_donateur == 'particulier' else 'article 238 bis du CGI — entreprises' }}) :
+      </p>
+      <p class="recu-montant" style="margin:8px 0;">
+        {{ '%.2f'|format(don.montant) }} € — soit {{ montant_lettres }}
+      </p>
+      <p style="margin:0;">
+        Date du don : <strong>{{ don.date_don.strftime('%d/%m/%Y') }}</strong><br>
+        Forme du don : <strong>{{ formes.get(don.forme_don, don.forme_don) }}</strong>
+        {% if don.forme_don == 'nature' and don.nature_description %} — {{ don.nature_description }}{% endif %}<br>
+        Mode de versement : <strong>{{ modes.get(don.mode_versement, don.mode_versement) }}</strong>
+      </p>
+    </div>
+
+    <div class="recu-sign">
+      <div>Fait le : <strong>{{ today.strftime('%d/%m/%Y') }}</strong></div>
+      <div style="text-align:center;">Signature et cachet<br>du représentant de l'organisme<br><br><br>____________________</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

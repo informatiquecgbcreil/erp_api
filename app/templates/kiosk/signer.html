@@ -1,0 +1,120 @@
+{% extends 'kiosk/base.html' %}
+{% block header_title %}Signature de présence{% endblock %}
+{% block body %}
+{% if presence is none %}
+  <div class="k-card">
+    <h2 class="k-card__title">Lien invalide ou déjà utilisé</h2>
+    <p>Ce lien de signature n'existe pas, ou la présence a déjà été signée.
+       En cas de doute, contactez votre animateur·rice.</p>
+  </div>
+{% elif signe %}
+  <div class="k-card">
+    <h2 class="k-card__title">✅ Merci {{ participant.prenom }} !</h2>
+    <p>Votre signature a bien été enregistrée pour
+       <strong>{{ atelier.nom if atelier else 'la séance' }}</strong>
+       du {{ (session.rdv_date or session.date_session).strftime('%d/%m/%Y') if (session.rdv_date or session.date_session) else '' }}.
+       Vous pouvez fermer cette page.</p>
+  </div>
+{% else %}
+  <div class="k-card">
+    <h2 class="k-card__title">Bonjour {{ participant.prenom }} {{ participant.nom }}</h2>
+    <p>Vous confirmez votre présence à
+       <strong>{{ atelier.nom if atelier else 'la séance' }}</strong>
+       du <strong>{{ (session.rdv_date or session.date_session).strftime('%d/%m/%Y') if (session.rdv_date or session.date_session) else '' }}</strong>
+       {% if session.heure_debut %}({{ session.heure_debut }}{% if session.heure_fin %}–{{ session.heure_fin }}{% endif %}){% endif %}.
+    </p>
+  </div>
+
+  <form method="post" id="signerForm">
+    <input type="hidden" name="signature_data" id="signature_data">
+    <div class="k-card">
+      <h2 class="k-card__title">Votre signature</h2>
+      <p class="k-card__sub">Signez dans le cadre avec le doigt ou un stylet, puis validez.</p>
+      <canvas id="sig" width="700" height="200" class="k-sig-canvas"></canvas>
+      <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="k-btn k-btn--ghost" id="clearSig">↺ Recommencer</button>
+        <button type="submit" class="k-btn k-btn--primary">✔ Valider ma signature</button>
+      </div>
+    </div>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if presence is not none and not signe %}
+<script>
+(() => {
+  const canvas = document.getElementById('sig');
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let last = null;
+  let aTrace = false;
+
+  function paint(){
+    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+    aTrace = false;
+  }
+  function resize(){
+    const w = Math.round(canvas.clientWidth);
+    if(w > 0 && canvas.width !== w){ canvas.width = w; }
+    paint();
+  }
+  resize();
+  window.addEventListener('resize', () => { clearTimeout(window.__rz); window.__rz = setTimeout(resize, 200); });
+
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+    const cy = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+    return {x: (cx - r.left) * (canvas.width/r.width), y: (cy - r.top) * (canvas.height/r.height)};
+  }
+  function trace(p){
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    last = p; aTrace = true;
+  }
+
+  if(window.PointerEvent){
+    canvas.addEventListener('pointerdown', (e) => {
+      drawing = true; last = pos(e);
+      try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+      e.preventDefault();
+    });
+    canvas.addEventListener('pointermove', (e) => { if(!drawing) return; trace(pos(e)); e.preventDefault(); });
+    const stop = (e) => {
+      if(!drawing) return; drawing = false; last = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+      e.preventDefault();
+    };
+    canvas.addEventListener('pointerup', stop);
+    canvas.addEventListener('pointercancel', stop);
+    canvas.addEventListener('pointerleave', stop);
+  } else {
+    const start = (e) => { drawing = true; last = pos(e); e.preventDefault(); };
+    const move = (e) => { if(!drawing) return; trace(pos(e)); e.preventDefault(); };
+    const end = (e) => { drawing = false; last = null; if(e.cancelable) e.preventDefault(); };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, {passive:false});
+    canvas.addEventListener('touchmove', move, {passive:false});
+    canvas.addEventListener('touchend', end, {passive:false});
+  }
+
+  document.getElementById('clearSig').addEventListener('click', paint);
+  document.getElementById('signerForm').addEventListener('submit', (e) => {
+    if(!aTrace){
+      e.preventDefault();
+      alert('Signez d\\'abord dans le cadre.');
+      return;
+    }
+    document.getElementById('signature_data').value = canvas.toDataURL('image/png');
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

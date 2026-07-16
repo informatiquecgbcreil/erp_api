@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>.rights-table th,.rights-table td{text-align:center}.rights-table td:first-child,.rights-table th:first-child{text-align:left}.rights-ok{color:var(--ok);font-weight:900}.rights-no{color:var(--muted)}</style>
+<div class="stack">
+  <section class="card"><h1>Matrice des droits</h1><p class="muted">Vue lisible pour décider qui peut voir, modifier ou administrer. Les coches indiquent les permissions incluses dans chaque rôle.</p><div class="inline" style="gap:8px;"><a class="btn" href="{{ url_for('admin.droits') }}">Modifier les droits</a><a class="btn" href="{{ url_for('main.parcours_metier') }}">Parcours métiers</a></div></section>
+  {% for group in rows %}
+    <section class="card"><h2>{{ group.title }}</h2><div class="tablewrap"><table class="rights-table"><thead><tr><th>Permission</th>{% for role in roles %}<th>{{ role.label }}</th>{% endfor %}</tr></thead><tbody>
+      {% for perm in group.permissions %}<tr><td><strong>{{ perm.label }}</strong><br><span class="muted">{{ perm.code }}</span></td>{% for role in roles %}<td>{% if perm.roles[role.code] %}<span class="rights-ok">✓</span>{% else %}<span class="rights-no">—</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div></section>
+  {% endfor %}
+</div>
+{% endblock %}

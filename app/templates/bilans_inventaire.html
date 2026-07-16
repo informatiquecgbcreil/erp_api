@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+  {% if forbidden %}
+    <div class="card">
+      <h1>Bilans et pilotage · Inventaire</h1>
+      <p class="muted">Accès réservé aux rôles finance/direction/responsable de secteur.</p>
+    </div>
+  {% else %}
+    <div class="stack">
+      <div class="card">
+        <div class="inline" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div class="inline" style="gap:12px; flex-wrap:wrap; align-items:baseline;">
+              <h1 style="margin:0;">Inventaire</h1>
+              <form method="get" action="{{ url_for('bilans.inventaire') }}" class="inline" style="gap:8px;">
+                <label for="year" class="muted">Exercice</label>
+                <select id="year" name="year" onchange="this.form.submit()">
+                  {% for y in years %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                  {% endfor %}
+                </select>
+                <noscript><button class="btn" type="submit">Afficher</button></noscript>
+              </form>
+            </div>
+            <p class="muted">Vue d’ensemble du patrimoine et de la qualité de saisie de l’inventaire.</p>
+          </div>
+          <div class="inline" style="gap:8px; flex-wrap:wrap;">
+            <a class="btn" href="{{ url_for('bilans.dashboard', year=year) }}">← Tableau de bord</a>
+            <a class="btn" href="{{ url_for('bilans.qualite', year=year) }}">🧹 Qualité de gestion</a>
+          </div>
+        </div>
+      </div>
+
+      {{ ux.callout("Lecture de l’inventaire", "Ces indicateurs servent à suivre le volume du matériel, sa valeur estimée et la qualité des informations saisies. Ils n’empêchent pas l’usage de l’application, mais facilitent le suivi du patrimoine.") }}
+
+<div class="grid two">
+        <div class="card">
+          <h3>Nombre d'items</h3>
+          <h2>{{ data.nb_items }}</h2>
+          <p class="muted">Entrées inventaire (quantités incluses).</p>
+        </div>
+        <div class="card">
+          <h3>Valeur estimée</h3>
+          <h2>{{ '%.2f'|format(data.valeur) }} €</h2>
+          <p class="muted">Somme valeur_unitaire × quantité (si renseigné).</p>
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <h2>Répartition par état</h2>
+          {% if data.repartition %}
+            <div class="tablewrap">
+              <table>
+                <thead>
+                  <tr><th>État</th><th class="right">Nb</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in data.repartition %}
+                    <tr>
+                      <td>{{ r.etat }}</td>
+                      <td class="right">{{ r.nb }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="muted">Aucune donnée n'est disponible pour cette sélection.</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h2>Qualité inventaire</h2>
+          <ul>
+            <li>Sans localisation : <strong>{{ data.qualite.sans_localisation }}</strong></li>
+            <li>Sans n° de série : <strong>{{ data.qualite.sans_serie }}</strong></li>
+          </ul>
+          <p class="muted">Indicateurs de qualité non bloquants pour identifier les champs à compléter en priorité.</p>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

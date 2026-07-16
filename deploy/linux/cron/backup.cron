@@ -1,0 +1,2 @@
+# Sauvegarde quotidienne à 02:30
+30 2 * * * cd /opt/app-gestion && /opt/app-gestion/.venv/bin/python tools/backup_instance.py >> /var/log/app-gestion-backup.log 2>&1

@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="page-shell long-form-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Créer un projet</h1>
+      <p class="page-subtitle">Renseignez d’abord les informations générales du projet. Vous pourrez ensuite y rattacher les subventions, les activités et le compte-rendu.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('projets.projets_list') }}">Retour aux projets</a>
+    </div>
+  </div>
+
+  <div class="form-grid-2">
+    <div class="section-card">
+      {{ ux.callout('À renseigner', 'Choisissez un nom explicite et une description courte mais précise. Ces informations seront reprises dans les listes et les vues de pilotage.') }}
+      <form method="POST" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid-2">
+          <div class="field-stack grow-2">
+            <label>Nom du projet</label>
+            <input class="in" name="nom" required>
+          </div>
+
+          {% if not can('scope:all_secteurs') %}
+            <div class="field-stack">
+              <label>Secteur</label>
+              <input class="in" value="{{ current_user.secteur_assigne }}" disabled>
+              <input type="hidden" name="secteur" value="{{ current_user.secteur_assigne }}">
+            </div>
+          {% else %}
+            <div class="field-stack">
+              <label>Secteur</label>
+              <select class="in" name="secteur" required>
+                <option value="">Choisir un secteur</option>
+{% for sec in secteurs %}
+                <option value="{{ sec }}">{{ sec }}</option>
+              {% endfor %}
+              </select>
+            </div>
+          {% endif %}
+
+          <div class="field-stack grow-2">
+            <label>Description</label>
+            <textarea class="in" name="description" rows="6" placeholder="Objectifs, public concerné, actions prévues, partenaires…"></textarea>
+          </div>
+        </div>
+
+        <div class="section-card compact">
+          <div class="hero-actions">
+            <button class="btn ok" type="submit">Créer le projet</button>
+            <a class="btn" href="{{ url_for('projets.projets_list') }}">Annuler</a>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="section-card compact">
+      <h2 class="section-title">Bonnes pratiques</h2>
+      <p class="muted">
+        Un projet bien nommé, correctement rattaché à son secteur et décrit de manière concise sera plus simple à retrouver dans les suivis financiers, les bilans et les exports.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

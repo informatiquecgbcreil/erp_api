@@ -1,0 +1,304 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card">
+  <div class="page-head">
+    <div>
+      <h1>{{ budget.nom }}</h1>
+      <p class="muted">{{ budget.secteur }} · {{ budget.annee }} · {{ budget.statut }}</p>
+    </div>
+    <div class="inline">
+      <a class="btn" href="{{ url_for('previsionnel.index') }}">Retour</a>
+      <a class="btn ok" href="{{ url_for('previsionnel.export_budget', budget_id=budget.id) }}">Exporter XLSX</a>
+      <a class="btn" href="{{ url_for('previsionnel.export_realise', budget_id=budget.id) }}">Exporter réalisé</a>
+      {% if can_edit_budget %}
+      <form method="post" action="{{ url_for('previsionnel.duplicate', budget_id=budget.id) }}" class="inline" style="gap:6px;"
+            onsubmit="return confirm('Reconduire ce budget vers l\'année indiquée ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input class="in" type="number" name="annee_cible" value="{{ (budget.annee or 0) + 1 }}" style="width:100px;" title="Année cible">
+        <button class="btn" type="submit">🔁 Reconduire</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if budget.statut == 'archive' %}
+    <div class="callout-soft" style="border-color: color-mix(in srgb, var(--warn) 55%, var(--border));">
+      Ce budget est <strong>archivé</strong> : verrouillé en écriture. Repassez le statut en « brouillon » ou « valide » pour le modifier.
+    </div>
+  {% endif %}
+</div>
+
+<div class="grid cards-3">
+  <div class="card"><div class="muted">Charges prévisionnelles</div><h2>{{ '%.2f'|format(budget.total_charges) }} €</h2></div>
+  <div class="card"><div class="muted">Produits prévisionnels</div><h2>{{ '%.2f'|format(budget.total_produits) }} €</h2></div>
+  <div class="card"><div class="muted">Solde produits - charges</div><h2>{{ '%.2f'|format(budget.solde) }} €</h2></div>
+</div>
+
+<div class="card">
+  <div class="inline" style="gap:8px; flex-wrap:wrap;">
+    <a class="btn {% if tab == 'synthese' %}ok{% endif %}" href="{{ url_for('previsionnel.detail', budget_id=budget.id, tab='synthese') }}">Synthèse</a>
+    <a class="btn {% if tab == 'charges' %}ok{% endif %}" href="{{ url_for('previsionnel.detail', budget_id=budget.id, tab='charges') }}">Charges</a>
+    <a class="btn {% if tab == 'produits' %}ok{% endif %}" href="{{ url_for('previsionnel.detail', budget_id=budget.id, tab='produits') }}">Produits</a>
+    <a class="btn {% if tab == 'ventilation' %}ok{% endif %}" href="{{ url_for('previsionnel.detail', budget_id=budget.id, tab='ventilation') }}">Répartition par projet</a>
+    <a class="btn {% if tab == 'realise' %}ok{% endif %}" href="{{ url_for('previsionnel.detail', budget_id=budget.id, tab='realise') }}">Prévu vs réalisé</a>
+    <a class="btn {% if tab == 'appels' %}ok{% endif %}" href="{{ url_for('previsionnel.detail', budget_id=budget.id, tab='appels') }}">Appels à projet</a>
+    <a class="btn" href="{{ url_for('previsionnel.referentiel') }}">Référentiel</a>
+  </div>
+</div>
+
+{% if tab == 'synthese' %}
+  {% if can_edit_budget %}
+  <div class="card">
+    <h2>Paramètres</h2>
+    <form method="post" class="form-grid-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="update_budget">
+      <label class="field-stack">Nom<input class="in" name="nom" value="{{ budget.nom }}"></label>
+      <label class="field-stack">Statut
+        <select class="in" name="statut">
+          {% for st in ['brouillon','valide','archive'] %}<option value="{{ st }}" {% if budget.statut == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Notes<input class="in" name="notes" value="{{ budget.notes or '' }}"></label>
+      <div class="form-actions"><button class="btn ok" type="submit">Enregistrer</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Lignes du budget global</h2>
+    <div class="tablewrap clean">
+      <table class="table">
+        <thead><tr><th>Nature</th><th>Compte</th><th>Libellé</th><th>Projet</th><th>Montant</th><th>Utilisé appels</th><th>Reste dispo</th></tr></thead>
+        <tbody>
+          {% for l in lines %}
+          {% set usage = line_usage_rows.get(l.id, {}) %}
+          <tr>
+            <td>{{ 'Produit' if l.nature == 'produit' else 'Charge' }}</td>
+            <td>{{ l.compte }}</td>
+            <td><strong>{{ l.libelle }}</strong></td>
+            <td>{{ l.projet.nom if l.projet else 'Transversal / non affecté' }}</td>
+            <td>{{ '%.2f'|format(l.montant or 0) }} €</td>
+            <td>{{ '%.2f'|format(usage.get('used', 0)) }} €</td>
+            <td><strong>{{ '%.2f'|format(usage.get('remaining', l.montant or 0)) }} €</strong></td>
+          </tr>
+          {% else %}<tr><td colspan="7" class="muted">Aucune ligne pour le moment.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+{% if tab in ['charges', 'produits'] %}
+  {% set wanted_nature = 'charge' if tab == 'charges' else 'produit' %}
+  {% set section_title = 'Charges prévisionnelles' if tab == 'charges' else 'Produits prévisionnels' %}
+  {% set display_lines = charge_lines if wanted_nature == 'charge' else produit_lines %}
+
+  {% if can_edit_budget %}
+  <div class="card">
+    <h2>Ajouter une ligne — {{ section_title }}</h2>
+    <form method="post" class="form-grid-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add_line">
+      <input type="hidden" name="nature" value="{{ wanted_nature }}">
+      <label class="field-stack">Ligne type du référentiel
+        <select class="in" name="categorie_ref_id" data-budget-category-select>
+          <option value="">Saisie libre</option>
+          {% for c in categories_ref if c.nature == wanted_nature %}
+            <option value="{{ c.id }}" data-compte="{{ c.compte.code }} - {{ c.compte.libelle }}" data-libelle="{{ c.libelle }}" data-montant="{{ c.montant_defaut or 0 }}">{{ c.compte.code }} - {{ c.compte.libelle }} > {{ c.libelle }}</option>
+          {% endfor %}
+        </select>
+        <span class="muted">Tu peux choisir une ligne type puis ajuster le montant/projet.</span>
+      </label>
+      <label class="field-stack">Compte<input class="in" name="compte" data-budget-compte-input placeholder="{{ '60 / 61 / 64' if wanted_nature == 'charge' else '74 / 75 / 79' }}"></label>
+      <label class="field-stack">Projet
+        <select class="in" name="projet_id"><option value="">Transversal / non affecté</option>{% for p in projects %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}</select>
+      </label>
+      <label class="field-stack">Libellé<input class="in" name="libelle" data-budget-libelle-input required placeholder="{{ 'Salaires chargés, fournitures...' if wanted_nature == 'charge' else 'CAF, QPV, FONJEP...' }}"></label>
+      <label class="field-stack">Montant<input class="in" type="number" step="0.01" name="montant" data-budget-montant-input required></label>
+      <label class="field-stack">Commentaire<input class="in" name="commentaire"></label>
+      <div class="form-actions"><button class="btn ok" type="submit">Ajouter</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>{{ section_title }}</h2>
+    <div class="tablewrap clean">
+      <table class="table">
+        <thead><tr><th>Compte</th><th>Libellé</th><th>Projet</th><th>Montant</th><th>Commentaire</th><th>Subvention</th><th></th></tr></thead>
+        <tbody>
+          {% for l in display_lines %}
+          <tr>
+            <td>{{ l.compte }}</td>
+            <td><strong>{{ l.libelle }}</strong></td>
+            <td>{{ l.projet.nom if l.projet else 'Transversal / non affecté' }}</td>
+            <td>{{ '%.2f'|format(l.montant or 0) }} €</td>
+            <td>{{ l.commentaire or '' }}</td>
+            <td>
+              {% if wanted_nature == 'produit' and l.subvention_id %}
+                <a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=l.subvention_id) }}">Voir subvention</a>
+              {% elif wanted_nature == 'produit' and can_edit_budget %}
+                <form method="post" class="inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="create_subvention_from_line">
+                  <input type="hidden" name="line_id" value="{{ l.id }}">
+                  <input type="hidden" name="subvention_nom" value="{{ l.libelle }}">
+                  <input type="hidden" name="montant_demande" value="{{ l.montant or 0 }}">
+                  <button class="btn ok" type="submit">Créer subvention</button>
+                </form>
+              {% endif %}
+            </td>
+            <td>{% if can_edit_budget %}<form method="post" onsubmit="return confirm('Supprimer cette ligne ?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete_line"><input type="hidden" name="line_id" value="{{ l.id }}"><button class="btn danger" type="submit">Supprimer</button></form>{% endif %}</td>
+          </tr>
+          {% else %}<tr><td colspan="7" class="muted">Aucune ligne pour le moment.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+{% if tab == 'ventilation' %}
+<div class="card">
+  <h2>Décomposition par projet</h2>
+  <div class="tablewrap clean">
+    <table class="table"><thead><tr><th>Projet</th><th>Charges</th><th>Produits</th><th>Solde</th></tr></thead><tbody>
+      {% for r in project_rows %}<tr><td>{{ r.label }}</td><td>{{ '%.2f'|format(r.charges) }} €</td><td>{{ '%.2f'|format(r.produits) }} €</td><td><strong>{{ '%.2f'|format(r.solde) }} €</strong></td></tr>{% else %}<tr><td colspan="4" class="muted">Aucune répartition par projet pour le moment.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+{% endif %}
+
+{% if tab == 'appels' %}
+  {% if can_edit_budget and lines %}
+  <div class="card">
+    <h2>Étape 1 — Préparer une demande de financement</h2>
+    <div class="quick-info" style="margin-bottom:12px;">
+      Ici, tu construis un <strong>dossier financeur</strong> à partir du budget prévisionnel global.
+      Ce n’est pas encore une subvention réelle : c’est la demande que tu prépares ou que tu envoies.
+      Une fois le dossier créé, ouvre-le pour saisir la réponse du financeur : montant accordé, montant reçu, refus ou accord partiel.
+    </div>
+    <p class="muted">Coche les lignes à inclure. Les montants déjà retenus dans d'autres dossiers financeurs sont déduits du reste disponible.</p>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="create_appel">
+      <div class="form-grid-3">
+        <label class="field-stack">Nom du dossier financeur<input class="in" name="appel_nom" placeholder="Dossier CAF - Numérique Par Tous"></label>
+        <label class="field-stack">Projet cible<select class="in" name="appel_projet_id"><option value="">Non précisé</option>{% for p in projects %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}</select></label>
+        <label class="field-stack">Subvention réelle existante <span class="muted">(optionnel)</span><select class="in" name="subvention_id"><option value="">Aucune — demande non encore accordée</option>{% for s in subventions %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></label>
+        <label class="field-stack">Financeur visé<input class="in" name="financeur" placeholder="CAF, QPV, FONJEP, FEDER..."></label>
+        <label class="field-stack">Filtrer par modèle
+          <select class="in" data-appel-modele-select>
+            <option value="">Tous les modèles / toutes les lignes</option>
+            {% for m in modeles_payload %}
+              <option value="{{ m.id }}" data-categories="{{ m.categorie_ids|join(',') }}">{{ m.nom }}</option>
+            {% endfor %}
+          </select>
+          <span class="muted">Filtre les lignes du tableau selon les catégories du modèle.</span>
+        </label>
+        <div class="field-stack">
+          <span>Actions rapides</span>
+          <button class="btn" type="button" data-appel-check-visible>Cocher les lignes visibles</button>
+          <button class="btn" type="button" data-appel-show-all>Tout afficher</button>
+        </div>
+      </div>
+      <div class="tablewrap clean">
+        <table class="table"><thead><tr><th>Inclure</th><th>Nature</th><th>Compte</th><th>Libellé</th><th>Projet source</th><th>Source</th><th>Déjà retenu</th><th>Reste dispo</th><th>%</th><th>Montant retenu</th></tr></thead><tbody>
+          {% for l in lines %}
+          {% set usage = line_usage_rows.get(l.id, {}) %}
+          {% set remaining = usage.get('remaining', l.montant or 0) %}
+          <tr data-appel-line-row data-category-id="{{ line_category_ids.get(l.id, '') }}">
+            <td><input type="checkbox" name="include_line" value="{{ l.id }}" {% if remaining <= 0 %}disabled{% endif %}></td>
+            <td>{{ l.nature }}</td>
+            <td>{{ l.compte }}</td>
+            <td><strong>{{ l.libelle }}</strong>{% if usage.get('appels') %}<br><span class="muted">Déjà dans : {{ usage.get('appels') }}</span>{% endif %}</td>
+            <td>{{ l.projet.nom if l.projet else 'Transversal' }}</td>
+            <td>{{ '%.2f'|format(l.montant or 0) }} €</td>
+            <td>{{ '%.2f'|format(usage.get('used', 0)) }} €</td>
+            <td><strong>{{ '%.2f'|format(remaining) }} €</strong></td>
+            <td><input class="in" style="max-width:90px" type="number" step="0.01" min="0" max="100" name="pct_{{ l.id }}" value="{% if remaining < (l.montant or 0) and (l.montant or 0) > 0 %}{{ '%.2f'|format((remaining / (l.montant or 1)) * 100) }}{% else %}100{% endif %}" {% if remaining <= 0 %}disabled{% endif %}></td>
+            <td><input class="in" style="max-width:140px" type="number" step="0.01" min="0" max="{{ remaining }}" name="montant_{{ l.id }}" placeholder="{{ '%.2f'|format(remaining) }}" {% if remaining <= 0 %}disabled{% endif %}></td>
+          </tr>
+          {% endfor %}
+        </tbody></table>
+      </div>
+      <button class="btn ok" type="submit">Créer le dossier de demande</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Dossiers financeurs / demandes créées</h2>
+    <p class="muted">Ouvre un dossier pour saisir la réponse réelle du financeur et créer ou mettre à jour la subvention utilisable.</p>
+    <div class="tablewrap clean"><table class="table"><thead><tr><th>Nom</th><th>Projet</th><th>Financeur</th><th>Charges</th><th>Produits</th><th>Solde</th><th></th></tr></thead><tbody>
+      {% for a in appels %}<tr><td><strong>{{ a.nom }}</strong></td><td>{{ a.projet.nom if a.projet else '' }}</td><td>{{ a.financeur or '' }}</td><td>{{ '%.2f'|format(a.total_charges) }} €</td><td>{{ '%.2f'|format(a.total_produits) }} €</td><td>{{ '%.2f'|format(a.solde) }} €</td><td><a class="btn" href="{{ url_for('previsionnel.appel_detail', appel_id=a.id) }}">Ouvrir</a></td></tr>{% else %}<tr><td colspan="7" class="muted">Aucun dossier financeur créé.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+{% endif %}
+
+<script>
+(function(){
+  function applyBudgetCategory(select){
+    const opt = select.options[select.selectedIndex];
+    const form = select.closest('form');
+    if(!form || !opt || !opt.value){ return; }
+    const compte = form.querySelector('[data-budget-compte-input]');
+    const libelle = form.querySelector('[data-budget-libelle-input]');
+    const montant = form.querySelector('[data-budget-montant-input]');
+    if(compte){ compte.value = opt.dataset.compte || compte.value || ''; }
+    if(libelle){ libelle.value = opt.dataset.libelle || libelle.value || ''; }
+    if(montant && (!montant.value || montant.value === '0')){
+      const v = opt.dataset.montant || '';
+      if(v && Number(v) !== 0){ montant.value = v; }
+    }
+  }
+  document.querySelectorAll('[data-budget-category-select]').forEach(function(sel){
+    sel.addEventListener('change', function(){ applyBudgetCategory(sel); });
+  });
+  function selectedModeleCategories(){
+    const select = document.querySelector('[data-appel-modele-select]');
+    if(!select){ return null; }
+    const opt = select.options[select.selectedIndex];
+    const raw = opt ? (opt.dataset.categories || '') : '';
+    if(!raw){ return null; }
+    return new Set(raw.split(',').map(function(x){ return x.trim(); }).filter(Boolean));
+  }
+
+  function applyAppelModeleFilter(){
+    const cats = selectedModeleCategories();
+    document.querySelectorAll('[data-appel-line-row]').forEach(function(row){
+      if(!cats){
+        row.style.display = '';
+        return;
+      }
+      const catId = (row.dataset.categoryId || '').trim();
+      row.style.display = (catId && cats.has(catId)) ? '' : 'none';
+    });
+  }
+
+  const modeleSelect = document.querySelector('[data-appel-modele-select]');
+  if(modeleSelect){
+    modeleSelect.addEventListener('change', applyAppelModeleFilter);
+  }
+
+  const checkVisible = document.querySelector('[data-appel-check-visible]');
+  if(checkVisible){
+    checkVisible.addEventListener('click', function(){
+      document.querySelectorAll('[data-appel-line-row]').forEach(function(row){
+        if(row.style.display === 'none'){ return; }
+        const cb = row.querySelector('input[name="include_line"]');
+        if(cb && !cb.disabled){ cb.checked = true; }
+      });
+    });
+  }
+
+  const showAll = document.querySelector('[data-appel-show-all]');
+  if(showAll){
+    showAll.addEventListener('click', function(){
+      if(modeleSelect){ modeleSelect.value = ''; }
+      applyAppelModeleFilter();
+    });
+  }
+})();
+</script>
+
+{% endblock %}

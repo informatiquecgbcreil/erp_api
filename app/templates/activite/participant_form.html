@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>Éditer participant — {{ secteur }}</h1>
+    <p class="muted">Modification des informations du participant. Pour supprimer les identifiants tout en conservant les statistiques, utilisez plutôt <strong>Anonymiser</strong>.</p>
+  </div>
+
+  <form class="form-card reading-width" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-grid-2">
+      <div>
+        <label>Nom</label>
+        <input class="in" name="nom" value="{{ p.nom }}" required>
+      </div>
+      <div>
+        <label>Prénom</label>
+        <input class="in" name="prenom" value="{{ p.prenom }}" required>
+      </div>
+
+      <div>
+        <label>Adresse</label>
+        <input class="in" name="adresse" value="{{ p.adresse or '' }}">
+      </div>
+      <div>
+        <label>Ville</label>
+        <input class="in" name="ville" value="{{ p.ville or '' }}" data-ville-input>
+      </div>
+
+      <div>
+        <label>Email</label>
+        <input class="in" type="email" name="email" value="{{ p.email or '' }}">
+      </div>
+      <div>
+        <label>Téléphone</label>
+        <input class="in" name="telephone" value="{{ p.telephone or '' }}">
+      </div>
+
+      <div>
+        <label>Genre</label>
+        <input class="in" name="genre" value="{{ p.genre or '' }}" placeholder="F / H / ...">
+      </div>
+      <div>
+        <label>Date de naissance</label>
+        <input class="in" type="date" name="date_naissance" value="{{ p.date_naissance.isoformat() if p.date_naissance else '' }}">
+      </div>
+
+      <div>
+        <label>Type de public</label>
+        <select class="in" name="type_public">
+          {% for code in ['H','S','B','A','P'] %}
+            <option value="{{ code }}" {% if p.type_public == code %}selected{% endif %}>{{ code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Quartier</label>
+        <select class="in" name="quartier_id" data-quartier-select>
+          <option value="">—</option>
+          {% for q in quartiers %}
+            <option value="{{ q.id }}" data-ville="{{ q.ville }}" {% if p.quartier_id == q.id %}selected{% endif %}>{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn ok" type="submit">💾 Enregistrer</button>
+      <a class="btn" href="{{ url_for('activite.participants') }}">↩️ Retour</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

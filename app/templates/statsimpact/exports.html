@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="page-shell dense-list-shell stack">
+<style>.atelier-multi-panel{margin-top:6px; border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,.04); padding:10px 12px;} .atelier-multi-panel summary{cursor:pointer; font-weight:700; list-style:none;} .atelier-multi-panel summary::-webkit-details-marker{display:none;} .atelier-multi-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;} .atelier-checkbox-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-top:10px; max-height:260px; overflow:auto; padding-right:4px;} .atelier-check{display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,.03);} .atelier-check input{margin-top:3px;} .atelier-check span{display:flex; flex-direction:column; gap:2px;} .atelier-check small{opacity:.75;}</style>
+  <div class="hero-card">
+    <div class="page-header" style="margin-bottom:0;">
+      <div class="page-title-wrap"><h1 class="page-title">Pilotage de l’activité</h1><p class="page-subtitle">Préparez ici vos exports à partir du contexte déjà filtré.</p></div>
+      <div class="hero-actions"><a class="btn" href="{{ url_for('statsimpact.dashboard') }}?{{ request.query_string.decode('utf-8') }}">Ouvrir le tableau de bord complet</a><a class="btn" href="{{ url_for('statsimpact.qualite_donnees') }}?{{ request.query_string.decode('utf-8') }}">Qualité des données</a></div>
+    </div>
+    <form method="get" class="filters-grid stretch-input" style="margin-top:14px;">
+      {% if secteurs and secteurs|length > 0 %}<div class="field-stack"><label>Secteur</label><select name="secteur"><option value="">Tous</option>{% for s in secteurs %}<option value="{{ s }}" {% if flt.secteur==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>{% endif %}
+      <div class="field-stack" style="grid-column:1 / -1;"><label>Ateliers</label><div class="help-inline">Coche un ou plusieurs ateliers pour limiter tous les exports à cette sélection.</div><details class="atelier-multi-panel" {% if flt.atelier_ids %}open{% endif %}><summary>{% if flt.atelier_ids %}{{ flt.atelier_ids|length }} atelier{% if flt.atelier_ids|length > 1 %}s{% endif %} sélectionné{% if flt.atelier_ids|length > 1 %}s{% endif %}{% else %}Tous les ateliers{% endif %}</summary><div class="atelier-multi-actions"><button class="btn" type="button" data-atelier-check="all">Tout cocher</button><button class="btn" type="button" data-atelier-check="none">Tout décocher</button></div><div class="atelier-checkbox-grid">{% for a in ateliers %}<label class="atelier-check"><input type="checkbox" name="atelier_ids" value="{{ a.id }}" {% if a.id in (flt.atelier_ids or []) %}checked{% endif %}><span><strong>{{ a.nom }}</strong><small>{{ a.secteur }}</small></span></label>{% endfor %}</div></details></div>
+      <div class="field-stack"><label>Du</label>{% set date_from_value = flt.date_from.isoformat() if flt.date_from else "" %}<input type="date" name="date_from" value="{{ date_from_value }}"><div class="help-inline">Laissez vide pour utiliser l’année en cours</div></div>
+      <div class="field-stack"><label>Au</label>{% set date_to_value = flt.date_to.isoformat() if flt.date_to else "" %}<input type="date" name="date_to" value="{{ date_to_value }}"><div class="help-inline">Laissez vide pour utiliser l’année en cours</div></div>
+      <div class="field-stack"><button class="btn ok" type="submit">Appliquer</button></div>
+    </form>
+    <div class="context-strip"><span class="context-pill">Période : {{ flt.date_from }} → {{ flt.date_to }}</span><span class="context-pill">Secteur : {{ flt.secteur or "Tous" }}</span><span class="context-pill">Ateliers : {% if flt.atelier_ids %}{{ flt.atelier_ids|length }} sélectionné{% if flt.atelier_ids|length > 1 %}s{% endif %}{% else %}Tous{% endif %}</span></div>
+  </div>
+  {{ ux.callout("Choix de l’export", "Utilisez le CSV pour retraiter les données ligne par ligne. Utilisez le fichier XLSX si vous souhaitez une synthèse exploitable immédiatement dans un tableur.") }}
+
+  <div class="section-card compact">
+    <h2 class="section-title">Éco-conso individuelle sur le périmètre</h2>
+    <div class="screen-grid-kpis stats-kpis">
+      <div class="screen-kpi"><div class="screen-kpi__label">kWh individuels</div><div class="screen-kpi__value">{{ '%.3f'|format(individual_consumption_stats.total_kwh or 0) }}</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">CO₂ kg</div><div class="screen-kpi__value">{{ '%.3f'|format(individual_consumption_stats.total_co2 or 0) }}</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Présences équipées</div><div class="screen-kpi__value">{{ individual_consumption_stats.presences_count or 0 }}</div></div>
+      <div class="screen-kpi"><div class="screen-kpi__label">Habitants concernés</div><div class="screen-kpi__value">{{ individual_consumption_stats.participants_count or 0 }}</div></div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h2 class="section-title">Exports rapides</h2>
+    <ul class="muted" style="margin:0 0 14px; padding-left:18px;"><li><strong>CSV défaut</strong> : 1 ligne = 1 présence (participant × session).</li><li><strong>XLSX Magatomatique</strong> : synthèse + (optionnel) matrice.</li><li><strong>XLSX annuel</strong> : 1 feuille par atelier avec matrice participants × sessions.</li></ul>
+    <div class="inline-actions"><a class="btn ok" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ request.query_string.decode('utf-8') }}">Exporter XLSX (Magatomatique)</a><a class="btn" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ request.query_string.decode('utf-8') }}&export_mode=per_atelier">XLSX annuel</a><a class="btn" href="{{ url_for('statsimpact.magatomatique_export_csv') }}?{{ request.query_string.decode('utf-8') }}">Exporter CSV</a></div>
+  </div>
+  <div class="section-card compact">
+    <div class="table-toolbar"><h2 class="section-title" style="margin:0">CSV sur mesure</h2><div class="inline-actions"><button class="btn" type="button" data-csv-select="all">Tout sélectionner</button><button class="btn" type="button" data-csv-select="none">Tout désélectionner</button></div></div>
+    <p class="muted">Chaque ligne du CSV correspond à une présence. Pour obtenir une matrice par atelier et par séance, utilisez plutôt l’export XLSX annuel.</p>
+    <form method="get" action="{{ url_for('statsimpact.magatomatique_export_csv') }}" class="stack" style="margin-top:10px;">
+      {% if flt.secteur %}<input type="hidden" name="secteur" value="{{ flt.secteur }}">{% endif %}
+      {% for atelier_id in flt.atelier_ids or [] %}<input type="hidden" name="atelier_ids" value="{{ atelier_id }}">{% endfor %}
+      <input type="hidden" name="date_from" value="{{ flt.date_from or '' }}"><input type="hidden" name="date_to" value="{{ flt.date_to or '' }}">
+      {% for group in csv_field_groups or [] %}
+      <div class="soft-panel"><div class="table-toolbar"><strong>{{ group.label }}</strong></div><div class="choice-pills">{% for field in group.fields %}<label><input type="checkbox" name="fields" value="{{ field.key }}" {% if field.key in csv_default_fields %}checked{% endif %}>{{ field.label }}</label>{% endfor %}</div></div>
+      {% endfor %}
+      <div class="inline-actions"><button class="btn ok" type="submit">Exporter CSV sur mesure</button></div>
+    </form>
+  </div>
+  <div class="soft-panel"><strong>Aide</strong><div class="muted" style="margin-top:6px;">Choisissez l’export XLSX annuel pour obtenir une feuille par atelier avec les sessions en colonnes. Choisissez le CSV pour retraiter ensuite les données dans un autre outil.</div></div>
+</div>
+<script>(function(){document.querySelectorAll('[data-csv-select]').forEach(btn=>btn.addEventListener('click',()=>{const mode=btn.getAttribute('data-csv-select');document.querySelectorAll('[name="fields"]').forEach(cb=>cb.checked=(mode==='all'));}));document.querySelectorAll('[data-atelier-check]').forEach(btn=>btn.addEventListener('click',()=>{const mode=btn.getAttribute('data-atelier-check');document.querySelectorAll('[name="atelier_ids"]').forEach(cb=>cb.checked=(mode==='all'));}));})();</script>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .director-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+  .director-kpi{border:1px solid var(--border-soft);border-radius:16px;padding:14px;background:var(--surface)}
+  .director-kpi__label{color:var(--muted);font-size:.86rem;font-weight:800}
+  .director-kpi__value{font-size:1.65rem;font-weight:950;margin-top:4px}
+  .director-kpi__help{color:var(--muted);font-size:.86rem;margin-top:4px}
+  .director-columns{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+  .tone-danger{border-left:4px solid var(--danger)}.tone-warn{border-left:4px solid var(--warn)}.tone-ok{border-left:4px solid var(--ok)}.tone-info{border-left:4px solid var(--accent)}
+  @media(max-width:900px){.director-columns{grid-template-columns:1fr}.director-toolbar .btn,.director-toolbar select{width:100%}}
+  @media print{.no-print,.topbar,.aide-page{display:none!important}.container{max-width:none;padding:0}.card,.director-kpi{break-inside:avoid}}
+</style>
+<div class="stack">
+  <section class="card">
+    <div class="inline" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div>
+        <h1>Tableau de bord direction</h1>
+        <p class="muted">Vue annuelle de pilotage centre social : activité, publics, budget, alertes, bénévolat et sorties prêtes à partager.</p>
+      </div>
+      <div class="inline no-print director-toolbar" style="gap:8px;align-items:center;">
+        <form method="get" class="inline" style="gap:8px;">
+          <input class="in" type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:110px;">
+          {% if secteurs|length > 1 %}
+            <select class="in" name="secteur">
+              <option value="">Tous secteurs</option>
+              {% for s in secteurs %}<option value="{{ s }}" {% if s == selected_secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+          {% endif %}
+          <button class="btn" type="submit">Actualiser</button>
+        </form>
+        <a class="btn ok" href="{{ url_for('main.comite_pilotage', **print_args) }}">Vue comité / CA</a>
+        <button class="btn" onclick="window.print()" type="button">Imprimer</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="director-grid">
+    {% for kpi in kpis %}
+      <article class="director-kpi">
+        <div class="director-kpi__label">{{ kpi.label }}</div>
+        <div class="director-kpi__value">{{ kpi.value }}</div>
+        <div class="director-kpi__help">{{ kpi.help }}</div>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="director-columns">
+    <div class="card">
+      <h2>Points de vigilance</h2>
+      <div class="stack">
+        {% for alert in alert_cards %}
+          <a class="card tone-{{ alert.tone }}" href="{{ alert.url or '#' }}" style="padding:12px;text-decoration:none;">
+            <strong>{{ alert.label }}</strong><br><span class="muted">{{ alert.value }} élément(s)</span>
+          </a>
+        {% else %}
+          <p class="muted">Aucune alerte calculable sur votre périmètre.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Ratios faciles à commenter</h2>
+      <div class="stack">
+        {% for ratio in ratios %}
+          <div class="director-kpi"><div class="director-kpi__label">{{ ratio.label }}</div><div class="director-kpi__value">{{ ratio.value }}</div><div class="director-kpi__help">{{ ratio.help }}</div></div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Raccourcis de pilotage</h2>
+    <div class="inline" style="gap:8px;flex-wrap:wrap;">
+      {% for link in quick_links %}<a class="btn" href="{{ link.url }}">{{ link.label }}</a>{% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

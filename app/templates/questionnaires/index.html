@@ -1,0 +1,176 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+<div class="page-shell dense-list-shell stack">
+  {% set search_term = q %}
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Questionnaires d’impact</h1>
+      <p class="page-subtitle">Crée, filtre et gère les questionnaires associés aux ateliers et secteurs.</p>
+    </div>
+    {% if can('questionnaires:edit') %}
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('questionnaires.create') }}">➕ Nouveau questionnaire</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="filters-panel">
+    <form method="get" class="filters-grid" data-filter-summary="true">
+      <div class="field-stack grow-2">
+        <label>Recherche</label>
+        <input class="in" name="q" placeholder="Rechercher par nom" value="{{ q }}">
+      </div>
+      <div class="hero-actions">
+        <button class="btn" type="submit">Filtrer</button>
+        {% if q %}
+          <a class="btn" href="{{ url_for('questionnaires.index') }}">Réinitialiser</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="section-card compact">
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Questionnaire</th>
+            <th>Statut</th>
+            <th>Secteurs</th>
+            <th>Ateliers</th>
+            <th style="width:240px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in questionnaires %}
+            <tr>
+              <td>
+                <strong>{{ q.nom }}</strong>
+                <span class="tag">{{ q.type_label }}</span>
+                {% if q.projet %}<span class="muted" style="font-size:11px;">· {{ q.projet.nom }}</span>{% endif %}
+                <div class="muted" style="font-size:12px;">{{ q.description or "—" }}</div>
+              </td>
+              <td>{% if q.is_active %}<span class="tag">Actif</span>{% else %}—{% endif %}</td>
+              <td class="muted">
+                {% if q.secteurs %}
+                  {{ q.secteurs | map(attribute='secteur') | join(', ') }}
+                {% else %}
+                  Tous
+                {% endif %}
+              </td>
+              <td class="muted">
+                {% if q.ateliers %}
+                  {% set names = [] %}
+                  {% for link in q.ateliers %}
+                    {% if ateliers_map.get(link.atelier_id) %}
+                      {% set _ = names.append(ateliers_map.get(link.atelier_id)) %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ names | join(', ') }}
+                {% else %}
+                  Tous
+                {% endif %}
+              </td>
+              <td>
+                <div class="inline-actions">
+                  <a class="btn" href="{{ url_for('questionnaires.statistiques', questionnaire_id=q.id) }}">📊 Dépouiller</a>
+                  {% if can('questionnaires:edit') %}
+                    <a class="btn" href="{{ url_for('questionnaires.edit', questionnaire_id=q.id) }}">✏️ Éditer</a>
+                    <form method="post" action="{{ url_for('questionnaires.duplicate', questionnaire_id=q.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn" type="submit">📋 Dupliquer</button>
+                    </form>
+                  {% endif %}
+                  {% if can('questionnaires:export') %}
+                    <a class="btn" href="{{ url_for('questionnaires.export_csv', questionnaire_id=q.id) }}">⬇️ CSV</a>
+                    <a class="btn" href="{{ url_for('questionnaires.export_xlsx', questionnaire_id=q.id) }}">⬇️ Excel</a>
+                  {% endif %}
+                  {% if can('questionnaires:delete') %}
+                    <form method="post" action="{{ url_for('questionnaires.delete', questionnaire_id=q.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce questionnaire ?');">🗑️ Supprimer</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if questionnaires|length == 0 %}
+            <tr><td colspan="5">{{ ui.empty_state(
+              "Aucun questionnaire ne correspond à la recherche" if search_term else "Aucun questionnaire créé",
+              "Retirez la recherche pour revoir tous les questionnaires." if search_term else "Créez un questionnaire pour recueillir les retours des participants et mesurer l’impact d’une action.",
+              url_for('questionnaires.index') if search_term else (url_for('questionnaires.create') if can('questionnaires:edit') else None),
+              "Réinitialiser la recherche" if search_term else ("Créer un questionnaire" if can('questionnaires:edit') else None),
+              "📝"
+            ) }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Liste des questionnaires (vue compacte)">
+      {% for q in questionnaires %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ q.nom }}</strong>
+            <span class="chip">{% if q.is_active %}Actif{% else %}Inactif{% endif %}</span>
+          </header>
+          <p class="muted">{{ q.description or "—" }}</p>
+          <dl class="responsive-card__grid">
+            <div>
+              <dt>Secteurs</dt>
+              <dd class="muted">
+                {% if q.secteurs %}
+                  {{ q.secteurs | map(attribute='secteur') | join(', ') }}
+                {% else %}
+                  Tous
+                {% endif %}
+              </dd>
+            </div>
+            <div>
+              <dt>Ateliers</dt>
+              <dd class="muted">
+                {% if q.ateliers %}
+                  {% set names = [] %}
+                  {% for link in q.ateliers %}
+                    {% if ateliers_map.get(link.atelier_id) %}
+                      {% set _ = names.append(ateliers_map.get(link.atelier_id)) %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ names | join(', ') }}
+                {% else %}
+                  Tous
+                {% endif %}
+              </dd>
+            </div>
+          </dl>
+          <div class="inline-actions">
+            <a class="btn" href="{{ url_for('questionnaires.statistiques', questionnaire_id=q.id) }}">📊 Dépouiller</a>
+            {% if can('questionnaires:edit') %}
+              <a class="btn" href="{{ url_for('questionnaires.edit', questionnaire_id=q.id) }}">✏️ Éditer</a>
+            {% endif %}
+            {% if can('questionnaires:export') %}
+              <a class="btn" href="{{ url_for('questionnaires.export_csv', questionnaire_id=q.id) }}">⬇️ CSV</a>
+              <a class="btn" href="{{ url_for('questionnaires.export_xlsx', questionnaire_id=q.id) }}">⬇️ Excel</a>
+            {% endif %}
+            {% if can('questionnaires:delete') %}
+              <form method="post" action="{{ url_for('questionnaires.delete', questionnaire_id=q.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce questionnaire ?');">🗑️ Supprimer</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        {{ ui.empty_state(
+          "Aucun questionnaire ne correspond à la recherche" if search_term else "Aucun questionnaire créé",
+          "Retirez la recherche pour revoir tous les questionnaires." if search_term else "Créez un questionnaire pour recueillir les retours des participants et mesurer l’impact d’une action.",
+          url_for('questionnaires.index') if search_term else (url_for('questionnaires.create') if can('questionnaires:edit') else None),
+          "Réinitialiser la recherche" if search_term else ("Créer un questionnaire" if can('questionnaires:edit') else None),
+          "📝"
+        ) }}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

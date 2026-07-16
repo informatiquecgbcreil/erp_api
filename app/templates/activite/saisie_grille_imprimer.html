@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block title %}Feuille du mois — {{ atelier.nom }}{% endblock %}
+{% block body %}
+<style>
+  .feuille{
+    background:#fff; color:#000;
+    border:1px solid var(--border, #e3e6ef); border-radius:12px;
+    padding:20px 22px; margin-top:12px;
+  }
+  .feuille header{ display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px; }
+  .feuille h1{ margin:0; font-size:1.25rem; }
+  .feuille .sous{ font-size:.92rem; opacity:.8; }
+  table.feuille-grille{ border-collapse:collapse; width:100%; margin-top:14px; }
+  table.feuille-grille th, table.feuille-grille td{
+    border:1px solid #666; padding:6px 8px; font-size:.85rem;
+  }
+  table.feuille-grille th{ background:#f0f0f0; text-align:center; }
+  table.feuille-grille th.nom, table.feuille-grille td.nom{ text-align:left; width:34%; }
+  table.feuille-grille td.case{ height:26px; min-width:52px; }
+  .feuille .consigne{ margin-top:12px; font-size:.8rem; opacity:.75; }
+  @media print{
+    .no-print, .topbar, .aide-page, .context-banner, .guide-bandeau{ display:none !important; }
+    .feuille{ border:none; padding:0; }
+    body{ background:#fff; }
+    @page{ size:landscape; margin:12mm; }
+  }
+</style>
+<div class="ui-page">
+  <div class="ui-actions inline-actions no-print" style="margin:10px 0;">
+    <button type="button" class="btn primary" onclick="window.print()">🖨️ Imprimer</button>
+    <a class="btn" href="{{ url_for('activite.saisie_grille', atelier_id=atelier.id, mois=mois_str) }}">← Retour à la grille</a>
+  </div>
+
+  <div class="feuille">
+    <header>
+      <h1>Feuille de présences — {{ atelier.nom }}</h1>
+      <div class="sous">{{ mois_label }} · secteur {{ atelier.secteur }} · {{ ORGANIZATION_NAME }}</div>
+    </header>
+
+    <table class="feuille-grille">
+      <thead>
+        <tr>
+          <th class="nom">Nom et prénom</th>
+          {% for s in seances %}
+            {% set d = s.rdv_date or s.date_session %}
+            <th>{{ d.strftime('%d/%m') if d else '' }}{% if s.heure_debut %}<br><small>{{ s.heure_debut }}{% if s.heure_fin %}–{{ s.heure_fin }}{% endif %}</small>{% endif %}</th>
+          {% endfor %}
+          {% for _ in range(nb_colonnes_vides) %}
+            <th>____/____</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in participants %}
+          <tr>
+            <td class="nom">{{ p.nom }} {{ p.prenom }}</td>
+            {% for _ in range(seances|length + nb_colonnes_vides) %}<td class="case"></td>{% endfor %}
+          </tr>
+        {% endfor %}
+        {% for _ in range(lignes_vides) %}
+          <tr>
+            <td class="nom"></td>
+            {% for _ in range(seances|length + nb_colonnes_vides) %}<td class="case"></td>{% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p class="consigne">
+      ✔ = présent. Nouvelle personne : écrire son nom et prénom en toutes lettres sur une ligne vide.
+      Colonne sans date pré-remplie : noter la date de la séance en haut.
+      Feuille à remettre à l'accueil en fin de mois — elle se recopie telle quelle dans l'application (grille de saisie).
+    </p>
+  </div>
+</div>
+{% endblock %}

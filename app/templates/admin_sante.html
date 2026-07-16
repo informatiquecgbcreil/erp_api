@@ -1,0 +1,75 @@
+{% extends "layout.html" %}
+{% block body %}
+{% macro etat(ok, ok_txt, ko_txt) %}
+  <span class="status-badge {{ 'status-info' if ok else 'status-danger' }}">{{ ok_txt if ok else ko_txt }}</span>
+{% endmacro %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>🩺 Santé du système</h1>
+        <p class="muted">Vue d'ensemble de l'état technique de l'application.</p>
+      </div>
+      <a class="btn" href="{{ url_for('admin.journal_audit') }}">📜 Journal d'audit</a>
+    </div>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>Base de données</h2>
+      <p>Moteur : <strong>{{ moteur }}</strong></p>
+      <p>Connexion : {{ etat(db_ok, "OK ✓", "ERREUR ✗") }}</p>
+    </div>
+
+    <div class="card">
+      <h2>Sauvegarde</h2>
+      {% if jours_depuis is none %}
+        <p>{{ etat(false, "", "Aucune sauvegarde ⚠️") }}</p>
+      {% elif jours_depuis > seuil_alerte %}
+        <p>Dernière : <strong>il y a {{ jours_depuis }} j</strong> {{ etat(false, "", "trop ancienne ⚠️") }}</p>
+      {% else %}
+        <p>Dernière : <strong>il y a {{ jours_depuis }} j</strong> {{ etat(true, "à jour ✓", "") }}</p>
+      {% endif %}
+      <a class="btn" href="{{ url_for('admin.sauvegardes') }}">Gérer les sauvegardes</a>
+    </div>
+
+    <div class="card">
+      <h2>Espace disque (sauvegardes)</h2>
+      {% if disque %}
+        <p><strong>{{ (disque.libre / (1024*1024*1024))|round(1) }} Go</strong> libres
+           sur {{ (disque.total / (1024*1024*1024))|round(1) }} Go ({{ disque.pct_libre }} %)</p>
+        {% if disque.pct_libre < 10 %}<p>{{ etat(false, "", "Espace critique ⚠️") }}</p>{% endif %}
+      {% else %}
+        <p class="muted">Indisponible.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Messagerie (SMTP)</h2>
+      <p>Configuration : {{ etat(smtp_configure, "configurée", "non configurée") }}</p>
+      <form method="post" action="{{ url_for('admin.sante_test_smtp') }}" style="margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" {% if not smtp_configure %}disabled{% endif %}
+                data-pending-text="Envoi…">✉️ Envoyer un e-mail de test</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Portail des apprenants</h2>
+      <p>Configuration : {{ etat(portail_configure, "configuré", "non configuré") }}</p>
+      <form method="post" action="{{ url_for('admin.sante_test_portail') }}" style="margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" {% if not portail_configure %}disabled{% endif %}
+                data-pending-text="Test…">🔌 Tester la connexion</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Comptes</h2>
+      <p><strong>{{ nb_users }}</strong> compte(s) · <strong>{{ nb_actifs }}</strong> actif(s) ·
+         <strong>{{ nb_admins }}</strong> administrateur(s)</p>
+      <a class="btn" href="{{ url_for('admin.users') }}">Gérer les comptes</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

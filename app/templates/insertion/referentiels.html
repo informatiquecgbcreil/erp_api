@@ -1,0 +1,35 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="page-head">
+    <h1 style="margin:0;">Référentiels insertion</h1>
+    <p class="muted" style="margin:6px 0 0 0;">Gérez les listes dynamiques du module insertion. Aucune valeur métier n’est codée en dur.</p>
+  </div>
+
+  <div class="ux-callout">
+    <div class="ux-callout__title">À savoir</div>
+    <div class="ux-callout__text">Ces référentiels alimentent les listes déroulantes du secteur insertion. Désactive une valeur si elle ne doit plus être proposée, plutôt que de la supprimer si elle est déjà utilisée.</div>
+  </div>
+
+  <div class="cards-grid cards-grid--2">
+    {% for item in data %}
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+        <div>
+          <div class="section-title" style="margin-bottom:6px;">{{ item.title }}</div>
+          <div class="muted">{{ item.description }}</div>
+        </div>
+        <div class="kpi-chip">{{ item.count }}</div>
+      </div>
+      <div class="muted" style="margin-top:8px;">{{ item.active_count }} active(s) sur {{ item.count }}</div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="pill" href="{{ url_for('insertion.referentiel_list', ref_type=item.type) }}">Ouvrir</a>
+        {% if can_manage_refs %}
+        <a class="pill active" href="{{ url_for('insertion.referentiel_new', ref_type=item.type) }}">Ajouter</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

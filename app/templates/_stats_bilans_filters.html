@@ -1,0 +1,47 @@
+<form method="get" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end">
+  <div style="min-width:160px">
+    <label class="muted" style="display:block; font-size:12px">Année</label>
+    <select class="in" name="annee" style="min-width:160px">
+      {% for a in annees %}
+        <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {% if not can('scope:all_secteurs') %}
+    <input type="hidden" name="secteur" value="{{ secteur }}">
+  {% else %}
+    <div style="min-width:220px">
+      <label class="muted" style="display:block; font-size:12px">Secteur</label>
+      <select class="in" name="secteur" style="min-width:220px">
+        <option value="" {% if not secteur %}selected{% endif %}>Tous</option>
+        {% for s in secteurs %}
+          <option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  {% endif %}
+
+  <div style="min-width:260px">
+    <label class="muted" style="display:block; font-size:12px">Projet</label>
+    <select class="in" name="projet_id" style="min-width:260px">
+      <option value="" {% if not projet_id %}selected{% endif %}>Tous les projets</option>
+      {% for p in projets %}
+        <option value="{{ p.id }}" {% if projet_id and (p.id|string) == (projet_id|string) %}selected{% endif %}>
+          {{ p.nom }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {# Pour garder le tab et le mode embed #}
+  {% if request.args.get('tab') %}
+    <input type="hidden" name="tab" value="{{ request.args.get('tab') }}">
+  {% endif %}
+  {% if request.args.get('embed') %}
+    <input type="hidden" name="embed" value="{{ request.args.get('embed') }}">
+  {% endif %}
+
+  <button class="btn ok" type="submit">Appliquer</button>
+  <a class="btn" href="{{ url_for('main.stats_bilans') }}">Reset</a>
+</form>

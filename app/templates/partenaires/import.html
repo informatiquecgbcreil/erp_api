@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>Importer des partenaires (CSV)</h1>
+        <p class="muted" style="max-width:680px;">
+          Chargez un fichier CSV pour créer ou mettre à jour des fiches partenaires en masse.
+          L'import reprend tous les champs d'identification. Les partenaires sont rapprochés
+          <strong>par leur nom</strong> (mise à jour si déjà présent, jamais de doublon).
+        </p>
+      </div>
+      <div class="inline" style="gap:8px;">
+        <a class="btn" href="{{ url_for('partenaires.index') }}">⬅ Annuaire</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1. Récupérer le modèle</h2>
+    <p class="muted">Téléchargez le modèle (séparateur « ; », encodage UTF-8), remplissez-le, puis importez-le.</p>
+    <a class="btn" href="{{ url_for('partenaires.import_modele') }}">⬇️ Télécharger le modèle CSV</a>
+  </div>
+
+  <div class="card">
+    <h2>2. Importer le fichier</h2>
+    <form method="post" enctype="multipart/form-data" class="stack" style="gap:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input class="in" type="file" name="fichier" accept=".csv,text/csv" required>
+      <div>
+        <button class="btn" type="submit" data-pending-text="Import…">📥 Importer</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Colonnes attendues</h2>
+    <p class="muted">Seule la colonne <strong>nom</strong> est obligatoire. Valeurs multiples séparées par « | ».</p>
+    <ul style="line-height:1.7;">
+      <li><code>nom</code>, <code>contact_nom</code>, <code>contact_prenom</code>, <code>adresse</code></li>
+      <li><code>email_contact</code>, <code>email_general</code>, <code>tel_contact</code>, <code>tel_general</code></li>
+      <li><code>secteurs</code> — vos secteurs internes, ex. <em>Numérique|Familles</em></li>
+      <li><code>competences</code> — domaines d'orientation (codes) :
+        <span class="muted">{{ orientation_domaines.keys()|join(', ') }}</span>
+      </li>
+      <li><code>territoire_couvert</code>, <code>modalites_orientation</code>, <code>description</code></li>
+      <li><code>niveau_orientation</code> — {{ orientation_niveaux.keys()|join(' / ') }}</li>
+    </ul>
+    <p class="muted" style="font-size:13px;">
+      Astuce : après l'import, lancez « 📍 Géocoder les adresses » sur la carte des partenaires
+      pour les positionner automatiquement.
+    </p>
+  </div>
+</div>
+{% endblock %}

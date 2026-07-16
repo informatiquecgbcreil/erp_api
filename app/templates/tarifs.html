@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block title %}Barème des tarifs{% endblock %}
+{% block body %}
+<style>
+  .tarifs-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:14px; }
+  .tarif-col{ border:1px solid var(--border, #e3e6ef); border-radius:12px; padding:14px; background:var(--panel, #fff); }
+  .tarif-ligne{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px dashed var(--border, #e3e6ef); }
+  .tarif-ligne:first-child{ border-top:0; }
+  .tarif-ligne .infos{ font-size:.88rem; }
+  .tarif-ligne .montant{ font-weight:700; }
+  .tarif-form{ margin-top:12px; display:flex; flex-direction:column; gap:6px; border-top:1px solid var(--border, #e3e6ef); padding-top:10px; }
+  .tarif-form label{ font-size:.78rem; font-weight:600; }
+  .tarif-form input{ padding:6px 8px; border-radius:8px; border:1px solid var(--border, #e3e6ef); }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">💳 Barème des tarifs</h1>
+      <p class="ui-subtitle page-subtitle">
+        Adhésions et participation par année scolaire. Plusieurs tarifs peuvent coexister pour une
+        même année : celui qui compte est le plus récent dont la date de début n'est pas dans le futur —
+        pratique pour faire baisser le prix de la participation en cours d'année.
+      </p>
+    </div>
+    <form method="get" action="{{ url_for('main.tarifs_cotisations') }}" class="ui-actions inline-actions">
+      <label class="field-stack slim"><span>Année scolaire</span>
+        <select class="in" name="annee" onchange="this.form.submit()">
+          {% for a in annees %}
+            <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}-{{ a + 1 }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <noscript><button class="btn" type="submit">Afficher</button></noscript>
+    </form>
+  </section>
+
+  <div class="helper-banner" style="margin-top:8px;">
+    <strong>Ce qui change ici</strong>
+    <span class="muted">Un tarif ajouté ou supprimé ne modifie jamais une cotisation déjà créée sur une fiche
+    participant : le montant dû y est figé au moment de la création. Seules les nouvelles cotisations
+    utiliseront le tarif en vigueur.</span>
+  </div>
+
+  <div class="tarifs-grid">
+    {% for type_tarif in types_tarif %}
+      <div class="tarif-col">
+        <h2 style="margin-top:0; font-size:1.05rem;">{{ types_tarif_labels[type_tarif] }}</h2>
+        {% set lignes = bareme.get(type_tarif, []) %}
+        {% if lignes %}
+          {% for l in lignes %}
+            <div class="tarif-ligne">
+              <div class="infos">
+                depuis le <strong>{{ l.date_debut.strftime('%d/%m/%Y') }}</strong>
+                {% if l.commentaire %}<br><span class="muted">{{ l.commentaire }}</span>{% endif %}
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="montant">{{ "%.2f"|format(l.montant) }} €</span>
+                <form method="post" action="{{ url_for('main.tarif_ligne_supprimer', tarif_id=l.id, annee=annee) }}" onsubmit="return confirm('Supprimer cette ligne de tarif ?');" style="margin:0;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn" type="submit" style="padding:2px 7px; font-size:.8rem;">✕</button>
+                </form>
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="quick-empty"><strong>Aucun tarif défini</strong>Les fiches participant afficheront 0 € tant qu'aucune ligne n'est ajoutée.</div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('main.tarif_ligne_creer', annee=annee) }}" class="tarif-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="type_tarif" value="{{ type_tarif }}">
+          <label>Montant (€)</label>
+          <input type="text" name="montant" placeholder="ex. 25,00" required>
+          <label>À partir du</label>
+          <input type="date" name="date_debut" value="{{ annee }}-09-01">
+          <label>Commentaire (optionnel)</label>
+          <input type="text" name="commentaire" placeholder="ex. tarif de fin d'année">
+          <button class="btn primary" type="submit">➕ Ajouter ce tarif</button>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

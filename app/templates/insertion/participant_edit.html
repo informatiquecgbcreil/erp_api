@@ -1,0 +1,128 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="breadcrumb">
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.index') }}">Insertion</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item"><a href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">{{ participant.nom }} {{ participant.prenom }}</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item">Modifier</span>
+  </div>
+
+  <div class="page-head">
+    <h1 style="margin:0;">Modifier la fiche insertion</h1>
+    <p class="muted" style="margin:6px 0 0 0;">Cette fiche est éditable. Le participant global reste séparé du suivi insertion.</p>
+  </div>
+
+  <div class="ux-callout">
+    <div class="ux-callout__title">À savoir</div>
+    <div class="ux-callout__text">Le parcours décrit le cadre de suivi. Le positionnement décrit le niveau constaté. La certification décrit un diplôme réellement passé ou obtenu.</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Profil insertion</div>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="filters-grid" style="grid-template-columns:1fr 1fr;">
+        <div>
+          <label class="muted">Pays d’origine</label>
+          <input class="in" type="text" name="pays_origine" value="{{ profile.pays_origine or '' }}" maxlength="120">
+        </div>
+        <div>
+          <label class="muted">CIR obtenu</label>
+          <select class="in" name="cir_obtenu">
+            <option value="">Non renseigné</option>
+            <option value="1" {% if profile.cir_obtenu is sameas true %}selected{% endif %}>Oui</option>
+            <option value="0" {% if profile.cir_obtenu is sameas false %}selected{% endif %}>Non</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="pill active" type="submit">Enregistrer le profil</button>
+        <a class="pill" href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">Retour à la fiche</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="cards-grid cards-grid--3">
+    <div class="card">
+      <div class="section-title">Parcours</div>
+      <p class="muted">Gérer les périodes de suivi, le dispositif, le prescripteur et le titre de séjour.</p>
+      <a class="pill active" href="{{ url_for('insertion.parcours_new', participant_id=participant.id) }}">Ajouter un parcours</a>
+    </div>
+    <div class="card">
+      <div class="section-title">Positionnements</div>
+      <p class="muted">Gérer les niveaux constatés à l’entrée, en cours ou en sortie de parcours.</p>
+      <a class="pill active" href="{{ url_for('insertion.positionnement_new', participant_id=participant.id) }}">Ajouter un positionnement</a>
+    </div>
+    <div class="card">
+      <div class="section-title">Certifications</div>
+      <p class="muted">Gérer les diplômes réellement présentés ou obtenus.</p>
+      <a class="pill active" href="{{ url_for('insertion.certification_new', participant_id=participant.id) }}">Ajouter une certification</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Entrées existantes</div>
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Résumé</th>
+            <th>Source</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in parcours_rows %}
+          <tr>
+            <td>Parcours</td>
+            <td>{{ row.dispositif.label if row.dispositif else 'Sans dispositif' }} — suivi {{ row.date_entree or '—' }} / {{ row.date_sortie or '—' }}{% if row.titre_sejour_type %} — titre {{ row.titre_sejour_type.label }}{% endif %}{% if row.date_expiration_titre_sejour %} (exp. {{ row.date_expiration_titre_sejour }}){% endif %}</td>
+            <td>{{ 'Legacy' if row.legacy_source else 'Module insertion' }}</td>
+            <td style="text-align:right;white-space:nowrap;">
+              <a class="pill" href="{{ url_for('insertion.parcours_edit', participant_id=participant.id, parcours_id=row.id) }}">Modifier</a>
+              <form method="post" action="{{ url_for('insertion.parcours_delete', participant_id=participant.id, parcours_id=row.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce parcours ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="pill danger" type="submit">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          {% for row in positionnement_rows %}
+          <tr>
+            <td>Positionnement</td>
+            <td>{{ row.niveau.label if row.niveau else 'Niveau non renseigné' }} — {{ row.date_positionnement or '—' }}</td>
+            <td>{{ 'Legacy' if row.legacy_source else 'Module insertion' }}</td>
+            <td style="text-align:right;white-space:nowrap;">
+              <a class="pill" href="{{ url_for('insertion.positionnement_edit', participant_id=participant.id, positionnement_id=row.id) }}">Modifier</a>
+              <form method="post" action="{{ url_for('insertion.positionnement_delete', participant_id=participant.id, positionnement_id=row.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce positionnement ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="pill danger" type="submit">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          {% for row in certification_rows %}
+          <tr>
+            <td>Certification</td>
+            <td>{{ row.diplome.label if row.diplome else 'Diplôme non renseigné' }} — {{ row.date_passage or row.date_obtention or '—' }}</td>
+            <td>{{ 'Legacy' if row.legacy_source else 'Module insertion' }}</td>
+            <td style="text-align:right;white-space:nowrap;">
+              <a class="pill" href="{{ url_for('insertion.certification_edit', participant_id=participant.id, certification_id=row.id) }}">Modifier</a>
+              <form method="post" action="{{ url_for('insertion.certification_delete', participant_id=participant.id, certification_id=row.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette certification ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="pill danger" type="submit">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not participant.insertion_parcours and not participant.insertion_positionnements and not participant.insertion_certifications %}
+          <tr><td colspan="4" class="muted">Aucune donnée insertion détaillée n’est encore enregistrée.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

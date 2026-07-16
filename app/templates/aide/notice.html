@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<style>
+  .notice-sommaire{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin:12px 0}
+  .notice-sommaire a{display:block;padding:12px 14px;border:1px solid var(--border-soft);border-radius:12px;text-decoration:none;font-weight:700}
+  .notice-chapitre{margin-top:18px}
+  .notice-chapitre h2{margin-bottom:2px}
+  .notice-chapitre .muted{margin-top:0}
+  .notice-section h3{margin:14px 0 4px}
+  .notice-section p{margin:6px 0;line-height:1.55;max-width:75ch}
+  @media print {
+    nav, .desktop-nav-links, .flash-stack, .no-print, header, .nav-more, .pill { display:none !important; }
+    .card{border:none;box-shadow:none;padding:0}
+    .notice-sommaire{display:none}
+    .notice-chapitre{page-break-inside:avoid}
+    body{background:#fff;color:#000}
+  }
+</style>
+
+<div class="stack">
+  <div class="card">
+    <h1>📖 Notice d'utilisation</h1>
+    <p class="muted">
+      Le mode d'emploi complet de l'application, écrit pour des personnes qui ne
+      sont pas informaticiennes. Cette notice est toujours à jour : elle vit dans
+      l'application elle-même.
+    </p>
+    <p class="no-print">
+      <button class="btn" onclick="window.print()">🖨️ Imprimer la notice (ou l'enregistrer en PDF)</button>
+      <a class="btn" href="{{ url_for('main.glossaire') }}">📖 Glossaire — le dico du social</a>
+      <a class="btn" href="{{ url_for('main.guides_liste') }}">🧭 Guides pas à pas</a>
+    </p>
+    <div class="notice-sommaire no-print">
+      {% for ch in chapitres %}
+        <a href="#{{ ch.id }}">{{ ch.icone }} {{ ch.titre }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% for ch in chapitres %}
+    <div class="card notice-chapitre" id="{{ ch.id }}">
+      <h2>{{ ch.icone }} {{ ch.titre }}</h2>
+      <p class="muted">{{ ch.intro }}</p>
+      {% for titre, paragraphes in ch.sections %}
+        <div class="notice-section">
+          <h3>{{ titre }}</h3>
+          {% for p in paragraphes %}
+            <p>{{ p }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      <p class="no-print"><a href="#main-content">↑ Retour au sommaire</a></p>
+    </div>
+  {% endfor %}
+
+  <div class="card no-print">
+    <h2>Il manque quelque chose ?</h2>
+    <p class="muted">
+      Sur la plupart des pages, le bandeau « ❓ Comprendre cette page » donne
+      l'explication du contexte. Si une question reste sans réponse, signalez-la
+      à votre référent : la notice s'enrichit avec l'application.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

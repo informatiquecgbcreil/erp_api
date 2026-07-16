@@ -1,0 +1,53 @@
+{% set bs = budget_stats|default({
+    'total_charges': 0,
+    'total_produits_base': 0,
+    'total_ventile_charges': 0,
+    'total_ventile_produits': 0,
+    'pct_charges_financees': 0,
+    'pct_produits_ventiles': 0
+}, true) %}
+
+<div class="card mb-3">
+  <div class="card-body d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('projets.projets_edit', projet_id=projet.id) }}">← Retour au projet</a>
+        <a class="btn btn-sm btn-outline-success" href="{{ url_for('projets.projet_finance', projet_id=projet.id) }}">Dossier financier</a>
+        <div class="btn-group" role="group" aria-label="Budget du projet">
+          <a class="btn btn-sm {{ 'btn-primary' if request.path.endswith('/budget/charges') else 'btn-outline-primary' }}" href="{{ url_for('projets.projet_budget_charges', projet_id=projet.id) }}">Charges</a>
+          <a class="btn btn-sm {{ 'btn-primary' if request.path.endswith('/budget/produits') else 'btn-outline-primary' }}" href="{{ url_for('projets.projet_budget_produits', projet_id=projet.id) }}">Produits</a>
+          <a class="btn btn-sm {{ 'btn-primary' if request.path.endswith('/budget/ventilation') else 'btn-outline-primary' }}" href="{{ url_for('projets.projet_budget_ventilation', projet_id=projet.id) }}">Répartition du budget</a>
+          <a class="btn btn-sm {{ 'btn-primary' if request.path.endswith('/budget/synthese') else 'btn-outline-primary' }}" href="{{ url_for('projets.projet_budget_synthese', projet_id=projet.id) }}">Synthèse</a>
+        </div>
+      </div>
+      <div class="mt-2 small text-muted">
+        Projet : <strong>{{ projet.nom }}</strong> — Secteur : <strong>{{ projet.secteur }}</strong>
+      </div>
+    </div>
+
+    <div class="small">
+      Charges prévues : <strong>{{ "%.2f"|format(bs.total_charges or 0) }}€</strong><br>
+      Produits saisis : <strong>{{ "%.2f"|format(bs.total_produits_base or 0) }}€</strong><br>
+      Ventilé sur charges : <strong>{{ "%.2f"|format(bs.total_ventile_charges or 0) }}€</strong><br>
+      Ventilé sur produits : <strong>{{ "%.2f"|format(bs.total_ventile_produits or 0) }}€</strong>
+    </div>
+
+    <div style="min-width: 260px;">
+      <div class="small mb-1">Charges financées : <strong>{{ "%.0f"|format(bs.pct_charges_financees or 0) }}%</strong></div>
+      <div class="progress mb-2" style="height: 10px;">
+        <div class="progress-bar" role="progressbar" style="width: {{ bs.pct_charges_financees or 0 }}%;" aria-valuenow="{{ bs.pct_charges_financees or 0 }}" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+
+      <div class="small mb-1">Produits ventilés : <strong>{{ "%.0f"|format(bs.pct_produits_ventiles or 0) }}%</strong></div>
+      <div class="progress" style="height: 10px;">
+        <div class="progress-bar" role="progressbar" style="width: {{ bs.pct_produits_ventiles or 0 }}%;" aria-valuenow="{{ bs.pct_produits_ventiles or 0 }}" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+
+      {% if budget_stats is not defined %}
+      <div class="small text-muted mt-2">
+        Les indicateurs de cette vue ne sont pas encore calculés. Les valeurs affichées correspondent au mode par défaut.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>

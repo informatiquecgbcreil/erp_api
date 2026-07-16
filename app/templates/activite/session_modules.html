@@ -1,0 +1,43 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1 style="margin-top:0;">Modules de la séance</h1>
+    <p class="muted">
+      Atelier : <strong>{{ atelier.nom }}</strong> · Session #{{ session.id }}
+      {% if session.date_session %}· {{ session.date_session }}{% endif %}
+      {% if session.rdv_date %}· {{ session.rdv_date }}{% endif %}
+    </p>
+    <div class="row" style="gap:8px;flex-wrap:wrap;">
+      <a class="btn" href="{{ url_for('activite.emargement', session_id=session.id) }}">Retour émargement</a>
+      <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Liste sessions</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>✅ Sélection des modules couverts</h2>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="grid" style="grid-template-columns:repeat(2,minmax(260px,1fr)); gap:10px;">
+        {% for m in modules %}
+          <label class="card" style="padding:10px; display:flex; gap:10px; align-items:flex-start;">
+            <input type="checkbox" name="module_ids" value="{{ m.id }}" {% if m.id in selected_ids %}checked{% endif %} style="margin-top:4px;">
+            <div>
+              <strong>{{ m.nom }}</strong>
+              {% if m.description %}<div class="muted">{{ m.description }}</div>{% endif %}
+            </div>
+          </label>
+        {% else %}
+          <div class="muted">Aucun module pédagogique actif.</div>
+        {% endfor %}
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ok" type="submit">Enregistrer</button>
+    </form>
+    <p class="muted" style="margin-top:10px;">
+      Note : à l'enregistrement, la liste des compétences de la séance est recalculée automatiquement
+      (union des compétences des modules sélectionnés).
+    </p>
+  </div>
+</div>
+{% endblock %}

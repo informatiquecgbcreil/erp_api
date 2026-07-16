@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+
+{% block body %}
+<div class="card" style="padding:16px;">
+  <h1 style="margin:0 0 6px 0;">Listes de compétences</h1>
+  <p class="muted">Ces listes alimentent le suivi pédagogique. Importez-en une lorsqu’un nouveau cadre de compétences doit être utilisé.</p>
+
+  <div style="margin-bottom:12px;">
+    <a class="btn btn-primary" href="{{ url_for('admin.import_skills') }}">Importer un CSV</a>
+  </div>
+
+  {% if frameworks and frameworks|length %}
+    <div class="tablewrap clean">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Nom</th>
+            <th>Version</th>
+            <th>Langue</th>
+            <th>Compétences</th>
+            <th>Actif</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fw in frameworks %}
+            <tr>
+              <td>{{ fw.code }}</td>
+              <td>{{ fw.nom }}</td>
+              <td>{{ fw.version or '' }}</td>
+              <td>{{ fw.lang or '' }}</td>
+              <td>{{ fw.nb_skills or 0 }}</td>
+              <td>{{ 'Oui' if fw.actif else 'Non' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Référentiels (vue compacte)">
+      {% for fw in frameworks %}
+      <article class="responsive-card">
+        <header class="responsive-card__head">
+          <strong>{{ fw.nom }}</strong>
+          <span class="chip">{{ fw.code }}</span>
+        </header>
+        <dl class="responsive-card__grid">
+          <div><dt>Version / langue</dt><dd>{{ fw.version or '—' }} · {{ fw.lang or '—' }}</dd></div>
+          <div><dt>Compétences</dt><dd>{{ fw.nb_skills or 0 }}</dd></div>
+          <div><dt>Actif</dt><dd>{{ 'Oui' if fw.actif else 'Non' }}</dd></div>
+        </dl>
+      </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    {{ ui.empty_state("Aucune liste de compétences", "Importez une liste au format CSV pour commencer à associer des compétences aux parcours pédagogiques.", url_for('admin.import_skills'), "Importer une liste", "📚") }}
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>@media print { .no-print { display:none !important; } }</style>
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🧮 Coût unitaire d'une action</h1>
+      <p class="page-subtitle">Croise un montant (saisi ou repris d'une subvention) avec l'activité réelle mesurée par l'émargement, pour justifier un financement : coût par participant, par présence, par heure, par séance.</p>
+    </div>
+    <div class="hero-actions no-print">
+      {% if montant %}
+        {# query_string brut pour préserver les atelier_id multiples #}
+        <a class="btn" href="{{ url_for('main.cout_unitaire_export') }}?{{ request.query_string.decode() }}">⬇ Export Excel</a>
+      {% endif %}
+      <button class="btn" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <section class="section-card no-print">
+    <form method="get" class="stack" style="gap:10px;">
+      <div class="form-grid-3">
+        <label class="field-stack"><span>Du</span><input class="in" type="date" name="from" value="{{ date_from.isoformat() }}"></label>
+        <label class="field-stack"><span>Au</span><input class="in" type="date" name="to" value="{{ date_to.isoformat() }}"></label>
+        <label class="field-stack"><span>Ateliers (vide = tous)</span>
+          <select class="in" name="atelier_id" multiple size="6">
+            {% for a in ateliers %}
+              <option value="{{ a.id }}" {% if a.id in atelier_ids %}selected{% endif %}>{{ a.secteur }} — {{ a.nom }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field-stack"><span>Montant (€)</span><input class="in" name="montant" inputmode="decimal" value="{{ montant if montant and not subvention else '' }}" placeholder="Ex : 5000"></label>
+        <label class="field-stack"><span>ou depuis une subvention</span>
+          <select class="in" name="subvention_id">
+            <option value="">—</option>
+            {% for s in subventions %}
+              <option value="{{ s.id }}" {% if subvention and subvention.id == s.id %}selected{% endif %}>{{ s.annee_exercice }} · {{ s.nom }}{% if s.financeur %} ({{ s.financeur }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="field-stack"><span>&nbsp;</span><button class="btn ok" type="submit">Calculer</button></div>
+      </div>
+    </form>
+  </section>
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Séances</div><strong>{{ mesures.sessions }}</strong></div>
+    <div class="kpi-box"><div class="muted">Heures d'activité</div><strong>{{ mesures.heures }}</strong></div>
+    <div class="kpi-box"><div class="muted">Participants uniques</div><strong>{{ mesures.uniques }}</strong></div>
+    <div class="kpi-box"><div class="muted">Présences</div><strong>{{ mesures.presences }}</strong></div>
+  </div>
+
+  {% if couts %}
+  <section class="section-card">
+    <h2 class="section-title">Coûts unitaires — base : {{ base_label }} ({{ '%.2f'|format(montant) }} €)</h2>
+    <div class="kpi-grid-modern">
+      <div class="kpi-box"><div class="muted">Par participant</div><strong>{% if couts.par_participant is not none %}{{ '%.2f'|format(couts.par_participant) }}€{% else %}—{% endif %}</strong></div>
+      <div class="kpi-box"><div class="muted">Par présence</div><strong>{% if couts.par_presence is not none %}{{ '%.2f'|format(couts.par_presence) }}€{% else %}—{% endif %}</strong></div>
+      <div class="kpi-box"><div class="muted">Par heure</div><strong>{% if couts.par_heure is not none %}{{ '%.2f'|format(couts.par_heure) }}€{% else %}—{% endif %}</strong></div>
+      <div class="kpi-box"><div class="muted">Par séance</div><strong>{% if couts.par_seance is not none %}{{ '%.2f'|format(couts.par_seance) }}€{% else %}—{% endif %}</strong></div>
+    </div>
+    <p class="muted" style="font-size:12px;">Exemple de formulation : « {{ '%.0f'|format(montant) }} € pour {{ mesures.uniques }} participants et {{ mesures.heures }} heures d'activité, soit {% if couts.par_participant is not none %}{{ '%.2f'|format(couts.par_participant) }} € par participant{% endif %}{% if couts.par_heure is not none %} et {{ '%.2f'|format(couts.par_heure) }} € par heure{% endif %}. »</p>
+  </section>
+  {% else %}
+  <div class="callout-soft">Renseigne un montant (ou choisis une subvention) pour obtenir les coûts unitaires.</div>
+  {% endif %}
+</div>
+{% endblock %}

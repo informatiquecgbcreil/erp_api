@@ -1,0 +1,61 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="breadcrumb">
+    <span class="breadcrumb__item"><a href="{{ url_for('activite.index') }}">Activité</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item"><a href="{{ url_for('activite.emargement_models') }}">Modèles d’émargement</a></span>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__item">{{ 'Modifier' if row else 'Ajouter' }}</span>
+  </div>
+
+  <div class="card reading-width">
+    <h1 style="margin-top:0;">{{ 'Modifier le modèle' if row else 'Nouveau modèle d’émargement' }}</h1>
+    <p class="muted">Les moteurs disponibles restent maîtrisés côté code. Vous pouvez en revanche créer vos propres variantes par secteur et les affecter librement aux ateliers.</p>
+    <form method="post" class="stack" style="margin-top:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="grid" style="grid-template-columns:1.3fr 1fr; gap:12px;">
+        <div>
+          <label>Libellé</label>
+          <input class="in" type="text" name="label" value="{{ values.label if values else '' }}" required>
+        </div>
+        <div>
+          <label>Ordre d’affichage</label>
+          <input class="in" type="number" name="sort_order" value="{{ values.sort_order if values else '100' }}" min="0">
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+        <div>
+          <label>Secteur</label>
+          <select class="in" name="secteur">
+            {% for secteur in secteurs %}
+              <option value="{{ secteur }}" {% if (values.secteur if values else '') == secteur %}selected{% endif %}>{{ secteur }}</option>
+            {% endfor %}
+            <option value="{{ global_scope }}" {% if (values.secteur if values else '') == global_scope %}selected{% endif %}>Tous secteurs (modèle commun)</option>
+          </select>
+        </div>
+        <div>
+          <label>Moteur</label>
+          <select class="in" name="engine">
+            {% for engine_key, meta in engine_registry.items() %}
+              <option value="{{ engine_key }}" {% if (values.engine if values else '') == engine_key %}selected{% endif %}>{{ meta.label }} — {{ 'Collectif' if meta.session_family == 'COLLECTIF' else 'Individuel mensuel' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>Description</label>
+        <textarea class="in" name="description" rows="3">{{ values.description if values else '' }}</textarea>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" name="is_active" value="1" {% if (values.is_active if values is not none else '1') %}checked{% endif %}>
+        <span>Modèle actif</span>
+      </label>
+      <div class="row" style="gap:10px;flex-wrap:wrap;">
+        <button class="btn ok" type="submit">Enregistrer</button>
+        <a class="btn" href="{{ url_for('activite.emargement_models') }}">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

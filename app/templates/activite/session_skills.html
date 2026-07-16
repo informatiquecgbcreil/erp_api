@@ -1,0 +1,129 @@
+{% extends 'layout.html' %}
+{% block body %}
+  <div class="page-shell content-shell wide-shell">
+    <section class="hero-card">
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <h1>Compétences · Session</h1>
+          <p class="muted">{{ atelier.nom }} · {% if session.session_type == 'COLLECTIF' %}{{ session.date_session }} {{ session.heure_debut or '' }}{% if session.heure_fin %}-{{ session.heure_fin }}{% endif %}{% else %}{{ session.rdv_date }} {{ session.rdv_debut or '' }}{% if session.rdv_fin %}-{{ session.rdv_fin }}{% endif %}{% endif %} · Secteur {{ secteur }}</p>
+        </div>
+        <div class="hero-actions">
+          <a class="btn" href="{{ url_for('activite.emargement', session_id=session.id) }}">← Retour émargement</a>
+          <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">← Retour sessions</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <div class="page-header"><div class="page-title-wrap"><h2>Compétences proposées pendant l'émargement</h2><p class="muted">Elles proviennent soit de cette séance, soit des modules qui lui sont associés.</p></div></div>
+      <div class="kpi-grid-modern">
+        <div class="kpi-box"><div class="muted">Ajoutées en direct</div><strong>{{ current_direct|length }}</strong></div>
+        <div class="kpi-box"><div class="muted">Héritées via modules</div><strong>{{ inherited_from_modules|length }}</strong></div>
+        <div class="kpi-box"><div class="muted">Total fusionné</div><strong>{{ current_merged|length }}</strong></div>
+      </div>
+    </section>
+
+    <div class="monster-grid">
+      <section class="section-card">
+        <div class="page-header"><div class="page-title-wrap"><h2>Compétences actuellement prises en compte</h2><p class="muted">Vue fusionnée : ajout direct à la session + remontée via modules.</p></div></div>
+        {% if current_merged %}
+          <div class="tablewrap clean">
+            <table class="compact-table">
+              <thead><tr><th>Référentiel</th><th>Code</th><th>Libellé</th><th>Source</th><th></th></tr></thead>
+              <tbody>
+                {% for comp in current_merged %}
+                  {% set is_direct = comp.id in current_direct_ids %}{% set is_inherited = comp.id in inherited_ids %}
+                  <tr>
+                    <td class="muted">{{ ref_map.get(comp.referentiel_id).nom if ref_map.get(comp.referentiel_id) else '—' }}</td>
+                    <td><strong>{{ comp.code }}</strong></td>
+                    <td>{{ comp.nom }}{% if comp.description %}<div class="muted">{{ comp.description }}</div>{% endif %}</td>
+                    <td>{% if is_direct and is_inherited %}<span class="chip">Direct + module</span><div class="muted">{{ module_source_map.get(comp.id, [])|join(', ') }}</div>{% elif is_direct %}<span class="chip">Direct</span>{% elif is_inherited %}<span class="chip">Module</span><div class="muted">{{ module_source_map.get(comp.id, [])|join(', ') }}</div>{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td class="num">
+                      {% if is_direct %}
+                        <form method="post" action="{{ url_for('activite.session_skill_remove', session_id=session.id, comp_id=comp.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Retirer</button></form>
+                      {% else %}<span class="muted">Hérité</span>{% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="responsive-card-list" aria-label="Compétences session (vue compacte)">
+            {% for comp in current_merged %}
+              {% set is_direct = comp.id in current_direct_ids %}{% set is_inherited = comp.id in inherited_ids %}
+              <article class="responsive-card">
+                <header class="responsive-card__head">
+                  <strong>{{ comp.code }} · {{ comp.nom }}</strong>
+                  <span class="chip">{% if is_direct and is_inherited %}Direct + module{% elif is_direct %}Direct{% elif is_inherited %}Module{% else %}—{% endif %}</span>
+                </header>
+                <dl class="responsive-card__grid">
+                  <div><dt>Référentiel</dt><dd class="muted">{{ ref_map.get(comp.referentiel_id).nom if ref_map.get(comp.referentiel_id) else '—' }}</dd></div>
+                  <div><dt>Source module</dt><dd class="muted">{{ module_source_map.get(comp.id, [])|join(', ') or '—' }}</dd></div>
+                </dl>
+                <div class="inline-actions">
+                  {% if is_direct %}
+                    <form method="post" action="{{ url_for('activite.session_skill_remove', session_id=session.id, comp_id=comp.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Retirer</button></form>
+                  {% else %}
+                    <span class="muted">Hérité</span>
+                  {% endif %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}<div class="empty-state">Aucune compétence liée à cette séance pour le moment.</div>{% endif %}
+      </section>
+
+      <section class="section-card">
+        <div class="page-header"><div class="page-title-wrap"><h2>Ajouter des compétences en direct</h2><p class="muted">Ajoute des compétences spécifiques à cette séance, sans toucher aux modules.</p></div></div>
+        <form method="post" action="{{ url_for('activite.session_skill_add', session_id=session.id) }}" class="filters-panel">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="filters-grid">
+            <label class="field-stack"><span>Référentiel</span><select class="in" name="referentiel_id" id="refSel"><option value="">Tous</option>{% for r in referentiels %}<option value="{{ r.id }}">{{ r.nom }}</option>{% endfor %}</select></label>
+            <label class="field-stack"><span>Compétence</span><select class="in" name="comp_id" id="compSel" required><option value="">Choisir…</option>{% for comp in all_competences %}<option value="{{ comp.id }}" data-ref="{{ comp.referentiel_id }}">{{ comp.code }} · {{ comp.nom }}</option>{% endfor %}</select></label>
+            <div class="field-stack field-actions"><span>&nbsp;</span><button class="btn ok" type="submit">Ajouter</button></div>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    {% if inherited_from_modules %}
+      <section class="section-card">
+        <div class="page-header"><div class="page-title-wrap"><h2>Compétences héritées via les modules</h2><p class="muted">Ces compétences remontent automatiquement des modules rattachés à la session.</p></div></div>
+        <div class="tablewrap clean">
+          <table class="compact-table">
+            <thead><tr><th>Référentiel</th><th>Code</th><th>Libellé</th><th>Modules source</th></tr></thead>
+            <tbody>{% for comp in inherited_from_modules %}<tr><td class="muted">{{ ref_map.get(comp.referentiel_id).nom if ref_map.get(comp.referentiel_id) else '—' }}</td><td><strong>{{ comp.code }}</strong></td><td>{{ comp.nom }}</td><td class="muted">{{ module_source_map.get(comp.id, [])|join(', ') }}</td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+        <div class="responsive-card-list" aria-label="Compétences héritées (vue compacte)">
+          {% for comp in inherited_from_modules %}
+            <article class="responsive-card">
+              <header class="responsive-card__head">
+                <strong>{{ comp.code }} · {{ comp.nom }}</strong>
+                <span class="chip">Module</span>
+              </header>
+              <dl class="responsive-card__grid">
+                <div><dt>Référentiel</dt><dd class="muted">{{ ref_map.get(comp.referentiel_id).nom if ref_map.get(comp.referentiel_id) else '—' }}</dd></div>
+                <div><dt>Modules source</dt><dd class="muted">{{ module_source_map.get(comp.id, [])|join(', ') }}</dd></div>
+              </dl>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
+<script>
+(() => {
+  const refSel = document.getElementById('refSel');
+  const compSel = document.getElementById('compSel');
+  if(!refSel || !compSel) return;
+  const opts = Array.from(compSel.options);
+  function filterComp(){
+    const ref = refSel.value;
+    opts.forEach((o, idx) => { if(idx===0) return; o.hidden = !!(ref && o.dataset.ref !== ref); });
+    if(compSel.selectedOptions[0] && compSel.selectedOptions[0].hidden){ compSel.value=''; }
+  }
+  refSel.addEventListener('change', filterComp);
+})();
+</script>
+{% endblock %}

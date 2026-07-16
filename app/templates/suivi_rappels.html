@@ -1,0 +1,277 @@
+{% extends "layout.html" %}
+{% block body %}
+{% set tone_labels = {"danger": "Critique", "warn": "À reprendre", "info": "Info", "ok": "OK"} %}
+<style>
+  .follow-page { gap:16px; }
+  .follow-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .follow-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .follow-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:14px; }
+  .follow-kpi { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:12px; }
+  .follow-kpi .label { color:#64748b; font-size:12px; font-weight:700; }
+  .follow-kpi .value { font-size:28px; font-weight:900; line-height:1.1; margin-top:3px; }
+  .follow-kpi--danger { border-color:rgba(239,68,68,.28); background:rgba(239,68,68,.08); }
+  .follow-kpi--warn { border-color:rgba(245,158,11,.30); background:rgba(245,158,11,.09); }
+  .follow-filter-card { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:14px; }
+  .follow-filter { display:grid; grid-template-columns:minmax(220px, 1.2fr) repeat(3, minmax(150px, .7fr)) auto auto; gap:10px; align-items:end; }
+  .follow-create-grid { display:grid; grid-template-columns:minmax(220px, 1.2fr) repeat(4, minmax(140px, .6fr)); gap:10px; align-items:end; }
+  .follow-create-grid .wide { grid-column:1 / -1; }
+  .follow-layout { display:grid; grid-template-columns:minmax(0, 1fr) minmax(260px, .34fr); gap:14px; align-items:start; }
+  .follow-sections { display:flex; flex-direction:column; gap:14px; }
+  .follow-section { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:14px; }
+  .follow-section__head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; margin-bottom:10px; }
+  .follow-section__head h2 { margin:0; }
+  .follow-section__head p { margin:3px 0 0; color:#64748b; }
+  .follow-count { display:inline-flex; align-items:center; justify-content:center; min-width:34px; height:28px; border-radius:999px; background:rgba(15,23,42,.08); font-weight:800; color:#334155; }
+  .follow-list { display:flex; flex-direction:column; gap:10px; }
+  .follow-item { display:grid; grid-template-columns:5px minmax(0, 1fr) auto; gap:12px; border:1px solid rgba(15,23,42,.10); border-radius:8px; background:rgba(255,255,255,.96); padding:12px; }
+  .follow-item__rail { border-radius:999px; background:#64748b; }
+  .follow-item--danger .follow-item__rail { background:#dc2626; }
+  .follow-item--warn .follow-item__rail { background:#d97706; }
+  .follow-item--info .follow-item__rail { background:#2563eb; }
+  .follow-item__top { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:5px; }
+  .follow-item h3 { margin:0; font-size:17px; line-height:1.25; }
+  .follow-item p { margin:5px 0 0; color:#475569; line-height:1.4; }
+  .follow-chip { display:inline-flex; align-items:center; gap:5px; border:1px solid rgba(15,23,42,.12); border-radius:999px; padding:3px 8px; font-size:12px; color:#475569; background:#fff; }
+  .follow-chip--danger { border-color:rgba(239,68,68,.30); background:rgba(239,68,68,.10); color:#991b1b; }
+  .follow-chip--warn { border-color:rgba(245,158,11,.34); background:rgba(245,158,11,.12); color:#92400e; }
+  .follow-chip--info { border-color:rgba(37,99,235,.24); background:rgba(37,99,235,.10); color:#1d4ed8; }
+  .follow-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+  .follow-meta span { display:inline-flex; border:1px solid rgba(15,23,42,.10); border-radius:999px; padding:3px 8px; font-size:12px; color:#475569; background:rgba(15,23,42,.03); }
+  .follow-side { display:flex; flex-direction:column; gap:12px; position:sticky; top:84px; }
+  .follow-side-card { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:14px; }
+  .follow-side-card h2 { margin:0 0 10px; }
+  .follow-source-list { display:flex; flex-direction:column; gap:8px; }
+  .follow-source { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 10px; border:1px solid rgba(15,23,42,.10); border-radius:8px; color:inherit; text-decoration:none; background:rgba(15,23,42,.03); }
+  .follow-source.active { border-color:rgba(37,99,235,.35); background:rgba(37,99,235,.10); color:#1d4ed8; }
+  .follow-source strong { font-size:13px; }
+  .follow-priority-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .follow-empty { border:1px dashed rgba(15,23,42,.20); border-radius:8px; padding:14px; color:#64748b; background:rgba(15,23,42,.03); }
+  .follow-card-action { display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; gap:10px; min-width:138px; }
+  .follow-card-action form { margin:0; }
+  .follow-quick-actions { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  .follow-sector { color:#64748b; font-size:12px; text-align:right; }
+  @media (max-width: 1050px) {
+    .follow-layout { grid-template-columns:1fr; }
+    .follow-side { position:static; }
+    .follow-filter,
+    .follow-create-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 720px) {
+    .follow-filter,
+    .follow-create-grid { grid-template-columns:1fr; }
+    .follow-item { grid-template-columns:5px minmax(0, 1fr); }
+    .follow-card-action { grid-column:2; align-items:stretch; min-width:0; }
+    .follow-quick-actions { justify-content:stretch; }
+    .follow-quick-actions .btn { flex:1; }
+    .follow-sector { text-align:left; }
+  }
+</style>
+
+<div class="ui-page ui-page--wide follow-page">
+  <section class="ui-header">
+    <div class="ui-header__main follow-head">
+      <div>
+        <h1 class="ui-title">Centre de suivi</h1>
+        <p class="ui-subtitle">Les rappels et points ouverts remontés depuis les orientations, les projets, les indicateurs et les budgets.</p>
+      </div>
+      <div class="ui-actions follow-actions">
+        <a class="btn" href="{{ url_for('main.dashboard') }}">Accueil</a>
+        {% if can_view_orientations %}
+          <a class="btn" href="{{ url_for('partenaires.orientations', year=today.year) }}">Orientations</a>
+        {% endif %}
+        {% if can_view_projects %}
+          <a class="btn" href="{{ url_for('projets.projets_list') }}">Projets</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="ui-kpi-grid follow-kpis">
+      <div class="ui-kpi-card follow-kpi"><div class="label">Signaux visibles</div><div class="value">{{ summary.filtered }}</div></div>
+      <div class="ui-kpi-card follow-kpi follow-kpi--danger"><div class="label">À traiter maintenant</div><div class="value">{{ summary.now }}</div></div>
+      <div class="ui-kpi-card follow-kpi follow-kpi--warn"><div class="label">Cette semaine</div><div class="value">{{ summary.soon }}</div></div>
+      <div class="ui-kpi-card follow-kpi"><div class="label">À surveiller</div><div class="value">{{ summary.watch }}</div></div>
+      <div class="ui-kpi-card follow-kpi"><div class="label">Base totale</div><div class="value">{{ summary.total }}</div></div>
+    </div>
+  </section>
+
+  <details class="ui-panel follow-filter-card" {% if filters.type == 'rappel' %}open{% endif %}>
+    <summary style="font-weight:900; cursor:pointer;">Nouveau rappel</summary>
+    <form method="post" action="{{ url_for('main.suivi_rappel_create') }}" class="ui-form-grid follow-create-grid" style="margin-top:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-stack">Titre
+        <input class="in" name="titre" required placeholder="Ex. Relancer le partenaire logement">
+      </label>
+      <label class="field-stack">Échéance
+        <input class="in" type="date" name="echeance">
+      </label>
+      <label class="field-stack">Priorité
+        <select class="in" name="priorite">
+          {% for key,label in rappel_priorites.items() %}
+            <option value="{{ key }}" {% if key == 'warn' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Catégorie
+        <select class="in" name="categorie">
+          {% for key,label in rappel_categories.items() %}
+            <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if can_scope_all %}
+        <label class="field-stack">Secteur
+          <select class="in" name="secteur">
+            <option value="">Tous secteurs</option>
+            {% for secteur in secteurs %}
+              <option value="{{ secteur }}">{{ secteur }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-stack wide">Note
+        <textarea class="in" name="description" rows="2" placeholder="Détail utile, personne concernée, prochaine étape..."></textarea>
+      </label>
+      <label class="field-stack wide">Lien optionnel
+        <input class="in" name="lien_url" placeholder="/projets ou https://...">
+      </label>
+      <label class="follow-chip wide" style="width:max-content;">
+        <input type="checkbox" name="is_private" value="1"> Personnel
+      </label>
+      <button class="btn ok" type="submit">Ajouter</button>
+    </form>
+  </details>
+
+  <section class="ui-panel follow-filter-card">
+    <form method="get" class="ui-form-grid follow-filter" data-filter-summary="true">
+      <label class="field-stack">Recherche
+        <input class="in" name="q" value="{{ filters.q }}" placeholder="Projet, personne, financeur...">
+      </label>
+      <label class="field-stack">Type
+        <select class="in" name="type">
+          <option value="">Tous</option>
+          {% for row in type_choices %}
+            <option value="{{ row.key }}" {% if filters.type == row.key %}selected{% endif %}>{{ row.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Priorité
+        <select class="in" name="priorite">
+          <option value="">Toutes</option>
+          <option value="danger" {% if filters.priorite == 'danger' %}selected{% endif %}>Critique</option>
+          <option value="warn" {% if filters.priorite == 'warn' %}selected{% endif %}>À reprendre</option>
+          <option value="info" {% if filters.priorite == 'info' %}selected{% endif %}>Info</option>
+        </select>
+      </label>
+      {% if can_scope_all %}
+        <label class="field-stack">Secteur
+          <select class="in" name="secteur">
+            <option value="">Tous</option>
+            {% for secteur in secteurs %}
+              <option value="{{ secteur }}" {% if filters.secteur == secteur %}selected{% endif %}>{{ secteur }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <button class="btn ok" type="submit">Filtrer</button>
+      <a class="btn" href="{{ url_for('main.suivi_rappels') }}">Réinitialiser</a>
+    </form>
+  </section>
+
+  <div class="follow-layout">
+    <div class="follow-sections">
+      {% for section in sections %}
+        <section class="ui-panel follow-section">
+          <div class="ui-section-head follow-section__head">
+            <div>
+              <h2>{{ section.title }}</h2>
+              <p>{{ section.subtitle }}</p>
+            </div>
+            <span class="follow-count">{{ section["items"]|length }}</span>
+          </div>
+          {% if section["items"] %}
+            <div class="follow-list">
+              {% for item in section["items"] %}
+                <article class="ui-record follow-item follow-item--{{ item.tone }}">
+                  <div class="follow-item__rail"></div>
+                  <div>
+                    <div class="follow-item__top">
+                      <span class="follow-chip">{{ item.type_label }}</span>
+                      <span class="follow-chip follow-chip--{{ item.tone }}">{{ tone_labels.get(item.tone, item.tone) }}</span>
+                      <span class="follow-chip">{{ item.due_label }}</span>
+                    </div>
+                    <h3>{{ item.title }}</h3>
+                    {% if item.subtitle %}<p>{{ item.subtitle }}</p>{% endif %}
+                    {% if item.meta %}
+                      <div class="follow-meta">
+                        {% for meta in item.meta %}
+                          <span>{{ meta }}</span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div class="follow-card-action">
+                    <div class="follow-sector">{{ item.secteur }}</div>
+                    {% if item.manual_id and item.can_quick_edit %}
+                      <div class="follow-quick-actions">
+                        {% if item.url and item.url != '#' %}
+                          <a class="btn" href="{{ item.url }}">{{ item.action_label }}</a>
+                        {% endif %}
+                        <form method="post" action="{{ url_for('main.suivi_rappel_action', rappel_id=item.manual_id) }}">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="action" value="done">
+                          <button class="btn ok" type="submit">Fait</button>
+                        </form>
+                        <form method="post" action="{{ url_for('main.suivi_rappel_action', rappel_id=item.manual_id) }}">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="action" value="postpone_7">
+                          <button class="btn" type="submit">+7 j</button>
+                        </form>
+                        <form method="post" action="{{ url_for('main.suivi_rappel_action', rappel_id=item.manual_id) }}" onsubmit="return confirm('Annuler ce rappel ?');">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="action" value="cancel">
+                          <button class="btn danger" type="submit">Annuler</button>
+                        </form>
+                      </div>
+                    {% elif item.url and item.url != '#' %}
+                      <a class="btn" href="{{ item.url }}">{{ item.action_label }}</a>
+                    {% else %}
+                      <span class="follow-chip">À traiter</span>
+                    {% endif %}
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="follow-empty">Aucun point dans cette catégorie avec les filtres actuels.</div>
+          {% endif %}
+        </section>
+      {% endfor %}
+    </div>
+
+    <aside class="follow-side">
+      <section class="ui-panel follow-side-card">
+        <h2>Sources</h2>
+        <div class="follow-source-list">
+          <a class="follow-source {% if not filters.type %}active{% endif %}" href="{{ url_for('main.suivi_rappels', priorite=filters.priorite, q=filters.q, secteur=filters.secteur) }}">
+            <strong>Toutes</strong><span>{{ summary.filtered }}</span>
+          </a>
+          {% for row in type_choices %}
+            <a class="follow-source {% if filters.type == row.key %}active{% endif %}" href="{{ url_for('main.suivi_rappels', type=row.key, priorite=filters.priorite, q=filters.q, secteur=filters.secteur) }}">
+              <strong>{{ row.label }}</strong><span>{{ row.count }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="ui-panel follow-side-card">
+        <h2>Priorités</h2>
+        <div class="follow-priority-row">
+          <a class="follow-chip {% if not filters.priorite %}follow-chip--info{% endif %}" href="{{ url_for('main.suivi_rappels', type=filters.type, q=filters.q, secteur=filters.secteur) }}">Toutes</a>
+          <a class="follow-chip follow-chip--danger" href="{{ url_for('main.suivi_rappels', type=filters.type, priorite='danger', q=filters.q, secteur=filters.secteur) }}">Critique {{ summary.danger }}</a>
+          <a class="follow-chip follow-chip--warn" href="{{ url_for('main.suivi_rappels', type=filters.type, priorite='warn', q=filters.q, secteur=filters.secteur) }}">À reprendre {{ summary.warn }}</a>
+          <a class="follow-chip follow-chip--info" href="{{ url_for('main.suivi_rappels', type=filters.type, priorite='info', q=filters.q, secteur=filters.secteur) }}">Info {{ summary.info }}</a>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

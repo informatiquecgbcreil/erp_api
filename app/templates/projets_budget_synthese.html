@@ -1,0 +1,90 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    {% include "_projet_budget_header.html" %}
+  </div>
+
+  {% set total_charges = budget_stats.total_charges or 0 %}
+  {% set total_demande = budget_stats.total_demande or 0 %}
+  {% set total_accorde = budget_stats.total_accorde or 0 %}
+  {% set total_recu = budget_stats.total_recu or 0 %}
+  {% set total_reste = budget_stats.total_charges_reste or 0 %}
+
+  {% set pct_demande = (total_demande / total_charges * 100) if total_charges else 0 %}
+  {% set pct_accorde = (total_accorde / total_charges * 100) if total_charges else 0 %}
+  {% set pct_recu = (total_recu / total_charges * 100) if total_charges else 0 %}
+  {% set pct_reste = (total_reste / total_charges * 100) if total_charges else 0 %}
+
+  <div class="card">
+    <div class="kpi-grid">
+
+      <div class="kpi-card">
+        <div class="kpi-label">Total charges (prévisionnel)</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_charges) }}€</div>
+        <div class="kpi-help">Base de référence du projet.</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Produits demandés</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_demande) }}€</div>
+        <div class="meter" style="margin-top:8px;">
+          <div class="meter__fill" style="width:{{ pct_demande }}%;"></div>
+        </div>
+        <div class="legend"><span>{{ "%.0f"|format(pct_demande) }}% des charges</span></div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Produits accordés</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_accorde) }}€</div>
+        <div class="meter" style="margin-top:8px;">
+          <div class="meter__fill meter__fill--ok" style="width:{{ pct_accorde }}%;"></div>
+        </div>
+        <div class="legend"><span>{{ "%.0f"|format(pct_accorde) }}% des charges</span></div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Produits reçus</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_recu) }}€</div>
+        <div class="meter" style="margin-top:8px;">
+          <div class="meter__fill" style="width:{{ pct_recu }}%;"></div>
+        </div>
+        <div class="legend"><span>{{ "%.0f"|format(pct_recu) }}% des charges</span></div>
+      </div>
+
+    </div>
+
+    <div style="margin-top:12px;">
+      <div class="kpi-label">Équilibre du projet</div>
+      <div class="meter">
+        {# On visualise “couvert” = accordé (ou reçu) VS “reste” #}
+        {% set pct_couvert = (total_accorde / total_charges * 100) if total_charges else 0 %}
+        <div class="meter__fill meter__fill--ok" style="width:{{ pct_couvert }}%;"></div>
+      </div>
+      <div class="legend">
+        <span><strong class="mono">{{ "%.2f"|format(total_accorde) }}€</strong> financés</span>
+        <span><strong class="mono">{{ "%.2f"|format(total_reste) }}€</strong> à financer ({{ "%.0f"|format(pct_reste) }}%)</span>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <div class="kpi-label">Reste à financer</div>
+      <div class="kpi-value">{{ "%.2f"|format(total_reste) }}€</div>
+      <div class="kpi-help">Écart à couvrir pour équilibrer le budget.</div>
+    </div>
+  </div>
+
+  <div class="card callout">
+    <div class="callout__title">Alertes</div>
+    <ul class="watch-list">
+    {% for a in alertes %}
+      <li>{{ a }}</li>
+    {% else %}
+      <li class="muted">Aucune alerte n’est remontée pour le moment.</li>
+    {% endfor %}
+    </ul>
+  </div>
+
+</div>
+{% endblock %}

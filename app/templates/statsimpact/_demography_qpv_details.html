@@ -1,0 +1,42 @@
+{% if demo.qpv_details %}
+  <div class="demo-grid-full-row" style="margin-top:12px;">
+    <div class="kpi-label">Détail par typologie de quartier</div>
+    <div class="tablewrap clean wide">
+      <table class="statsimpact-matrix-table">
+        <thead>
+          <tr>
+            <th>Typologie</th>
+            <th style="text-align:right;">Total</th>
+            <th style="text-align:right;">Femmes</th>
+            <th style="text-align:right;">Hommes</th>
+            <th style="text-align:right;">Autre / NR</th>
+            <th style="text-align:right;">0-10</th>
+            <th style="text-align:right;">11-17</th>
+            <th style="text-align:right;">18-25</th>
+            <th style="text-align:right;">26-59</th>
+            <th style="text-align:right;">60+</th>
+            <th style="text-align:right;">Âge inconnu</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in demo.qpv_details %}
+            <tr>
+              <td><strong>{{ row.label }}</strong></td>
+              <td style="text-align:right;"><strong>{{ row.total }}</strong></td>
+              <td style="text-align:right;">{{ row.genre.get('Femmes', 0) }}</td>
+              <td style="text-align:right;">{{ row.genre.get('Hommes', 0) }}</td>
+              <td style="text-align:right;">{{ row.genre.get('Autre / non renseigné', 0) }}</td>
+              <td style="text-align:right;">{{ row.age_buckets.get('0-10', 0) }}</td>
+              <td style="text-align:right;">{{ row.age_buckets.get('11-17', 0) }}</td>
+              <td style="text-align:right;">{{ row.age_buckets.get('18-25', 0) }}</td>
+              <td style="text-align:right;">{{ row.age_buckets.get('26-59', 0) }}</td>
+              <td style="text-align:right;">{{ row.age_buckets.get('60+', 0) }}</td>
+              <td style="text-align:right;">{{ row.age_buckets.get('Inconnu', 0) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="muted" style="font-size:12px; margin-top:6px;">Participants uniques sur la période, classés selon le quartier renseigné dans leur fiche.</div>
+  </div>
+{% endif %}

@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell dense-list-shell wide-shell">
+  <section class="hero-card">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1>Subventions par financeur</h1>
+        <p class="muted">Consolidation des dossiers par organisme financeur pour l’exercice {{ selected_year }}.</p>
+      </div>
+      <div class="hero-actions">
+        <form method="get" action="{{ url_for('main.subventions_par_financeur') }}" class="inline-actions">
+          <label class="field-stack slim"><span>Exercice</span><select name="annee">{% for y in available_years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></label>
+          <button class="btn" type="submit">Afficher</button>
+        </form>
+        <a class="btn" href="{{ url_for('main.subventions_list', annee=selected_year) }}">← Retour à la liste</a>
+        <a class="btn" href="{{ url_for('main.export_subventions_xlsx', annee=selected_year) }}">⬇ Export Excel</a>
+      </div>
+    </div>
+    <div class="kpi-grid-modern">
+      <div class="kpi-box"><div class="muted">Financeurs</div><strong>{{ groupes|length }}</strong></div>
+      <div class="kpi-box"><div class="muted">Dossiers</div><strong>{{ totaux.nb }}</strong></div>
+      <div class="kpi-box"><div class="muted">Total attribué</div><strong>{{ '%.2f'|format(totaux.attribue) }}€</strong></div>
+      <div class="kpi-box"><div class="muted">Total reçu</div><strong>{{ '%.2f'|format(totaux.recu) }}€</strong></div>
+    </div>
+  </section>
+
+  {% for g in groupes %}
+    {% set pct = (g.recu / g.attribue * 100) if g.attribue else 0 %}
+    <section class="section-card">
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <h2>{{ g.financeur }}</h2>
+          <p class="muted">{{ g.nb }} dossier(s) · Demandé {{ '%.2f'|format(g.demande) }}€ · Attribué {{ '%.2f'|format(g.attribue) }}€ · Reçu {{ '%.2f'|format(g.recu) }}€</p>
+        </div>
+        <div class="hero-actions">
+          <span class="status-badge {{ 'status-success' if pct >= 80 else ('status-warning' if pct >= 30 else 'status-danger') }}">{{ '%.0f'|format(pct) }}% reçu</span>
+        </div>
+      </div>
+      <div class="tablewrap clean">
+        <table class="compact-table">
+          <thead><tr><th>Dossier</th><th>Secteur</th><th>Statut</th><th>Demandé</th><th>Attribué</th><th>Reçu</th><th>Versement prévu</th><th>Bilan prévu</th><th></th></tr></thead>
+          <tbody>
+            {% for s in g.subs %}
+              <tr>
+                <td><strong>{{ s.nom }}</strong>{% if s.reference %}<div class="muted">Réf : {{ s.reference }}</div>{% endif %}</td>
+                <td>{{ s.secteur }}</td>
+                <td><span class="status-badge" data-status="{{ s.statut_cycle }}">{{ s.statut_label }}</span></td>
+                <td>{{ '%.2f'|format(s.montant_demande or 0) }}€</td>
+                <td>{{ '%.2f'|format(s.montant_attribue or 0) }}€</td>
+                <td><strong>{{ '%.2f'|format(s.montant_recu or 0) }}€</strong></td>
+                <td>{{ s.date_versement_prevu.strftime('%d/%m/%Y') if s.date_versement_prevu else '—' }}</td>
+                <td>{{ s.date_bilan_prevu.strftime('%d/%m/%Y') if s.date_bilan_prevu else '—' }}</td>
+                <td><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=s.id) }}">Ouvrir</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% else %}
+    <section class="section-card">
+      <div class="quick-empty"><strong>Aucune subvention pour cet exercice.</strong></div>
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

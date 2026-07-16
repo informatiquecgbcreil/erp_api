@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between;">
+      <div>
+        <h1>Ateliers (Présences)</h1>
+        <p class="muted">Synchronisés depuis la base <strong>presence.db</strong> de ton app d’émargement. Les responsables de secteur ne voient que les ateliers déjà rattachés à leurs projets.</p>
+        <p class="muted">Chemin utilisé : <code>{{ presence_db_path }}</code></p>
+        <p class="muted">Si erreur <em>no such table \"participants\"</em> : tu pointes vers une DB vide/incorrecte (SQLite crée un fichier vide si le chemin est faux).</p>
+      </div>
+      {% if can_manage %}
+      <form method="POST" action="{{ url_for('activite.index') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn ok" type="submit">🔄 Synchroniser</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Titre</th>
+            <th>Lieu</th>
+            <th>Horaires</th>
+            <th>Participants</th>
+            <th>Rattaché à</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in ateliers %}
+            <tr>
+              <td><strong>{{ a.date }}</strong></td>
+              <td>{{ a.titre }}</td>
+              <td>{{ a.lieu or "-" }}</td>
+              <td>{{ a.horaires or "-" }}</td>
+              <td><span class="tag">{{ a.nb_participants or 0 }}</span></td>
+              <td>
+                {% set ps = linked_map.get(a.id, []) %}
+                {% if ps and ps|length > 0 %}
+                  <span class="muted">{{ ps|join(", ") }}</span>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          {% if ateliers|length == 0 %}
+            <tr><td colspan="6" class="muted">Aucun atelier. Si tu viens de copier presence.db, clique sur Synchroniser.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Liste des ateliers synchronisés (vue compacte)">
+      {% for a in ateliers %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ a.titre }}</strong>
+            <span class="chip">{{ a.date }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>Lieu</dt><dd>{{ a.lieu or "-" }}</dd></div>
+            <div><dt>Horaires</dt><dd>{{ a.horaires or "-" }}</dd></div>
+            <div><dt>Participants</dt><dd><span class="tag">{{ a.nb_participants or 0 }}</span></dd></div>
+            <div><dt>Rattaché à</dt><dd class="muted">{% set ps = linked_map.get(a.id, []) %}{{ ps|join(", ") if ps and ps|length > 0 else '—' }}</dd></div>
+          </dl>
+        </article>
+      {% else %}
+        <div class="quick-empty"><strong>Aucun atelier trouvé.</strong>Si tu viens de copier `presence.db`, lance la synchronisation.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

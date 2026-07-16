@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell long-form-shell stack">
+  <div class="page-header"><div class="page-title-wrap"><h1 class="page-title">{{ 'Nouveau questionnaire' if not questionnaire else 'Questionnaire' }}</h1><p class="page-subtitle">Structure, ciblage et questions du questionnaire.</p></div><div class="hero-actions"><a class="btn" href="{{ url_for('questionnaires.index') }}">⬅ Retour</a></div></div>
+  <div class="section-card">
+    <form method="post" class="stack stretch-input">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-2">
+        <div class="field-stack"><label class="muted">Nom</label><input class="in" type="text" name="nom" value="{{ questionnaire.nom if questionnaire else '' }}" required></div>
+        <div class="field-stack"><label class="muted">Actif</label><select class="in" name="is_active"><option value="1" {% if questionnaire is none or questionnaire.is_active %}selected{% endif %}>Oui</option><option value="0" {% if questionnaire and not questionnaire.is_active %}selected{% endif %}>Non</option></select></div>
+        <div class="field-stack grow-2"><label class="muted">Description</label><textarea class="in" name="description" rows="3">{{ questionnaire.description if questionnaire else '' }}</textarea></div>
+        <div class="field-stack"><label class="muted">Type</label><select class="in" name="type_questionnaire">{% for val, lib in questionnaire_types %}<option value="{{ val }}" {% if (questionnaire.type_questionnaire if questionnaire else 'autre') == val %}selected{% endif %}>{{ lib }}</option>{% endfor %}</select></div>
+        <div class="field-stack"><label class="muted">Projet (mesure d'impact)</label><select class="in" name="projet_id"><option value="">— Aucun —</option>{% for p in projets %}<option value="{{ p.id }}" {% if questionnaire and questionnaire.projet_id == p.id %}selected{% endif %}>{{ p.secteur }} — {{ p.nom }}</option>{% endfor %}</select></div>
+        <div class="field-stack"><label class="muted">Secteurs (multi)</label><select class="in multi-select" name="secteur" multiple size="5">{% for s in SECTEURS %}<option value="{{ s }}" {% if s in secteurs %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+        <div class="field-stack"><label class="muted">Ateliers (multi)</label><select class="in multi-select" name="atelier_id" multiple size="5">{% for a in ateliers %}<option value="{{ a.id }}" {% if a.id in ateliers_selected %}selected{% endif %}>{{ a.secteur }} — {{ a.nom }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="inline-actions"><button class="btn ok" type="submit">Enregistrer</button><a class="btn" href="{{ url_for('questionnaires.index') }}">Annuler</a></div>
+    </form>
+  </div>
+  {% if questionnaire %}
+  <div class="section-card compact">
+    <div class="table-toolbar"><h2 class="section-title" style="margin:0">Questions</h2></div>
+    <form method="post" action="{{ url_for('questionnaires.add_question', questionnaire_id=questionnaire.id) }}" class="stack stretch-input" style="margin-bottom:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-3">
+        <div class="field-stack grow-2"><label class="muted">Libellé</label><input class="in" type="text" name="label" required></div>
+        <div class="field-stack"><label class="muted">Type</label><select class="in" name="kind">{% for key, label in question_types %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="field-stack"><label class="muted">Ordre</label><input class="in" type="number" name="position" min="0" value="0"></div>
+        <div class="field-stack"><label class="muted">Obligatoire</label><select class="in" name="is_required"><option value="0" selected>Non</option><option value="1">Oui</option></select></div>
+        <div class="field-stack grow-2"><label class="muted">Options (une par ligne)</label><textarea class="in" name="options" rows="3"></textarea></div>
+      </div>
+      <div class="inline-actions"><button class="btn" type="submit">➕ Ajouter</button></div>
+    </form>
+    <div class="tablewrap clean"><table><thead><tr><th>Ordre</th><th>Question</th><th>Type</th><th>Obligatoire</th><th style="width:140px;">Actions</th></tr></thead><tbody>{% for q in questions %}<tr><td>{{ q.position }}</td><td><strong>{{ q.label }}</strong>{% if q.options_json %}<div class="muted" style="font-size:12px;">{{ q.options_json }}</div>{% endif %}</td><td class="muted">{{ q.kind }}</td><td>{% if q.is_required %}<span class="tag">Oui</span>{% else %}—{% endif %}</td><td><form method="post" action="{{ url_for('questionnaires.delete_question', question_id=q.id) }}" onsubmit="return confirm('Supprimer cette question ?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Supprimer</button></form></td></tr>{% else %}<tr><td colspan="5" class="muted">Aucune question.</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

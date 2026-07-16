@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div class="page-shell long-form-shell stack">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1 class="page-title">Nouvelle entrée inventaire</h1>
+        <p class="page-subtitle">Crée une fiche matériel claire, puis ajuste si besoin après rattachement budgétaire ou vérification terrain.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="btn" href="{{ url_for('inventaire_materiel.list_items') }}">⬅ Retour</a>
+      </div>
+    </div>
+
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="section-card">
+        <h2 class="section-title">Identification</h2>
+        <div class="form-grid-2">
+          <div class="field-stack">
+            <label>Secteur</label>
+{% if not can('scope:all_secteurs') %}
+  <input type="text" name="secteur" value="{{ default_secteur }}" readonly>
+  <input type="hidden" name="secteur" value="{{ default_secteur }}">
+{% else %}
+  <select name="secteur" required>
+    <option value="">-- Choisir --</option>
+    {% for sec in (secteur_choices or SECTEURS or []) %}
+      <option value="{{ sec }}" {% if sec == default_secteur %}selected{% endif %}>{{ sec }}</option>
+    {% endfor %}
+  </select>
+{% endif %}
+          </div>
+          <div class="field-stack">
+            <label>ID interne</label>
+            <input type="text" value="Auto (CODE-MM-YYYY-0001)" readonly>
+            <div class="help-inline">Basé sur la date d'entrée (ou aujourd'hui si vide).</div>
+          </div>
+          <div class="field-stack">
+            <label>Catégorie</label>
+            <input type="text" name="categorie" placeholder="Ex: Informatique / Audio / Mobilier">
+          </div>
+          <div class="field-stack">
+            <label>Désignation *</label>
+            <input type="text" name="designation" placeholder="Ex: Écran 24"" required>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2 class="section-title">État et quantité</h2>
+        <div class="form-grid-3">
+          <div class="field-stack">
+            <label>Quantité</label>
+            <input type="number" name="quantite" value="1" min="1">
+          </div>
+          <div class="field-stack">
+            <label>État</label>
+            <select name="etat">
+              <option value="OK">OK</option>
+              <option value="A réparer">A réparer</option>
+              <option value="HS">HS</option>
+              <option value="Donné">Donné</option>
+            </select>
+          </div>
+          <div class="field-stack">
+            <label>Localisation</label>
+            <input type="text" name="localisation" placeholder="Salle, placard, bureau…">
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2 class="section-title">Détails complémentaires</h2>
+        <div class="form-grid-2">
+          <div class="field-stack"><label>Marque</label><input type="text" name="marque"></div>
+          <div class="field-stack"><label>Modèle</label><input type="text" name="modele"></div>
+          <div class="field-stack"><label>Numéro de série</label><input type="text" name="numero_serie"></div>
+          <div class="field-stack"><label>Valeur unitaire</label><input type="number" step="0.01" min="0" name="valeur_unitaire"></div>
+          <div class="field-stack grow-2"><label>Notes</label><textarea name="notes" rows="4" placeholder="Infos utiles, origine, anomalies, affectation…"></textarea></div>
+        </div>
+      </div>
+
+      <div class="section-card compact">
+        <div class="hero-actions">
+          <button class="btn ok" type="submit">Créer l’entrée</button>
+          <a class="btn" href="{{ url_for('inventaire_materiel.list_items') }}">Annuler</a>
+        </div>
+      </div>
+    </form>
+  </div>
+{% endblock %}

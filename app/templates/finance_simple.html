@@ -1,0 +1,194 @@
+{% extends "layout.html" %}
+{% block body %}
+{% set k = data.kpis %}
+<style>
+  .simple-shell{display:flex;flex-direction:column;gap:16px}
+  .simple-hero{border:1px solid rgba(120,130,160,.22);border-radius:24px;padding:22px;background:linear-gradient(135deg, rgba(16,185,129,.12), rgba(59,130,246,.08))}
+  .simple-title{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .simple-title h1{margin:0}
+  .simple-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+  .simple-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .simple-card{border:1px solid rgba(120,130,160,.22);border-radius:18px;padding:14px;background:var(--card-bg, rgba(255,255,255,.72));box-shadow:0 8px 24px rgba(15,23,42,.06)}
+  .simple-card .label{font-size:.86rem;color:var(--muted,#667085);font-weight:800}
+  .simple-card .value{font-size:1.45rem;font-weight:900;margin-top:4px}
+  .envelope-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .envelope-card{border:1px solid rgba(120,130,160,.22);border-radius:18px;padding:14px;background:rgba(255,255,255,.65)}
+  .envelope-title{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .bar{height:12px;background:rgba(120,130,160,.18);border-radius:999px;overflow:hidden;margin-top:10px}
+  .bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#22c55e)}
+  .bar.warn span{background:linear-gradient(90deg,#f97316,#facc15)}
+  .bar.bad span{background:linear-gradient(90deg,#ef4444,#f97316)}
+  .split-grid{display:grid;grid-template-columns:1.8fr 130px 1fr auto;gap:8px;align-items:end}
+  .split-row{margin-bottom:8px}
+  .split-summary{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+  .split-pill{border:1px solid rgba(120,130,160,.25);border-radius:999px;padding:7px 10px;background:rgba(255,255,255,.68);font-weight:800}
+  .split-pill.bad{border-color:rgba(239,68,68,.45)}
+  .split-pill.ok{border-color:rgba(34,197,94,.45)}
+  .simple-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .simple-note{font-size:.92rem;color:var(--muted,#667085)}
+  @media(max-width:1000px){.simple-kpis,.envelope-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.simple-filters,.split-grid{grid-template-columns:1fr}}
+  @media(max-width:640px){.simple-kpis,.envelope-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="simple-shell">
+  <div class="simple-hero">
+    <div class="simple-title">
+      <div>
+        <h1>Finance simplifiée</h1>
+        <p class="muted"><strong>{{ secteur }}</strong> · Exercice {{ year }} · lecture utilisateur</p>
+      </div>
+      <div class="simple-actions">
+        <a class="btn" href="{{ url_for('projets.finance_home', secteur=secteur, year=year) }}">Accueil finances</a>
+        <a class="btn" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year) }}">Pilotage complet</a>
+        <a class="btn" href="{{ url_for('projets.finance_secteur_export', secteur=secteur, year=year) }}">Exporter XLSX</a>
+      </div>
+    </div>
+    <form method="get" class="simple-filters">
+      <label class="field-stack">Secteur
+        <select class="in" name="secteur" onchange="this.form.submit()">
+          {% for s in sectors %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Exercice
+        <select class="in" name="year" onchange="this.form.submit()">
+          {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="field-stack"><span>Principe</span><span class="muted">Je vois mes enveloppes, je saisis une dépense, je la répartis.</span></div>
+    </form>
+  </div>
+
+  <div class="simple-kpis">
+    <div class="simple-card"><div class="label">Budget prévu</div><div class="value">{{ "%.2f"|format(k.charges_prevues or 0) }}€</div><div class="simple-note">Charges prévues du secteur.</div></div>
+    <div class="simple-card"><div class="label">Enveloppes accordées</div><div class="value">{{ "%.2f"|format(k.attribue or 0) }}€</div><div class="simple-note">Externes + fonds propres compte 99.</div></div>
+    <div class="simple-card"><div class="label">Déjà imputé</div><div class="value">{{ "%.2f"|format(k.total_impute or 0) }}€</div><div class="simple-note">Dépenses réparties sur les sources.</div></div>
+    <div class="simple-card"><div class="label">À corriger</div><div class="value">{{ k.nb_depenses_a_corriger or 0 }}</div><div class="simple-note">Dépense(s) non équilibrée(s).</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Mes enveloppes de financement</h2>
+    <p class="muted">Lecture simple : combien est disponible, combien est déjà utilisé, combien reste à imputer.</p>
+    <div class="envelope-grid">
+      {% for r in data.subventions %}
+        {% set base = r.attribue if r.attribue > 0 else (r.recu if r.recu > 0 else r.demande) %}
+        {% set pct = r.pct_impute or 0 %}
+        <div class="envelope-card">
+          <div class="envelope-title">
+            <div><strong>{{ r.subvention.nom }}</strong><br><span class="muted">{{ "Fonds propres / autofinancement" if r.is_fonds_propres else "Enveloppe externe" }}</span></div>
+            <div><strong>{{ pct }}%</strong></div>
+          </div>
+          <div class="bar {{ 'bad' if pct > 105 else ('warn' if pct > 85 else '') }}"><span style="width:{{ pct if pct < 100 else 100 }}%"></span></div>
+          <div class="simple-note" style="margin-top:8px;">Utilisé : {{ "%.2f"|format(r.impute or 0) }}€ / Disponible : {{ "%.2f"|format(base or 0) }}€ · Reste : {{ "%.2f"|format(r.reste or 0) }}€</div>
+        </div>
+      {% else %}
+        <div class="simple-note">Aucune enveloppe de financement détectée pour cet exercice.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+
+  {% if data.controls %}
+  <div class="card">
+    <h2>Points à surveiller</h2>
+    <div class="tablewrap clean wide">
+      <table class="table">
+        <thead><tr><th>Niveau</th><th>Zone</th><th>Message</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for c in data.controls[:8] %}
+            {% if c.level != 'ok' %}
+            <tr><td><strong>{{ c.level }}</strong></td><td>{{ c.zone }}</td><td>{{ c.message }}</td><td>{{ c.action }}</td></tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Nouvelle dépense financée</h2>
+    <p class="muted">Crée une dépense réelle unique, puis répartis immédiatement son montant entre tes enveloppes.</p>
+    {% if sources %}
+    <form method="post" id="simpleDepenseForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="row three">
+        <label class="field-stack">Libellé<input class="in" name="libelle" required placeholder="Achat petit matériel, prestation..."></label>
+        <label class="field-stack">Montant total<input class="in" name="montant" required inputmode="decimal" id="depTotalInput" placeholder="Ex. 400"></label>
+        <label class="field-stack">Date<input class="in" type="date" name="date_paiement"></label>
+      </div>
+      <div class="row three">
+        <label class="field-stack">Fournisseur<input class="in" name="fournisseur"></label>
+        <label class="field-stack">Référence<input class="in" name="reference_piece"></label>
+        <label class="field-stack">Type<select class="in" name="type_depense"><option>Fonctionnement</option><option>Investissement</option><option>Prestations</option><option>Déplacements</option><option>Autre</option></select></label>
+      </div>
+
+      <h3>Répartition</h3>
+      <div id="simpleSplitRows">
+        <div class="split-grid split-row" data-split-row>
+          <label class="field-stack">Source
+            <select class="in" name="ligne_budget_id[]">
+              {% for s in sources %}
+                <option value="{{ s.ligne.id }}">{{ s.label }} · reste {{ "%.2f"|format(s.reste or 0) }}€</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack">Montant<input class="in" name="montant_affecte[]" inputmode="decimal" data-split-amount placeholder="Ex. 100"></label>
+          <label class="field-stack">Commentaire<input class="in" name="commentaire_affectation[]" placeholder="Facultatif"></label>
+          <button class="btn danger" type="button" data-remove-row>Retirer</button>
+        </div>
+      </div>
+      <div class="simple-actions" style="margin-top:8px;">
+        <button class="btn" type="button" id="addSplitRow">+ Ajouter une source</button>
+        <label class="inline" style="gap:8px;"><input type="checkbox" name="auto_complete_reste" value="1" checked> Compléter le reste sur la première source</label>
+      </div>
+      <div class="split-summary">
+        <span class="split-pill">Dépense : <span id="simpleDepTotal">0.00</span>€</span>
+        <span class="split-pill">Réparti : <span id="simpleAffTotal">0.00</span>€</span>
+        <span class="split-pill" id="simpleRestPill">Reste : <span id="simpleRest">0.00</span>€</span>
+      </div>
+      <div class="form-actions" style="margin-top:14px;"><button class="btn ok" type="submit">Créer la dépense financée</button></div>
+    </form>
+    {% else %}
+      <div class="quick-info">Aucune ligne de charge disponible. Crée d’abord une subvention/enveloppe avec au moins une ligne de charge. Pour les fonds propres, crée une enveloppe “Fonds propres {{ year }}” avec un compte 99.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Dépenses récentes</h2>
+    <div class="tablewrap clean wide">
+      <table class="table">
+        <thead><tr><th>Date</th><th>Dépense</th><th>Montant</th><th>Affecté</th><th>Reste</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {% for r in data.depenses[:12] %}
+          <tr>
+            <td>{{ r.date or "" }}</td>
+            <td><strong>{{ r.depense.libelle }}</strong><br><span class="muted">{{ r.depense.fournisseur or "" }}</span></td>
+            <td>{{ "%.2f"|format(r.montant or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.affecte or 0) }}€</td>
+            <td>{{ "%.2f"|format(r.reste or 0) }}€</td>
+            <td>{{ r.statut }}</td>
+            <td><a class="btn" href="{{ url_for('budget.depense_edit', depense_id=r.depense.id) }}">Ouvrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="muted">Aucune dépense imputée pour l’instant.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const rows=document.getElementById('simpleSplitRows'), addBtn=document.getElementById('addSplitRow'), depInput=document.getElementById('depTotalInput');
+  const depTotal=document.getElementById('simpleDepTotal'), affTotal=document.getElementById('simpleAffTotal'), rest=document.getElementById('simpleRest'), restPill=document.getElementById('simpleRestPill');
+  if(!rows){return;}
+  function parseAmount(v){v=String(v||'').replace(/\u00a0/g,'').replace(/\s+/g,'').replace('€','').replace(',','.'); const n=parseFloat(v); return isNaN(n)?0:n;}
+  function money(n){return (Math.round((n+Number.EPSILON)*100)/100).toFixed(2);}
+  function updateTotals(){const dep=parseAmount(depInput?.value); let aff=0; rows.querySelectorAll('[data-split-amount]').forEach(i=>aff+=parseAmount(i.value)); const delta=dep-aff; depTotal.textContent=money(dep); affTotal.textContent=money(aff); rest.textContent=money(delta); restPill.classList.remove('ok','bad'); if(Math.abs(delta)<=0.01 && dep>0){restPill.classList.add('ok');} if(delta<-0.01){restPill.classList.add('bad');}}
+  function bindRow(row){row.querySelector('[data-remove-row]')?.addEventListener('click',()=>{const all=rows.querySelectorAll('[data-split-row]'); if(all.length<=1){row.querySelectorAll('input').forEach(i=>i.value='');}else{row.remove();} updateTotals();}); row.querySelectorAll('input,select').forEach(el=>el.addEventListener('input', updateTotals));}
+  addBtn?.addEventListener('click',()=>{const first=rows.querySelector('[data-split-row]'); if(!first){return;} const clone=first.cloneNode(true); clone.querySelectorAll('input').forEach(i=>i.value=''); clone.querySelectorAll('select').forEach(s=>s.selectedIndex=0); rows.appendChild(clone); bindRow(clone); updateTotals();});
+  rows.querySelectorAll('[data-split-row]').forEach(bindRow); depInput?.addEventListener('input', updateTotals); updateTotals();
+})();
+</script>
+{% endblock %}

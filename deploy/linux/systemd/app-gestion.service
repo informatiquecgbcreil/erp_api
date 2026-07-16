@@ -1,0 +1,21 @@
+[Unit]
+Description=App Gestion (Waitress)
+After=network.target
+
+[Service]
+Type=simple
+User=appgestion
+Group=appgestion
+WorkingDirectory=/opt/app-gestion
+EnvironmentFile=/opt/app-gestion/.env
+ExecStart=/opt/app-gestion/.venv/bin/python /opt/app-gestion/run_waitress.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+# Logs systemd/journalctl
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

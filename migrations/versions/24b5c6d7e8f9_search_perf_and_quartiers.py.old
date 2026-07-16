@@ -1,0 +1,129 @@
+"""search perf and quartiers
+
+Revision ID: 24b5c6d7e8f9
+Revises: 23a4b5c6d7e8
+Create Date: 2026-04-08 11:15:00.000000
+"""
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision = '24b5c6d7e8f9'
+down_revision = '23a4b5c6d7e8'
+branch_labels = None
+depends_on = None
+
+
+def _is_postgresql() -> bool:
+    bind = op.get_bind()
+    return bool(bind and bind.dialect and bind.dialect.name == 'postgresql')
+
+
+def upgrade():
+    op.create_index('ix_participant_nom_prenom_search', 'participant', ['nom', 'prenom'], unique=False)
+    op.create_index('ix_participant_ville_search', 'participant', ['ville'], unique=False)
+    op.create_index('ix_participant_email_search', 'participant', ['email'], unique=False)
+    op.create_index('ix_participant_telephone_search', 'participant', ['telephone'], unique=False)
+    op.create_index('ix_participant_created_secteur_search', 'participant', ['created_secteur'], unique=False)
+
+    op.create_index('ix_quartier_ville_nom_search', 'quartier', ['ville', 'nom'], unique=False)
+
+    op.create_index('ix_projet_secteur_nom_search', 'projet', ['secteur', 'nom'], unique=False)
+    op.create_index('ix_subvention_secteur_annee_nom_search', 'subvention', ['secteur', 'annee_exercice', 'nom'], unique=False)
+    op.create_index('ix_atelier_activite_secteur_nom_search', 'atelier_activite', ['secteur', 'nom'], unique=False)
+    op.create_index('ix_partenaire_nom_search', 'partenaire', ['nom'], unique=False)
+    op.create_index('ix_partenaire_email_contact_search', 'partenaire', ['email_contact'], unique=False)
+    op.create_index('ix_partenaire_email_general_search', 'partenaire', ['email_general'], unique=False)
+
+    if _is_postgresql():
+        op.execute('CREATE EXTENSION IF NOT EXISTS pg_trgm')
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_participant_search_trgm
+            ON participant
+            USING gin ((lower(
+                coalesce(prenom, '') || ' ' ||
+                coalesce(nom, '') || ' ' ||
+                coalesce(email, '') || ' ' ||
+                coalesce(telephone, '') || ' ' ||
+                coalesce(ville, '') || ' ' ||
+                coalesce(adresse, '') || ' ' ||
+                coalesce(created_secteur, '')
+            )) gin_trgm_ops)
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_quartier_search_trgm
+            ON quartier
+            USING gin ((lower(
+                coalesce(ville, '') || ' ' ||
+                coalesce(nom, '') || ' ' ||
+                coalesce(description, '')
+            )) gin_trgm_ops)
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_projet_search_trgm
+            ON projet
+            USING gin ((lower(
+                coalesce(nom, '') || ' ' ||
+                coalesce(secteur, '') || ' ' ||
+                coalesce(description, '')
+            )) gin_trgm_ops)
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_subvention_search_trgm
+            ON subvention
+            USING gin ((lower(
+                coalesce(nom, '') || ' ' ||
+                coalesce(secteur, '') || ' ' ||
+                coalesce(cast(annee_exercice as text), '')
+            )) gin_trgm_ops)
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_atelier_search_trgm
+            ON atelier_activite
+            USING gin ((lower(
+                coalesce(nom, '') || ' ' ||
+                coalesce(secteur, '') || ' ' ||
+                coalesce(description, '') || ' ' ||
+                coalesce(type_atelier, '')
+            )) gin_trgm_ops)
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_partenaire_search_trgm
+            ON partenaire
+            USING gin ((lower(
+                coalesce(nom, '') || ' ' ||
+                coalesce(contact_prenom, '') || ' ' ||
+                coalesce(contact_nom, '') || ' ' ||
+                coalesce(email_contact, '') || ' ' ||
+                coalesce(email_general, '') || ' ' ||
+                coalesce(tel_contact, '') || ' ' ||
+                coalesce(tel_general, '') || ' ' ||
+                coalesce(adresse, '') || ' ' ||
+                coalesce(description, '')
+            )) gin_trgm_ops)
+        """)
+
+
+def downgrade():
+    if _is_postgresql():
+        op.execute('DROP INDEX IF EXISTS ix_partenaire_search_trgm')
+        op.execute('DROP INDEX IF EXISTS ix_atelier_search_trgm')
+        op.execute('DROP INDEX IF EXISTS ix_subvention_search_trgm')
+        op.execute('DROP INDEX IF EXISTS ix_projet_search_trgm')
+        op.execute('DROP INDEX IF EXISTS ix_quartier_search_trgm')
+        op.execute('DROP INDEX IF EXISTS ix_participant_search_trgm')
+
+    op.drop_index('ix_partenaire_email_general_search', table_name='partenaire')
+    op.drop_index('ix_partenaire_email_contact_search', table_name='partenaire')
+    op.drop_index('ix_partenaire_nom_search', table_name='partenaire')
+    op.drop_index('ix_atelier_activite_secteur_nom_search', table_name='atelier_activite')
+    op.drop_index('ix_subvention_secteur_annee_nom_search', table_name='subvention')
+    op.drop_index('ix_projet_secteur_nom_search', table_name='projet')
+    op.drop_index('ix_quartier_ville_nom_search', table_name='quartier')
+    op.drop_index('ix_participant_created_secteur_search', table_name='participant')
+    op.drop_index('ix_participant_telephone_search', table_name='participant')
+    op.drop_index('ix_participant_email_search', table_name='participant')
+    op.drop_index('ix_participant_ville_search', table_name='participant')
+    op.drop_index('ix_participant_nom_prenom_search', table_name='participant')

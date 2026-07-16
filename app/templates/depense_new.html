@@ -1,0 +1,398 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<style>
+  .split-panel{border:1px solid rgba(120,130,160,.25);border-radius:18px;padding:14px;background:rgba(59,130,246,.06)}
+  .split-grid{display:grid;grid-template-columns:1fr 1.4fr 1fr 130px 1fr auto;gap:8px;align-items:end}
+  .split-row{margin-bottom:8px}
+  .split-summary{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+  .split-pill{border:1px solid rgba(120,130,160,.25);border-radius:999px;padding:7px 10px;background:rgba(255,255,255,.68);font-weight:700}
+  .split-pill.bad{border-color:rgba(239,68,68,.45)}
+  .split-pill.ok{border-color:rgba(34,197,94,.45)}
+  .split-help{font-size:.92rem;color:var(--muted,#667085)}
+  @media(max-width:1000px){.split-grid{grid-template-columns:1fr 1fr}.split-grid .btn{width:100%}}
+  @media(max-width:640px){.split-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="stack">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h1 class="card-title">Créer une dépense</h1>
+        <p class="card-subtitle">Crée une dépense réelle unique, puis répartis-la directement entre plusieurs financeurs si besoin.</p>
+      </div>
+      <div class="inline">
+        <a class="btn" href="{{ url_for('budget.depenses_list') }}">Retour à la liste</a>
+      </div>
+    </div>
+
+    {{ ux.callout('1. Ligne de départ', 'Choisis une première ligne de charge. Si tu ne renseignes pas la répartition directe, la dépense sera affectée à 100% sur cette ligne. Sinon, elle sera répartie selon les montants indiqués plus bas.') }}
+
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="row two">
+        <div>
+          <label>Enveloppe / subvention de départ</label>
+          <select name="subvention_id" id="subSelect" required>
+            <option value="">Choisir une subvention</option>
+            {% for s in subs %}
+              <option value="{{ s.id }}">{{ s.annee_exercice }} · {{ s.secteur }} · {{ s.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Filtrer par compte</label>
+          <select name="compte" id="compteSelect" required>
+            <option value="">Choisir un compte</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="card" style="margin:0">
+        <h2 style="margin-top:0">Inventaire (optionnel)</h2>
+        <p class="muted">Ajoutez une entrée d’inventaire si la dépense correspond à un matériel.</p>
+        <label class="inline" style="gap:8px; align-items:center">
+          <input type="checkbox" name="create_inventory" value="1" id="createInv">
+          Créer une entrée dans l’inventaire en même temps que la dépense
+        </label>
+
+        <div id="invBlock" style="display:none; margin-top:12px">
+          <div class="row two">
+            <div><label>Désignation</label><input class="in" name="inv_designation" placeholder="Par défaut : libellé de la dépense"></div>
+            <div><label>Catégorie</label><input class="in" name="inv_categorie" placeholder="Informatique, mobilier…"></div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="row three">
+            <div><label>Quantité</label><input class="in" type="number" name="inv_quantite" min="1" value="1"></div>
+            <div><label>Valeur unitaire (€)</label><input class="in" type="text" inputmode="decimal" autocomplete="off" name="inv_valeur_unitaire" placeholder="Ex. 155 ou 155,50" data-money-input></div>
+            <div>
+              <label>État</label>
+              <select class="in" name="inv_etat">
+                {% for v in ['OK','A réparer','HS','Donné'] %}
+                  <option value="{{ v }}">{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="row two">
+            <div><label>Localisation</label><input class="in" name="inv_localisation" placeholder="Salle, placard, bureau…"></div>
+            <div><label>Numéro de série</label><input class="in" name="inv_numero_serie"></div>
+          </div>
+
+          <div class="spacer"></div>
+          <div><label>Notes</label><textarea class="in" name="inv_notes" rows="3"></textarea></div>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="row two">
+        <div>
+          <label>Ligne de départ pour l’imputation</label>
+          <select name="ligne_budget_id" id="ligneSelect" required>
+            <option value="">Choisir une ligne</option>
+          </select>
+          <p class="muted" id="ligneInfo"></p>
+        </div>
+        <div>
+          <label>Type de dépense</label>
+          <select name="type_depense">
+            <option>Fonctionnement</option>
+            <option>Investissement</option>
+            <option>Prestations</option>
+            <option>Déplacements</option>
+            <option>Autre</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="row two">
+        <div><label>Libellé</label><input name="libelle" required placeholder="Minimum 5 caractères"></div>
+        <div><label>Montant (€)</label><input name="montant" type="text" inputmode="decimal" autocomplete="off" placeholder="Ex. 155 ou 155,50" required data-money-input></div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="split-panel">
+        <h2 style="margin-top:0">2. Répartition directe entre financeurs</h2>
+        <p class="split-help">
+          Optionnel mais recommandé : indique directement quelle part de la dépense est imputée à chaque financeur.
+          Exemple : CAF 250€, Politique de la ville 100€, fonds propres 50€.
+          Si tu ne mets rien, 100% ira sur la ligne de départ.
+        </p>
+
+        <div id="affRows">
+          <div class="split-grid split-row" data-aff-row>
+            <div>
+              <label>Source</label>
+              <select name="aff_source_type[]" class="in aff-source-type">
+                <option value="subvention">Enveloppe</option>
+                <option value="fonds_propres">Fonds propres / autofinancement</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div data-aff-line-wrap>
+              <label>Ligne financeur</label>
+              <select name="aff_ligne_budget_id[]" class="in">
+                <option value="">Choisir une ligne</option>
+                {% for l in available_lines %}
+                  <option value="{{ l.id }}">{{ l.source_sub.annee_exercice }} · {{ l.source_sub.secteur }} · {{ l.source_sub.nom }} — {{ l.compte }} · {{ l.libelle }} · reste {{ "%.2f"|format(l.reste or 0) }}€</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div data-aff-label-wrap style="display:none">
+              <label>Libellé source</label>
+              <input class="in" name="aff_libelle_source[]" placeholder="Fonds propres, autre...">
+            </div>
+            <div>
+              <label>Montant</label>
+              <input class="in" name="aff_montant[]" type="text" inputmode="decimal" data-money-input data-aff-montant placeholder="Ex. 100">
+            </div>
+            <div>
+              <label>Commentaire</label>
+              <input class="in" name="aff_commentaire[]" placeholder="Facultatif">
+            </div>
+            <div>
+              <button class="btn danger" type="button" data-remove-aff>Retirer</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="inline" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+          <button class="btn" type="button" id="addAffRow">+ Ajouter une ligne</button>
+          <button class="btn" type="button" id="addFondsPropres">+ Fonds propres / autofinancement</button>
+          <label class="inline" style="gap:8px;">
+            <input type="checkbox" name="auto_complete_initial" value="1" checked>
+            Compléter automatiquement le reste sur la ligne de départ
+          </label>
+        </div>
+
+        <div class="split-summary">
+          <span class="split-pill">Dépense : <span id="splitDepTotal">0.00</span>€</span>
+          <span class="split-pill">Affecté saisi : <span id="splitAffTotal">0.00</span>€</span>
+          <span class="split-pill" id="splitRestPill">Reste : <span id="splitRest">0.00</span>€</span>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="row three">
+        <div><label>Fournisseur</label><input name="fournisseur"></div>
+        <div><label>Référence facture ou reçu</label><input name="reference"></div>
+        <div>
+          <label>Mode de paiement</label>
+          <select name="mode_paiement">
+            <option value="">Non renseigné</option>
+            <option>CB</option>
+            <option>Virement</option>
+            <option>Espèces</option>
+            <option>Autre</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="row two">
+        <div><label>Date de paiement</label><input name="date_paiement" type="date"></div>
+        <div style="display:flex;align-items:end;"><button class="btn ok" type="submit">Enregistrer la dépense</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const createInv = document.getElementById('createInv');
+  const invBlock = document.getElementById('invBlock');
+  if (createInv && invBlock) {
+    createInv.addEventListener('change', ()=>{
+      invBlock.style.display = createInv.checked ? 'block' : 'none';
+    });
+  }
+</script>
+
+<script>
+  const subSelect = document.getElementById("subSelect");
+  const compteSelect = document.getElementById("compteSelect");
+  const ligneSelect = document.getElementById("ligneSelect");
+  const ligneInfo = document.getElementById("ligneInfo");
+
+  async function loadComptes(subId){
+    compteSelect.innerHTML = `<option value="">Choisir un compte</option>`;
+    ligneSelect.innerHTML = `<option value="">Choisir une ligne</option>`;
+    ligneInfo.textContent = "";
+
+    if(!subId) return;
+
+    const r = await fetch(`/api/subvention/${subId}/comptes?nature=charge`);
+    const data = await r.json();
+    (data.comptes || []).forEach(c=>{
+      const opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      compteSelect.appendChild(opt);
+    });
+  }
+
+  async function loadLignes(subId, compte){
+    ligneSelect.innerHTML = `<option value="">Choisir une ligne</option>`;
+    ligneInfo.textContent = "";
+    if(!subId) return;
+
+    const url = compte ? `/api/subvention/${subId}/lignes?nature=charge&compte=${encodeURIComponent(compte)}` : `/api/subvention/${subId}/lignes?nature=charge`;
+    const r = await fetch(url);
+    const data = await r.json();
+
+    (data.lignes || []).forEach(l=>{
+      const opt = document.createElement("option");
+      opt.value = l.id;
+      opt.textContent = `${l.compte} · ${l.libelle}`;
+      opt.dataset.reel = l.montant_reel;
+      opt.dataset.engage = l.engage;
+      opt.dataset.reste = l.reste;
+      ligneSelect.appendChild(opt);
+    });
+  }
+
+  subSelect.addEventListener("change", e=> loadComptes(e.target.value));
+  compteSelect.addEventListener("change", e=> loadLignes(subSelect.value, e.target.value));
+
+  ligneSelect.addEventListener("change", e=>{
+    const opt = e.target.options[e.target.selectedIndex];
+    if(!opt || !opt.value){ ligneInfo.textContent = ""; return; }
+    ligneInfo.textContent = `Réalisé : ${opt.dataset.reel}€ · Engagé : ${opt.dataset.engage}€ · Reste : ${opt.dataset.reste}€`;
+  });
+</script>
+
+
+<script>
+(function(){
+  function normalizeMoneyInput(el){
+    if(!el || !el.value){ return; }
+    el.value = el.value
+      .replace(/\u00a0/g, '')
+      .replace(/\s+/g, '')
+      .replace(/€/g, '')
+      .replace(',', '.');
+  }
+
+  document.querySelectorAll('[data-money-input]').forEach(function(input){
+    input.addEventListener('focus', function(){
+      setTimeout(function(){ input.select(); }, 0);
+    });
+  });
+
+  document.querySelectorAll('form').forEach(function(form){
+    form.addEventListener('submit', function(){
+      form.querySelectorAll('[data-money-input]').forEach(normalizeMoneyInput);
+    });
+  });
+})();
+</script>
+
+<script>
+(function(){
+  const rows = document.getElementById('affRows');
+  const addBtn = document.getElementById('addAffRow');
+  const addFpBtn = document.getElementById('addFondsPropres');
+  const depAmountInput = document.querySelector('input[name="montant"]');
+  const depTotal = document.getElementById('splitDepTotal');
+  const affTotal = document.getElementById('splitAffTotal');
+  const rest = document.getElementById('splitRest');
+  const restPill = document.getElementById('splitRestPill');
+
+  if(!rows){ return; }
+
+  function parseAmount(value){
+    value = String(value || '').replace(/\u00a0/g,'').replace(/\s+/g,'').replace('€','').replace(',', '.');
+    const n = parseFloat(value);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function money(n){ return (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2); }
+
+  function refreshRow(row){
+    const type = row.querySelector('.aff-source-type')?.value || 'subvention';
+    const lineWrap = row.querySelector('[data-aff-line-wrap]');
+    const labelWrap = row.querySelector('[data-aff-label-wrap]');
+    if(type === 'subvention'){
+      if(lineWrap) lineWrap.style.display = '';
+      if(labelWrap) labelWrap.style.display = 'none';
+    }else{
+      if(lineWrap) lineWrap.style.display = 'none';
+      if(labelWrap) labelWrap.style.display = '';
+      const label = row.querySelector('input[name="aff_libelle_source[]"]');
+      if(label && !label.value){
+        label.value = type === 'fonds_propres' ? 'Fonds propres / autofinancement' : 'Autre source';
+      }
+    }
+  }
+
+  function updateTotals(){
+    const dep = parseAmount(depAmountInput?.value);
+    let aff = 0;
+    rows.querySelectorAll('[data-aff-montant]').forEach(input => aff += parseAmount(input.value));
+    const delta = dep - aff;
+
+    if(depTotal) depTotal.textContent = money(dep);
+    if(affTotal) affTotal.textContent = money(aff);
+    if(rest) rest.textContent = money(delta);
+
+    if(restPill){
+      restPill.classList.remove('ok','bad');
+      if(Math.abs(delta) <= 0.01 && dep > 0){ restPill.classList.add('ok'); }
+      if(delta < -0.01){ restPill.classList.add('bad'); }
+    }
+  }
+
+  function bindRow(row){
+    row.querySelector('.aff-source-type')?.addEventListener('change', () => {
+      refreshRow(row);
+      updateTotals();
+    });
+    row.querySelector('[data-remove-aff]')?.addEventListener('click', () => {
+      const allRows = rows.querySelectorAll('[data-aff-row]');
+      if(allRows.length <= 1){
+        row.querySelectorAll('input').forEach(i => i.value = '');
+        row.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+        refreshRow(row);
+      }else{
+        row.remove();
+      }
+      updateTotals();
+    });
+    row.querySelectorAll('input,select').forEach(el => el.addEventListener('input', updateTotals));
+    refreshRow(row);
+  }
+
+  function cloneRow(type){
+    const first = rows.querySelector('[data-aff-row]');
+    if(!first){ return; }
+    const clone = first.cloneNode(true);
+    clone.querySelectorAll('input').forEach(i => i.value = '');
+    clone.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+    const typeSelect = clone.querySelector('.aff-source-type');
+    if(typeSelect && type){ typeSelect.value = type; }
+    rows.appendChild(clone);
+    bindRow(clone);
+    updateTotals();
+  }
+
+  rows.querySelectorAll('[data-aff-row]').forEach(bindRow);
+  addBtn?.addEventListener('click', () => cloneRow('subvention'));
+  addFpBtn?.addEventListener('click', () => cloneRow('fonds_propres'));
+  depAmountInput?.addEventListener('input', updateTotals);
+  updateTotals();
+})();
+</script>
+
+{% endblock %}

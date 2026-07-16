@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/cartographie.css') }}">
+{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>🗺️ Carte des habitants</h1>
+        <p class="muted" style="max-width:680px;">
+          Répartition des participants <strong>agrégée par quartier</strong> : la taille d'une bulle
+          reflète le nombre d'habitants localisés. Aucun domicile individuel n'est affiché
+          (donnée sensible). Les fiches sans adresse exploitable sont simplement « non localisées ».
+        </p>
+      </div>
+      <div class="inline" style="gap:8px;">
+        <a class="btn" href="{{ url_for('quartiers.index') }}">⬅ Quartiers</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="carte-toolbar">
+      <div class="field">
+        <label class="muted" for="carte-secteur">Secteur</label>
+        <select id="carte-secteur" class="in">
+          <option value="">Tous les secteurs</option>
+          {% for s in secteur_choices %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="muted" for="carte-type_public">Type de public</label>
+        <select id="carte-type_public" class="in">
+          <option value="">Tous les publics</option>
+          {% for t in type_public_choices %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="muted" for="carte-periode">Période de présence</label>
+        <select id="carte-periode" class="in">
+          <option value="">Toutes les périodes</option>
+          {% for a in annees %}<option value="{{ a }}">Année {{ a }}</option>{% endfor %}
+          <option value="custom">Plage personnalisée…</option>
+        </select>
+      </div>
+      <div class="field carte-periode-custom" style="display:none;">
+        <label class="muted" for="carte-date-from">Du</label>
+        <input id="carte-date-from" class="in" type="date">
+      </div>
+      <div class="field carte-periode-custom" style="display:none;">
+        <label class="muted" for="carte-date-to">Au</label>
+        <input id="carte-date-to" class="in" type="date">
+      </div>
+
+      {% if can('quartiers:edit') %}
+      <form method="post" action="{{ url_for('quartiers.carte_geocoder_quartiers') }}" style="margin-left:auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" data-pending-text="Placement…"
+                title="Placer chaque quartier via la Base Adresse Nationale (les placements manuels sont préservés)">
+          🧭 Placer les quartiers{% if restants_quartiers %} ({{ restants_quartiers }} à placer){% endif %}
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('quartiers.carte_geocoder') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" data-pending-text="Géocodage…"
+                title="Géocoder les adresses des habitants (utile pour les fiches hors quartier)">
+          📍 Géocoder les adresses{% if restants %} ({{ restants }}){% endif %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div id="carte-habitants"
+         data-data-url="{{ url_for('quartiers.carte_data') }}"
+         data-stats-url="{{ url_for('quartiers.stats') }}"
+         data-tile-url="{{ tile_url }}"
+         data-tile-attr="{{ tile_attribution }}"
+         data-centre-lat="49.2583"
+         data-centre-lon="2.4750"></div>
+
+    <div class="carte-legend">
+      <span><span class="dot std"></span>Quartier</span>
+      <span><span class="dot qpv"></span>Quartier prioritaire (QPV)</span>
+      <span id="carte-info" class="muted" style="margin-left:auto;"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts_extra %}
+  <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/cartographie.js') }}"></script>
+{% endblock %}

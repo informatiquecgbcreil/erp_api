@@ -1,0 +1,204 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+{% set ns = namespace(total=users|length, admins=0, responsables=0, secteurs=0) %}
+{% for u in users %}
+  {% if 'admin_tech' in (u.role_codes or []) %}{% set ns.admins = ns.admins + 1 %}{% endif %}
+  {% if 'responsable_secteur' in (u.role_codes or []) %}{% set ns.responsables = ns.responsables + 1 %}{% endif %}
+  {% if u.secteur_assigne %}{% set ns.secteurs = ns.secteurs + 1 %}{% endif %}
+{% endfor %}
+<div class="stack">
+
+  <div class="page-hero-soft">
+    <div class="section-head">
+      <div>
+        <h1 style="margin:0;">Gestion des utilisateurs</h1>
+        <p class="muted">Créez, désactivez ou supprimez des comptes selon les besoins de votre structure. Les rôles et le secteur assigné déterminent ensuite le périmètre d'accès.</p>
+      </div>
+    </div>
+    <div class="page-kpis">
+      <div class="metric-card"><div class="metric-label">Utilisateurs</div><div class="metric-value">{{ ns.total }}</div><div class="metric-help">Comptes existants</div></div>
+      <div class="metric-card"><div class="metric-label">Admins techniques</div><div class="metric-value">{{ ns.admins }}</div><div class="metric-help">Accès intégral</div></div>
+      <div class="metric-card"><div class="metric-label">Responsables secteur</div><div class="metric-value">{{ ns.responsables }}</div><div class="metric-help">Pilotage métier</div></div>
+      <div class="metric-card"><div class="metric-label">Avec secteur assigné</div><div class="metric-value">{{ ns.secteurs }}</div><div class="metric-help">Périmètre direct</div></div>
+    </div>
+  </div>
+
+  {{ ux.callout("Gestion des accès", "Chaque compte doit recevoir un rôle explicite. Utilisez le secteur assigné uniquement lorsque vous souhaitez limiter un responsable à un périmètre métier précis.") }}
+
+  <div class="grid two">
+
+    <div class="form-card">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Créer un utilisateur</h2>
+          <div class="muted">Le secteur assigné est utile uniquement pour les comptes limités à un secteur.</div>
+        </div>
+      </div>
+
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-grid-2">
+          <div>
+            <label>Adresse e-mail {{ ux.tooltip("Adresse utilisée pour la connexion et les notifications de récupération de mot de passe.") }}</label>
+            <input name="email" type="email" required>
+          </div>
+          <div>
+            <label>Nom</label>
+            <input name="nom" required>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="form-grid-2">
+          <div>
+            <label>Rôle {{ ux.tooltip("Le rôle définit TOUT ce que le compte peut voir et faire. responsable_secteur : limité à son secteur. direction : accès global complet. admin_tech : gestion technique (comptes, réglages) sans les données métier.") }}</label>
+            <select name="role" id="roleSelect" required>
+              <option value="">— choisir —</option>
+              {% for r in roles %}
+                <option value="{{ r.code }}">{{ r.label or r.code }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label>Secteur assigné {{ ux.tooltip("À renseigner pour limiter un responsable de secteur à son périmètre d'intervention.") }}</label>
+            <select name="secteur_assigne" id="secteurSelect">
+              <option value="">—</option>
+              {% for sec in secteurs %}
+                <option value="{{ sec }}">{{ sec }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="field-stack">
+          <div>
+            <label>Mot de passe {{ ux.tooltip("Choisissez un mot de passe temporaire. L'utilisateur pourra ensuite demander sa réinitialisation si la messagerie est configurée.") }}</label>
+            <input name="password" type="password" required>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+        <div class="form-actions"><button class="btn ok" type="submit">Créer le compte</button></div>
+      </form>
+    </div>
+
+    <div class="section-card">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Utilisateurs existants</h2>
+          <div class="muted">Vérifiez rapidement les rôles attribués et le secteur éventuellement associé à chaque compte.</div>
+        </div>
+      </div>
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Email</th>
+              <th>Rôle</th>
+              <th>Secteur</th>
+              <th>Statut</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+              <tr>
+                <td><strong>{{ u.nom }}</strong></td>
+                <td class="muted">{{ u.email }}</td>
+                <td>
+                  <div class="context-strip">
+                    {% for role in u.role_codes %}
+                      <span class="status-badge {{ 'status-danger' if role == 'admin_tech' else ('status-info' if role == 'responsable_secteur' else 'status-warning') }}">{{ role }}</span>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td class="muted">{{ u.secteur_assigne or "—" }}</td>
+                <td>
+                  <span class="status-badge {{ 'status-info' if u.actif else 'status-danger' }}">{{ 'Actif' if u.actif else 'Désactivé' }}</span>
+                </td>
+                <td>
+                  <div class="inline" style="gap:6px; flex-wrap:wrap;">
+                    <a class="btn" href="{{ url_for('admin.edit_user', user_id=u.id) }}">Modifier</a>
+                    <form method="POST" action="{{ url_for('admin.toggle_user_actif', user_id=u.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn" type="submit">{{ 'Désactiver' if u.actif else 'Réactiver' }}</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit" onclick="return confirm('Supprimer définitivement cet utilisateur ?')">Supprimer</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+            {% if users|length == 0 %}
+              <tr><td colspan="6"><div class="quick-empty"><strong>Aucun utilisateur.</strong>Créez le premier compte pour démarrer l’administration.</div></td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Liste des utilisateurs (vue compacte)">
+        {% for u in users %}
+          <article class="responsive-card">
+            <header class="responsive-card__head">
+              <strong>{{ u.nom }}</strong>
+              <span class="chip">{{ u.secteur_assigne or "Sans secteur" }}</span>
+            </header>
+            <dl class="responsive-card__grid">
+              <div><dt>Email</dt><dd class="muted">{{ u.email }}</dd></div>
+              <div>
+                <dt>Rôle(s)</dt>
+                <dd>
+                  <div class="context-strip">
+                    {% for role in u.role_codes %}
+                      <span class="status-badge {{ 'status-danger' if role == 'admin_tech' else ('status-info' if role == 'responsable_secteur' else 'status-warning') }}">{{ role }}</span>
+                    {% endfor %}
+                  </div>
+                </dd>
+              </div>
+            </dl>
+            <div class="inline-actions">
+              <a class="btn" href="{{ url_for('admin.edit_user', user_id=u.id) }}">Modifier</a>
+              <form method="POST" action="{{ url_for('admin.toggle_user_actif', user_id=u.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn" type="submit">{{ 'Désactiver' if u.actif else 'Réactiver' }}</button>
+              </form>
+              <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger" type="submit" onclick="return confirm('Supprimer définitivement cet utilisateur ?')">Supprimer</button>
+              </form>
+            </div>
+          </article>
+        {% else %}
+          <div class="quick-empty"><strong>Aucun utilisateur.</strong>Créez le premier compte pour démarrer l’administration.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  const roleSelect = document.getElementById("roleSelect");
+  const secteurSelect = document.getElementById("secteurSelect");
+  const roleSectorPolicy = {{ role_sector_policy|default({}, true)|tojson }};
+
+  function refresh(){
+    const policy = roleSectorPolicy[roleSelect.value] || {allow_sector: true};
+    const allowSector = !!policy.allow_sector;
+    secteurSelect.disabled = !allowSector;
+    if(!allowSector) secteurSelect.value = "";
+  }
+  roleSelect.addEventListener("change", refresh);
+  refresh();
+</script>
+
+{% endblock %}

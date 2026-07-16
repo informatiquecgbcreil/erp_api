@@ -1,0 +1,121 @@
+{# Poste de travail « Ma journée » : les grandes actions du rôle, en verbes. #}
+{% if poste_travail and (poste_travail.actions or poste_travail.signals) %}
+<style>
+  .poste-hero{
+    background:linear-gradient(135deg, var(--panel, #fff) 0%, rgba(120,160,255,.08) 100%);
+    border:1px solid var(--border, #e3e6ef);
+    border-radius:16px;
+    padding:18px 20px;
+    margin-bottom:14px;
+  }
+  .poste-hero__head{
+    display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 14px;
+    margin-bottom:12px;
+  }
+  .poste-hero__title{ margin:0; font-size:1.25rem; }
+  .poste-hero__meta{ font-size:.9rem; opacity:.75; }
+  .poste-signal-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(155px, 1fr));
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .poste-signal{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    gap:8px 10px;
+    align-items:start;
+    padding:11px;
+    border:1px solid var(--border, #e3e6ef);
+    border-left:4px solid #64748b;
+    border-radius:12px;
+    background:var(--panel, #fff);
+    color:inherit;
+    text-decoration:none;
+  }
+  .poste-signal[href]:hover{background:color-mix(in srgb,var(--surface-soft,#f8fafc) 80%,transparent)}
+  .poste-signal[data-tone="info"]{border-left-color:#2563eb;}
+  .poste-signal[data-tone="warn"]{border-left-color:#d97706;}
+  .poste-signal[data-tone="danger"]{border-left-color:#dc2626;}
+  .poste-signal[data-tone="ok"]{border-left-color:#16a34a;}
+  .poste-signal__icon{font-size:1.1rem;line-height:1.2;}
+  .poste-signal__main{min-width:0;}
+  .poste-signal__value{font-size:1.25rem;font-weight:850;line-height:1;}
+  .poste-signal__label{display:block;margin-top:3px;font-size:.82rem;font-weight:750;line-height:1.25;}
+  .poste-signal__detail{grid-column:1/-1;color:var(--muted,#667085);font-size:.76rem;line-height:1.35;}
+  .poste-actions-label{margin:0 0 8px;font-size:.84rem;font-weight:800;color:var(--muted,#667085);}
+  .poste-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));
+    gap:10px;
+  }
+  .poste-card{
+    display:flex; flex-direction:column; gap:6px;
+    background:var(--panel, #fff);
+    border:1px solid var(--border, #e3e6ef);
+    border-radius:14px;
+    padding:14px;
+    text-decoration:none;
+    color:inherit;
+    min-height:118px;
+    transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
+  }
+  .poste-card:hover{
+    transform:translateY(-2px);
+    box-shadow:0 6px 18px rgba(30,40,80,.10);
+    border-color:rgba(90,120,255,.45);
+  }
+  .poste-card__icon{ font-size:1.6rem; line-height:1; }
+  .poste-card__label{ font-weight:700; font-size:1.02rem; line-height:1.25; }
+  .poste-card__desc{ font-size:.84rem; opacity:.72; line-height:1.35; }
+  .poste-card__badge{
+    margin-top:auto; align-self:flex-start;
+    font-size:.78rem; font-weight:600;
+    padding:3px 9px; border-radius:999px;
+    background:rgba(120,130,150,.12); color:inherit;
+  }
+  .poste-card__badge[data-tone="info"]{ background:rgba(70,120,255,.14); }
+  .poste-card__badge[data-tone="warn"]{ background:rgba(255,170,40,.20); }
+  .poste-card__badge[data-tone="ok"]{ background:rgba(60,180,110,.16); }
+  @media (max-width:560px){
+    .poste-signal-grid{grid-template-columns:1fr 1fr;}
+    .poste-grid{ grid-template-columns:1fr 1fr; }
+    .poste-card{ min-height:104px; padding:12px; }
+  }
+  @media (max-width:390px){.poste-signal-grid,.poste-grid{grid-template-columns:1fr;}}
+</style>
+<section class="poste-hero no-print" aria-label="Mes actions du jour">
+  <div class="poste-hero__head">
+    <h2 class="poste-hero__title">Mes actions du jour</h2>
+    <span class="poste-hero__meta">Bonjour {{ poste_travail.prenom or '' }} · {{ poste_travail.date_fr }}</span>
+    <a class="mini-link" style="margin-left:auto;" href="{{ url_for('main.guides_liste') }}">🧭 Guides pas à pas</a>
+  </div>
+  {% if poste_travail.signals %}
+  <div class="poste-signal-grid" aria-label="Points de vigilance du jour">
+    {% for signal in poste_travail.signals %}
+      {% if signal.url %}<a class="poste-signal" data-tone="{{ signal.tone }}" href="{{ signal.url }}">{% else %}<div class="poste-signal" data-tone="{{ signal.tone }}">{% endif %}
+        <span class="poste-signal__icon" aria-hidden="true">{{ signal.icon }}</span>
+        <span class="poste-signal__main">
+          <span class="poste-signal__value">{{ signal.value }}</span>
+          <span class="poste-signal__label">{{ signal.label }}</span>
+        </span>
+        <span class="poste-signal__detail">{{ signal.detail }}</span>
+      {% if signal.url %}</a>{% else %}</div>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if poste_travail.actions %}
+  <p class="poste-actions-label">Raccourcis adaptés à votre rôle</p>
+  <div class="poste-grid">
+    {% for a in poste_travail.actions %}
+      <a class="poste-card" href="{{ a.url }}">
+        <span class="poste-card__icon" aria-hidden="true">{{ a.icon }}</span>
+        <span class="poste-card__label">{{ a.label }}</span>
+        <span class="poste-card__desc">{{ a.desc }}</span>
+        {% if a.badge %}<span class="poste-card__badge" data-tone="{{ a.tone }}">{{ a.badge }}</span>{% endif %}
+      </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}

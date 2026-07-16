@@ -1,0 +1,246 @@
+{% extends 'layout.html' %}
+{% import "_ux_macros.html" as ui %}
+
+{% block body %}
+  <div class="stack">
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h1 style="margin:0;">{{ atelier.nom }}</h1>
+          <div class="muted">{{ secteur }} · {{ atelier.type_atelier }}</div>
+        </div>
+        <div class="row" style="gap:10px; flex-wrap:wrap;">
+          {% if corbeille %}
+            <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Voir actives</a>
+          {% else %}
+            <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id, corbeille=1) }}">Corbeille</a>
+          {% endif %}
+          {% if not corbeille %}
+            <a class="btn" href="{{ url_for('activite.inscriptions_atelier', atelier_id=atelier.id) }}">📋 Inscriptions / liste d'attente</a>
+            <a class="btn" href="{{ url_for('activite.session_new', atelier_id=atelier.id) }}">+ Nouvelle séance / rendez-vous</a>
+            {% if atelier.type_atelier != 'INDIVIDUEL_MENSUEL' %}
+              <a class="btn" href="{{ url_for('activite.session_bulk_new', atelier_id=atelier.id) }}">📅 Créer en série</a>
+            {% endif %}
+          {% endif %}
+          <a class="btn" href="{{ url_for('activite.export_csat_sessions', atelier_id=atelier.id) }}" title="Fichier Excel compatible avec l'import « Sessions » du portail CSAT (Centres Sociaux Acteurs des Transitions). N'inclut que les séances jamais exportées.">⬇ Exporter pour CSAT{% if nb_a_exporter_csat is not none %} ({{ nb_a_exporter_csat }} nouvelle{{ 's' if nb_a_exporter_csat != 1 else '' }}){% endif %}</a>
+          <a class="btn" href="{{ url_for('activite.index') }}">Retour ateliers</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Historique</h2>
+      {% if not corbeille %}
+        <p class="muted" style="font-size:13px;">
+          L'export CSAT ne reprend que les séances jamais transmises.
+          <a href="{{ url_for('activite.export_csat_sessions', atelier_id=atelier.id, tout=1) }}">Tout réexporter quand même</a> (au cas où l'import précédent aurait échoué côté CSAT).
+        </p>
+      {% endif %}
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Présences</th>
+              <th>Capacité</th>
+              <th>Taux</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s, nb, cap, taux in sessions %}
+              <tr>
+                <td>
+                  {% if s.session_type == 'COLLECTIF' %}
+                    {{ s.date_session }} {{ s.heure_debut or '' }}{% if s.heure_fin %}-{{ s.heure_fin }}{% endif %}
+                  {% else %}
+                    {{ s.rdv_date }} {{ s.rdv_debut or '' }}{% if s.rdv_fin %}-{{ s.rdv_fin }}{% endif %}
+                  {% endif %}
+                </td>
+                <td>{{ s.session_type }}</td>
+                <td>{{ nb }}</td>
+                <td>{{ cap if s.session_type=='COLLECTIF' else '—' }}</td>
+                <td>
+                  {% if taux is not none %}
+                    <strong>{{ taux }}%</strong>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>
+                  {% if not corbeille %}
+                    <a class="btn" href="{{ url_for('activite.emargement', session_id=s.id) }}">Ouvrir</a>
+                    <a class="btn" href="{{ url_for('activite.inscriptions_session', session_id=s.id) }}">Inscriptions</a>
+                    <a class="btn" href="{{ url_for('activite.session_skills', session_id=s.id) }}">Compétences</a>
+                    <a class="btn" href="{{ url_for('activite.session_edit_schedule', session_id=s.id) }}">Corriger date/heure</a>
+                    {% if can('questionnaires:respond') %}
+                      <a class="btn" href="{{ url_for('questionnaires.respond', session_id=s.id) }}">Questionnaire</a>
+                    {% endif %}
+                    {% if s.session_type=='COLLECTIF' %}
+                      <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=s.id) }}">Générer PDF</a>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('activite.session_delete', session_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Mettre cette séance en corbeille ? (restaurable)');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn danger">Supprimer</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('activite.session_restore', session_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Restaurer cette séance ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn">Restaurer</button>
+                    </form>
+                    <form method="post" action="{{ url_for('activite.session_purge', session_id=s.id) }}" style="display:inline;" onsubmit="return confirm('SUPPRESSION DÉFINITIVE ?\n\nCette action efface la session, ses émargements, signatures et archives.\nImpossible d\'annuler.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn danger">Supprimer définitivement</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              {% if corbeille %}
+                <tr><td colspan="6">{{ ui.empty_state("La corbeille est vide", "Aucune séance supprimée n’attend d’être restaurée.", url_for('activite.sessions', atelier_id=atelier.id), "Voir les séances actives", "🗑️") }}</td></tr>
+              {% else %}
+                <tr><td colspan="6">{{ ui.empty_state("Aucune séance planifiée", "Créez une première séance, ou utilisez « Créer en série » pour programmer plusieurs dates régulières.", url_for('activite.session_new', atelier_id=atelier.id), "Planifier une séance", "📅") }}</td></tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Historique des sessions (vue compacte)">
+        {% for s, nb, cap, taux in sessions %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>
+              {% if s.session_type == 'COLLECTIF' %}
+                {{ s.date_session }} {{ s.heure_debut or '' }}{% if s.heure_fin %}-{{ s.heure_fin }}{% endif %}
+              {% else %}
+                {{ s.rdv_date }} {{ s.rdv_debut or '' }}{% if s.rdv_fin %}-{{ s.rdv_fin }}{% endif %}
+              {% endif %}
+            </strong>
+            <span class="chip">{{ s.session_type }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>Présences</dt><dd>{{ nb }}</dd></div>
+            <div><dt>Capacité</dt><dd>{{ cap if s.session_type=='COLLECTIF' else '—' }}</dd></div>
+            <div><dt>Taux</dt><dd>{% if taux is not none %}<strong>{{ taux }}%</strong>{% else %}—{% endif %}</dd></div>
+          </dl>
+          <div class="inline-actions">
+            {% if not corbeille %}
+              <a class="btn" href="{{ url_for('activite.emargement', session_id=s.id) }}">Ouvrir</a>
+              <a class="btn" href="{{ url_for('activite.session_skills', session_id=s.id) }}">Compétences</a>
+              <a class="btn" href="{{ url_for('activite.session_edit_schedule', session_id=s.id) }}">Corriger date/heure</a>
+              {% if can('questionnaires:respond') %}
+                <a class="btn" href="{{ url_for('questionnaires.respond', session_id=s.id) }}">Questionnaire</a>
+              {% endif %}
+              {% if s.session_type=='COLLECTIF' %}
+                <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=s.id) }}">Générer PDF</a>
+              {% endif %}
+              <form method="post" action="{{ url_for('activite.session_delete', session_id=s.id) }}" onsubmit="return confirm('Mettre cette séance en corbeille ? (restaurable)');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn danger">Supprimer</button>
+              </form>
+            {% else %}
+              <form method="post" action="{{ url_for('activite.session_restore', session_id=s.id) }}" onsubmit="return confirm('Restaurer cette séance ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn">Restaurer</button>
+              </form>
+              <form method="post" action="{{ url_for('activite.session_purge', session_id=s.id) }}" onsubmit="return confirm('SUPPRESSION DÉFINITIVE ?\n\nCette action efface la session, ses émargements, signatures et archives.\nImpossible d\\'annuler.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn danger">Supprimer définitivement</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+        {% else %}
+          {{ ui.empty_state(
+            "La corbeille est vide" if corbeille else "Aucune séance planifiée",
+            "Aucune séance supprimée n’attend d’être restaurée." if corbeille else "Créez une première séance, ou utilisez « Créer en série » pour programmer plusieurs dates régulières.",
+            url_for('activite.sessions', atelier_id=atelier.id) if corbeille else url_for('activite.session_new', atelier_id=atelier.id),
+            "Voir les séances actives" if corbeille else "Planifier une séance",
+            "🗑️" if corbeille else "📅"
+          ) }}
+        {% endfor %}
+      </div>
+
+      {% if atelier.type_atelier == 'INDIVIDUEL_MENSUEL' %}
+        <div class="spacer"></div>
+        <div class="card">
+          <h2 style="margin-top:0;">Documents mensuels (individuel)</h2>
+          <div class="muted">Choisis une période, puis télécharge / corrige / envoie. Le PDF dépend de LibreOffice.</div>
+          <div class="row" style="gap:12px; flex-wrap:wrap; margin-top:12px;">
+            <div>
+              <label>Année</label>
+              <input class="in" id="ymYear" type="number" min="2000" max="2100" value="{{ current_year or 2026 }}" style="width:120px;">
+            </div>
+            <div>
+              <label>Mois</label>
+              <input class="in" id="ymMonth" type="number" min="1" max="12" value="{{ current_month or 1 }}" style="width:120px;">
+            </div>
+            <div style="align-self:end;" class="row" style="gap:10px; flex-wrap:wrap;">
+              <a class="btn" id="btnDocx" href="#">Télécharger DOCX</a>
+              <a class="btn" id="btnPdf" href="#">Télécharger PDF</a>
+              <a class="btn" id="btnDocxRegen" href="#" title="Force la régénération du DOCX depuis le modèle actuel, sans réutiliser l'archive déjà présente.">Régénérer DOCX</a>
+              <a class="btn" id="btnPdfRegen" href="#" title="Force la régénération du PDF depuis le modèle actuel, sans réutiliser l'archive déjà présente.">Régénérer PDF</a>
+            </div>
+          </div>
+          <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+            <form id="upForm" method="post" enctype="multipart/form-data">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label>Uploader version corrigée (DOCX ou PDF)</label>
+              <div class="row" style="gap:8px; flex-wrap:wrap;">
+                <input class="in" type="file" name="file" accept=".docx,.pdf" required>
+                <button class="btn" type="submit">Envoyer</button>
+              </div>
+            </form>
+            <form id="mailForm" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label>Envoyer par mail (si SMTP configuré)</label>
+              <input class="in" name="to" placeholder="destinataire@exemple.fr" required>
+              <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap;">
+                <button class="btn" type="submit">Envoyer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <script>
+        (() => {
+          const year = document.getElementById('ymYear');
+          const month = document.getElementById('ymMonth');
+          const btnDocx = document.getElementById('btnDocx');
+          const btnPdf = document.getElementById('btnPdf');
+          const btnDocxRegen = document.getElementById('btnDocxRegen');
+          const btnPdfRegen = document.getElementById('btnPdfRegen');
+          const upForm = document.getElementById('upForm');
+          const mailForm = document.getElementById('mailForm');
+
+          function build(kind, regen=false){
+            const y = parseInt(year.value || '0', 10);
+            const m = parseInt(month.value || '0', 10);
+            if(!y || !m) return '#';
+            const base = `{{ url_for('activite.download_individuel_archive', atelier_id=atelier.id, annee=0, mois=0, kind='docx') }}`
+              .replace('/0/0/', `/${y}/${m}/`)
+              .replace('/docx', `/${kind}`);
+            return regen ? `${base}?regen=1` : base;
+          }
+
+          function apply(){
+            btnDocx.href = build('docx');
+            btnPdf.href = build('pdf');
+            btnDocxRegen.href = build('docx', true);
+            btnPdfRegen.href = build('pdf', true);
+            const y = parseInt(year.value || '0', 10);
+            const m = parseInt(month.value || '0', 10);
+            const base = `{{ url_for('activite.upload_individuel_corrected', atelier_id=atelier.id, annee=0, mois=0) }}`.replace('/0/0', `/${y}/${m}`);
+            upForm.action = base;
+            mailForm.action = `{{ url_for('activite.email_individuel_archive', atelier_id=atelier.id, annee=0, mois=0) }}`.replace('/0/0', `/${y}/${m}`);
+          }
+          year.addEventListener('change', apply);
+          month.addEventListener('change', apply);
+          apply();
+        })();
+        </script>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

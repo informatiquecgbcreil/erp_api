@@ -1,0 +1,325 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .person-page { gap:16px; }
+  .person-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .person-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .person-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .person-kpi { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:12px; background:#fff; }
+  .person-kpi .label { color:#64748b; font-size:12px; }
+  .person-kpi .value { font-size:28px; font-weight:800; line-height:1.1; }
+  .person-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(320px, .7fr); gap:14px; align-items:start; }
+  .person-sections { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px; }
+  .person-card { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:14px; }
+  .person-card h2, .person-card h3 { margin:0 0 8px; }
+  .person-list { display:flex; flex-direction:column; gap:8px; }
+  .person-row { border-top:1px solid rgba(15,23,42,.08); padding-top:8px; }
+  .person-row:first-child { border-top:0; padding-top:0; }
+  .person-meta { color:#64748b; font-size:13px; line-height:1.45; }
+  .person-chip { display:inline-flex; border:1px solid rgba(15,23,42,.12); border-radius:999px; padding:3px 8px; font-size:12px; color:#475569; background:#fff; }
+  .person-chip--on { border-color:rgba(34,197,94,.28); color:#166534; background:rgba(34,197,94,.10); }
+  .person-chip--off { color:#94a3b8; background:rgba(148,163,184,.08); }
+  .person-warning { border:1px solid rgba(245,158,11,.30); background:rgba(245,158,11,.10); color:#78350f; border-radius:8px; padding:10px 12px; }
+  .person-muted-box { border:1px dashed rgba(15,23,42,.18); border-radius:8px; padding:10px 12px; color:#64748b; background:rgba(15,23,42,.03); }
+  .person-status { display:inline-flex; align-items:center; gap:8px; border-radius:999px; padding:6px 10px; font-size:13px; font-weight:800; background:rgba(15,23,42,.08); color:#334155; }
+  .person-status--active, .person-status--strong, .person-status--new { background:rgba(34,197,94,.14); color:#166534; }
+  .person-status--warning { background:rgba(245,158,11,.16); color:#92400e; }
+  .person-status--watch { background:rgba(59,130,246,.13); color:#1d4ed8; }
+  .person-signal-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
+  .person-signal { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:13px; background:#fff; min-height:128px; }
+  .person-signal h3 { margin:0 0 8px; font-size:13px; color:#64748b; }
+  .person-signal .big { font-size:22px; font-weight:900; line-height:1.15; }
+  .person-signal p { margin:6px 0 0; color:#64748b; line-height:1.45; }
+  .person-signal--active, .person-signal--strong, .person-signal--new { border-color:rgba(34,197,94,.24); background:linear-gradient(180deg, rgba(34,197,94,.10), #fff 72%); }
+  .person-signal--warning { border-color:rgba(245,158,11,.32); background:linear-gradient(180deg, rgba(245,158,11,.13), #fff 72%); }
+  .person-signal--watch { border-color:rgba(59,130,246,.24); background:linear-gradient(180deg, rgba(59,130,246,.10), #fff 72%); }
+  .person-progress { height:9px; border-radius:999px; background:rgba(15,23,42,.10); overflow:hidden; margin-top:10px; }
+  .person-progress span { display:block; height:100%; border-radius:999px; background:#16a34a; }
+  .person-channel-strip { display:flex; gap:8px; flex-wrap:wrap; }
+  .person-timeline { position:relative; display:flex; flex-direction:column; gap:0; }
+  .person-event { display:grid; grid-template-columns:92px 1fr; gap:12px; padding:10px 0; border-top:1px solid rgba(15,23,42,.08); }
+  .person-event:first-child { border-top:0; }
+  .person-event__date { color:#64748b; font-size:12px; }
+  .person-event__body { position:relative; padding-left:16px; }
+  .person-event__body:before { content:""; position:absolute; left:0; top:5px; width:8px; height:8px; border-radius:50%; background:#64748b; }
+  .person-event--green .person-event__body:before { background:#16a34a; }
+  .person-event--blue .person-event__body:before { background:#2563eb; }
+  .person-event--purple .person-event__body:before { background:#7c3aed; }
+  .person-event--amber .person-event__body:before { background:#d97706; }
+  .person-event--slate .person-event__body:before { background:#475569; }
+  @media (max-width: 980px) { .person-grid { grid-template-columns:1fr; } }
+  @media (max-width: 680px) { .person-event { grid-template-columns:1fr; gap:4px; } }
+</style>
+
+<div class="monster-shell wide-shell person-page">
+  <div class="monster-hero">
+    <div class="person-head">
+      <div>
+        <h1>{{ participant.nom }} {{ participant.prenom }}</h1>
+        <p>Fiche personne consolidée : identité, présences, orientations, insertion et traces utiles.</p>
+        <span class="person-status person-status--{{ link_status.tone }}">{{ link_status.label }}</span>
+      </div>
+      <div class="person-actions">
+        <a class="btn" href="{{ url_for('participants.list_participants') }}">Liste participants</a>
+        {% if can_edit_participant %}
+          <a class="btn ok" href="{{ url_for('participants.edit_participant', participant_id=participant.id) }}">Modifier</a>
+        {% endif %}
+        {% if show_insertion %}
+          <a class="btn" href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">Insertion</a>
+        {% endif %}
+        {% if show_passeport %}
+          <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id) }}">Passeport</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="person-signal-grid">
+      <article class="person-signal person-signal--{{ link_status.tone }}">
+        <h3>Lien au centre</h3>
+        <div class="big">{{ link_status.label }}</div>
+        <p>{{ link_status.detail }}</p>
+      </article>
+      <article class="person-signal">
+        <h3>Dernière trace</h3>
+        <div class="big">{{ last_trace.type }}</div>
+        <p><strong>{{ last_trace.title }}</strong><br>{{ last_trace.date_label }}{% if last_trace.meta %} · {{ last_trace.meta }}{% endif %}</p>
+      </article>
+      <article class="person-signal person-signal--{{ followup.tone }}">
+        <h3>Suivi en cours</h3>
+        <div class="big">{{ followup.label }}</div>
+        <p>{{ followup.detail }}</p>
+      </article>
+      <article class="person-signal">
+        <h3>Intensité 12 mois</h3>
+        <div class="big">{{ intensity.presences_12m }} présence(s)</div>
+        <p>{{ intensity.active_months_12m }} mois actif(s) · {{ intensity.atelier_count }} atelier(s)</p>
+      </article>
+      <article class="person-signal">
+        <h3>Qualité fiche</h3>
+        <div class="big">{{ quality_score.ok }}/{{ quality_score.total }}</div>
+        <div class="person-progress" aria-label="Qualité fiche"><span style="width:{{ quality_score.percent }}%;"></span></div>
+        <p>{% if quality_score.missing %}Manque : {{ quality_score.missing|join(', ') }}{% else %}Informations clés complétées.{% endif %}</p>
+      </article>
+    </div>
+    <div class="spacer"></div>
+    <div class="person-channel-strip">
+      {% for channel in known_channels %}
+        <span class="person-chip {% if channel.active %}person-chip--on{% else %}person-chip--off{% endif %}">{{ channel.label }}</span>
+      {% endfor %}
+    </div>
+    <div class="spacer"></div>
+    <div class="person-kpis">
+      <div class="person-kpi"><div class="label">Présences</div><div class="value">{{ summary.presence_count }}</div></div>
+      <div class="person-kpi"><div class="label">Ateliers</div><div class="value">{{ summary.atelier_count }}</div></div>
+      <div class="person-kpi"><div class="label">Orientations</div><div class="value">{{ summary.orientation_count }}</div></div>
+      <div class="person-kpi"><div class="label">Questionnaires</div><div class="value">{{ summary.questionnaire_count }}</div></div>
+      <div class="person-kpi"><div class="label">Notes</div><div class="value">{{ summary.passport_note_count }}</div></div>
+      <div class="person-kpi"><div class="label">Évaluations</div><div class="value">{{ summary.evaluation_count }}</div></div>
+    </div>
+  </div>
+
+  <section class="person-card">
+    <div class="person-head">
+      <div>
+        <h2>Timeline récente</h2>
+        <div class="person-meta">Les derniers événements visibles, tous modules confondus.</div>
+      </div>
+      <span class="person-chip">{{ timeline_events|length }} événement(s)</span>
+    </div>
+    <div class="spacer"></div>
+    {% if timeline_events %}
+      <div class="person-timeline">
+        {% for event in timeline_events %}
+          <div class="person-event person-event--{{ event.tone }}">
+            <div class="person-event__date">{{ event.date_label }}</div>
+            <div class="person-event__body">
+              <span class="person-chip">{{ event.type }}</span>
+              <strong style="display:block; margin-top:4px;">{{ event.title }}</strong>
+              {% if event.meta %}<div class="person-meta">{{ event.meta }}</div>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="person-muted-box">Aucun événement visible pour cette personne.</div>
+    {% endif %}
+  </section>
+
+  <div class="person-grid">
+    <section class="person-card">
+      <h2>Repères</h2>
+      <div class="person-sections">
+        <div>
+          <h3>Identité</h3>
+          <div class="person-list">
+            <div><strong>Naissance</strong><div class="person-meta">{{ format_date(participant.date_naissance) }}{% if participant.age %} · {{ participant.age }} ans{% endif %}</div></div>
+            <div><strong>Genre</strong><div class="person-meta">{{ participant.genre or "Non renseigné" }}</div></div>
+            <div><strong>Type de public</strong><div class="person-meta">{{ participant.type_public or "Non renseigné" }}</div></div>
+            <div><strong>Secteur</strong><div class="person-meta">{{ participant.created_secteur or "Non renseigné" }}</div></div>
+          </div>
+        </div>
+        <div>
+          <h3>Contact et territoire</h3>
+          <div class="person-list">
+            <div><strong>Téléphone</strong><div class="person-meta">{{ participant.telephone or "Non renseigné" }}</div></div>
+            <div><strong>Email</strong><div class="person-meta">{{ participant.email or "Non renseigné" }}</div></div>
+            <div><strong>Ville</strong><div class="person-meta">{{ participant.ville or (participant.quartier.ville if participant.quartier else "Non renseignée") }}</div></div>
+            <div><strong>Quartier</strong><div class="person-meta">{{ participant.quartier.nom if participant.quartier else "Non renseigné" }}{% if participant.quartier and participant.quartier.is_qpv %} · QPV{% endif %}</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="person-card">
+      <h2>À compléter</h2>
+      {% if quality_flags %}
+        <div class="person-list">
+          {% for flag in quality_flags %}
+            <div class="person-warning">{{ flag }}</div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="person-muted-box">Les informations de base sont suffisamment complétées.</div>
+      {% endif %}
+      <div class="spacer"></div>
+      <div class="person-meta">Première présence : {{ format_date(summary.first_presence_date) }}<br>Dernière présence : {{ format_date(summary.last_presence_date) }}</div>
+    </aside>
+  </div>
+
+  {% if show_cotisations %}
+    {% include "participants/_cotisations.html" %}
+  {% endif %}
+
+  <section class="person-sections">
+    <article class="person-card">
+      <h2>Présences récentes</h2>
+      {% if latest_presences %}
+        <div class="person-list">
+          {% for presence in latest_presences %}
+            <div class="person-row">
+              <strong>{{ presence.session.atelier.nom if presence.session and presence.session.atelier else "Atelier" }}</strong>
+              <div class="person-meta">{{ format_date(session_date_value(presence.session)) }} · {{ presence.session.secteur if presence.session else "Secteur ?" }}{% if presence.motif %} · {{ presence.motif }}{% endif %}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="person-muted-box">Aucune présence enregistrée sur le périmètre visible.</div>
+      {% endif %}
+    </article>
+
+    <article class="person-card">
+      <h2>Ateliers fréquentés</h2>
+      {% if atelier_stats %}
+        <div class="person-list">
+          {% for row in atelier_stats %}
+            <div class="person-row">
+              <strong>{{ row.atelier.nom }}</strong>
+              <div class="person-meta">{{ row.count }} présence(s) · dernière : {{ format_date(row.last_date) }} · {{ row.atelier.secteur }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="person-muted-box">Aucun atelier fréquenté.</div>
+      {% endif %}
+      {% if secteur_stats %}
+        <div class="spacer"></div>
+        {% for row in secteur_stats %}
+          <span class="person-chip">{{ row.secteur }} · {{ row.count }}</span>
+        {% endfor %}
+      {% endif %}
+    </article>
+
+    <article class="person-card">
+      <h2>Orientations accès aux droits</h2>
+      {% if show_orientations %}
+        {% if orientations %}
+          <div class="person-list">
+            {% for row in orientations %}
+              <div class="person-row">
+                <strong>{{ orientation_domain_label(row.domaine) }}</strong>
+                <div>{{ row.demande }}</div>
+                <div class="person-meta">{{ format_date(row.date_orientation) }} · {{ orientation_status_label(row.statut) }}{% if row.partenaire %} · {{ row.partenaire.nom }}{% endif %}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="person-muted-box">Aucune orientation rattachée.</div>
+        {% endif %}
+        <div class="spacer"></div>
+        <a class="btn" href="{{ url_for('partenaires.orientations', q=participant.nom) }}">Ouvrir les orientations</a>
+      {% else %}
+        <div class="person-muted-box">Bloc masqué : droit partenaires requis.</div>
+      {% endif %}
+    </article>
+
+    <article class="person-card">
+      <h2>Questionnaires</h2>
+      {% if show_questionnaires %}
+        {% if questionnaire_groups %}
+          <div class="person-list">
+            {% for group in questionnaire_groups %}
+              <div class="person-row">
+                <strong>{{ group.questionnaire.nom if group.questionnaire else "Questionnaire" }}</strong>
+                <div class="person-meta">{{ format_date(group.created_at) }} · {{ group.secteur or "Secteur ?" }}{% if group.atelier %} · {{ group.atelier.nom }}{% endif %}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="person-muted-box">Aucune réponse de questionnaire rattachée.</div>
+        {% endif %}
+      {% else %}
+        <div class="person-muted-box">Bloc masqué : droit questionnaires requis.</div>
+      {% endif %}
+    </article>
+
+    <article class="person-card">
+      <h2>Insertion</h2>
+      {% if show_insertion %}
+        <div class="person-list">
+          <div><strong>Profil</strong><div class="person-meta">{{ "Renseigné" if insertion_counts.profil else "Non renseigné" }}</div></div>
+          <div><strong>Parcours</strong><div class="person-meta">{{ insertion_counts.parcours }}</div></div>
+          <div><strong>Positionnements</strong><div class="person-meta">{{ insertion_counts.positionnements }}</div></div>
+          <div><strong>Certifications</strong><div class="person-meta">{{ insertion_counts.certifications }}</div></div>
+        </div>
+        <div class="spacer"></div>
+        <a class="btn" href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">Ouvrir la fiche insertion</a>
+      {% else %}
+        <div class="person-muted-box">Bloc masqué : droit insertion sensible requis.</div>
+      {% endif %}
+    </article>
+
+    <article class="person-card">
+      <h2>Passeport et notes</h2>
+      {% if show_passeport %}
+        {% if passport_notes %}
+          <div class="person-list">
+            {% for note in passport_notes %}
+              <div class="person-row">
+                <strong>{{ note.categorie or "Note" }}</strong>
+                <div class="person-meta">{{ format_date(note.created_at) }} · {{ note.secteur or "Secteur ?" }}</div>
+                <div>{{ note.contenu|truncate(180) }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="person-muted-box">Aucune note passeport.</div>
+        {% endif %}
+        {% if passport_files %}
+          <div class="spacer"></div>
+          <h3>Pièces jointes</h3>
+          <div class="person-list">
+            {% for file in passport_files %}
+              <div class="person-row">
+                <strong>{{ file.titre or file.original_name }}</strong>
+                <div class="person-meta">{{ format_date(file.created_at) }} · {{ file.categorie or "Fichier" }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="person-muted-box">Bloc masqué : droit pédagogie requis.</div>
+      {% endif %}
+    </article>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,143 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    <h1>Importer un annuaire de participants</h1>
+    <p class="muted">
+      Chargez un tableur Excel (.xlsx) contenant des feuilles de présence
+      (colonnes NOM, PRÉNOM, et idéalement ANNÉE DE NAISSANCE, SEXE, QUARTIER).
+      Vous pouvez aussi ajouter les colonnes <strong>ADRESSE</strong> et <strong>VILLE</strong> :
+      elles permettent de positionner les habitants sur la carte (après géocodage).
+      L'outil <strong>analyse d'abord sans rien créer</strong> : il vous montre ce qui
+      serait importé, dédoublonne automatiquement les personnes qui reviennent
+      sur plusieurs activités, et isole les cas incertains pour que vous décidiez.
+    </p>
+  </div>
+
+  {% if not rapport %}
+    <div class="card">
+      <h2>1. Choisir le fichier</h2>
+      <form method="post" enctype="multipart/form-data" class="stack" style="gap:12px;" data-no-scroll-restore>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input class="in" type="file" name="fichier" accept=".xlsx" required>
+        <div>
+          <button class="btn" type="submit">Analyser (simulation, sans rien créer)</button>
+        </div>
+      </form>
+      <p class="muted" style="margin-top:10px;">
+        Aucune fiche n'est créée à cette étape. Vous validerez ensuite, en connaissance de cause.
+      </p>
+    </div>
+  {% else %}
+
+    {% set n_nouveaux = rapport.nouveaux|length %}
+    {% set n_doublons = rapport.doublons_internes|length %}
+    {% set n_ambigus = rapport.ambigus|length %}
+    {% set n_rapproches = rapport.rapproches|length %}
+
+    <div class="card">
+      <h2>2. Résultat de la simulation</h2>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:12px 0;">
+        <div class="card" style="text-align:center;">
+          <div style="font-size:30px; font-weight:800; color:var(--ok);">{{ n_nouveaux }}</div>
+          <div class="muted">fiches fiables à créer</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:30px; font-weight:800; color:var(--accent);">{{ n_doublons }}</div>
+          <div class="muted">doublons fusionnés automatiquement</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:30px; font-weight:800; color:var(--warn);">{{ n_ambigus }}</div>
+          <div class="muted">ambigus (sans date de naissance)</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:30px; font-weight:800;">{{ n_rapproches }}</div>
+          <div class="muted">déjà en base (ignorés)</div>
+        </div>
+      </div>
+      <p class="muted">
+        {{ rapport.feuilles_traitees|length }} feuille(s) reconnue(s) comme grilles de présence ·
+        {{ rapport.feuilles_ignorees|length }} ignorée(s).
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>3. Créer les fiches</h2>
+      <form method="post" action="{{ url_for('participants.import_annuaire_confirmer') }}" class="stack" style="gap:12px;"
+            data-no-scroll-restore
+            onsubmit="return confirm('Créer les fiches participants ? Cette action écrit en base.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="token" value="{{ token }}">
+
+        <p>✅ <strong>{{ n_nouveaux }} fiches fiables</strong> seront créées (nom, prénom, année de naissance, sexe).
+           La date de naissance sera fixée au <em>1er janvier</em> de l'année connue (jour et mois inconnus).</p>
+
+        {% if n_ambigus %}
+        <label class="inline" style="gap:8px; align-items:flex-start;">
+          <input type="checkbox" name="inclure_ambigus" value="1">
+          <span>
+            Inclure aussi les <strong>{{ n_ambigus }} cas ambigus</strong> (sans date de naissance).
+            <span class="muted">Déconseillé : faute d'année, deux homonymes seraient fusionnés et ces fiches
+            seront incomplètes. À ne cocher que si vous savez ce que vous faites.</span>
+          </span>
+        </label>
+        {% endif %}
+
+        <div>
+          <button class="btn" type="submit">Créer les fiches en base</button>
+          <a class="btn" href="{{ url_for('participants.import_annuaire') }}">Annuler / recommencer</a>
+        </div>
+        <p class="muted">
+          L'import est <strong>rejouable sans risque</strong> : les fiches déjà présentes sont automatiquement
+          reconnues et ne sont jamais recréées.
+        </p>
+      </form>
+    </div>
+
+    {% if apercu_nouveaux %}
+    <div class="card">
+      <h3>Aperçu — fiches à créer ({{ n_nouveaux }})</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Nom</th><th>Prénom</th><th>Année</th><th>Sexe</th><th>Source</th></tr></thead>
+          <tbody>
+            {% for p in apercu_nouveaux %}
+              <tr><td>{{ p.nom }}</td><td>{{ p.prenom }}</td><td>{{ p.annee }}</td><td>{{ p.sexe or '—' }}</td><td class="muted">{{ p.feuille }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if n_nouveaux > apercu_nouveaux|length %}<p class="muted">… et {{ n_nouveaux - apercu_nouveaux|length }} autres.</p>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if apercu_ambigus %}
+    <div class="card">
+      <h3>Aperçu — cas ambigus ({{ n_ambigus }})</h3>
+      <p class="muted">Sans année de naissance : impossible de distinguer les homonymes ou de rapprocher de façon fiable.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Nom</th><th>Prénom</th><th>Sexe</th><th>Source</th></tr></thead>
+          <tbody>
+            {% for p in apercu_ambigus %}
+              <tr><td>{{ p.nom }}</td><td>{{ p.prenom }}</td><td>{{ p.sexe or '—' }}</td><td class="muted">{{ p.feuille }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if rapport.feuilles_ignorees %}
+    <div class="card">
+      <h3>Feuilles ignorées ({{ rapport.feuilles_ignorees|length }})</h3>
+      <ul class="muted">
+        {% for nom, raison in rapport.feuilles_ignorees %}<li>{{ nom }} — {{ raison }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}

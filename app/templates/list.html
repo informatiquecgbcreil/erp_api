@@ -1,0 +1,176 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="page-shell dense-list-shell stack">
+  {% set ns = namespace(mail=0, phone=0, visits=0) %}
+  {% for item in items %}
+    {% if item.email %}{% set ns.mail = ns.mail + 1 %}{% endif %}
+    {% if item.telephone %}{% set ns.phone = ns.phone + 1 %}{% endif %}
+    {% if item._presence_count is defined and item._presence_count %}{% set ns.visits = ns.visits + 1 %}{% endif %}
+  {% endfor %}
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Personnes</h1>
+      <p class="page-subtitle">Retrouvez une fiche, affinez la recherche si besoin, puis mettez les informations à jour depuis une vue unique.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn ok" href="{{ url_for('participants.new_participant') }}">Ajouter une personne</a>
+      <details class="nav-more" style="display:inline-block;">
+        <summary class="btn">Outils avancés</summary>
+        <div class="nav-more-panel" style="right:0; left:auto; min-width:260px;">
+          <a class="pill" href="{{ url_for('participants.duplicates') }}">Vérifier les doublons</a>
+          {% if can('participants:delete') or can('ateliers:sync') %}
+          <a class="pill" href="#nettoyage-imports">Nettoyage des imports</a>
+          {% endif %}
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <details class="details-card">
+    <summary>Voir le résumé rapide</summary>
+    <div class="details-body">
+  <div class="page-kpis">
+    <div class="metric-card"><div class="metric-label">Résultats affichés</div><div class="metric-value">{{ pagination.total if pagination else items|length }}</div><div class="metric-help">Périmètre filtré</div></div>
+    <div class="metric-card"><div class="metric-label">Avec e-mail</div><div class="metric-value">{{ ns.mail }}</div><div class="metric-help">Contact numérique</div></div>
+    <div class="metric-card"><div class="metric-label">Avec téléphone</div><div class="metric-value">{{ ns.phone }}</div><div class="metric-help">Contact direct</div></div>
+    <div class="metric-card"><div class="metric-label">Avec historique</div><div class="metric-value">{{ ns.visits }}</div><div class="metric-help">Présence repérée</div></div>
+  </div>
+    </div>
+  </details>
+
+  {% if can('participants:delete') or can('ateliers:sync') %}
+  <details class="details-card" id="nettoyage-imports">
+    <summary>Outils avancés · nettoyage des imports</summary>
+    <div class="details-body">
+      {{ ux.helper('Utilisez la prévisualisation avant toute suppression. Les fiches détectées comme importées par erreur et sans présence peuvent ensuite être supprimées.') }}
+      <div class="inline-actions">
+        <form method="post" action="{{ url_for('participants.cleanup_fakes') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="preview" value="1" id="cleanupPreview">
+          <button class="btn warn" type="submit">Prévisualiser le nettoyage</button>
+        </form>
+        <form method="post" action="{{ url_for('participants.cleanup_fakes') }}" onsubmit="return confirm('Supprimer les fiches détectées comme importées par erreur et sans présence ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="preview" value="0">
+          <button class="btn danger" type="submit">Supprimer les fiches détectées</button>
+        </form>
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
+  <div class="filters-panel reading-width">
+    <div class="table-toolbar">
+      <h2 class="section-title" style="margin:0">Retrouver une personne</h2>
+      <div class="inline-actions">
+        <span class="context-pill">{{ pagination.total if pagination else items|length }} résultat(s)</span>
+      </div>
+    </div>
+    {{ ux.helper('Commencez par un nom, un prénom, un e-mail ou un téléphone. Ouvrez ensuite les filtres seulement si vous voulez affiner la recherche.') }}
+    <form method="get" action="{{ url_for('participants.list_participants') }}" class="stack" data-filter-summary="true">
+      <div class="inline-actions stretch-input" style="align-items:flex-end; gap:10px; flex-wrap:wrap;">
+        <div class="field-stack grow-2" style="min-width:280px;">
+          <label>Recherche</label>
+          <input class="in" type="text" name="q" placeholder="Nom, prénom, e-mail ou téléphone" value="{{ q }}">
+        </div>
+        <button class="btn ok" type="submit">Rechercher</button>
+        <a class="btn" href="{{ url_for('participants.list_participants') }}">Réinitialiser</a>
+      </div>
+
+      <details class="details-card" style="margin-top:10px;">
+        <summary>Filtres avancés</summary>
+        <div class="details-body">
+          <div class="inline-actions" style="margin-bottom:10px; gap:8px; flex-wrap:wrap;">
+            <span class="muted" style="font-size:12px;">Raccourcis</span>
+            <a class="btn" href="{{ url_for('participants.list_participants', presence='without', scope=scope, created_secteur=f_created_secteur) }}">Sans présence</a>
+            <a class="btn" href="{{ url_for('participants.list_participants', presence='with', scope=scope, created_secteur=f_created_secteur) }}">Avec présence</a>
+            <a class="btn" href="{{ url_for('participants.list_participants', q='@', scope=scope, created_secteur=f_created_secteur) }}">Avec e-mail</a>
+          </div>
+          <div class="filters-grid stretch-input">
+            <div class="field-stack">
+              <label>Ville</label>
+              <select name="ville" class="in"><option value="">Toutes</option>{% for v in villes %}<option value="{{ v }}" {% if f_ville == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+            </div>
+            <div class="field-stack">
+              <label>Quartier</label>
+              <select name="quartier_id" class="in"><option value="">Tous</option>{% for qt in quartiers %}<option value="{{ qt.id }}" {% if f_quartier_id and f_quartier_id|int == qt.id %}selected{% endif %}>{{ qt.ville }} — {{ qt.nom }}</option>{% endfor %}</select>
+            </div>
+            <div class="field-stack">
+              <label>Genre</label>
+              <select name="genre" class="in"><option value="">Tous</option>{% for g in genres %}<option value="{{ g }}" {% if f_genre == g %}selected{% endif %}>{{ g }}</option>{% endfor %}</select>
+            </div>
+            <div class="field-stack">
+              <label>Type de public</label>
+              <select name="type_public" class="in"><option value="">Tous</option>{% for t in types_public %}<option value="{{ t }}" {% if f_type_public == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+            </div>
+            <div class="field-stack">
+              <label>Présence</label>
+              <select name="presence" class="in"><option value="">Toutes</option><option value="with" {% if f_presence == 'with' %}selected{% endif %}>Avec présence</option><option value="without" {% if f_presence == 'without' %}selected{% endif %}>Sans présence</option></select>
+            </div>
+            {% if is_global %}
+            <div class="field-stack">
+              <label>Créé pour</label>
+              <input class="in" type="text" name="created_secteur" placeholder="Secteur" value="{{ f_created_secteur }}">
+            </div>
+            {% endif %}
+            {% if not can('participants:view_all') %}
+            <div class="field-stack grow-2">
+              <label>Périmètre</label>
+              <select name="scope" class="in">
+                <option value="" {% if not scope or scope == 'secteur' %}selected{% endif %}>Mon secteur (créations + présences)</option>
+                <option value="created" {% if scope == 'created' %}selected{% endif %}>Créés par mon secteur</option>
+                <option value="annuaire" {% if scope == 'annuaire' %}selected{% endif %}>Annuaire global</option>
+              </select>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </details>
+    </form>
+  </div>
+
+  <div class="section-card compact">
+    <div class="table-toolbar">
+      <h2 class="section-title" style="margin:0">Liste des personnes</h2>
+      {% if q or f_ville or f_quartier_id or f_genre or f_type_public or f_presence %}
+      <div class="context-strip">
+        {% if q %}<span class="chip">Recherche : {{ q }}</span>{% endif %}
+        {% if f_ville %}<span class="chip">Ville : {{ f_ville }}</span>{% endif %}
+        {% if f_type_public %}<span class="chip">Public : {{ f_type_public }}</span>{% endif %}
+        {% if f_presence %}<span class="chip">Présence : {{ 'Avec' if f_presence=='with' else 'Sans' }}</span>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr><th>Nom</th><th>Coordonnées</th><th>Ville / quartier</th><th>Public</th><th>Présences</th><th style="width:220px">Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td><strong>{{ item.nom }}</strong><br><span class="muted">{{ item.prenom or '—' }}</span></td>
+            <td><div>{{ item.email or '—' }}</div><div class="muted">{{ item.telephone or '—' }}</div></td>
+            <td><div>{{ item.ville or '—' }}</div><div class="muted">{{ item.quartier.nom if item.quartier else '—' }}</div></td>
+            <td>{{ item.type_public or '—' }}</td>
+            <td>{% if item._presence_count is defined %}<strong>{{ item._presence_count }}</strong><span class="muted"> visite(s)</span>{% else %}—{% endif %}</td>
+            <td><div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=item.id) }}">Voir la fiche</a>{% if can('participants:delete') %}<form method="post" action="{{ url_for('participants.delete_participant', participant_id=item.id) }}" onsubmit="return confirm('Supprimer ce participant ? Cette action est irréversible.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Supprimer</button></form>{% endif %}</div></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6"><div class="quick-empty"><strong>Aucun participant ne correspond aux filtres sélectionnés.</strong>Modifiez un critère ou réinitialisez les filtres pour élargir la recherche.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if pagination and pagination.pages > 1 %}
+  <div class="toolbar-line">
+    {% if pagination.has_prev %}<a class="btn" href="{{ url_for('participants.list_participants', page=pagination.prev_num, q=q, ville=f_ville, quartier_id=f_quartier_id, genre=f_genre, type_public=f_type_public, presence=f_presence, scope=scope, created_secteur=f_created_secteur) }}">← Précédent</a>{% endif %}
+    <span class="context-pill">Page {{ pagination.page }} / {{ pagination.pages }}</span>
+    {% if pagination.has_next %}<a class="btn" href="{{ url_for('participants.list_participants', page=pagination.next_num, q=q, ville=f_ville, quartier_id=f_quartier_id, genre=f_genre, type_public=f_type_public, presence=f_presence, scope=scope, created_secteur=f_created_secteur) }}">Suivant →</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

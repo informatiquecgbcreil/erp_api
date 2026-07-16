@@ -1,0 +1,59 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1 style="margin-top:0;">Évaluation batch · {{ atelier.nom }}</h1>
+    <p class="muted">Grille terrain : participants × compétences.</p>
+
+    <div class="card" style="margin-bottom:10px; background:var(--surface-soft);">
+      <strong>Niveaux d’évaluation (explicites)</strong>
+      <div class="muted" style="margin-top:6px;">
+        <b>0</b> = Non abordé · <b>1</b> = Vu / compris · <b>2</b> = Réalisé avec aide · <b>3</b> = Réalisé en autonomie
+      </div>
+    </div>
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Participant</th>
+              {% for c in competences %}
+                <th title="{{ c.code or '' }}">
+                  <div>{{ c.nom or c.code }}</div>
+                  {% if c.code %}<div class="muted" style="font-size:12px;">{{ c.code }}</div>{% endif %}
+                </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in participants %}
+              <tr id="p{{ p.id }}">
+                <td><strong>{{ p.nom }} {{ p.prenom }}</strong></td>
+                {% for c in competences %}
+                  {% set v = eval_map.get((p.id, c.id)) %}
+                  <td>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                      <label title="0 = Non abordé" style="display:inline-flex; align-items:center; gap:2px;"><input type="radio" name="etat_{{ p.id }}_{{ c.id }}" value="0" {% if v == 0 %}checked{% endif %}>0</label>
+                      <label title="1 = Vu / compris" style="display:inline-flex; align-items:center; gap:2px;"><input type="radio" name="etat_{{ p.id }}_{{ c.id }}" value="1" {% if v == 1 %}checked{% endif %}>1</label>
+                      <label title="2 = Réalisé avec aide" style="display:inline-flex; align-items:center; gap:2px;"><input type="radio" name="etat_{{ p.id }}_{{ c.id }}" value="2" {% if v == 2 %}checked{% endif %}>2</label>
+                      <label title="3 = Réalisé en autonomie" style="display:inline-flex; align-items:center; gap:2px;"><input type="radio" name="etat_{{ p.id }}_{{ c.id }}" value="3" {% if v == 3 %}checked{% endif %}>3</label>
+                    </div>
+                  </td>
+                {% endfor %}
+              </tr>
+            {% else %}
+              <tr><td colspan="{{ 1 + (competences|length) }}" class="muted">Aucun participant émargé.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="row" style="gap:8px; margin-top:8px;">
+        <button class="btn ok" type="submit">Sauvegarder tout</button>
+        <a class="btn" href="{{ url_for('activite.emargement', session_id=session.id) }}">Retour émargement</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

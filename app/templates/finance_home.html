@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block body %}
+{% set k = data.kpis %}
+<style>
+  .finance-home-title{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .finance-home-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+  .finance-home-card{display:flex;flex-direction:column;gap:10px;min-height:180px}
+  .finance-home-card .big{font-size:1.6rem;font-weight:900;margin:.2rem 0}
+  .finance-home-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  @media(max-width:1000px){.finance-home-filters{grid-template-columns:1fr}}
+  @media(max-width:900px){.finance-home-actions .btn{flex:1 1 auto}}
+</style>
+<div class="ui-page finance-home">
+  <section class="ui-header finance-home-hero">
+    <div class="ui-header__main finance-home-title">
+      <div>
+        <h1 class="ui-title">Finances</h1>
+        <p class="ui-subtitle"><strong>{{ secteur }}</strong> · exercice {{ year }} · porte d’entrée propre, pas labyrinthe comptable.</p>
+      </div>
+      <div class="ui-actions finance-home-actions">
+        <a class="btn ok" href="{{ url_for('projets.finance_simple', secteur=secteur, year=year) }}">Vue simple</a>
+        <a class="btn" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year) }}">Pilotage complet</a>
+        <a class="btn" href="{{ url_for('projets.finance_secteur_export', secteur=secteur, year=year) }}">Export XLSX</a>
+      </div>
+    </div>
+    <form method="get" class="ui-form-grid finance-home-filters">
+      <label class="field-stack">Secteur
+        <select class="in" name="secteur" onchange="this.form.submit()">
+          {% for s in sectors %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Exercice
+        <select class="in" name="year" onchange="this.form.submit()">
+          {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="field-stack"><span>Cycle</span><span class="muted">Prévoir → demander → recevoir → dépenser → répartir → justifier.</span></div>
+    </form>
+  </section>
+
+  <div class="ui-kpi-grid finance-home-kpis">
+    <div class="ui-kpi-card mini-kpi"><span class="ui-kpi-card__label">Charges prévues</span><strong class="ui-kpi-card__value">{{ '%.2f'|format(k.charges_prevues or 0) }}€</strong></div>
+    <div class="ui-kpi-card mini-kpi"><span class="ui-kpi-card__label">Accordé</span><strong class="ui-kpi-card__value">{{ '%.2f'|format(k.attribue or 0) }}€</strong></div>
+    <div class="ui-kpi-card mini-kpi"><span class="ui-kpi-card__label">Imputé</span><strong class="ui-kpi-card__value">{{ '%.2f'|format(k.total_impute or 0) }}€</strong></div>
+    <div class="ui-kpi-card mini-kpi"><span class="ui-kpi-card__label">Contrôles</span><strong class="ui-kpi-card__value">{{ k.nb_controles or 0 }}</strong></div>
+  </div>
+
+  <div class="ui-card-grid finance-home-grid">
+    <div class="ui-card finance-home-card"><h2 class="ui-card__title">Vue simple</h2><p class="ui-card__text">Créer une dépense financée et voir les enveloppes sans se taper toute la salle des machines.</p><div class="ui-actions finance-home-actions"><a class="btn ok" href="{{ url_for('projets.finance_simple', secteur=secteur, year=year) }}">Ouvrir</a></div></div>
+    <div class="ui-card finance-home-card"><h2 class="ui-card__title">Pilotage annuel</h2><p class="ui-card__text">Tableau complet : budget, financeurs, projets, dépenses, contrôles.</p><div class="ui-actions finance-home-actions"><a class="btn" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year) }}">Ouvrir</a></div></div>
+    <div class="ui-card finance-home-card"><h2 class="ui-card__title">Contrôles</h2><p class="ui-card__text">Repérer dépenses non équilibrées, enveloppes surconsommées, dossiers non reliés.</p><div class="ui-actions finance-home-actions"><a class="btn" href="{{ url_for('projets.finance_secteur', secteur=secteur, year=year, tab='controles') }}">Voir les contrôles</a></div></div>
+    <div class="ui-card finance-home-card"><h2 class="ui-card__title">Budgets prévisionnels</h2><p class="ui-card__text">Le “si tout se passe bien” : charges, produits, demandes de financement.</p><div class="ui-actions finance-home-actions"><a class="btn" href="{{ url_for('previsionnel.index') }}">Ouvrir</a></div></div>
+    <div class="ui-card finance-home-card"><h2 class="ui-card__title">Enveloppes de financement</h2><p class="ui-card__text">Subventions externes, fonds propres compte 99, montants attribués/reçus.</p><div class="ui-actions finance-home-actions"><a class="btn" href="{{ url_for('main.subventions_list') }}">Ouvrir</a></div></div>
+    <div class="ui-card finance-home-card"><h2 class="ui-card__title">Dépenses</h2><p class="ui-card__text">Liste classique des dépenses et justificatifs.</p><div class="ui-actions finance-home-actions"><a class="btn" href="{{ url_for('budget.depenses_list') }}">Ouvrir</a></div></div>
+  </div>
+</div>
+{% endblock %}

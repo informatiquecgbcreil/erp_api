@@ -1,0 +1,207 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+{% set has_filters = q or secteurs or competence %}
+
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>Annuaire partenaires</h1>
+        <p class="muted" style="margin-top:6px;">Retrouve une structure, un contact ou un moyen de contact en un coup d’œil.</p>
+        
+      </div>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        <a class="btn" href="{{ url_for('partenaires.carte') }}">🗺️ Carte des partenaires</a>
+        <a class="btn" href="{{ url_for('partenaires.orientations') }}">Orientations accès aux droits</a>
+        {% if can('partenaires:edit') %}
+          <a class="btn" href="{{ url_for('partenaires.import_partenaires') }}">📥 Importer (CSV)</a>
+          <a class="btn" href="{{ url_for('partenaires.create') }}">➕ Ajouter un partenaire</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <form method="get" style="margin-top:12px;">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <input class="in" name="q" placeholder="Rechercher (nom, contact, email, téléphone)" value="{{ q }}" style="min-width:280px;">
+        <select class="in" name="secteur" multiple size="4" style="min-width:240px;">
+          {% for s in SECTEURS %}
+            {% set is_selected = s in secteurs %}
+            <option value="{{ s }}" {% if is_selected %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <select class="in" name="competence" style="min-width:220px;">
+          <option value="">Toutes compétences</option>
+          {% for key,label in orientation_domaines.items() %}
+            <option value="{{ key }}" {% if competence == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" type="submit">Appliquer les filtres</button>
+        {% if q or secteurs or competence %}
+          <a class="btn" href="{{ url_for('partenaires.index') }}">Réinitialiser</a>
+        {% endif %}
+      </div>
+      <div class="muted" style="margin-top:6px;">Astuce : Ctrl/Cmd+clic pour sélectionner plusieurs secteurs.</div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Partenaire</th>
+            <th>Contact</th>
+            <th>Emails</th>
+            <th>Téléphones</th>
+            <th>Compétences</th>
+            <th>Secteurs</th>
+            <th style="width:200px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in partenaires %}
+            <tr>
+              <td>
+                <strong>{{ p.nom }}</strong>
+                <div class="muted" style="font-size:12px;">{{ p.adresse or "—" }}</div>
+              </td>
+              <td class="muted">{{ (p.contact_prenom or "") ~ (" " if p.contact_prenom or p.contact_nom else "") ~ (p.contact_nom or "") or "—" }}</td>
+              <td class="muted">
+                {{ p.email_contact or "—" }}<br>
+                {{ p.email_general or "—" }}
+              </td>
+              <td class="muted">
+                {{ p.tel_contact or "—" }}<br>
+                {{ p.tel_general or "—" }}
+              </td>
+              <td class="muted">
+                {% set labels = competence_labels.get(p.id, []) %}
+                {{ labels | join(', ') if labels else "—" }}
+              </td>
+              <td class="muted">
+                {% if p.secteurs %}
+                  {{ p.secteurs | map(attribute='secteur') | join(', ') }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                <div class="inline" style="gap:8px; flex-wrap:wrap;">
+                  {% if can('partenaires:edit') %}
+                    <a class="btn" href="{{ url_for('partenaires.edit', partenaire_id=p.id) }}">Voir la fiche</a>
+                  {% endif %}
+                  {% if can('partenaires:delete') %}
+                    <form method="post" action="{{ url_for('partenaires.delete', partenaire_id=p.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce partenaire ?');">🗑️ Supprimer</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="7" style="padding-top:0;">
+                <details>
+                  <summary class="muted" style="cursor:pointer;">Voir les détails</summary>
+                  <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:10px;">
+                    <div>
+                      <div class="muted">Contact</div>
+                      <div>{{ (p.contact_prenom or "") ~ (" " if p.contact_prenom or p.contact_nom else "") ~ (p.contact_nom or "") or "—" }}</div>
+                    </div>
+                    <div>
+                      <div class="muted">Adresse</div>
+                      <div>{{ p.adresse or "—" }}</div>
+                    </div>
+                    <div>
+                      <div class="muted">Emails</div>
+                      <div>{{ p.email_contact or "—" }}<br>{{ p.email_general or "—" }}</div>
+                    </div>
+                    <div>
+                      <div class="muted">Téléphones</div>
+                      <div>{{ p.tel_contact or "—" }}<br>{{ p.tel_general or "—" }}</div>
+                    </div>
+                    <div>
+                      <div class="muted">Secteurs</div>
+                      <div>{{ p.secteurs | map(attribute='secteur') | join(', ') if p.secteurs else "—" }}</div>
+                    </div>
+                    <div>
+                      <div class="muted">Compétences d'orientation</div>
+                      {% set detail_labels = competence_labels.get(p.id, []) %}
+                      <div>{{ detail_labels | join(', ') if detail_labels else "—" }}</div>
+                    </div>
+                    <div>
+                      <div class="muted">Territoire couvert</div>
+                      <div>{{ p.territoire_couvert or "—" }}</div>
+                    </div>
+                    <div>
+                      <div class="muted">Modalités d'orientation</div>
+                      <div>{{ p.modalites_orientation or "—" }}</div>
+                    </div>
+                  </div>
+                  <div style="margin-top:10px;">
+                    <div class="muted">Description</div>
+                    <div class="muted">{{ p.description or "—" }}</div>
+                  </div>
+                </details>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if partenaires|length == 0 %}
+            <tr><td colspan="7">{{ ui.empty_state(
+              "Aucun partenaire ne correspond aux filtres" if has_filters else "L’annuaire des partenaires est vide",
+              "Réinitialisez les filtres pour revoir tout l’annuaire." if has_filters else "Ajoutez une structure partenaire pour retrouver ses contacts, compétences et modalités d’orientation.",
+              url_for('partenaires.index') if has_filters else (url_for('partenaires.create') if can('partenaires:edit') else None),
+              "Réinitialiser les filtres" if has_filters else ("Ajouter un partenaire" if can('partenaires:edit') else None),
+              "🤝"
+            ) }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="responsive-card-list" aria-label="Annuaire partenaires (vue compacte)">
+      {% for p in partenaires %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ p.nom }}</strong>
+            <span class="chip">{{ p.secteurs | map(attribute='secteur') | join(', ') if p.secteurs else "—" }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>Contact</dt><dd class="muted">{{ (p.contact_prenom or "") ~ (" " if p.contact_prenom or p.contact_nom else "") ~ (p.contact_nom or "") or "—" }}</dd></div>
+            <div><dt>E-mails</dt><dd class="muted">{{ p.email_contact or "—" }}<br>{{ p.email_general or "—" }}</dd></div>
+            <div><dt>Téléphones</dt><dd class="muted">{{ p.tel_contact or "—" }}<br>{{ p.tel_general or "—" }}</dd></div>
+            <div><dt>Adresse</dt><dd class="muted">{{ p.adresse or "—" }}</dd></div>
+            <div><dt>Compétences</dt><dd class="muted">{% set card_labels = competence_labels.get(p.id, []) %}{{ card_labels | join(', ') if card_labels else "—" }}</dd></div>
+          </dl>
+          <details>
+            <summary class="muted" style="cursor:pointer;">Voir les détails</summary>
+            <div class="muted">{{ p.description or "—" }}</div>
+            <div class="muted" style="margin-top:6px;">{{ p.territoire_couvert or "Territoire non renseigné" }}</div>
+            <div class="muted" style="margin-top:6px;">{{ p.modalites_orientation or "Modalités non renseignées" }}</div>
+          </details>
+          <div class="inline-actions">
+            {% if can('partenaires:edit') %}
+              <a class="btn" href="{{ url_for('partenaires.edit', partenaire_id=p.id) }}">Voir la fiche</a>
+            {% endif %}
+            {% if can('partenaires:delete') %}
+              <form method="post" action="{{ url_for('partenaires.delete', partenaire_id=p.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce partenaire ?');">🗑️ Supprimer</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        {{ ui.empty_state(
+          "Aucun partenaire ne correspond aux filtres" if has_filters else "L’annuaire des partenaires est vide",
+          "Réinitialisez les filtres pour revoir tout l’annuaire." if has_filters else "Ajoutez une structure partenaire pour retrouver ses contacts, compétences et modalités d’orientation.",
+          url_for('partenaires.index') if has_filters else (url_for('partenaires.create') if can('partenaires:edit') else None),
+          "Réinitialiser les filtres" if has_filters else ("Ajouter un partenaire" if can('partenaires:edit') else None),
+          "🤝"
+        ) }}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

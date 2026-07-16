@@ -1,0 +1,185 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    {% include "_projet_budget_header.html" %}
+    <div class="muted" style="margin-top:8px;">
+      Laissez un montant vide ou saisissez 0 pour supprimer une répartition existante.
+    </div>
+  </div>
+
+  {% set total_charges = budget_stats.total_charges or 0 if budget_stats is defined else 0 %}
+  {% set total_accorde = budget_stats.total_accorde or 0 if budget_stats is defined else 0 %}
+  {% set total_ventile_charges = budget_stats.total_ventile_charges or 0 if budget_stats is defined else 0 %}
+  {% set total_reste_charges = budget_stats.total_charges_reste or 0 if budget_stats is defined else 0 %}
+
+  {% set pct_ventile = (total_ventile_charges / total_charges * 100) if total_charges else 0 %}
+  {% set pct_couverture = (total_accorde / total_charges * 100) if total_charges else 0 %}
+
+  <div class="card">
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Charges totales</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_charges) }}€</div>
+        <div class="kpi-help">Base de répartition.</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Produits accordés</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_accorde) }}€</div>
+        <div class="kpi-help">Montants accordés mobilisables.</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Total ventilé (charges)</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_ventile_charges) }}€</div>
+        <div class="kpi-help">{{ "%.0f"|format(pct_ventile) }}% des charges ventilées.</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Reste à financer</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_reste_charges) }}€</div>
+        <div class="kpi-help">Part du budget qui reste à financer.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <div class="kpi-label">Progression de la répartition</div>
+      <div class="meter">
+        <div class="meter__fill" style="width:{{ pct_ventile }}%;"></div>
+      </div>
+      <div class="legend">
+        <span><strong class="mono">{{ "%.0f"|format(pct_ventile) }}%</strong> ventilé</span>
+        <span><strong class="mono">{{ "%.0f"|format(pct_couverture) }}%</strong> sécurisé (accordé/charges)</span>
+      </div>
+    </div>
+  </div>
+
+  {% set ns = namespace(n=0) %}
+  <div class="card callout">
+    <div class="callout__title">À surveiller</div>
+    <ul class="watch-list">
+      {% for c in charges if (c.reste_a_financer or 0) > 0 %}
+        {% if ns.n < 3 %}
+          <li>
+            <strong>{{ c.code_plan }}</strong> — {{ c.libelle }}
+            <span class="muted"> (reste {{ "%.2f"|format(c.reste_a_financer or 0) }}€)</span>
+          </li>
+          {% set ns.n = ns.n + 1 %}
+        {% endif %}
+      {% endfor %}
+
+      {% if ns.n == 0 %}
+        <li class="muted">Toutes les charges sont couvertes ou ventilées.</li>
+      {% else %}
+        <li class="muted">Commencez par les lignes qui présentent le reste à financer le plus élevé.</li>
+      {% endif %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="tablewrap matrixwrap">
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th class="sticky-col">Charge \\ Financeur</th>
+              {% for p in produits %}
+                <th class="matrix-head">
+                  <div class="matrix-head__title">{{ p.financeur }}</div>
+                  <div class="matrix-head__sub muted">{{ "%.0f"|format(p.montant_accorde or 0) }}€ accordés</div>
+                </th>
+              {% endfor %}
+              <th class="num">Total ventilé</th>
+              <th class="num">Reste</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for c in charges %}
+              {% set base = (c.montant_previsionnel or 0) %}
+              {% set vtot = (c.ventile or 0) %}
+              {% set pct_ligne = (vtot / base * 100) if base else 0 %}
+              {% if pct_ligne > 100 %}{% set pct_ligne = 100 %}{% endif %}
+
+              <tr>
+                <td class="sticky-col">
+                  <div class="charge-cell">
+                    <div class="charge-title"><strong>{{ c.code_plan }}</strong> — {{ c.libelle }}</div>
+                    <div class="charge-sub muted">{{ "%.0f"|format(base) }}€</div>
+
+                    {% if (c.reste_a_financer or 0) == 0 %}
+                      <div style="margin-top:6px;"><span class="pill pill--ok">OK</span></div>
+                    {% else %}
+                      <div style="margin-top:6px;"><span class="pill pill--warn">Reste {{ "%.0f"|format(c.reste_a_financer or 0) }}€</span></div>
+                    {% endif %}
+                  </div>
+                </td>
+
+                {% for p in produits %}
+                  {% set val = vvals.get((c.id, p.id), 0) %}
+                  <td class="matrix-input">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="v_{{ c.id }}_{{ p.id }}"
+                      value="{{ val if val else '' }}"
+                      placeholder="0"
+                      inputmode="decimal"
+                    >
+                  </td>
+                {% endfor %}
+
+                {# ✅ COLONNE TOTAL VENTILÉ AVEC MINI BARRE #}
+                <td class="num">
+                  <div class="cell-money">
+                    <div class="cell-money__main mono">{{ "%.2f"|format(vtot) }}€</div>
+                    <div class="meter meter--thin" aria-label="Couverture de la ligne">
+                      <div class="meter__fill meter__fill--ok" style="width:{{ "%.0f"|format(pct_ligne) }}%"></div>
+                    </div>
+                    <div class="cell-money__sub muted">{{ "%.0f"|format(pct_ligne) }}%</div>
+                  </div>
+                </td>
+				{% set reste = (c.reste_a_financer or 0) %}
+				{% set base2 = (base if base else 0) %}
+				{% set pct_reste_ligne = (reste / base2 * 100) if base2 else 0 %}
+				{% if pct_reste_ligne > 100 %}{% set pct_reste_ligne = 100 %}{% endif %}
+
+				<td class="num">
+				  <div class="cell-money">
+					<div class="cell-money__main mono">
+					  {% if reste == 0 %}
+						<span class="pill pill--ok">0€</span>
+					  {% elif pct_reste_ligne >= 25 %}
+						<span class="pill pill--danger">{{ "%.2f"|format(reste) }}€</span>
+					  {% else %}
+						<span class="pill pill--warn">{{ "%.2f"|format(reste) }}€</span>
+					  {% endif %}
+					</div>
+
+					<div class="meter meter--thin" aria-label="Reste à financer (ligne)">
+					  <div class="meter__fill meter__fill--warn" style="width:{{ "%.0f"|format(pct_reste_ligne) }}%"></div>
+					</div>
+
+					<div class="cell-money__sub muted">{{ "%.0f"|format(pct_reste_ligne) }}% du prévisionnel</div>
+				  </div>
+				</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="{{ (produits|length) + 3 }}"><div class="quick-empty"><strong>La répartition ne peut pas encore être renseignée.</strong>Ajoutez d’abord des charges et des financeurs.</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+        <button class="btn ok" type="submit">Enregistrer la répartition</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

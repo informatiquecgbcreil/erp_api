@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="stack">
+  <div class="page-hero-soft">
+    <div class="section-head">
+      <div>
+        <h1 style="margin:0;">Modifier le compte</h1>
+        <p class="muted">{{ u.nom }} — {{ u.email }}</p>
+      </div>
+      <a class="btn" href="{{ url_for('admin.users') }}">⬅ Retour</a>
+    </div>
+  </div>
+
+  <div class="form-card">
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="form-grid-2">
+        <div>
+          <label>Nom</label>
+          <input name="nom" value="{{ u.nom }}" required>
+        </div>
+        <div>
+          <label>Adresse e-mail</label>
+          <input value="{{ u.email }}" disabled>
+          <div class="muted" style="font-size:12px;">L'e-mail (identifiant de connexion) ne se modifie pas ici.</div>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="form-grid-2">
+        <div>
+          <label>Rôle {{ ux.tooltip("Le rôle définit tout ce que le compte peut voir et faire.") }}</label>
+          {% if peut_changer_role %}
+            <select name="role">
+              {% for r in roles %}
+                <option value="{{ r.code }}" {% if r.code == current_role %}selected{% endif %}>{{ r.label or r.code }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input value="{{ current_role or '—' }}" disabled>
+            <div class="muted" style="font-size:12px;">Modification du rôle réservée à la gestion des droits.</div>
+          {% endif %}
+        </div>
+        <div>
+          <label>Secteur assigné {{ ux.tooltip("Limite un responsable à son périmètre. Laisser vide pour un accès non restreint au secteur.") }}</label>
+          <select name="secteur_assigne">
+            <option value="">—</option>
+            {% for sec in secteurs %}
+              <option value="{{ sec }}" {% if sec == u.secteur_assigne %}selected{% endif %}>{{ sec }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="field-stack">
+        <div>
+          <label>Nouveau mot de passe {{ ux.tooltip("Laissez vide pour ne pas changer. Sinon, communiquez-le à l'utilisateur ; il pourra le changer ensuite.") }}</label>
+          <input name="password" type="text" autocomplete="new-password" placeholder="(laisser vide pour conserver le mot de passe actuel)">
+          <div class="muted" style="font-size:12px;">8 caractères minimum. Utile pour dépanner un utilisateur qui ne reçoit pas l'e-mail de réinitialisation.</div>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="form-actions"><button class="btn ok" type="submit">💾 Enregistrer</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

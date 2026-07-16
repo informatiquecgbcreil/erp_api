@@ -1,0 +1,43 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1 style="margin-top:0;">Pilotage objectifs (RA/PAG)</h1>
+    <form method="get" class="inline" style="gap:8px; flex-wrap:wrap;">
+      <select class="in" name="projet_id">
+        <option value="">Tous projets</option>
+        {% for p in projets %}
+          <option value="{{ p.id }}" {% if projet_id == p.id %}selected{% endif %}>{{ p.nom }}</option>
+        {% endfor %}
+      </select>
+      <input class="in" type="date" name="start_date" value="{{ start_date or '' }}">
+      <input class="in" type="date" name="end_date" value="{{ end_date or '' }}">
+      <button class="btn ok" type="submit">Calculer</button>
+      <a class="btn" href="{{ url_for('pedagogie.export_ra_csv', projet_id=projet_id, start_date=start_date, end_date=end_date) }}">Exporter CSV RA</a>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Type</th><th>Objectif</th><th>Projet</th><th>% atteinte</th><th>Évaluations</th><th>Participants</th><th>Progression moy.</th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td><span class="badge">{{ row.objectif.type }}</span></td>
+              <td>{{ row.objectif.titre }}</td>
+              <td>{{ row.objectif.projet.nom if row.objectif.projet else '—' }}</td>
+              <td>{{ row.score if row.score is not none else '—' }}</td>
+              <td>{{ row.evaluations }}</td>
+              <td>{{ row.participants }}</td>
+              <td>{{ row.progression_moyenne if row.progression_moyenne is not none else "—" }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="muted">Aucune donnée.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

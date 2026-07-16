@@ -1,0 +1,183 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<style>
+  .hero{background:linear-gradient(135deg,#0f62fe,#6c5ce7);color:#fff;border-radius:14px;padding:18px 20px;margin:10px auto 16px auto;max-width:980px;box-shadow:0 10px 30px rgba(0,0,0,0.08)}
+  .wrap{max-width:980px;margin:0 auto;}
+  .card{background:#fff;border-radius:14px;border:1px solid #e6e9ff;box-shadow:0 8px 18px rgba(15,98,254,0.06);padding:14px;margin-bottom:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .muted{opacity:.8}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid #dfe3f0;background:#f7f9fc;font-weight:700;cursor:pointer;text-decoration:none;color:#111}
+  .btn.ok{background:#16a34a;color:#fff;border-color:#16a34a}
+  .btn.blue{background:#0f62fe;color:#fff;border-color:#0f62fe}
+  label{font-weight:700;font-size:13px}
+  select,input{width:100%;padding:8px 10px;border-radius:10px;border:1px solid #dfe3f0;background:#fff}
+  details summary{cursor:pointer;font-weight:800}
+  .tag{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;padding:3px 8px;border-radius:999px;font-size:12px}
+  .help{font-size:12px;opacity:.75;margin-top:4px}
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <h1 style="margin:0 0 6px 0;">Stats & Impacts — Exports</h1>
+    <div class="muted">Ici on filtre, puis on exporte. Pas 58 boutons, pas 4 formulaires qui se battent. ✌️</div>
+  </div>
+
+  <div class="card">
+    <form method="get">
+      <div class="grid" style="align-items:end;">
+        {% if secteurs and secteurs|length > 0 %}
+        <div>
+          <label>Secteur</label>
+          <select name="secteur">
+            <option value="">Tous</option>
+            {% for s in secteurs %}
+              <option value="{{ s }}" {% if flt.secteur==s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <div style="grid-column:1 / -1;">
+          <label>Ateliers</label>
+          <details {% if flt.atelier_ids %}open{% endif %} style="margin-top:6px; border:1px solid #dfe3f0; border-radius:12px; padding:10px 12px; background:#fff;">
+            <summary>
+              {% if flt.atelier_ids %}
+                {{ flt.atelier_ids|length }} atelier{% if flt.atelier_ids|length > 1 %}s{% endif %} sélectionné{% if flt.atelier_ids|length > 1 %}s{% endif %}
+              {% else %}
+                Tous les ateliers
+              {% endif %}
+            </summary>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+              <button class="btn" type="button" data-atelier-check="all">Tout cocher</button>
+              <button class="btn" type="button" data-atelier-check="none">Tout décocher</button>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; margin-top:10px; max-height:260px; overflow:auto; padding-right:4px;">
+              {% for a in ateliers %}
+                <label class="tag" style="justify-content:flex-start; cursor:pointer; padding:10px 12px; border-radius:12px; display:flex; gap:10px; align-items:flex-start;">
+                  <input type="checkbox" name="atelier_ids" value="{{ a.id }}" {% if a.id in (flt.atelier_ids or []) %}checked{% endif %}>
+                  <span><strong>{{ a.nom }}</strong><br><small>{{ a.secteur }}</small></span>
+                </label>
+              {% endfor %}
+            </div>
+          </details>
+        </div>
+
+        <div>
+          <label>Du</label>
+          {% set date_from_value = flt.date_from.isoformat() if flt.date_from else "" %}
+          <input type="date" name="date_from" value="{{ date_from_value }}">
+          <div class="help">Vide = année courante (auto)</div>
+        </div>
+
+        <div>
+          <label>Au</label>
+          {% set date_to_value = flt.date_to.isoformat() if flt.date_to else "" %}
+          <input type="date" name="date_to" value="{{ date_to_value }}">
+          <div class="help">Vide = année courante (auto)</div>
+        </div>
+
+        <div>
+          <button class="btn blue" type="submit">Appliquer</button>
+        </div>
+      </div>
+
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        <span class="tag">Période : {{ flt.date_from }} → {{ flt.date_to }}</span>
+        <span class="tag">Secteur : {{ flt.secteur or "Tous" }}</span>
+        <span class="tag">Ateliers : {% if flt.atelier_ids %}{{ flt.atelier_ids|length }} sélectionné(s){% elif flt.atelier_id %}#{{ flt.atelier_id }}{% else %}Tous{% endif %}</span>
+        <a class="btn" href="{{ url_for('statsimpact.dashboard') }}?{{ request.query_string.decode('utf-8') }}" style="margin-left:auto;">Ouvrir le dashboard complet</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 8px 0;">Exports</h3>
+    <div class="muted" style="margin-bottom:10px;">
+      Les exports reprennent exactement les filtres ci-dessus.
+      <ul style="margin:6px 0 0 16px;">
+        <li><b>CSV défaut</b> : 1 ligne = 1 présence (participant × session).</li>
+        <li><b>XLSX Magatomatique complet</b> : lecture financeur + synthèse + une feuille par atelier, sur la période affichée.</li>
+        <li><b>XLSX par atelier</b> : même moteur de calcul, nommé explicitement pour usage matrice participants×sessions.</li>
+      </ul>
+    </div>
+
+    <div class="btnrow">
+      <a class="btn ok" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ export_qs }}">Exporter XLSX (Magatomatique complet)</a>
+      <a class="btn blue" href="{{ url_for('statsimpact.export_fidele_xlsx') }}?{{ export_qs }}">Exporter XLSX fidèle aux filtres</a>
+      <a class="btn" href="{{ url_for('statsimpact.magatomatique_export') }}?{{ export_qs }}&export_mode=per_atelier">XLSX par atelier / matrice</a>
+      <a class="btn" href="{{ url_for('statsimpact.magatomatique_export_csv') }}?{{ export_qs }}">Exporter CSV (défaut)</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <details open>
+      <summary>CSV sur mesure (optionnel) — tu choisis les colonnes</summary>
+      <div class="muted" style="margin-top:6px;">Toujours 1 ligne = 1 présence (participant × session). Si tu veux du tableau matrice : prends le XLSX annuel.</div>
+
+      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+        <button class="btn" type="button" data-csv-select="all">Tout cocher</button>
+        <button class="btn" type="button" data-csv-select="none">Tout décocher</button>
+      </div>
+
+      <form method="get" action="{{ url_for('statsimpact.magatomatique_export_csv') }}" style="margin-top:12px;">
+        {% if flt.secteur %}<input type="hidden" name="secteur" value="{{ flt.secteur }}">{% endif %}
+        {% for atelier_id in flt.atelier_ids or [] %}<input type="hidden" name="atelier_ids" value="{{ atelier_id }}">{% endfor %}
+        <input type="hidden" name="date_from" value="{{ flt.date_from or '' }}">
+        <input type="hidden" name="date_to" value="{{ flt.date_to or '' }}">
+
+        <div style="display:grid; gap:12px; margin-top:6px;">
+          {% for group in csv_field_groups or [] %}
+            <div>
+              <div style="font-weight:800; margin-bottom:6px;">{{ group.label }}</div>
+              <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                {% for field in group.fields %}
+                  <label class="tag" style="cursor:pointer;">
+                    <input type="checkbox" name="fields" value="{{ field.key }}" {% if field.key in csv_default_fields %}checked{% endif %}>
+                    {{ field.label }}
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn blue" type="submit">Exporter CSV sur mesure</button>
+        </div>
+      </form>
+    </details>
+  </div>
+
+  <div class="card" style="opacity:.9;">
+    <b>Aide rapide</b>
+    <div class="muted" style="margin-top:6px;">
+      Si tu veux une feuille par atelier avec <i>toutes les sessions en colonnes</i>, et les participants en lignes → <b>XLSX Magatomatique complet</b>.
+      <br>
+      Si tu veux du brut à retraiter → <b>CSV défaut</b> ou <b>CSV sur mesure</b>.
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const csvButtons = document.querySelectorAll('[data-csv-select]');
+  const atelierButtons = document.querySelectorAll('[data-atelier-check]');
+  csvButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-csv-select');
+      const checkboxes = document.querySelectorAll('[name="fields"]');
+      checkboxes.forEach(cb => cb.checked = (mode === 'all'));
+    });
+  });
+  atelierButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-atelier-check');
+      const checkboxes = document.querySelectorAll('[name="atelier_ids"]');
+      checkboxes.forEach(cb => cb.checked = (mode === 'all'));
+    });
+  });
+})();
+</script>
+{% endblock %}

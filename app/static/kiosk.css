@@ -1,0 +1,298 @@
+/* ============================================================
+   Kiosque public — émargement & ressenti participant
+   Feuille autonome, pensée tactile (tablette / mobile / PC).
+   Gros boutons, gros textes, contrastes francs, zéro jargon.
+   ============================================================ */
+
+:root {
+  --k-bg1: #eef4ff;
+  --k-bg2: #f7f3ff;
+  --k-surface: #ffffff;
+  --k-text: #15233b;
+  --k-muted: #5b6b86;
+  --k-primary: #2563eb;
+  --k-primary-press: #1d4ed8;
+  --k-primary-soft: #e6efff;
+  --k-success: #15a36b;
+  --k-success-soft: #e3f7ee;
+  --k-danger: #dc2626;
+  --k-danger-soft: #fdeaea;
+  --k-border: #d7e0ee;
+  --k-radius: 20px;
+  --k-radius-sm: 14px;
+  --k-shadow: 0 10px 30px rgba(31, 50, 92, .10);
+  --k-shadow-press: 0 4px 14px rgba(31, 50, 92, .14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --k-bg1: #0f172a;
+    --k-bg2: #131c33;
+    --k-surface: #1b2540;
+    --k-text: #eef3fb;
+    --k-muted: #a7b4cd;
+    --k-primary: #4f8cff;
+    --k-primary-press: #3b7bff;
+    --k-primary-soft: #20304f;
+    --k-success: #34d399;
+    --k-success-soft: #16352a;
+    --k-danger: #f87171;
+    --k-danger-soft: #3a1f22;
+    --k-border: #2d3a57;
+    --k-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  }
+}
+
+* { box-sizing: border-box; }
+
+.k-body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  color: var(--k-text);
+  background: linear-gradient(160deg, var(--k-bg1), var(--k-bg2));
+  -webkit-text-size-adjust: 100%;
+}
+
+.k-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px 16px 120px;
+}
+.k-wrap--wide { max-width: 980px; }
+
+/* ---- En-tête ---- */
+.k-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 6px 18px;
+}
+.k-header__logo {
+  height: 52px; width: 52px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: var(--k-surface);
+  padding: 4px;
+  box-shadow: var(--k-shadow);
+}
+.k-header__org {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--k-muted);
+  font-weight: 700;
+}
+.k-header__title { font-size: 20px; font-weight: 800; margin: 2px 0 0; }
+
+/* ---- Cartes ---- */
+.k-card {
+  background: var(--k-surface);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
+  box-shadow: var(--k-shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.k-card__title { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.k-card__sub { color: var(--k-muted); margin: 0 0 16px; font-size: 15px; line-height: 1.45; }
+.k-step { color: var(--k-primary); font-weight: 800; }
+
+/* ---- Champs ---- */
+.k-label { display: block; font-weight: 700; margin: 0 0 6px; font-size: 15px; }
+.k-hint { color: var(--k-muted); font-size: 14px; margin: 6px 0 0; }
+.k-input, .k-select, .k-textarea {
+  width: 100%;
+  min-height: 56px;
+  padding: 14px 16px;
+  font-size: 17px;
+  color: var(--k-text);
+  background: var(--k-surface);
+  border: 2px solid var(--k-border);
+  border-radius: var(--k-radius-sm);
+  outline: none;
+}
+.k-textarea { min-height: 96px; resize: vertical; }
+.k-input:focus, .k-select:focus, .k-textarea:focus {
+  border-color: var(--k-primary);
+  box-shadow: 0 0 0 4px var(--k-primary-soft);
+}
+.k-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .k-grid2 { grid-template-columns: 1fr; } }
+
+/* ---- Boutons ---- */
+.k-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 14px 22px;
+  font-size: 18px;
+  font-weight: 800;
+  border: 2px solid transparent;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-primary);
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform .04s ease, background .15s ease;
+}
+.k-btn:active { transform: translateY(1px); box-shadow: var(--k-shadow-press); }
+.k-btn:hover { background: var(--k-primary-press); }
+.k-btn--block { width: 100%; }
+.k-btn--ghost {
+  background: var(--k-surface);
+  color: var(--k-primary);
+  border-color: var(--k-border);
+}
+.k-btn--ghost:hover { background: var(--k-primary-soft); }
+.k-btn--lg { min-height: 66px; font-size: 20px; }
+
+.k-pin {
+  text-align: center;
+  letter-spacing: .5em;
+  font-size: 30px;
+  font-weight: 800;
+  padding-left: .5em;
+}
+
+/* ---- Liste des sessions (gros pavés tactiles) ---- */
+.k-sessions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 720px) { .k-sessions { grid-template-columns: 1fr; } }
+.k-session {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border: 2px solid var(--k-border);
+  border-radius: var(--k-radius);
+  background: var(--k-surface);
+  text-decoration: none;
+  color: var(--k-text);
+  transition: border-color .15s ease, transform .04s ease;
+}
+.k-session:hover { border-color: var(--k-primary); }
+.k-session:active { transform: translateY(1px); }
+.k-session__atelier { font-size: 19px; font-weight: 800; }
+.k-session__meta { color: var(--k-muted); font-size: 15px; }
+.k-session__go {
+  margin-top: 6px;
+  align-self: flex-start;
+  background: var(--k-primary-soft);
+  color: var(--k-primary);
+  font-weight: 800;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 15px;
+}
+.k-chip {
+  display: inline-block;
+  background: var(--k-primary-soft);
+  color: var(--k-primary);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+/* ---- Résultats de recherche (gros) ---- */
+.k-results { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.k-results .k-btn {
+  justify-content: flex-start;
+  background: var(--k-surface);
+  color: var(--k-text);
+  border-color: var(--k-border);
+  min-height: 56px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.k-results .k-btn:hover { background: var(--k-primary-soft); border-color: var(--k-primary); }
+.k-chosen {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 16px;
+  font-size: 18px;
+  font-weight: 800;
+  border: 2px dashed var(--k-border);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-primary-soft);
+}
+.k-chosen.is-empty { color: var(--k-muted); font-weight: 600; background: transparent; }
+
+/* ---- Signature ---- */
+.k-sig-canvas {
+  width: 100%;
+  height: 200px;
+  border: 2px solid var(--k-border);
+  border-radius: var(--k-radius-sm);
+  background: #fff;
+  /* Le canvas gère lui-même le geste : ni défilement ni zoom pendant qu'on
+     signe (doigt ou stylet actif). -ms- pour les anciennes tablettes Windows. */
+  touch-action: none;
+  -ms-touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- Choix tactiles (échelle, oui/non) ---- */
+.k-choices { display: flex; flex-wrap: wrap; gap: 10px; }
+.k-choice { position: relative; }
+.k-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.k-choice span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  min-height: 58px;
+  padding: 0 16px;
+  font-size: 18px;
+  font-weight: 800;
+  border: 2px solid var(--k-border);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-surface);
+  cursor: pointer;
+}
+.k-choice input:checked + span {
+  border-color: var(--k-primary);
+  background: var(--k-primary);
+  color: #fff;
+}
+.k-choice input:focus-visible + span { box-shadow: 0 0 0 4px var(--k-primary-soft); }
+
+/* ---- Messages ---- */
+.k-flash {
+  border-radius: var(--k-radius-sm);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  font-weight: 600;
+  border: 2px solid var(--k-border);
+  background: var(--k-surface);
+}
+.k-flash--success, .k-flash.success { background: var(--k-success-soft); border-color: var(--k-success); }
+.k-flash--danger, .k-flash.danger, .k-flash.error { background: var(--k-danger-soft); border-color: var(--k-danger); }
+.k-bigok {
+  text-align: center;
+  padding: 26px 18px;
+}
+.k-bigok__emoji { font-size: 54px; line-height: 1; }
+.k-bigok__title { font-size: 26px; font-weight: 800; margin: 10px 0 4px; color: var(--k-success); }
+
+/* ---- Barre d'action collante (mobile) ---- */
+.k-actionbar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 12px;
+  padding: 14px 0 4px;
+  background: linear-gradient(to top, var(--k-bg2) 70%, transparent);
+}
+.k-actionbar .k-btn { flex: 1; }
+
+/* ---- Pied ---- */
+.k-footer { text-align: center; color: var(--k-muted); font-size: 13px; padding: 18px 0 6px; }
+
+.k-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.k-mt { margin-top: 14px; }

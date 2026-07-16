@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>.quality-lane{display:grid;gap:10px}.quality-issue{border:1px solid var(--border-soft);border-radius:14px;padding:12px;background:var(--surface)}.lane-danger .quality-issue{border-left:4px solid var(--danger)}.lane-warn .quality-issue{border-left:4px solid var(--warn)}.lane-info .quality-issue{border-left:4px solid var(--accent)}</style>
+<div class="stack">
+  <section class="card"><h1>Qualité des données pour les bilans</h1><p class="muted">Lecture métier des anomalies : ce qui bloque vraiment un bilan financeur, ce qui est important, puis ce qui améliore le confort.</p><p><strong>{{ total }}</strong> point(s) à surveiller.</p></section>
+  {% for group in groups %}
+    <section class="card lane-{{ group.tone }}"><h2>{{ group.title }}</h2><p class="muted">{{ group.intro }}</p><div class="quality-lane">
+      {% for issue in group.issues %}<article class="quality-issue"><h3>{{ issue.title }} <span class="muted">({{ issue.count }} point(s))</span></h3><p class="muted">{{ issue.why }}</p>{% set first = issue.items[0] if issue.items else none %}{% if first %}<a class="btn" href="{{ first.url }}">Corriger le premier point</a>{% endif %}<a class="btn" href="{{ url_for('main.qualite_donnees_transverse', famille=issue.family, niveau=issue.severity) }}">Voir tous les points</a></article>{% else %}<p class="muted">Aucun point dans cette catégorie.</p>{% endfor %}
+    </div></section>
+  {% endfor %}
+</div>
+{% endblock %}

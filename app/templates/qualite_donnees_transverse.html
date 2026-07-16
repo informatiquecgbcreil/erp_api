@@ -1,0 +1,207 @@
+{% extends "layout.html" %}
+{% block body %}
+{% set severity_labels = {"bad": "Critique", "warn": "À corriger", "info": "À compléter"} %}
+<style>
+  .data-quality-page { gap:16px; }
+  .data-quality-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .data-quality-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .data-quality-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:14px; }
+  .data-quality-kpi { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:12px; }
+  .data-quality-kpi .label { color:#64748b; font-size:12px; font-weight:800; }
+  .data-quality-kpi .value { font-size:30px; font-weight:950; line-height:1.1; margin-top:4px; }
+  .data-quality-kpi--bad { border-color:rgba(239,68,68,.30); background:rgba(239,68,68,.08); }
+  .data-quality-kpi--warn { border-color:rgba(245,158,11,.32); background:rgba(245,158,11,.09); }
+  .data-quality-filter { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:14px; }
+  .data-quality-filter form { display:grid; grid-template-columns:minmax(220px, 1.2fr) repeat(3, minmax(150px, .7fr)) auto auto auto; gap:10px; align-items:end; }
+  .data-quality-layout { display:grid; grid-template-columns:minmax(0, 1fr) minmax(250px, .32fr); gap:14px; align-items:start; }
+  .data-quality-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px; align-items:start; }
+  .data-quality-issue { border:1px solid rgba(15,23,42,.12); border-radius:8px; background:#fff; padding:14px; }
+  .data-quality-issue--bad { border-left:4px solid #dc2626; }
+  .data-quality-issue--warn { border-left:4px solid #d97706; }
+  .data-quality-issue--info { border-left:4px solid #2563eb; }
+  .data-quality-issue__head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+  .data-quality-issue h2 { margin:0; font-size:18px; line-height:1.25; }
+  .data-quality-count { font-size:28px; font-weight:950; line-height:1; }
+  .data-quality-badges { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .data-quality-chip { display:inline-flex; align-items:center; border:1px solid rgba(15,23,42,.12); border-radius:999px; padding:3px 8px; font-size:12px; color:#475569; background:#fff; text-decoration:none; }
+  .data-quality-chip--bad { border-color:rgba(239,68,68,.30); background:rgba(239,68,68,.10); color:#991b1b; }
+  .data-quality-chip--warn { border-color:rgba(245,158,11,.34); background:rgba(245,158,11,.12); color:#92400e; }
+  .data-quality-chip--info { border-color:rgba(37,99,235,.24); background:rgba(37,99,235,.10); color:#1d4ed8; }
+  .data-quality-list { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .data-quality-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:10px; align-items:center; border-top:1px solid rgba(15,23,42,.08); padding-top:8px; }
+  .data-quality-row:first-child { border-top:0; padding-top:0; }
+  .data-quality-row strong { display:block; }
+  .data-quality-row-actions { display:flex; justify-content:flex-end; align-items:center; gap:6px; flex-wrap:wrap; }
+  .data-quality-row-actions form { margin:0; }
+  .data-quality-meta { color:#64748b; font-size:12px; line-height:1.4; }
+  .data-quality-side { display:flex; flex-direction:column; gap:12px; position:sticky; top:84px; }
+  .data-quality-side-card { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:14px; }
+  .data-quality-side-card h2 { margin:0 0 10px; }
+  .data-quality-source { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 10px; border:1px solid rgba(15,23,42,.10); border-radius:8px; color:inherit; text-decoration:none; background:rgba(15,23,42,.03); margin-top:8px; }
+  .data-quality-source.active { border-color:rgba(37,99,235,.35); background:rgba(37,99,235,.10); color:#1d4ed8; }
+  .data-quality-empty { border:1px dashed rgba(15,23,42,.20); border-radius:8px; padding:18px; color:#64748b; background:rgba(15,23,42,.03); }
+  @media (max-width: 1050px) {
+    .data-quality-layout { grid-template-columns:1fr; }
+    .data-quality-side { position:static; }
+    .data-quality-filter form { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 720px) {
+    .data-quality-filter form,
+    .data-quality-grid,
+    .data-quality-row { grid-template-columns:1fr; }
+    .data-quality-row-actions { justify-content:stretch; }
+    .data-quality-row-actions .btn { width:100%; }
+  }
+</style>
+
+<div class="ui-page ui-page--wide data-quality-page">
+  <section class="ui-header">
+    <div class="ui-header__main data-quality-head">
+      <div>
+        <h1 class="ui-title">Qualité des données</h1>
+        <p class="ui-subtitle">Contrôle transverse des informations à corriger dans les fiches, suivis, projets, séances et finances.</p>
+      </div>
+      <div class="ui-actions data-quality-actions">
+        <a class="btn" href="{{ url_for('main.dashboard') }}">Accueil</a>
+        <a class="btn" href="{{ url_for('main.suivi_rappels') }}">À traiter</a>
+        {% if can('statsimpact:view') or can('stats:view') %}
+          <a class="btn" href="{{ url_for('statsimpact.qualite_donnees') }}">Qualité stats-impact</a>
+        {% endif %}
+        {% if can('bilans:view') %}
+          <a class="btn" href="{{ url_for('bilans.qualite') }}">Qualité gestion</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="ui-kpi-grid data-quality-kpis">
+      <div class="ui-kpi-card data-quality-kpi"><div class="label">Score indicatif</div><div class="value">{{ summary.score }}</div></div>
+      <div class="ui-kpi-card data-quality-kpi data-quality-kpi--bad"><div class="label">Critiques</div><div class="value">{{ summary.bad }}</div></div>
+      <div class="ui-kpi-card data-quality-kpi data-quality-kpi--warn"><div class="label">À corriger</div><div class="value">{{ summary.warn }}</div></div>
+      <div class="ui-kpi-card data-quality-kpi"><div class="label">À compléter</div><div class="value">{{ summary.info }}</div></div>
+      <div class="ui-kpi-card data-quality-kpi"><div class="label">Points détectés</div><div class="value">{{ summary.total }}</div></div>
+    </div>
+  </section>
+
+  <section class="ui-panel data-quality-filter">
+    <form method="get" class="ui-form-grid" data-filter-summary="true">
+      <label class="field-stack">Recherche
+        <input class="in" name="q" value="{{ filters.q }}" placeholder="Nom, projet, secteur, dépense...">
+      </label>
+      <label class="field-stack">Famille
+        <select class="in" name="famille">
+          <option value="">Toutes</option>
+          {% for row in family_choices %}
+            <option value="{{ row.key }}" {% if filters.famille == row.key %}selected{% endif %}>{{ row.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Niveau
+        <select class="in" name="niveau">
+          <option value="">Tous</option>
+          <option value="bad" {% if filters.niveau == 'bad' %}selected{% endif %}>Critique</option>
+          <option value="warn" {% if filters.niveau == 'warn' %}selected{% endif %}>À corriger</option>
+          <option value="info" {% if filters.niveau == 'info' %}selected{% endif %}>À compléter</option>
+        </select>
+      </label>
+      {% if can_scope_all and secteurs %}
+        <label class="field-stack">Secteur
+          <select class="in" name="secteur">
+            <option value="">Tous</option>
+            {% for secteur in secteurs %}
+              <option value="{{ secteur }}" {% if filters.secteur == secteur %}selected{% endif %}>{{ secteur }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <button class="btn ok" type="submit">Filtrer</button>
+      <a class="btn" href="{{ url_for('main.qualite_donnees_transverse') }}">Réinitialiser</a>
+      <a class="btn" href="{{ url_for('main.qualite_donnees_transverse_export_csv', famille=filters.famille, niveau=filters.niveau, q=filters.q, secteur=filters.secteur) }}">Exporter CSV</a>
+    </form>
+  </section>
+
+  <div class="data-quality-layout">
+    <section>
+      {% if issues %}
+        <div class="data-quality-grid">
+          {% for issue in issues %}
+            <article class="ui-card data-quality-issue data-quality-issue--{{ issue.severity }}">
+              <div class="ui-card__head data-quality-issue__head">
+                <div>
+                  <h2>{{ issue.title }}</h2>
+                  <div class="data-quality-badges">
+                    <span class="data-quality-chip">{{ issue.family_label }}</span>
+                    <span class="data-quality-chip data-quality-chip--{{ issue.severity }}">{{ severity_labels.get(issue.severity, issue.severity) }}</span>
+                  </div>
+                </div>
+                <div class="data-quality-count">{{ issue.count_total }}</div>
+              </div>
+              <p class="muted">{{ issue.why }}</p>
+
+              <div class="data-quality-list">
+                {% for item in issue["items"] %}
+                  <div class="data-quality-row">
+                    <div>
+                      <strong>{{ item.label }}</strong>
+                      <div class="data-quality-meta">
+                        {{ item.detail }}<br>
+                        {{ item.secteur }}{% if item.meta %} · {{ item.meta|join(' · ') }}{% endif %}
+                      </div>
+                    </div>
+                    <div class="data-quality-row-actions">
+                      <a class="btn" href="{{ item.url }}">{{ issue.action_label }}</a>
+                      <form method="post" action="{{ url_for('main.qualite_donnees_rappel') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <input type="hidden" name="titre" value="{{ issue.title }} - {{ item.label }}">
+                        <input type="hidden" name="controle" value="{{ issue.title }}">
+                        <input type="hidden" name="element" value="{{ item.label }}">
+                        <input type="hidden" name="detail" value="{{ item.detail }}">
+                        <input type="hidden" name="why" value="{{ issue.why }}">
+                        <input type="hidden" name="famille" value="{{ issue.family }}">
+                        <input type="hidden" name="niveau" value="{{ issue.severity }}">
+                        <input type="hidden" name="secteur" value="{{ item.secteur }}">
+                        <input type="hidden" name="lien_url" value="{{ item.url }}">
+                        <button class="btn" type="submit">Mettre en suivi</button>
+                      </form>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+              {% if issue.has_more %}
+                <div class="data-quality-meta" style="margin-top:10px;">+ {{ issue.count_total - issue["items"]|length }} autre(s) point(s) avec ces filtres.</div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="data-quality-empty">
+          <strong>Aucun point détecté avec ces filtres.</strong><br>
+          Les contrôles V1 ne voient pas d’anomalie exploitable sur ton périmètre actuel.
+        </div>
+      {% endif %}
+    </section>
+
+    <aside class="data-quality-side">
+      <section class="ui-panel data-quality-side-card">
+        <h2>Familles</h2>
+        <a class="data-quality-source {% if not filters.famille %}active{% endif %}" href="{{ url_for('main.qualite_donnees_transverse', niveau=filters.niveau, q=filters.q, secteur=filters.secteur) }}">
+          <strong>Toutes</strong><span>{{ summary.total }}</span>
+        </a>
+        {% for row in family_choices %}
+          <a class="data-quality-source {% if filters.famille == row.key %}active{% endif %}" href="{{ url_for('main.qualite_donnees_transverse', famille=row.key, niveau=filters.niveau, q=filters.q, secteur=filters.secteur) }}">
+            <strong>{{ row.label }}</strong><span>{{ row.count }}</span>
+          </a>
+        {% endfor %}
+      </section>
+
+      <section class="ui-panel data-quality-side-card">
+        <h2>Lecture</h2>
+        <div class="data-quality-badges">
+          <a class="data-quality-chip data-quality-chip--bad" href="{{ url_for('main.qualite_donnees_transverse', famille=filters.famille, niveau='bad', q=filters.q, secteur=filters.secteur) }}">Critique {{ summary.bad }}</a>
+          <a class="data-quality-chip data-quality-chip--warn" href="{{ url_for('main.qualite_donnees_transverse', famille=filters.famille, niveau='warn', q=filters.q, secteur=filters.secteur) }}">À corriger {{ summary.warn }}</a>
+          <a class="data-quality-chip data-quality-chip--info" href="{{ url_for('main.qualite_donnees_transverse', famille=filters.famille, niveau='info', q=filters.q, secteur=filters.secteur) }}">À compléter {{ summary.info }}</a>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

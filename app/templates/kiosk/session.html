@@ -1,0 +1,351 @@
+{% extends 'kiosk/base.html' %}
+{% block wrap_class %}k-wrap--wide{% endblock %}
+{% block header_title %}{{ atelier.nom if atelier else 'Émargement' }}{% endblock %}
+{% block body %}
+
+  <div id="offlineBanner" class="k-card" style="display:none; background:#fde2e1; color:#7a1f1c; border:1px solid #f5b5b2;">
+    ⚠️ <strong>Hors connexion</strong> — la recherche utilise les noms déjà chargés. Attendez le retour de la connexion avant de valider une signature.
+  </div>
+
+  <div class="k-card">
+    <span class="k-chip">{{ session.secteur }}</span>
+    <h1 class="k-card__title k-mt">{{ session_label }}</h1>
+    <p class="k-card__sub">Code de la séance : <strong>{{ session.kiosk_pin or '—' }}</strong></p>
+    <div class="k-row">
+      <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_home') }}">← Changer d'atelier</a>
+      <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_feedback', token=token) }}">💬 Donner mon avis</a>
+    </div>
+  </div>
+
+  {% if message_ok %}
+    <div class="k-card k-bigok">
+      <div class="k-bigok__emoji">✅</div>
+      <div class="k-bigok__title">{{ message_ok }}</div>
+      <p class="k-card__sub">{% if recu %}Reçu n° <strong>{{ recu }}</strong> · {% endif %}Vous pouvez fermer cette page, ou émarger une autre personne.</p>
+    </div>
+  {% endif %}
+
+  <form method="post" id="emargeForm" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="emarger">
+    <input type="hidden" name="signature_data" id="signature_data">
+    <input type="hidden" name="participant_id" id="participant_id">
+
+    <div class="k-card">
+      <h2 class="k-card__title"><span class="k-step">1.</span> Qui êtes-vous ?</h2>
+      <p class="k-card__sub">Tapez les premières lettres de votre nom, puis touchez-le dans la liste.</p>
+      <label class="k-label" for="search">Rechercher mon nom</label>
+      <input class="k-input" id="search" placeholder="Ex : Dupont" autocomplete="off">
+      <div id="results" class="k-results" style="display:none;"></div>
+
+      <div class="k-mt">
+        <label class="k-label">Personne sélectionnée</label>
+        <div id="chosen" class="k-chosen is-empty">Aucune personne sélectionnée</div>
+        <p class="k-hint">Vous ne vous trouvez pas ? <a href="#" id="toggleNew">Créer ma fiche</a></p>
+      </div>
+    </div>
+
+    {% if motifs %}
+    <div class="k-card">
+      <h2 class="k-card__title"><span class="k-step">2.</span> Motif (facultatif)</h2>
+      <div class="k-grid2">
+        <div>
+          <label class="k-label" for="motif">Motif de votre venue</label>
+          <select class="k-select" name="motif" id="motif">
+            <option value="">—</option>
+            {% for m in motifs %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+            <option value="Autre">Autre</option>
+          </select>
+        </div>
+        <div>
+          <label class="k-label" for="motif_autre">Si « Autre », précisez</label>
+          <input class="k-input" type="text" name="motif_autre" id="motif_autre" placeholder="…">
+        </div>
+      </div>
+    </div>
+    {% else %}
+      <input type="hidden" name="motif" id="motif" value="">
+      <input type="hidden" name="motif_autre" id="motif_autre" value="">
+    {% endif %}
+
+    <div class="k-card">
+      <h2 class="k-card__title"><span class="k-step">{% if motifs %}3{% else %}2{% endif %}.</span> Votre signature</h2>
+      <p class="k-card__sub">Signez avec le doigt (tablette/mobile) ou la souris (ordinateur).</p>
+      <canvas id="sig" width="700" height="200" class="k-sig-canvas"></canvas>
+      <div class="k-row k-mt">
+        <button class="k-btn k-btn--ghost" type="button" id="clearSig">Effacer</button>
+      </div>
+    </div>
+
+    <div class="k-actionbar">
+      <button class="k-btn k-btn--lg" type="submit">✔ Valider ma présence</button>
+    </div>
+  </form>
+
+  {% if doublons_candidats %}
+  <div class="k-card" style="border:2px solid #f2bd6b;">
+    <h2 class="k-card__title">🤔 On a trouvé des personnes qui vous ressemblent</h2>
+    <p class="k-card__sub">Pour éviter les fiches en double : est-ce vous ?</p>
+    {% for c in doublons_candidats %}
+      <div class="k-row" style="justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #eee; flex-wrap:wrap;">
+        <strong>{{ c.nom }} {{ c.prenom }}</strong>{% if c.ville %}<span class="k-hint">{{ c.ville }}</span>{% endif %}
+        <a class="k-btn" href="{{ url_for('kiosk.kiosk_session', token=token, highlight=c.id) }}">✔ C'est moi</a>
+      </div>
+    {% endfor %}
+    <form method="post" style="margin-top:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add_participant">
+      <input type="hidden" name="force_creation" value="1">
+      {% for champ in ['nom','prenom','ville','email','telephone','type_public','genre','date_naissance','quartier_id'] %}
+        <input type="hidden" name="{{ champ }}" value="{{ pending.get(champ, '') }}">
+      {% endfor %}
+      <button class="k-btn k-btn--ghost" type="submit">Non, ce n'est pas moi — créer ma fiche</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div id="newParticipant" style="display:none;">
+    <div class="k-card">
+      <h2 class="k-card__title">Créer ma fiche</h2>
+      <p class="k-card__sub">Renseignez au moins votre nom et prénom, puis re-cherchez votre nom ci-dessus pour signer.</p>
+      <form method="post" id="newParticipantForm" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="add_participant">
+        <div class="k-grid2">
+          <div><label class="k-label">Nom</label><input class="k-input" name="nom" required></div>
+          <div><label class="k-label">Prénom</label><input class="k-input" name="prenom" required></div>
+          <div><label class="k-label">Ville</label><input class="k-input" name="ville" placeholder="Creil" data-ville-input></div>
+          <div>
+            <label class="k-label">Quartier</label>
+            <select class="k-select" name="quartier_id" data-quartier-select>
+              <option value="">—</option>
+              {% for q in quartiers %}<option value="{{ q.id }}" data-ville="{{ q.ville }}">{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="k-label">Type de public</label>
+            <select class="k-select" name="type_public">
+              <option value="H" selected>Habitant</option>
+              <option value="S">Salarié</option>
+              <option value="B">Bénévole</option>
+              <option value="P">Partenaire</option>
+              <option value="A">Autre</option>
+            </select>
+            <p class="k-hint">Si vous ne savez pas : laissez « Habitant ».</p>
+          </div>
+          <div>
+            <label class="k-label">Genre</label>
+            <select class="k-select" name="genre">
+              <option value="">—</option>
+              <option value="Femme">Femme</option>
+              <option value="Homme">Homme</option>
+              <option value="Autre">Autre</option>
+              <option value="Préférez ne pas répondre">Préfère ne pas répondre</option>
+            </select>
+          </div>
+          <div><label class="k-label">Email (facultatif)</label><input class="k-input" type="email" name="email"></div>
+          <div><label class="k-label">Téléphone (facultatif)</label><input class="k-input" name="telephone"></div>
+          <div><label class="k-label">Date de naissance (facultatif)</label><input class="k-input" type="date" name="date_naissance"></div>
+        </div>
+        <div class="k-row k-mt">
+          <button class="k-btn" type="submit">Créer ma fiche</button>
+          <button class="k-btn k-btn--ghost" type="button" id="cancelNew">Annuler</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const token = "{{ token }}";
+  const search = document.getElementById('search');
+  const results = document.getElementById('results');
+  const chosen = document.getElementById('chosen');
+  const pid = document.getElementById('participant_id');
+  const toggleNew = document.getElementById('toggleNew');
+  const newBlock = document.getElementById('newParticipant');
+  const cancelNew = document.getElementById('cancelNew');
+
+  const highlightId = {{ (highlight or 'null')|tojson }};
+  const highlightLabel = {{ (highlight_label or 'null')|tojson }};
+  if(highlightId && highlightLabel){
+    pid.value = highlightId;
+    chosen.textContent = highlightLabel;
+    chosen.classList.remove('is-empty');
+  }
+
+  // Cache local des résultats déjà vus (résilience hors-ligne / réseau lent).
+  const CACHE_KEY = 'kiosk_search_cache_' + token;
+  function loadCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); } catch(e){ return []; } }
+  function saveCache(items){
+    try {
+      const map = {};
+      loadCache().concat(items || []).forEach(it => { if(it && it.id != null) map[it.id] = it; });
+      const merged = Object.keys(map).map(k => map[k]).slice(-500);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(merged));
+    } catch(e){}
+  }
+  function localSearch(q){
+    const ql = q.toLowerCase();
+    return loadCache().filter(it => (it.label || '').toLowerCase().indexOf(ql) >= 0).slice(0, 20);
+  }
+
+  function showResults(list, offline){
+    results.innerHTML = '';
+    if(!list.length){ results.style.display='none'; return; }
+    results.style.display = 'flex';
+    if(offline){
+      const note = document.createElement('div');
+      note.className = 'k-hint';
+      note.textContent = '💾 Résultats hors-ligne (noms déjà chargés).';
+      results.appendChild(note);
+    }
+    list.forEach(item => {
+      const b = document.createElement('button');
+      b.type='button';
+      b.className='k-btn';
+      b.textContent=item.label;
+      b.addEventListener('click', () => {
+        pid.value = item.id;
+        chosen.textContent = item.label;
+        chosen.classList.remove('is-empty');
+        results.style.display='none';
+        newBlock.style.display='none';
+        search.value = '';
+      });
+      results.appendChild(b);
+    });
+  }
+
+  let t = null;
+  search.addEventListener('input', () => {
+    const q = search.value.trim();
+    if(t) clearTimeout(t);
+    if(q.length < 2){ showResults([]); return; }
+    t = setTimeout(async () => {
+      try {
+        const r = await fetch(`{{ url_for('kiosk.kiosk_search', token='__TOKEN__') }}`.replace('__TOKEN__', token) + `?q=${encodeURIComponent(q)}`);
+        if(!r.ok) throw new Error('http');
+        const data = await r.json();
+        const items = data.results || [];
+        saveCache(items);
+        showResults(items, false);
+      } catch(e){
+        // Réseau indisponible : on retombe sur le cache local.
+        showResults(localSearch(q), true);
+      }
+    }, 250);
+  });
+
+  // Indicateur hors-ligne
+  const offlineBanner = document.getElementById('offlineBanner');
+  function updateOnline(){ if(offlineBanner) offlineBanner.style.display = navigator.onLine ? 'none' : 'block'; }
+  window.addEventListener('online', updateOnline);
+  window.addEventListener('offline', updateOnline);
+  updateOnline();
+
+  toggleNew.addEventListener('click', (e) => {
+    e.preventDefault();
+    newBlock.style.display = (newBlock.style.display==='none') ? 'block' : 'none';
+    if(newBlock.style.display==='block'){ newBlock.scrollIntoView({behavior:'smooth'}); }
+  });
+  cancelNew.addEventListener('click', () => { newBlock.style.display='none'; });
+
+  // Signature canvas
+  const canvas = document.getElementById('sig');
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let last = null;
+
+  function paintSignatureSurface(){
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+  function resizeCanvas(){
+    const cssW = Math.round(canvas.clientWidth);
+    if(cssW > 0 && canvas.width !== cssW){ canvas.width = cssW; }
+    paintSignatureSurface();
+  }
+  resizeCanvas();
+  window.addEventListener('resize', () => { clearTimeout(window.__sigRz); window.__sigRz = setTimeout(resizeCanvas, 200); });
+
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    // Pointer/souris ont clientX direct ; le tactile ancien passe par touches[].
+    const cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+    const cy = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+    const x = cx - r.left, y = cy - r.top;
+    return {x: x * (canvas.width/r.width), y: y * (canvas.height/r.height)};
+  }
+  function trace(p){
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#111827';
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
+  }
+
+  if(window.PointerEvent){
+    // Voie moderne : un seul flux pour souris, doigt ET stylet actif.
+    // setPointerCapture + touch-action:none (CSS) garantissent que le geste
+    // reste dans le canvas et NE fait PAS défiler la page.
+    canvas.addEventListener('pointerdown', (e) => {
+      drawing = true; last = pos(e);
+      try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+      e.preventDefault();
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if(!drawing) return;
+      trace(pos(e));
+      e.preventDefault();
+    });
+    const stopPointer = (e) => {
+      if(!drawing) return;
+      drawing = false; last = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+      e.preventDefault();
+    };
+    canvas.addEventListener('pointerup', stopPointer);
+    canvas.addEventListener('pointercancel', stopPointer);
+    canvas.addEventListener('pointerleave', stopPointer);
+  } else {
+    // Repli navigateurs anciens : souris + tactile classique.
+    const start = (e) => { drawing = true; last = pos(e); e.preventDefault(); };
+    const move = (e) => { if(!drawing) return; trace(pos(e)); e.preventDefault(); };
+    const end = (e) => { drawing = false; last = null; if(e.cancelable) e.preventDefault(); };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, {passive:false});
+    canvas.addEventListener('touchmove', move, {passive:false});
+    canvas.addEventListener('touchend', end, {passive:false});
+  }
+
+  document.getElementById('clearSig').addEventListener('click', paintSignatureSurface);
+
+  const emargeFormEl = document.getElementById('emargeForm');
+  const emargeSubmitBtn = emargeFormEl.querySelector('button[type="submit"]');
+  emargeFormEl.addEventListener('submit', (e) => {
+    if(!pid.value){
+      e.preventDefault();
+      alert('Touchez d’abord votre nom dans la liste.');
+      return;
+    }
+    document.getElementById('signature_data').value = canvas.toDataURL('image/png');
+    // Garde anti-double-clic : on désactive le bouton après le 1er envoi.
+    if(emargeSubmitBtn){ emargeSubmitBtn.disabled = true; emargeSubmitBtn.textContent = 'Envoi…'; }
+  });
+})();
+</script>
+{% endblock %}

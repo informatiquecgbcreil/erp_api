@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programme des activités — {{ structure }}</title>
+<style>
+  :root{ --accent:#1d4ed8; --text:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f8fafc; }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text);background:var(--bg);line-height:1.5;}
+  .wrap{max-width:820px;margin:0 auto;padding:24px 16px 48px;}
+  header{border-bottom:3px solid var(--accent);padding-bottom:14px;margin-bottom:22px;}
+  h1{margin:0 0 4px;font-size:1.8rem;}
+  .sub{color:var(--muted);font-size:.95rem;}
+  .jour{margin:22px 0 10px;font-size:1.15rem;font-weight:800;color:var(--accent);text-transform:capitalize;}
+  .seance{display:flex;gap:12px;align-items:baseline;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:8px;}
+  .heure{font-weight:800;white-space:nowrap;min-width:104px;}
+  .nom{font-weight:600;flex:1;}
+  .chip{font-size:.78rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 9px;white-space:nowrap;}
+  .vide{padding:18px;border:1px dashed var(--line);border-radius:12px;background:#fff;color:var(--muted);text-align:center;}
+  footer{margin-top:30px;color:var(--muted);font-size:.82rem;text-align:center;}
+  @media print{ body{background:#fff;} .seance{break-inside:avoid;} }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Programme des activités</h1>
+      <div class="sub">{{ structure }} — édité le {{ genere_le.strftime('%d/%m/%Y') }}</div>
+    </header>
+
+    {% if groupes %}
+      {% for g in groupes %}
+        <div class="jour">{{ g.label }}</div>
+        {% for s in g.sessions %}
+          <div class="seance">
+            <span class="heure">{% if s.debut %}{{ s.debut }}{% if s.fin %}–{{ s.fin }}{% endif %}{% else %}Horaire à venir{% endif %}</span>
+            <span class="nom">{{ s.atelier }}</span>
+            <span class="chip">{{ s.secteur }}</span>
+          </div>
+        {% endfor %}
+      {% endfor %}
+    {% else %}
+      <div class="vide">Aucune activité programmée pour le moment.</div>
+    {% endif %}
+
+    <footer>Programme indicatif, susceptible d'évoluer. {{ structure }}.</footer>
+  </div>
+</body>
+</html>

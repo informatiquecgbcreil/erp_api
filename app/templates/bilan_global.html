@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="finance-shell finance-shell--single wide-shell">
+  <section class="finance-hero">
+    <div class="finance-hero__top">
+      <div>
+        <h1 class="finance-title">Bilan global</h1>
+        <p class="finance-subtitle">Filtre par année, secteur et projet pour obtenir un récap financeur plus net, sans transformer la page en tableur maléfique.</p>
+      </div>
+      <div class="finance-actions"><a class="btn" href="{{ url_for('main.export_depenses_csv') }}">Exporter dépenses CSV</a></div>
+    </div>
+
+    <form method="GET" class="finance-filters" data-filter-summary="true">
+      <div class="finance-field"><label for="annee">Année</label><select id="annee" name="annee"><option value="">-- toutes --</option>{% for a in all_annees %}<option value="{{ a }}" {% if selected_annee == a %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+      <div class="finance-field"><label for="secteur">Secteur</label><select id="secteur" name="secteur"><option value="">-- tous --</option>{% for s in all_secteurs %}<option value="{{ s }}" {% if selected_secteur == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+      <div class="finance-field"><label for="projet_id">Projet</label><select id="projet_id" name="projet_id"><option value="">-- tous --</option>{% for p in projets %}<option value="{{ p.id }}" {% if selected_projet_id and (selected_projet_id|string)==(p.id|string) %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}</select></div>
+      <div class="finance-actions"><button class="btn ok" type="submit">Filtrer</button><a class="btn" href="{{ url_for('main.bilan_global') }}">Reset</a></div>
+    </form>
+  </section>
+
+  <section class="finance-card">
+    <div class="finance-card__head"><div><h2 class="finance-card__title">Synthèse consolidée</h2><p class="finance-card__hint">Vue globale du demandé, attribué, reçu, engagé et du reste.</p></div></div>
+    <div class="finance-kpis">
+      <article class="finance-kpi"><div class="finance-kpi__label">Demandé</div><div class="finance-kpi__value">{{ "%.2f"|format(total_demande or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Attribué</div><div class="finance-kpi__value">{{ "%.2f"|format(total_attribue or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Reçu</div><div class="finance-kpi__value">{{ "%.2f"|format(total_recu or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Engagé</div><div class="finance-kpi__value">{{ "%.2f"|format(total_engage or 0) }}€</div></article>
+      <article class="finance-kpi"><div class="finance-kpi__label">Reste</div><div class="finance-kpi__value">{{ "%.2f"|format(total_reste or 0) }}€</div></article>
+    </div>
+  </section>
+
+  <section class="finance-card">
+    <div class="finance-card__head"><div><h2 class="finance-card__title">Subventions</h2><p class="finance-card__hint">Actions rapides vers le bilan détaillé et le pilotage.</p></div></div>
+    <div class="finance-scroll-guard tablewrap clean">
+      <table class="finance-table finance-sticky-head">
+        <thead><tr><th>Exercice</th><th>Secteur</th><th>Nom</th><th class="num">Reçu</th><th class="num">Engagé</th><th class="num">Reste</th><th class="actions-cell">Actions</th></tr></thead>
+        <tbody>
+          {% for s in subs %}
+            <tr>
+              <td class="muted">{{ s.annee_exercice }}</td>
+              <td class="muted">{{ s.secteur }}</td>
+              <td><strong>{{ s.nom }}</strong></td>
+              <td class="num">{{ "%.2f"|format(s.montant_recu or 0) }}€</td>
+              <td class="num">{{ "%.2f"|format(s.total_engage or 0) }}€</td>
+              <td class="num">{{ "%.2f"|format(s.total_reste or 0) }}€</td>
+              <td class="actions-cell"><div class="table-actions"><a class="btn" href="{{ url_for('main.subvention_bilan', subvention_id=s.id) }}">Bilan</a><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=s.id) }}">Pilotage</a></div></td>
+            </tr>
+          {% endfor %}
+          {% if subs|length == 0 %}
+            <tr><td colspan="7"><div class="finance-empty"><strong>Aucune subvention</strong><span>Ajuste les filtres pour retrouver un périmètre utile.</span></div></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

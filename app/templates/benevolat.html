@@ -1,0 +1,198 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  #benevoleResults { border:1px solid var(--border); border-radius:10px; max-height:220px; overflow:auto;
+                     background:var(--surface); position:absolute; z-index:30; width:100%; display:none; }
+  #benevoleResults button { display:block; width:100%; text-align:left; padding:7px 10px; border:none;
+                            background:none; cursor:pointer; color:inherit; }
+  #benevoleResults button:hover { background: color-mix(in srgb, var(--accent,#2563eb) 14%, transparent); }
+  @media print { .no-print { display:none !important; } }
+</style>
+
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🤲 Bénévolat</h1>
+      <p class="page-subtitle">Heures données par les habitants{% if secteur %} — secteur <strong>{{ secteur }}</strong>{% endif %} ({{ annee }}). Alimente le SENACS (vitalité démocratique) et la valorisation comptable des contributions volontaires (compte 87).</p>
+    </div>
+    <div class="hero-actions no-print">
+      <form method="get" class="inline-actions">
+        {% if portee_globale %}
+          <label class="field-stack slim"><span>Secteur</span>
+            <select name="secteur" onchange="this.form.submit()">
+              <option value="">Tous</option>
+              {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+          </label>
+        {% endif %}
+        <label class="field-stack slim"><span>Année</span>
+          <select name="annee" onchange="this.form.submit()">
+            {% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>{% endfor %}
+          </select>
+        </label>
+        <noscript><button class="btn" type="submit">Afficher</button></noscript>
+      </form>
+      <a class="btn" href="{{ url_for('main.benevolat_export_xlsx', annee=annee, secteur=secteur or None) }}">⬇ Export Excel</a>
+      <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Bénévoles actifs ({{ annee }})</div><strong>{{ stats.nb_actifs }}</strong></div>
+    <div class="kpi-box"><div class="muted">Bénévoles déclarés (fiches)</div><strong>{{ stats.nb_declares }}</strong></div>
+    <div class="kpi-box"><div class="muted">Heures données</div><strong>{{ '%g'|format(stats.total_heures) }} h</strong></div>
+    <div class="kpi-box"><div class="muted">Valorisation ({{ '%g'|format(stats.taux_horaire) }} €/h)</div><strong>{{ '%.2f'|format(stats.valorisation) }} €</strong>
+      {% if peut_regler_taux %}
+        <form method="post" action="{{ url_for('main.benevolat_taux_update') }}" class="inline-actions no-print" style="margin-top:6px; gap:4px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input class="in" name="taux" inputmode="decimal" value="{{ '%g'|format(stats.taux_horaire) }}" style="width:70px;" title="Taux horaire de valorisation (€/h)">
+          <button class="btn" type="submit" style="padding:2px 8px;">Régler</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if can_edit %}
+  <section class="section-card no-print">
+    <h2 class="section-title">Saisir des heures de bénévolat</h2>
+    <form method="post" action="{{ url_for('main.benevolat_heures_create') }}" class="stack" style="gap:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="participant_id" id="benevoleId">
+      <div class="form-grid-3">
+        <label class="field-stack" style="position:relative;"><span>Bénévole (habitant) *</span>
+          <input class="in" id="benevoleSearch" autocomplete="off" placeholder="Tape 2 lettres du nom…"
+                 data-search-url="{{ url_for('participants.search_participants') }}">
+          <div id="benevoleResults"></div>
+        </label>
+        <label class="field-stack"><span>Date</span><input class="in" type="date" name="date_action" value="{{ today.isoformat() }}"></label>
+        <label class="field-stack"><span>Heures *</span><input class="in" name="heures" inputmode="decimal" required placeholder="Ex : 2,5"></label>
+        <label class="field-stack"><span>Mission</span><input class="in" name="mission" list="missionsConnues" placeholder="Ex : accueil, accompagnement scolaire, CA…"></label>
+        <datalist id="missionsConnues">
+          {% for m in stats.par_mission.keys() %}<option value="{{ m }}">{% endfor %}
+          <option value="Accueil"><option value="Accompagnement scolaire"><option value="Conseil d'administration">
+          <option value="Animation d'atelier"><option value="Événementiel">
+        </datalist>
+        {% if portee_globale %}
+          <label class="field-stack"><span>Secteur</span>
+            <select class="in" name="secteur"><option value=""></option>
+              {% for s in secteurs %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+            </select>
+          </label>
+        {% endif %}
+        <label class="field-stack"><span>Commentaire</span><input class="in" name="commentaire"></label>
+      </div>
+      <div><button class="btn ok" type="submit">Enregistrer les heures</button>
+        <span class="muted" style="font-size:12px;">La fiche de l'habitant est automatiquement marquée « bénévole ».</span></div>
+    </form>
+  </section>
+  {% endif %}
+
+  <div class="monster-grid">
+    <section class="section-card compact">
+      <h2 class="section-title">Par bénévole ({{ annee }})</h2>
+      <div class="tablewrap clean">
+        <table class="js-sortable">
+          <thead><tr><th>Bénévole</th><th>Heures</th><th>Actions</th><th></th></tr></thead>
+          <tbody>
+            {% for r in stats.par_benevole %}
+              <tr>
+                <td><a href="{{ url_for('pedagogie.participant_passeport', participant_id=r.participant.id, tab='participation') }}"><strong>{{ r.participant.prenom }} {{ r.participant.nom }}</strong></a></td>
+                <td>{{ '%g'|format(r.heures) }} h</td>
+                <td>{{ r.nb_actions }}</td>
+                <td><a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=r.participant.id, tab='participation') }}">Passeport</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4"><div class="quick-empty"><strong>Aucune heure saisie pour {{ annee }}.</strong></div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section-card compact">
+      <h2 class="section-title">Par mission ({{ annee }})</h2>
+      <div class="tablewrap clean">
+        <table>
+          <thead><tr><th>Mission</th><th>Heures</th></tr></thead>
+          <tbody>
+            {% for mission, h in stats.par_mission.items() %}
+              <tr><td>{{ mission }}</td><td>{{ '%g'|format(h) }} h</td></tr>
+            {% else %}
+              <tr><td colspan="2" class="muted">—</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="section-card compact">
+    <h2 class="section-title">Détail des saisies ({{ annee }})</h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>Date</th><th>Bénévole</th><th>Heures</th><th>Mission</th><th>Secteur</th><th>Commentaire</th><th></th></tr></thead>
+        <tbody>
+          {% for l in stats.lignes %}
+            <tr>
+              <td>{{ l.date_action.strftime('%d/%m/%Y') if l.date_action else '—' }}</td>
+              <td>{{ l.participant.prenom }} {{ l.participant.nom }}</td>
+              <td>{{ '%g'|format(l.heures) }} h</td>
+              <td>{{ l.mission or '—' }}</td>
+              <td>{{ l.secteur or '—' }}</td>
+              <td class="muted">{{ l.commentaire or '' }}</td>
+              <td>
+                {% if can_edit %}
+                <form method="post" action="{{ url_for('main.benevolat_heures_supprimer', ligne_id=l.id) }}" onsubmit="return confirm('Supprimer cette ligne ?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn danger" type="submit" style="padding:2px 8px;">🗑</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7"><div class="quick-empty"><strong>Aucune saisie.</strong>Utilise le formulaire ci-dessus pour enregistrer les premières heures.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var input = document.getElementById('benevoleSearch');
+  var hidden = document.getElementById('benevoleId');
+  var box = document.getElementById('benevoleResults');
+  if(!input || !hidden || !box) return;
+  var timer = null;
+  input.addEventListener('input', function(){
+    hidden.value = '';
+    clearTimeout(timer);
+    var q = input.value.trim();
+    if(q.length < 2){ box.style.display = 'none'; return; }
+    timer = setTimeout(function(){
+      fetch(input.dataset.searchUrl + '?q=' + encodeURIComponent(q))
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          box.innerHTML = '';
+          (data.items || []).forEach(function(it){
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = it.nom + ' ' + (it.prenom || '') + (it.ville ? ' — ' + it.ville : '');
+            b.addEventListener('click', function(){
+              hidden.value = it.id;
+              input.value = it.prenom + ' ' + it.nom;
+              box.style.display = 'none';
+            });
+            box.appendChild(b);
+          });
+          box.style.display = (data.items || []).length ? 'block' : 'none';
+        });
+    }, 250);
+  });
+  document.addEventListener('click', function(e){
+    if(!box.contains(e.target) && e.target !== input) box.style.display = 'none';
+  });
+})();
+</script>
+{% endblock %}

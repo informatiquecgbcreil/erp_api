@@ -1,0 +1,186 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+  {% if forbidden %}
+    <div class="card">
+      <h1>Bilans et pilotage</h1>
+      <p class="muted">Accès réservé aux rôles finance/direction/responsable de secteur.</p>
+    </div>
+  {% else %}
+    <div class="stack">
+      <section class="finance-hero">
+        <div class="toolbar-inline">
+          <h1 style="margin:0;">Bilans</h1>
+
+          <form method="get" action="{{ url_for('bilans.dashboard') }}" class="inline" style="gap:8px;">
+            <label for="year" class="muted">Exercice</label>
+            <select id="year" name="year" onchange="this.form.submit()">
+              {% for y in years %}
+                <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+            <noscript><button class="btn" type="submit">Afficher</button></noscript>
+          </form>
+        </div>
+        <p class="muted">
+          {% if scope.secteurs is none %}
+            Vue d’ensemble sur tous les secteurs
+          {% else %}
+            Périmètre affiché : {{ scope.secteurs|join(', ') if scope.secteurs else '—' }}
+          {% endif %}
+        </p>
+
+        <div class="inline" style="gap:8px; flex-wrap:wrap; margin-top:10px;">
+          <a class="btn ok" href="{{ url_for('bilans.bilan_secteur', year=year) }}">Voir par secteur</a>
+          <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year) }}">Voir par subvention</a>
+          <a class="btn" href="{{ url_for('bilans.dashboard_export_xlsx', year=year) }}">Exporter vers Excel</a>
+          <details class="nav-more">
+            <summary class="btn">Outils avancés</summary>
+            <div class="nav-more-panel" style="left:auto; right:0; min-width:240px;">
+              <a class="pill" href="{{ url_for('bilans.qualite', year=year) }}">Qualité et suivi</a>
+              <a class="pill" href="{{ url_for('bilans.inventaire', year=year) }}">Bilan inventaire</a>
+              {% if can("bilans:view") %}
+              <a class="pill" href="{{ url_for('bilans.bilans_lourds', year=year) }}">Rapport détaillé</a>
+              {% endif %}
+            </div>
+          </details>
+        </div>
+      </section>
+
+      {{ ux.callout("Repère rapide", "Commencez par un bilan par secteur ou par subvention. Les outils plus techniques, comme la qualité de gestion ou le rapport détaillé, restent disponibles dans les options avancées.") }}
+
+
+      <div class="section-card compact">
+        <div class="section-head">
+          <div>
+            <h2 style="margin:0;">Que veux-tu consulter ?</h2>
+            <div class="muted">Choisis d’abord une vue simple, puis approfondis si besoin.</div>
+          </div>
+        </div>
+        <div class="inline" style="gap:8px; flex-wrap:wrap;">
+          <a class="btn ok" href="{{ url_for('bilans.bilan_secteur', year=year) }}">Bilan par secteur</a>
+          <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year) }}">Bilan par subvention</a>
+          <a class="btn" href="{{ url_for('main.stats_bilans', annee=year) }}">Vue d’ensemble chiffres et bilans</a>
+        </div>
+      </div>
+
+<!-- KPI tiles -->
+      <div class="finance-kpis">
+        <div class="finance-kpi"><div class="finance-kpi__label">Éco-conso individuelle</div><div class="finance-kpi__value">{{ '%.3f'|format(individual_consumption_stats.total_kwh or 0) }} kWh</div><div class="muted">Matériels attribués aux présences de l'exercice.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">CO₂ individuel estimé</div><div class="finance-kpi__value">{{ '%.3f'|format(individual_consumption_stats.total_co2 or 0) }} kg</div><div class="muted">{{ individual_consumption_stats.presences_count or 0 }} présences équipées · {{ individual_consumption_stats.participants_count or 0 }} habitants.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Conso séance globale</div><div class="finance-kpi__value">{{ '%.2f'|format(consumption_stats.total_kwh or 0) }} kWh</div><div class="muted">Ancien calcul par séance équipée, conservé en repère.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Dépenses engagées</div><div class="finance-kpi__value">{{ '%.2f'|format(kpis.depenses) }} €</div><div class="muted">Dépenses validées (charges) sur l'année.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Budget total disponible</div><div class="finance-kpi__value">{{ '%.2f'|format(kpis.budget) }} €</div><div class="muted">Somme des montants réels des lignes charges.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Taux d'exécution</div><div class="finance-kpi__value">{{ '%.1f'|format(kpis.taux_exec) }} %</div><div class="muted">Dépenses / budget.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Reste à engager</div><div class="finance-kpi__value">{{ '%.2f'|format(kpis.reste) }} €</div><div class="muted">Budget restant sur l'année.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">À ventiler</div><div class="finance-kpi__value">{{ '%.2f'|format(kpis.a_ventiler) }} €</div><div class="muted">Lignes de facture marquées “À ventiler”.</div></div>
+        <div class="finance-kpi"><div class="finance-kpi__label">Factures</div><div class="finance-kpi__value">{{ kpis.nb_factures }}</div><div class="muted">Nombre de factures sur l'année.</div></div>
+      </div>
+
+      <div class="card">
+        <h2>Éco-conso : matériels les plus utilisés</h2>
+        <p class="muted">Lecture issue des consommations individuelles enregistrées dans l’émargement.</p>
+        {% if individual_consumption_stats.top_materiels %}
+          <div class="finance-scroll-guard tablewrap clean">
+            <table class="finance-table">
+              <thead><tr><th>Matériel</th><th>kWh</th><th>Lignes matériel</th></tr></thead>
+              <tbody>
+                {% for m in individual_consumption_stats.top_materiels %}
+                  <tr><td><strong>{{ m.nom }}</strong></td><td>{{ '%.3f'|format(m.kwh or 0) }}</td><td>{{ m.lignes }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">Aucune consommation individuelle enregistrée sur cet exercice.</p>
+        {% endif %}
+      </div>
+
+      <!-- Depenses mensuelles -->
+      <div class="card">
+        <h2>Évolution mensuelle des dépenses</h2>
+        <p class="muted">Basé sur la date de facture lorsque disponible.</p>
+
+        {% set maxv = (series|max(attribute='total')).total if series else 0 %}
+
+        <div class="stack">
+          {% for row in series %}
+            {% set pct = (row.total / maxv * 100) if maxv and row.total else 0 %}
+            <div>
+              <div class="inline" style="justify-content:space-between;">
+                <div class="muted">{{ '%02d'|format(row.mois) }}/{{ year }}</div>
+                <div><strong>{{ '%.2f'|format(row.total) }} €</strong></div>
+              </div>
+              <div class="finance-rail"><span style="width:{{ pct }}%"></span></div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Répartition par secteur -->
+      <div class="card">
+        <h2>Répartition des dépenses par secteur</h2>
+        {% if not multi_secteurs %}
+          <p class="muted">Vue limitée à votre secteur.</p>
+        {% endif %}
+
+        {% set maxs = (par_secteur|max(attribute='total')).total if par_secteur else 0 %}
+
+        {% if par_secteur %}
+          <div class="stack">
+            {% for s in par_secteur %}
+              {% set pct = (s.total / maxs * 100) if maxs and s.total else 0 %}
+              <div>
+                <div class="inline" style="justify-content:space-between;">
+                  <div><strong>{{ s.secteur }}</strong></div>
+                  <div class="muted">{{ '%.2f'|format(s.total) }} €</div>
+                </div>
+                <div class="finance-rail finance-rail--ok"><span style="width:{{ pct }}%"></span></div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">Aucune dépense à afficher.</p>
+        {% endif %}
+      </div>
+
+      <!-- Alertes -->
+      <div class="card">
+        <h2>Alertes (aide à la gestion)</h2>
+        {% if alertes %}
+          <div class="finance-scroll-guard tablewrap clean">
+            <table class="finance-table finance-sticky-head">
+              <thead>
+                <tr>
+                  <th>Niveau</th>
+                  <th>Titre</th>
+                  <th>Détail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in alertes %}
+                  <tr>
+                    <td>
+                      {% if a.niveau == 'danger' %}
+                        <span class="btn danger">🔴</span>
+                      {% elif a.niveau == 'warn' %}
+                        <span class="btn warn">🟠</span>
+                      {% else %}
+                        <span class="btn">ℹ️</span>
+                      {% endif %}
+                    </td>
+                    <td><strong>{{ a.titre }}</strong></td>
+                    <td class="muted">{{ a.detail }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">Aucune alerte n'a été détectée pour cet exercice.</p>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

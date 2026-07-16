@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>Consolidation des objectifs — {{ secteur }}</h1>
+        <p class="muted">Pour chaque objectif sectoriel : les actions qui y contribuent et leurs indicateurs réels (année {{ annee }}).</p>
+      </div>
+      <a class="btn" href="{{ url_for('projets.objectifs_referentiel', secteur=secteur) }}">⚙ Gérer les objectifs</a>
+    </div>
+    <form method="get" class="inline" style="gap:10px; margin-top:8px;">
+      {% if secteurs|length > 1 %}
+      <select class="in" name="secteur" onchange="this.form.submit()">
+        {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <label>Année :</label>
+      <input class="in" type="number" name="annee" value="{{ annee }}" style="width:110px;" onchange="this.form.submit()">
+    </form>
+  </div>
+
+  {% if not synthese %}
+    <div class="card"><p class="muted">Aucun objectif défini pour ce secteur.</p></div>
+  {% endif %}
+
+  {% for bloc in synthese %}
+  <div class="card">
+    <h2>{{ bloc.objectif.code }} — {{ bloc.objectif.libelle }}{% if bloc.objectif.axe %} <span class="muted">· {{ bloc.objectif.axe }}</span>{% endif %}</h2>
+    <p class="muted">
+      {{ bloc.actions|length }} action(s) rattachée(s) ·
+      {{ bloc.totaux.sessions }} séances · {{ bloc.totaux.uniques }} participants uniques · {{ bloc.totaux.presences }} présences
+    </p>
+    {% if bloc.actions %}
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Action</th><th>Projet</th><th>Contribution</th><th>Séances</th><th>Uniques</th></tr></thead>
+        <tbody>
+          {% for l in bloc.actions %}
+          <tr>
+            <td><a href="{{ url_for('projets.projet_action_detail', projet_id=l.projet.id, action_id=l.action.id) }}">{{ l.action.titre }}</a></td>
+            <td class="muted">{{ l.projet.nom }}</td>
+            <td>{{ l.contribution or '—' }}</td>
+            <td>{{ l.kpi.get('sessions', 0) }}</td>
+            <td>{{ l.kpi.get('uniques', 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="muted">Aucune action rattachée à cet objectif pour l'instant.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

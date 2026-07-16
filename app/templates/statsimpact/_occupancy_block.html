@@ -1,0 +1,75 @@
+{# Block: occupancy / fill-rate for collective sessions only #}
+{% if occupancy and occupancy.collective_sessions %}
+<div class="card mt-3">
+  <div class="card-header">
+    <strong>Taux de remplissage (collectifs)</strong>
+    {% if occupancy.default_capacity %}
+      <span class="text-muted">— défaut: {{ occupancy.default_capacity }} places</span>
+    {% endif %}
+  </div>
+
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-4">
+        <div><strong>Séances collectives :</strong> {{ occupancy.collective_sessions }}</div>
+        <div><strong>Présences (collectifs) :</strong> {{ occupancy.collective_presences }}</div>
+        <div><strong>Remplissage moyen :</strong>
+          {% if occupancy.avg_fill_rate_pct is not none %}
+            {{ occupancy.avg_fill_rate_pct }}%
+          {% else %}
+            N/A
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-8">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Bucket</th>
+                <th class="text-end">Nb sessions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>&lt; 50%</td><td class="text-end">{{ occupancy.buckets['<50%'] }}</td></tr>
+              <tr><td>50–79%</td><td class="text-end">{{ occupancy.buckets['50-79%'] }}</td></tr>
+              <tr><td>80–99%</td><td class="text-end">{{ occupancy.buckets['80-99%'] }}</td></tr>
+              <tr><td>100%+</td><td class="text-end">{{ occupancy.buckets['100%+'] }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {% if occupancy.per_atelier %}
+      <hr>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Secteur</th>
+              <th>Atelier</th>
+              <th class="text-end">Séances</th>
+              <th class="text-end">Présences</th>
+              <th class="text-end">Capacité cumulée</th>
+              <th class="text-end">Rempl. moyen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in occupancy.per_atelier %}
+              <tr>
+                <td>{{ a.secteur }}</td>
+                <td>{{ a.nom }}</td>
+                <td class="text-end">{{ a.sessions }}</td>
+                <td class="text-end">{{ a.presences }}</td>
+                <td class="text-end">{{ a.capacity_total }}</td>
+                <td class="text-end">{{ a.avg_fill_rate_pct }}%</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

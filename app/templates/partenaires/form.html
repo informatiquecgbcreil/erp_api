@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell long-form-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap"><h1 class="page-title">{{ 'Nouveau partenaire' if not partenaire else 'Partenaire' }}</h1><p class="page-subtitle">Coordonnées, secteurs et historique des interventions.</p></div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('partenaires.orientations') }}">Orientations</a>
+      <a class="btn" href="{{ url_for('partenaires.index') }}">⬅ Retour</a>
+    </div>
+  </div>
+  <div class="section-card">
+    <h2 class="section-title">{{ 'Éditer' if partenaire else 'Créer' }}</h2>
+    <form method="post" class="stack stretch-input">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-2">
+        <div class="field-stack"><label class="muted">Nom du partenaire</label><input class="in" type="text" name="nom" value="{{ partenaire.nom if partenaire else '' }}" required></div>
+        <div class="field-stack"><label class="muted">Secteurs (multi)</label><select class="in multi-select" name="secteur" multiple size="4">{% for s in SECTEURS %}<option value="{{ s }}" {% if s in secteurs %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+        <div class="field-stack"><label class="muted">Prénom contact</label><input class="in" type="text" name="contact_prenom" value="{{ partenaire.contact_prenom if partenaire else '' }}"></div>
+        <div class="field-stack"><label class="muted">Nom contact</label><input class="in" type="text" name="contact_nom" value="{{ partenaire.contact_nom if partenaire else '' }}"></div>
+        <div class="field-stack grow-2"><label class="muted">Adresse</label><input class="in" type="text" name="adresse" value="{{ partenaire.adresse if partenaire else '' }}"></div>
+        <div class="field-stack"><label class="muted">Email contact</label><input class="in" type="email" name="email_contact" value="{{ partenaire.email_contact if partenaire else '' }}"></div>
+        <div class="field-stack"><label class="muted">Email général</label><input class="in" type="email" name="email_general" value="{{ partenaire.email_general if partenaire else '' }}"></div>
+        <div class="field-stack"><label class="muted">Téléphone contact</label><input class="in" type="text" name="tel_contact" value="{{ partenaire.tel_contact if partenaire else '' }}"></div>
+        <div class="field-stack"><label class="muted">Téléphone général</label><input class="in" type="text" name="tel_general" value="{{ partenaire.tel_general if partenaire else '' }}"></div>
+        <div class="field-stack grow-2"><label class="muted">Description</label><textarea class="in" name="description" rows="4">{{ partenaire.description if partenaire else '' }}</textarea></div>
+        <div class="field-stack grow-2">
+          <label class="muted">Compétences d'orientation</label>
+          <select class="in multi-select" name="competence_orientation" multiple size="7">
+            {% for key,label in orientation_domaines.items() %}
+              <option value="{{ key }}" {% if key in competences %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="muted" style="font-size:12px; margin-top:4px;">Ces compétences alimentent les suggestions dans l'accès aux droits.</div>
+        </div>
+        <div class="field-stack">
+          <label class="muted">Niveau pour l'orientation</label>
+          <select class="in" name="niveau_orientation">
+            {% for key,label in orientation_niveaux.items() %}
+              <option value="{{ key }}" {% if partenaire and partenaire.niveau_orientation == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field-stack"><label class="muted">Territoire couvert</label><textarea class="in" name="territoire_couvert" rows="3">{{ partenaire.territoire_couvert if partenaire else '' }}</textarea></div>
+        <div class="field-stack grow-2"><label class="muted">Modalités d'orientation</label><textarea class="in" name="modalites_orientation" rows="3" placeholder="Ex. Accueil libre, rendez-vous, permanence, téléphone...">{{ partenaire.modalites_orientation if partenaire else '' }}</textarea></div>
+      </div>
+      <div class="inline-actions"><button class="btn ok" type="submit">Enregistrer</button><a class="btn" href="{{ url_for('partenaires.index') }}">Annuler</a></div>
+    </form>
+  </div>
+  {% if partenaire %}
+  <div class="section-card compact">
+    <div class="table-toolbar"><h2 class="section-title" style="margin:0">Historique des interventions</h2></div>
+    <form method="post" action="{{ url_for('partenaires.add_intervention', partenaire_id=partenaire.id) }}" class="stack stretch-input" style="margin-bottom:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-3">
+        <div class="field-stack"><label class="muted">Date</label><input class="in" type="date" name="date_intervention" required></div>
+        <div class="field-stack"><label class="muted">Secteur</label><select class="in" name="secteur"><option value="">—</option>{% for s in SECTEURS %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></div>
+        <div class="field-stack grow-2"><label class="muted">Description</label><textarea class="in" name="description" rows="3"></textarea></div>
+      </div>
+      <div class="inline-actions"><button class="btn" type="submit">➕ Ajouter</button></div>
+    </form>
+    <div class="tablewrap clean"><table><thead><tr><th>Date</th><th>Secteur</th><th>Description</th><th style="width:140px;">Actions</th></tr></thead><tbody>{% for i in interventions %}<tr><td>{{ i.date_intervention }}</td><td>{{ i.secteur or '—' }}</td><td>{{ i.description or '—' }}</td><td><form method="post" action="{{ url_for('partenaires.delete_intervention', partenaire_id=partenaire.id, intervention_id=i.id) }}" onsubmit="return confirm('Supprimer cette intervention ?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Supprimer</button></form></td></tr>{% else %}<tr><td colspan="4" class="muted">Aucune intervention enregistrée.</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

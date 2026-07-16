@@ -1,0 +1,175 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+<style>
+  .bilan-shell{display:flex;flex-direction:column;gap:16px}
+  .bilan-hero{
+    border:1px solid rgba(120,130,160,.22);
+    border-radius:24px;
+    padding:20px;
+    background:linear-gradient(135deg, rgba(59,130,246,.10), rgba(16,185,129,.08));
+  }
+  .bilan-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  .bilan-head h1{margin:0}
+  .bilan-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-top:12px}
+  .bilan-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .bilan-kpi{border:1px solid rgba(120,130,160,.22);border-radius:18px;padding:14px;background:var(--card-bg, rgba(255,255,255,.74))}
+  .bilan-kpi .label{font-size:.86rem;color:var(--muted,#667085);font-weight:800}
+  .bilan-kpi .value{font-size:1.35rem;font-weight:900;margin-top:4px}
+  .bilan-lines{display:flex;flex-direction:column;gap:10px}
+  .bilan-line{
+    display:grid;
+    grid-template-columns:130px minmax(220px,1fr) repeat(4,minmax(120px,.45fr));
+    gap:10px;
+    align-items:center;
+    border:1px solid rgba(120,130,160,.20);
+    border-radius:16px;
+    padding:12px;
+    background:rgba(255,255,255,.58);
+  }
+  .bilan-line.header{
+    background:color-mix(in srgb, var(--surface-strong,#f3f4f6) 88%, transparent);
+    font-size:.82rem;
+    color:var(--muted,#667085);
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    font-weight:900;
+  }
+  .bilan-line-title{font-weight:900}
+  .bilan-num{text-align:right;white-space:nowrap}
+  .bilan-progress{height:10px;border-radius:999px;background:rgba(120,130,160,.18);overflow:hidden;margin-top:6px}
+  .bilan-progress span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#22c55e)}
+  .bilan-progress.warn span{background:linear-gradient(90deg,#f97316,#facc15)}
+  .bilan-progress.bad span{background:linear-gradient(90deg,#ef4444,#f97316)}
+  .bilan-table{width:100%;min-width:820px;border-collapse:separate;border-spacing:0}
+  .bilan-table th,.bilan-table td{padding:10px 12px;border-bottom:1px solid rgba(120,130,160,.18);vertical-align:top}
+  .bilan-table th{position:sticky;top:0;background:var(--surface,#fff);z-index:1;text-align:left}
+  .bilan-table .num{text-align:right;white-space:nowrap}
+  @media(max-width:1050px){
+    .bilan-line{grid-template-columns:1fr 1fr}
+    .bilan-line.header{display:none}
+    .bilan-num{text-align:left}
+  }
+  @media(max-width:720px){
+    .bilan-kpis{grid-template-columns:1fr}
+    .bilan-line{grid-template-columns:1fr}
+  }
+</style>
+
+{% if forbidden %}
+  <div class="card">
+    <h1>Bilans et pilotage · Bilan par secteur</h1>
+    <p class="muted">Accès réservé aux rôles finance/direction/responsable de secteur.</p>
+  </div>
+{% else %}
+<div class="bilan-shell">
+  <section class="bilan-hero">
+    <div class="bilan-head">
+      <div>
+        <h1>Bilan par secteur</h1>
+        <p class="muted">
+          Suivi de l’exécution budgétaire et des dépenses engagées par secteur.
+        </p>
+      </div>
+      <div class="inline" style="gap:8px;flex-wrap:wrap">
+        <a class="btn" href="{{ url_for('bilans.dashboard', year=year) }}">← Tableau de bord</a>
+        <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year) }}">Bilan par enveloppe</a>
+      </div>
+    </div>
+
+    <form method="get" action="{{ url_for('bilans.bilan_secteur') }}" class="bilan-filters">
+      <label class="field-stack">Exercice
+        <select name="year" onchange="this.form.submit()">
+          {% for y in years %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      {% if scope.secteurs is none %}
+        <label class="field-stack">Secteur
+          <select name="secteur" onchange="this.form.submit()">
+            {% for s in secteurs %}
+              <option value="{{ s }}" {% if s == selected_secteur %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% else %}
+        <div class="field-stack">
+          <span>Secteur</span>
+          <strong>{{ selected_secteur or '—' }}</strong>
+        </div>
+      {% endif %}
+      <button class="btn ok" type="submit">Afficher</button>
+    </form>
+  </section>
+
+  {{ ux.callout("Lecture", "Cette page résume les budgets de charges du secteur, les montants engagés et les restes disponibles. Les lignes sont affichées en cartes pour éviter les tableaux illisibles.") }}
+
+  {% if not data %}
+    <div class="card"><p class="muted">Aucune donnée n’est disponible pour cette sélection.</p></div>
+  {% else %}
+    <div class="bilan-kpis">
+      <article class="bilan-kpi"><div class="label">Dépenses engagées</div><div class="value">{{ '%.2f'|format(data.kpis.depenses) }} €</div><p class="muted">Dépenses validées.</p></article>
+      <article class="bilan-kpi"><div class="label">Budget disponible</div><div class="value">{{ '%.2f'|format(data.kpis.budget) }} €</div><p class="muted">Budget réel des charges.</p></article>
+      <article class="bilan-kpi"><div class="label">Taux d’exécution</div><div class="value">{{ '%.1f'|format(data.kpis.taux_exec) }} %</div><p class="muted">Engagé / budget disponible.</p></article>
+      <article class="bilan-kpi"><div class="label">Reste à engager</div><div class="value">{{ '%.2f'|format(data.kpis.reste) }} €</div><p class="muted">Solde disponible.</p></article>
+      <article class="bilan-kpi"><div class="label">À ventiler</div><div class="value">{{ '%.2f'|format(data.kpis.a_ventiler) }} €</div><p class="muted">Lignes encore à ventiler.</p></article>
+      <article class="bilan-kpi"><div class="label">Factures</div><div class="value">{{ data.kpis.nb_factures }}</div><p class="muted">Factures de l’exercice.</p></article>
+    </div>
+
+    <section class="card">
+      <h2>Suivi par type de dépense</h2>
+      {% if data.lignes %}
+        <div class="bilan-lines">
+          <div class="bilan-line header">
+            <div>Compte</div><div>Libellé</div><div class="bilan-num">Budget</div><div class="bilan-num">Engagé</div><div class="bilan-num">Reste</div><div class="bilan-num">Taux</div>
+          </div>
+          {% for l in data.lignes %}
+            {% set pct = l.taux or 0 %}
+            <div class="bilan-line">
+              <div class="muted">{{ l.compte }}</div>
+              <div><div class="bilan-line-title">{{ l.libelle }}</div></div>
+              <div class="bilan-num"><span class="muted">Budget</span><br><strong>{{ '%.2f'|format(l.montant_reel) }} €</strong></div>
+              <div class="bilan-num"><span class="muted">Engagé</span><br><strong>{{ '%.2f'|format(l.engage) }} €</strong></div>
+              <div class="bilan-num"><span class="muted">Reste</span><br><strong>{{ '%.2f'|format(l.reste) }} €</strong></div>
+              <div>
+                <div class="bilan-num"><span class="muted">Taux</span><br><strong>{{ '%.1f'|format(pct) }} %</strong></div>
+                <div class="bilan-progress {{ 'bad' if pct > 100 else ('warn' if pct > 85 else '') }}"><span style="width:{{ 0 if pct < 0 else (100 if pct > 100 else pct) }}%"></span></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">Aucune type de dépense de charges n’a été trouvée pour cette sélection.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Top dépenses</h2>
+      {% if data.top_depenses %}
+        <div class="tablewrap clean wide">
+          <table class="bilan-table">
+            <thead><tr><th>Date</th><th>Fournisseur</th><th>Libellé</th><th>Référence</th><th class="num">Montant</th></tr></thead>
+            <tbody>
+              {% for d in data.top_depenses %}
+                <tr>
+                  <td class="muted">{{ d.date }}</td>
+                  <td>{{ d.fournisseur }}</td>
+                  <td><strong>{{ d.libelle }}</strong></td>
+                  <td class="muted">{{ d.reference }}</td>
+                  <td class="num"><strong>{{ '%.2f'|format(d.montant) }} €</strong></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">Aucune dépense n’est disponible pour cette sélection.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

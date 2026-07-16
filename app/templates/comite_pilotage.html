@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .ca-cover{border:1px solid var(--border-soft);border-radius:20px;padding:22px;background:var(--surface)}
+  .ca-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+  .ca-number{border:1px solid var(--border-soft);border-radius:14px;padding:14px;background:var(--surface-soft)}
+  .ca-number strong{display:block;font-size:1.55rem;margin-top:4px}
+  .ca-section{break-inside:avoid}
+  @media print{.no-print,.topbar,.aide-page{display:none!important}.container{max-width:none;padding:0}.ca-cover,.card,.ca-number{break-inside:avoid}body{background:#fff!important;color:#111!important}}
+</style>
+<div class="stack">
+  <section class="ca-cover">
+    <div class="inline" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div>
+        <h1>Support comité de pilotage / CA</h1>
+        <p class="muted">Synthèse imprimable {{ year }}{% if selected_secteur %} — {{ selected_secteur }}{% endif %}. Elle reprend les chiffres commentables sans exposer de données nominatives.</p>
+      </div>
+      <div class="inline no-print" style="gap:8px;">
+        <a class="btn" href="{{ url_for('main.direction_pilotage', **print_args) }}">Retour pilotage</a>
+        <button class="btn ok" onclick="window.print()" type="button">Imprimer / PDF</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card ca-section">
+    <h2>1. Chiffres clés</h2>
+    <div class="ca-grid">
+      {% for kpi in kpis[:6] %}<div class="ca-number"><span class="muted">{{ kpi.label }}</span><strong>{{ kpi.value }}</strong><small class="muted">{{ kpi.help }}</small></div>{% endfor %}
+    </div>
+  </section>
+
+  <section class="card ca-section">
+    <h2>2. Analyse rapide</h2>
+    <ul>
+      {% for ratio in ratios %}<li><strong>{{ ratio.label }} :</strong> {{ ratio.value }} — <span class="muted">{{ ratio.help }}</span></li>{% endfor %}
+    </ul>
+  </section>
+
+  <section class="card ca-section">
+    <h2>3. Points de vigilance à arbitrer</h2>
+    <ul>
+      {% for alert in alert_cards %}<li><strong>{{ alert.label }} :</strong> {{ alert.value }} élément(s).</li>{% else %}<li>Aucun point de vigilance calculable.</li>{% endfor %}
+    </ul>
+  </section>
+
+  <section class="card ca-section">
+    <h2>4. Financeurs et échéances</h2>
+    {% if subventions %}
+      <div class="tablewrap"><table><thead><tr><th>Subvention</th><th>Financeur</th><th>Attribué</th><th>Engagé</th><th>Bilan prévu</th></tr></thead><tbody>
+      {% for s in subventions %}<tr><td>{{ s.nom }}</td><td>{{ s.financeur or '—' }}</td><td>{{ '%.0f €'|format(s.montant_attribue or 0) }}</td><td>{{ '%.0f €'|format(s.total_engage or 0) }}</td><td>{{ s.date_bilan_prevu.strftime('%d/%m/%Y') if s.date_bilan_prevu else '—' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% else %}<p class="muted">Aucune subvention dans ce périmètre.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

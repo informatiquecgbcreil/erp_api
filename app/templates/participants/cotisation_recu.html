@@ -1,0 +1,98 @@
+{% extends "layout.html" %}
+{% block title %}Reçu de règlement{% endblock %}
+{% block body %}
+<style>
+  .recu-feuille { max-width: 780px; margin: 0 auto; background:#fff; color:#111;
+                  border:1px solid #999; border-radius:6px; padding:28px 34px; }
+  .recu-feuille h2 { text-align:center; margin:0 0 4px; }
+  .recu-feuille .sous { text-align:center; font-size:13px; opacity:.8; margin-bottom:18px; }
+  .recu-bloc { border:1px solid #bbb; border-radius:4px; padding:10px 14px; margin-top:12px; }
+  .recu-bloc h3 { margin:0 0 6px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; }
+  .recu-montant { font-size:18px; font-weight:900; }
+  .recu-table { width:100%; border-collapse:collapse; margin-top:8px; }
+  .recu-table th, .recu-table td { border:1px solid #ccc; padding:5px 9px; font-size:13px; text-align:left; }
+  .recu-table td.m { text-align:right; font-weight:600; white-space:nowrap; }
+  .recu-sign { display:flex; justify-content:space-between; margin-top:26px; gap:20px; }
+  .badge-solde { display:inline-block; font-size:12px; font-weight:700; padding:2px 10px; border-radius:999px; }
+  .badge-solde.ok { background:rgba(34,197,94,.18); color:#166534; }
+  .badge-solde.partiel { background:rgba(245,158,11,.20); color:#78350f; }
+  @media print {
+    .no-print, nav, header, footer, .topbar, .aide-page, .context-banner, .guide-bandeau { display:none !important; }
+    .recu-feuille { border:none; padding:0; }
+    body { background:#fff; }
+  }
+</style>
+
+<div class="page-shell stack">
+  <div class="page-header no-print">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Reçu de règlement</h1>
+      <p class="page-subtitle">À imprimer ou enregistrer en PDF, puis remettre à la personne.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('participants.synthese_participant', participant_id=participant.id) }}">⬅ Fiche</a>
+      <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <div class="recu-feuille">
+    <h2>REÇU DE RÈGLEMENT</h2>
+    <div class="sous">
+      {{ cotisation.type_label }} · année scolaire {{ cotisation.libelle_annee }}
+      &nbsp;·&nbsp;
+      {% if cotisation.solde %}<span class="badge-solde ok">Soldé</span>
+      {% else %}<span class="badge-solde partiel">Règlement partiel</span>{% endif %}
+    </div>
+
+    <div class="recu-bloc">
+      <h3>Organisme</h3>
+      <p style="margin:0;"><strong>{{ organisme_nom }}</strong><br>
+        Centre social — animation de la vie sociale, éducation populaire.</p>
+    </div>
+
+    <div class="recu-bloc">
+      <h3>{{ 'Foyer' if cotisation.foyer_id else 'Personne' }}</h3>
+      <p style="margin:0;">
+        <strong>{{ participant.nom }} {{ participant.prenom }}</strong>
+        {% if cotisation.foyer_id %}<br><span style="opacity:.8;">Adhésion familiale — couvre l'ensemble du foyer.</span>{% endif %}
+      </p>
+    </div>
+
+    <div class="recu-bloc">
+      <h3>Détail</h3>
+      <table class="recu-table">
+        <tr><td>Montant dû</td><td class="m">{{ "%.2f"|format(cotisation.montant_du) }} €</td></tr>
+        <tr><td>Total réglé à ce jour</td><td class="m">{{ "%.2f"|format(cotisation.montant_regle) }} €</td></tr>
+        <tr><td>Reste à payer</td><td class="m">{{ "%.2f"|format(cotisation.reste_du) }} €</td></tr>
+      </table>
+      <p class="recu-montant" style="margin:10px 0 0;">
+        Reçu la somme de {{ "%.2f"|format(cotisation.montant_regle) }} € — soit {{ montant_regle_lettres }}
+      </p>
+    </div>
+
+    {% if cotisation.paiements %}
+    <div class="recu-bloc">
+      <h3>Règlements enregistrés</h3>
+      <table class="recu-table">
+        <thead><tr><th>Date</th><th>Mode</th><th>Détail</th><th style="text-align:right;">Montant</th></tr></thead>
+        <tbody>
+          {% for v in cotisation.paiements %}
+            <tr>
+              <td>{{ v.date_paiement.strftime('%d/%m/%Y') }}</td>
+              <td>{{ v.mode_label }}</td>
+              <td>{{ v.commentaire or '—' }}</td>
+              <td class="m">{{ "%.2f"|format(v.montant) }} €</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <div class="recu-sign">
+      <div>Fait le : <strong>{{ today.strftime('%d/%m/%Y') }}</strong></div>
+      <div style="text-align:center;">Signature et cachet<br>de l'organisme<br><br><br>____________________</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

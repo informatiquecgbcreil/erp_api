@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card">
+  <h1 style="margin-top:0;">Page introuvable</h1>
+  <p class="muted">Cette page n'existe pas ou n'est plus disponible. Revenez à l'accueil puis repartez depuis le menu principal.</p>
+  <div class="inline" style="margin-top:16px; gap:8px; flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('main.dashboard') }}">Retour à l'accueil</a>
+    <a class="btn" href="javascript:history.back()">Retour à la page précédente</a>
+  </div>
+</div>
+{% endblock %}

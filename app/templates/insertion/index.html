@@ -1,0 +1,94 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="page-head">
+    <h1 style="margin:0;">Suivi insertion</h1>
+    <p class="muted" style="margin:6px 0 0 0;">Retrouve une personne, consulte son parcours et ouvre sa fiche d'accompagnement.</p>
+  </div>
+
+  <div class="ux-callout">
+    <div class="ux-callout__title">À quoi sert cette page ?</div>
+    <div class="ux-callout__text">Cette page regroupe les données insertion sensibles : parcours, positionnements linguistiques et certifications. Les réglages de référentiels restent à part.</div>
+  </div>
+
+  <div class="cards-grid cards-grid--4">
+    <div class="card"><div class="kpi-label">Personnes suivies</div><div class="kpi-value">{{ counts.profiles }}</div></div>
+    <div class="card"><div class="kpi-label">Parcours</div><div class="kpi-value">{{ counts.parcours }}</div></div>
+    <div class="card"><div class="kpi-label">Positionnements</div><div class="kpi-value">{{ counts.positionnements }}</div></div>
+    <div class="card"><div class="kpi-label">Certifications</div><div class="kpi-value">{{ counts.certifications }}</div></div>
+  </div>
+
+  <div class="card">
+    <form method="get" class="filters-grid" style="grid-template-columns:2fr auto auto; gap:12px;">
+      <div>
+        <label class="muted">Rechercher une personne</label>
+        <input class="in" type="text" name="q" value="{{ q }}" placeholder="Ex. Dupont, Amina, Creil, Rouher">
+      </div>
+      <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;">
+        <button class="pill active" type="submit">Lancer la recherche</button>
+        <a class="pill" href="{{ url_for('insertion.index') }}">Effacer</a>
+      </div>
+      <div style="display:flex;align-items:end;justify-content:flex-end;">
+        {% if can_manage_refs %}
+          <a class="pill" href="{{ url_for('insertion.referentiels_overview') }}">Gérer les listes et référentiels</a>
+        {% else %}
+          <a class="pill" href="{{ url_for('insertion.referentiels_overview') }}">Voir les listes et référentiels</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-bottom:6px;">Résultats</div>
+    <div class="muted" style="margin-bottom:10px;">Ouvre la fiche d'une personne pour voir son parcours, ses positionnements et ses certifications.</div>
+    {% if participants %}
+      <div class="tablewrap clean">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Personne</th>
+              <th>Ville</th>
+              <th>Pays d'origine</th>
+              <th>Parcours</th>
+              <th>Certifications</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in participants %}
+            <tr>
+              <td><strong>{{ p.nom }}</strong> {{ p.prenom }}</td>
+              <td>{{ p.ville or '—' }}</td>
+              <td>{{ p.insertion_profile.pays_origine if p.insertion_profile and p.insertion_profile.pays_origine else '—' }}</td>
+              <td>{{ p.insertion_parcours|length }}</td>
+              <td>{{ p.insertion_certifications|length }}</td>
+              <td style="text-align:right;"><a class="pill" href="{{ url_for('insertion.participant_detail', participant_id=p.id) }}">Voir la fiche</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Résultats insertion (vue compacte)">
+        {% for p in participants %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ p.nom }} {{ p.prenom }}</strong>
+            <span class="chip">{{ p.ville or '—' }}</span>
+          </header>
+          <dl class="responsive-card__grid">
+            <div><dt>Pays d'origine</dt><dd>{{ p.insertion_profile.pays_origine if p.insertion_profile and p.insertion_profile.pays_origine else '—' }}</dd></div>
+            <div><dt>Parcours</dt><dd>{{ p.insertion_parcours|length }}</dd></div>
+            <div><dt>Certifications</dt><dd>{{ p.insertion_certifications|length }}</dd></div>
+          </dl>
+          <div class="inline-actions">
+            <a class="pill" href="{{ url_for('insertion.participant_detail', participant_id=p.id) }}">Voir la fiche</a>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">Aucune fiche insertion trouvée pour cette recherche.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% block title %}Impayés{% endblock %}
+{% block body %}
+<style>
+  .impayes-total{ display:flex; flex-wrap:wrap; gap:14px; margin-top:14px; }
+  .impayes-total .carte{ border:1px solid var(--border, #e3e6ef); border-radius:12px; padding:14px 18px; background:var(--panel, #fff); }
+  .impayes-total .carte .lib{ font-size:.8rem; opacity:.7; }
+  .impayes-total .carte .val{ font-size:1.7rem; font-weight:800; }
+  table.impayes{ width:100%; border-collapse:collapse; margin-top:14px; }
+  table.impayes th, table.impayes td{ padding:8px 10px; font-size:.9rem; border-bottom:1px solid var(--border-soft, #eef0f6); text-align:left; }
+  table.impayes td.m{ text-align:right; font-weight:600; white-space:nowrap; }
+  table.impayes tr:hover td{ background:rgba(90,120,255,.05); }
+  .impayes-badge{ font-size:.72rem; font-weight:700; padding:1px 8px; border-radius:999px; background:rgba(245,158,11,.20); color:#78350f; }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">🧾 Impayés — adhésions &amp; participation</h1>
+      <p class="ui-subtitle page-subtitle">
+        Toutes les cotisations non soldées de l'année scolaire, la plus grosse ardoise en premier.
+        Chaque ligne mène à la fiche de la personne, où l'on enregistre un règlement ou une relance.
+      </p>
+    </div>
+    <form method="get" action="{{ url_for('main.impayes') }}" class="ui-actions inline-actions">
+      <label class="field-stack slim"><span>Année scolaire</span>
+        <select class="in" name="annee" onchange="this.form.submit()">
+          {% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}-{{ a + 1 }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if peut_choisir_secteur %}
+        <label class="field-stack slim"><span>Secteur</span>
+          <select class="in" name="secteur" onchange="this.form.submit()">
+            <option value="">Tous les secteurs</option>
+            {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur_filtre %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <noscript><button class="btn" type="submit">Filtrer</button></noscript>
+    </form>
+  </section>
+
+  {% if sans_secteur %}
+    <div class="quick-empty" style="margin-top:14px;"><strong>Aucun secteur associé à ton compte</strong>La vue des impayés est bornée au secteur ; contacte la direction pour l'attribution.</div>
+  {% else %}
+    <div class="impayes-total">
+      <div class="carte"><div class="lib">Reste à recouvrer{% if secteur_filtre %} · {{ secteur_filtre }}{% endif %}</div><div class="val">{{ "%.2f"|format(total) }} €</div></div>
+      <div class="carte"><div class="lib">Cotisations non soldées</div><div class="val">{{ nb }}</div></div>
+    </div>
+
+    {% if lignes %}
+      <div style="overflow-x:auto;">
+        <table class="impayes">
+          <thead>
+            <tr><th>Personne / foyer</th><th>Type</th><th>Secteur</th><th style="text-align:right;">Dû</th><th style="text-align:right;">Réglé</th><th style="text-align:right;">Reste</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for l in lignes %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('participants.synthese_participant', participant_id=l.personne.id) }}">{{ l.personne.nom }} {{ l.personne.prenom }}</a>
+                  {% if l.est_foyer %} <span class="impayes-badge">foyer</span>{% endif %}
+                </td>
+                <td>{{ l.cotisation.type_label }}</td>
+                <td>{{ l.secteur }}</td>
+                <td class="m">{{ "%.2f"|format(l.cotisation.montant_du) }} €</td>
+                <td class="m">{{ "%.2f"|format(l.regle) }} €</td>
+                <td class="m">{{ "%.2f"|format(l.reste) }} €</td>
+                <td><a class="mini-link" href="{{ url_for('participants.synthese_participant', participant_id=l.personne.id) }}">Ouvrir la fiche →</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="quick-empty" style="margin-top:14px;"><strong>Rien à recouvrer 🎉</strong>Toutes les cotisations {{ libelle_annee }}{% if secteur_filtre %} du secteur {{ secteur_filtre }}{% endif %} sont soldées.</div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

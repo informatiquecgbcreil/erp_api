@@ -1,0 +1,227 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+
+<style>
+  .expenses-toolbar{
+    display:grid;
+    grid-template-columns:1.5fr repeat(4,minmax(140px,1fr));
+    gap:10px;
+    align-items:end;
+  }
+  .expenses-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .expenses-meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;color:var(--muted,#667085)}
+  .expense-month-row td{
+    background:color-mix(in srgb, var(--primary,#4466ff) 8%, transparent);
+    font-weight:900;
+    color:var(--text,#111827);
+    border-top:2px solid color-mix(in srgb, var(--primary,#4466ff) 20%, transparent);
+  }
+  .expense-title{font-weight:900}
+  .expense-sub{font-size:.85rem;color:var(--muted,#667085)}
+  .pagination-line{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}
+  .pagination-buttons{display:flex;gap:8px;flex-wrap:wrap}
+  @media(max-width:1000px){.expenses-toolbar{grid-template-columns:1fr 1fr}}
+  @media(max-width:640px){.expenses-toolbar{grid-template-columns:1fr}}
+</style>
+
+<div class="stack">
+  <section class="screen-hero">
+    <div class="card-header">
+      <div>
+        <h1 class="card-title">Dépenses</h1>
+        <p class="card-subtitle">
+          Liste paginée et filtrable. Les dépenses sont regroupées par mois pour éviter le mur de factures indigeste.
+        </p>
+      </div>
+      <div class="inline">
+        <a class="btn" href="{{ url_for('projets.finance_simple') }}">Dépense financée</a>
+        <a class="btn ok" href="{{ url_for('budget.depense_new') }}">Créer une dépense</a>
+      </div>
+    </div>
+
+    {% set nb_page = deps|length %}
+    {% set avg_depense = (total_amount / total_count) if total_count else 0 %}
+
+    <div class="spacer"></div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="muted">Total filtré</div>
+        <div class="kpi-value">{{ "%.2f"|format(total_amount or 0) }}€</div>
+      </div>
+      <div class="kpi-card">
+        <div class="muted">Dépenses filtrées</div>
+        <div class="kpi-value">{{ total_count }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="muted">Affichées sur cette page</div>
+        <div class="kpi-value">{{ nb_page }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="muted">Montant moyen</div>
+        <div class="kpi-value">{{ "%.2f"|format(avg_depense) }}€</div>
+      </div>
+    </div>
+
+    {{ ux.helper('Utilise la recherche, l’exercice et les filtres pour éviter les listes interminables. Par défaut, seules les dépenses de la page courante sont affichées.') }}
+
+    <div class="spacer"></div>
+    <form method="GET" class="expenses-toolbar" data-filter-summary="true">
+      <div>
+        <label>Recherche</label>
+        <input name="q" value="{{ q or '' }}" placeholder="Libellé, fournisseur, référence, enveloppe...">
+      </div>
+
+      <div>
+        <label>Exercice</label>
+        <select name="annee" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for y in years %}
+            <option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Enveloppe</label>
+        <select name="subvention_id" onchange="this.form.submit()">
+          <option value="">Toutes</option>
+          {% for s in subs %}
+            <option value="{{ s.id }}" {% if selected_sub_id == s.id %}selected{% endif %}>
+              {{ s.annee_exercice }} · {{ s.secteur }} · {{ s.nom }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Ligne</label>
+        <select name="ligne_budget_id" onchange="this.form.submit()" {% if not selected_sub_id %}disabled{% endif %}>
+          <option value="">Toutes</option>
+          {% for l in lignes %}
+            <option value="{{ l.id }}" {% if selected_ligne_id == l.id %}selected{% endif %}>
+              {{ l.compte }} · {{ l.libelle }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Par page</label>
+        <select name="per_page" onchange="this.form.submit()">
+          {% for n in [20, 50, 100, 200] %}
+            <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="expenses-actions">
+        <button class="btn ok" type="submit">Filtrer</button>
+        <a class="btn" href="{{ url_for('budget.depenses_list') }}">Réinitialiser</a>
+      </div>
+    </form>
+  </section>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>Liste des dépenses</h2>
+        <p class="muted">Ouvre une dépense pour la modifier, vérifier ses affectations ou gérer ses justificatifs.</p>
+      </div>
+    </div>
+
+    <div class="pagination-line">
+      <div class="expenses-meta">
+        {% set start_idx = ((page - 1) * per_page + 1) if total_count else 0 %}
+        {% set end_idx = ((page - 1) * per_page + deps|length) if total_count else 0 %}
+        <span>Affichage {{ start_idx }}–{{ end_idx }} sur {{ total_count }}</span>
+        {% if q %}<span>Recherche : <strong>{{ q }}</strong></span>{% endif %}
+        {% if selected_year %}<span>Exercice : <strong>{{ selected_year }}</strong></span>{% endif %}
+      </div>
+      <div class="pagination-buttons">
+        {% if page > 1 %}
+          <a class="btn" href="{{ url_for('budget.depenses_list', q=q, annee=selected_year, subvention_id=selected_sub_id, ligne_budget_id=selected_ligne_id, per_page=per_page, page=page-1) }}">← Précédent</a>
+        {% endif %}
+        <span class="btn">Page {{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}
+          <a class="btn" href="{{ url_for('budget.depenses_list', q=q, annee=selected_year, subvention_id=selected_sub_id, ligne_budget_id=selected_ligne_id, per_page=per_page, page=page+1) }}">Suivant →</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Enveloppe</th>
+            <th>Ligne</th>
+            <th>Dépense</th>
+            <th>Montant</th>
+            <th>Date</th>
+            <th>Type</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if deps and deps|length %}
+            {% set ns = namespace(current_month="") %}
+            {% for d in deps %}
+              {% set l = d.budget_source %}
+              {% set s = l.source_sub %}
+              {% set month_key = d.date_paiement.strftime('%Y-%m') if d.date_paiement else 'Sans date' %}
+              {% set month_label = d.date_paiement.strftime('%m/%Y') if d.date_paiement else 'Sans date' %}
+              {% if ns.current_month != month_key %}
+                {% set ns.current_month = month_key %}
+                <tr class="expense-month-row"><td colspan="7">📅 {{ month_label }}</td></tr>
+              {% endif %}
+              <tr>
+                <td><strong>{{ s.nom }}</strong><div class="expense-sub">{{ s.secteur }} · {{ s.annee_exercice }}</div></td>
+                <td>{{ l.compte }} · <span class="expense-sub">{{ l.libelle }}</span></td>
+                <td>
+                  <div class="expense-title">{{ d.libelle }}</div>
+                  {% if d.fournisseur or d.reference_piece %}
+                    <div class="expense-sub">{{ d.fournisseur or "" }}{% if d.fournisseur and d.reference_piece %} · {% endif %}{{ d.reference_piece or "" }}</div>
+                  {% endif %}
+                </td>
+                <td><strong>{{ "%.2f"|format(d.montant or 0) }}€</strong></td>
+                <td class="muted">{{ d.date_paiement or "" }}</td>
+                <td class="muted">{{ d.type_depense or "" }}</td>
+                <td class="inline">
+                  <a class="btn" href="{{ url_for('budget.depense_edit', depense_id=d.id) }}">Ouvrir</a>
+                  {% if can("depenses:delete") %}
+                    <form method="POST" action="{{ url_for('budget.depense_delete', depense_id=d.id) }}" onsubmit="return confirm('Supprimer cette dépense ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit">Supprimer</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7">{{ ui.empty_state(
+              "Aucune dépense à afficher",
+              "Aucune dépense ne correspond à l’exercice ou aux filtres choisis. Réinitialisez la recherche, ou créez une dépense avec le bouton en haut de page.",
+              url_for('budget.depenses_list'),
+              "Réinitialiser les filtres",
+              "🧾"
+            ) }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination-line">
+      <div class="expenses-meta">Page {{ page }} / {{ total_pages }}</div>
+      <div class="pagination-buttons">
+        {% if page > 1 %}
+          <a class="btn" href="{{ url_for('budget.depenses_list', q=q, annee=selected_year, subvention_id=selected_sub_id, ligne_budget_id=selected_ligne_id, per_page=per_page, page=page-1) }}">← Précédent</a>
+        {% endif %}
+        {% if page < total_pages %}
+          <a class="btn" href="{{ url_for('budget.depenses_list', q=q, annee=selected_year, subvention_id=selected_sub_id, ligne_budget_id=selected_ligne_id, per_page=per_page, page=page+1) }}">Suivant →</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

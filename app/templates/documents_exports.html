@@ -1,0 +1,218 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+<style>
+  .docs-page { display:flex; flex-direction:column; gap:16px; }
+  .docs-hero {
+    border:1px solid rgba(15,23,42,.10);
+    border-radius:8px;
+    background:#fff;
+    padding:18px;
+  }
+  .docs-head { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+  .docs-head h1 { margin:0 0 6px; }
+  .docs-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .docs-filters { display:grid; grid-template-columns:repeat(3, minmax(150px, 1fr)); gap:10px; align-items:end; margin-top:14px; }
+  .docs-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .docs-kpi { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:12px; }
+  .docs-kpi span { display:block; color:#64748b; font-size:12px; font-weight:800; }
+  .docs-kpi strong { display:block; font-size:28px; line-height:1.1; margin-top:4px; }
+  .docs-group { display:flex; flex-direction:column; gap:10px; }
+  .docs-group-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+  .docs-group-head h2 { margin:0; }
+  .docs-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(270px, 1fr)); gap:12px; }
+  .docs-card {
+    border:1px solid rgba(15,23,42,.12);
+    border-radius:8px;
+    background:#fff;
+    padding:14px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    min-width:0;
+  }
+  .docs-card h3 { margin:0; font-size:18px; line-height:1.25; }
+  .docs-card-meta { color:#64748b; font-size:13px; line-height:1.4; }
+  .docs-card-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:auto; }
+  .docs-lists { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; align-items:start; }
+  .docs-panel { border:1px solid rgba(15,23,42,.10); border-radius:8px; background:#fff; padding:14px; min-width:0; }
+  .docs-panel h2 { margin:0 0 10px; }
+  .docs-row { border-top:1px solid rgba(15,23,42,.08); padding:10px 0; display:flex; flex-direction:column; gap:7px; }
+  .docs-row:first-of-type { border-top:0; padding-top:0; }
+  .docs-row-title { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .docs-row-title strong { min-width:0; overflow-wrap:anywhere; }
+  .docs-row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .docs-empty { border:1px dashed rgba(15,23,42,.18); border-radius:8px; padding:12px; color:#64748b; background:rgba(15,23,42,.03); }
+  @media (max-width: 1050px) {
+    .docs-lists { grid-template-columns:1fr; }
+  }
+  @media (max-width: 700px) {
+    .docs-filters { grid-template-columns:1fr; }
+    .docs-card-actions .btn,
+    .docs-row-actions .btn { width:100%; }
+  }
+</style>
+
+<div class="monster-shell wide-shell docs-page">
+  <section class="docs-hero">
+    <div class="docs-head">
+      <div>
+        <h1>Documents prêts</h1>
+        <p class="muted">Exports, fiches imprimables et rapports à transmettre. Les résultats d’activité restent alimentés par les présences d’émargement.</p>
+      </div>
+      <div class="docs-actions">
+        <a class="btn" href="{{ url_for('main.hub_bilans') }}">Bilans</a>
+        <a class="btn" href="{{ url_for('main.qualite_donnees_transverse') }}">Qualité</a>
+      </div>
+    </div>
+
+    <form method="get" class="docs-filters" data-filter-summary="true">
+      <label class="field-stack">Exercice
+        <input class="in" type="number" name="year" min="2000" max="2100" value="{{ year }}">
+      </label>
+      <label class="field-stack">Secteur
+        <select class="in" name="secteur" {% if not can('scope:all_secteurs') %}disabled{% endif %}>
+          <option value="">Tous</option>
+          {% for secteur in secteurs %}
+            <option value="{{ secteur }}" {% if selected_secteur == secteur %}selected{% endif %}>{{ secteur }}</option>
+          {% endfor %}
+        </select>
+        {% if not can('scope:all_secteurs') %}
+          <input type="hidden" name="secteur" value="{{ selected_secteur or '' }}">
+        {% endif %}
+      </label>
+      <div class="field-stack">
+        <span>&nbsp;</span>
+        <div class="docs-actions">
+          <button class="btn ok" type="submit">Appliquer</button>
+          <a class="btn" href="{{ url_for('main.documents_exports') }}">Réinitialiser</a>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="docs-kpis">
+    <article class="docs-kpi"><span>Sorties rapides</span><strong>{{ summary.sorties }}</strong></article>
+    <article class="docs-kpi"><span>Subventions</span><strong>{{ summary.subventions }}</strong></article>
+    <article class="docs-kpi"><span>Projets</span><strong>{{ summary.projects }}</strong></article>
+    <article class="docs-kpi"><span>Fiches actions</span><strong>{{ summary.actions }}</strong></article>
+    <article class="docs-kpi"><span>Orientations</span><strong>{{ summary.orientations }}</strong></article>
+    <article class="docs-kpi"><span>Questionnaires</span><strong>{{ summary.questionnaires }}</strong></article>
+  </section>
+
+  {% for group in groups %}
+    <section class="docs-group">
+      <div class="docs-group-head">
+        <div>
+          <h2>{{ group.title }}</h2>
+          <div class="muted">{{ group.intro }}</div>
+        </div>
+      </div>
+      <div class="docs-grid">
+        {% for card in group.cards %}
+          <article class="docs-card">
+            <div>
+              <h3>{{ card.title }}</h3>
+              <div class="docs-card-meta">{{ card.meta }}</div>
+            </div>
+            <div class="docs-card-actions">
+              {% for action in card.actions|select|list %}
+                <a class="btn {% if action.primary %}ok{% endif %}" href="{{ action.url }}">{{ action.label }}</a>
+              {% endfor %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+
+  <section class="docs-lists">
+    <div class="docs-panel">
+      <h2>Fiches projets</h2>
+      {% for projet in projects %}
+        <div class="docs-row">
+          <div class="docs-row-title">
+            <strong>{{ projet.nom }}</strong>
+            <span class="status-badge">{{ projet.secteur }}</span>
+          </div>
+          <div class="docs-card-meta">{{ projet.actions_detaillees|length }} fiche(s) action · {{ projet.subventions|length }} financement(s)</div>
+          <div class="docs-row-actions">
+            <a class="btn ok" href="{{ url_for('projets.projet_fiche_document', projet_id=projet.id, year=year) }}">Fiche projet</a>
+            <a class="btn" href="{{ url_for('projets.projet_synthese', projet_id=projet.id, year=year) }}">Synthèse</a>
+            <a class="btn" href="{{ url_for('projets.projet_indicateurs', projet_id=projet.id) }}">Indicateurs</a>
+            {% if can('aap:synthese_view') %}
+              <a class="btn" href="{{ url_for('projets.projet_budget_synthese', projet_id=projet.id) }}">Budget</a>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        {{ ui.empty_state("Aucune fiche projet disponible", "Créez un projet dans votre périmètre pour générer ensuite sa fiche, sa synthèse et ses indicateurs.", url_for('projets.projets_new') if can('projets:edit') else None, "Créer un projet" if can('projets:edit') else None, "🗂️") }}
+      {% endfor %}
+    </div>
+
+    <div class="docs-panel">
+      <h2>Bilans financeurs</h2>
+      {% for subvention in subventions %}
+        <div class="docs-row">
+          <div class="docs-row-title">
+            <strong>{{ subvention.nom }}</strong>
+            <span class="status-badge">{{ subvention.annee_exercice }}</span>
+          </div>
+          <div class="docs-card-meta">{{ subvention.secteur }} · reçu {{ '%.2f'|format(subvention.montant_recu or 0) }}€ · engagé {{ '%.2f'|format(subvention.total_engage or 0) }}€</div>
+          <div class="docs-row-actions">
+            <a class="btn ok" href="{{ url_for('main.subvention_bilan', subvention_id=subvention.id) }}">Bilan</a>
+            <a class="btn" href="{{ url_for('main.export_subvention_csv', subvention_id=subvention.id) }}">CSV</a>
+          </div>
+        </div>
+      {% else %}
+        {{ ui.empty_state("Aucun bilan financeur disponible", "Enregistrez une subvention pour cet exercice afin de préparer son bilan et ses exports.", url_for('main.subventions_list', annee=year) if can('subventions:view') else None, "Ouvrir les financements" if can('subventions:view') else None, "💶") }}
+      {% endfor %}
+    </div>
+
+    <div class="docs-panel">
+      <h2>Fiches actions</h2>
+      {% for action in actions %}
+        <div class="docs-row">
+          <div class="docs-row-title">
+            <strong>{{ action.titre }}</strong>
+            <span class="status-badge">{{ action.statut }}</span>
+          </div>
+          <div class="docs-card-meta">
+            {{ action.projet.nom if action.projet else "Projet" }}
+            {% if action.date_debut or action.date_fin %}
+              · {{ action.date_debut.strftime('%d/%m/%Y') if action.date_debut else "début ?" }} → {{ action.date_fin.strftime('%d/%m/%Y') if action.date_fin else "fin ?" }}
+            {% else %}
+              · période non renseignée
+            {% endif %}
+          </div>
+          <div class="docs-row-actions">
+            <a class="btn ok" href="{{ url_for('projets.projet_action_fiche_document', projet_id=action.projet_id, action_id=action.id, year=year) }}">Fiche action</a>
+            <a class="btn" href="{{ url_for('projets.projet_action_detail', projet_id=action.projet_id, action_id=action.id, year=year) }}">Ouvrir</a>
+          </div>
+        </div>
+      {% else %}
+        {{ ui.empty_state("Aucune fiche action disponible", "Ajoutez une action détaillée à un projet pour produire une fiche prête à transmettre.", url_for('projets.projets_list') if can('projets:view') else None, "Ouvrir les projets" if can('projets:view') else None, "📋") }}
+      {% endfor %}
+    </div>
+
+    <div class="docs-panel">
+      <h2>Questionnaires</h2>
+      {% for questionnaire in questionnaires %}
+        <div class="docs-row">
+          <div class="docs-row-title">
+            <strong>{{ questionnaire.nom }}</strong>
+            <span class="status-badge">{{ "Actif" if questionnaire.is_active else "Inactif" }}</span>
+          </div>
+          <div class="docs-card-meta">{{ questionnaire.response_groups|length }} réponse(s)</div>
+          <div class="docs-row-actions">
+            <a class="btn ok" href="{{ url_for('questionnaires.index') }}">Ouvrir</a>
+            <a class="btn" href="{{ url_for('questionnaires.export_csv', questionnaire_id=questionnaire.id) }}">CSV</a>
+          </div>
+        </div>
+      {% else %}
+        {{ ui.empty_state("Aucun questionnaire disponible", "Créez un questionnaire pour recueillir des réponses, puis exporter les résultats.", url_for('questionnaires.create') if can('questionnaires:edit') else None, "Créer un questionnaire" if can('questionnaires:edit') else None, "📝") }}
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

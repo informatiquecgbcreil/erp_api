@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card">
+  <h1 style="margin-top:0;">Une erreur est survenue</h1>
+  <p class="muted">L'application a rencontré un problème inattendu. Réessayez dans quelques instants ou revenez à l'accueil.</p>
+  <div class="inline" style="margin-top:16px; gap:8px; flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('main.dashboard') }}">Retour à l'accueil</a>
+    <a class="btn" href="javascript:history.back()">Retour à la page précédente</a>
+  </div>
+  <p class="muted" style="margin-top:14px;">Si le problème revient, notez ce que vous étiez en train de faire puis contactez l'administrateur.</p>
+</div>
+{% endblock %}

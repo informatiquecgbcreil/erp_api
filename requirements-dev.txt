@@ -1,0 +1,8 @@
+# Dépendances de développement (tests, qualité de code)
+# Installation : pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8,<9
+# Test de fumée navigateur du générateur de budget (tests/test_generateur_browser.py).
+# Après installation : python -m playwright install chromium
+# Le test se saute proprement si Playwright/Chromium ne sont pas disponibles.
+playwright>=1.40

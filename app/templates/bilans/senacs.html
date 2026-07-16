@@ -1,0 +1,206 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>Bilan SENACS — données {{ annee }}</h1>
+    <p class="muted">
+      Cette page pré-calcule les indicateurs du bilan structure SENACS à partir
+      des données de l'application. Les <strong>participants uniques sont
+      dédoublonnés entre secteurs</strong> : une personne inscrite au numérique,
+      au FLE et présente à un temps fort compte <strong>une seule fois</strong>
+      (c'est le piège n°1 de l'enquête).
+    </p>
+    <form method="get" class="inline-form">
+      <label>Année des données :</label>
+      <select class="in" name="annee" onchange="this.form.submit()">
+        {% for a in annees %}
+          <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+      <a class="btn" href="{{ url_for('bilans.bilan_senacs_export', annee=annee) }}">📥 Exporter les tableaux de consolidation (Excel)</a>
+    </form>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>Publics — tableau global</h2>
+      <table class="table">
+        <tr><th>Participants uniques (sans double comptage)</th><td><strong>{{ publics.participants_uniques }}</strong></td></tr>
+        <tr><th>Participations cumulées (présences)</th><td>{{ publics.participations }}</td></tr>
+      </table>
+      <h3>Répartition par âge (au 31/12/{{ annee }})</h3>
+      <table class="table">
+        {% for tranche in tranches %}
+          <tr><th>{{ tranche }}</th><td>{{ publics.ages.get(tranche, 0) }}</td></tr>
+        {% endfor %}
+      </table>
+      {% if publics.ages.get('Non renseigné', 0) > 0 %}
+        <p class="muted">⚠️ {{ publics.ages['Non renseigné'] }} fiche(s) sans date de naissance : complétez-les pour fiabiliser la répartition (la somme doit rester cohérente avec le total).</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Genre et quartiers</h2>
+      <h3>Genre</h3>
+      <table class="table">
+        {% for genre, nombre in publics.genres.items() %}
+          <tr><th>{{ genre }}</th><td>{{ nombre }}</td></tr>
+        {% endfor %}
+      </table>
+      <h3>Quartiers</h3>
+      <table class="table">
+        {% for quartier, nombre in publics.quartiers.items() %}
+          <tr><th>{{ quartier }}</th><td>{{ nombre }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Actions / séances ({{ actions|length }} ateliers avec activité en {{ annee }})</h2>
+    <div class="tablewrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Action / atelier</th><th>Secteur</th><th>Séances</th>
+          <th>Heures face public</th><th>Participants uniques</th><th>Participations</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in actions %}
+          <tr>
+            <td>{{ l.atelier }}</td>
+            <td>{{ l.secteur }}</td>
+            <td>{{ l.seances }}</td>
+            <td>{{ l.heures_face_public }}{% if l.heures_inconnues %} <span class="muted">(+{{ l.heures_inconnues }} séance(s) sans durée)</span>{% endif %}</td>
+            <td>{{ l.participants_uniques }}</td>
+            <td>{{ l.participations }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted">Rappel : 2 h d'atelier avec 10 personnes = 2 h d'animation (et non 20). Les heures s'appuient sur la durée des séances : renseignez les horaires pour fiabiliser ce chiffre.</p>
+  </div>
+
+  <div class="card">
+    <h2>Partenaires recensés ({{ partenaires|length }})</h2>
+    <p class="muted">L'export Excel liste vos partenaires : il restera à qualifier la nature (formalisé / non formalisé) et le rôle de chacun, comme demandé par l'onglet Territoire.</p>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>🤲 Bénévolat (vitalité démocratique)</h2>
+      <table class="table">
+        <tr><th>Bénévoles actifs (avec heures)</th><td><strong>{{ benevolat.nb_actifs }}</strong></td></tr>
+        <tr><th>Bénévoles déclarés (fiches)</th><td>{{ benevolat.nb_declares }}</td></tr>
+        <tr><th>Heures de bénévolat</th><td>{{ '%g'|format(benevolat.total_heures) }} h</td></tr>
+        <tr><th>Valorisation ({{ '%g'|format(benevolat.taux_horaire) }} €/h)</th><td><strong>{{ '%.2f'|format(benevolat.valorisation) }} €</strong></td></tr>
+      </table>
+      <p class="muted">Alimenté par <a href="{{ url_for('main.benevolat', annee=annee) }}">Ressources → Bénévolat</a>.</p>
+    </div>
+
+    <div class="card">
+      <h2>🎉 Événementiel</h2>
+      <table class="table">
+        <tr><th>Événements réalisés</th><td><strong>{{ evenementiel.nb_evenements }}</strong></td></tr>
+        <tr><th>Participations</th><td>{{ evenementiel.participations }}</td></tr>
+        <tr><th>Participants uniques</th><td>{{ evenementiel.participants_uniques }}</td></tr>
+      </table>
+      <p class="muted">Coche « 🎉 Séance événementielle » à la création d'une séance, ou marque-la depuis sa page d'émargement.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>👥 Emplois / ETP ({{ annee }})</h2>
+    {% if emplois.rh_salaries %}
+      <h3>Depuis le module RH ({{ emplois.nb_rh }} salarié·e·s, {{ '%g'|format(emplois.rh_etp) }} ETP)</h3>
+      <div class="tablewrap">
+        <table class="table">
+          <thead><tr><th>Poste</th><th>Secteur</th><th>Contrat</th><th>ETP</th></tr></thead>
+          <tbody>
+            {% for s in emplois.rh_salaries %}
+              <tr><td>{{ s.poste or 'Salarié·e' }}</td><td>{{ s.secteur or '—' }}</td><td>{{ s.contrat_label }}</td><td>{{ '%g'|format(s.etp) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">Géré par la direction dans le <a href="{{ url_for('main.rh', annee=annee) }}">module RH</a>. Les postes ci-dessous restent pour les compléments (personnel mis à disposition non suivi en RH…).</p>
+      <h3>Compléments manuels</h3>
+    {% endif %}
+    <div class="tablewrap">
+      <table class="table">
+        <thead><tr><th>Fonction</th><th>Contrat</th><th>ETP</th><th>Commentaire</th><th></th></tr></thead>
+        <tbody>
+          {% for p in emplois.postes %}
+            <tr>
+              <td><strong>{{ p.intitule }}</strong></td>
+              <td>{{ p.contrat_label }}</td>
+              <td>{{ '%g'|format(p.etp) }}</td>
+              <td class="muted">{{ p.commentaire or '—' }}</td>
+              <td>
+                {% if peut_editer_emplois %}
+                <form method="post" action="{{ url_for('bilans.bilan_senacs_emploi_supprimer', emploi_id=p.id) }}" onsubmit="return confirm('Supprimer ce poste ?');" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn danger" type="submit" style="padding:2px 8px;">🗑</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">Aucun poste déclaré pour {{ annee }} : ajoute les postes salariés ci-dessous (fonction, contrat, quotité).</td></tr>
+          {% endfor %}
+          <tr><th>TOTAL (RH + manuels)</th><th>{{ emplois.nb_rh + emplois.nb_postes }} poste(s)</th><th>{{ '%g'|format(emplois.etp_global) }} ETP</th><th colspan="2"></th></tr>
+        </tbody>
+      </table>
+    </div>
+    {% if peut_editer_emplois %}
+    <form method="post" action="{{ url_for('bilans.bilan_senacs_emploi_create') }}" class="inline-form" style="margin-top:10px; gap:8px; flex-wrap:wrap; display:flex; align-items:flex-end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="annee" value="{{ annee }}">
+      <label class="field-stack"><span>Fonction</span><input class="in" name="intitule" required placeholder="Ex : animatrice famille"></label>
+      <label class="field-stack"><span>Contrat</span>
+        <select class="in" name="type_contrat">
+          {% for val, lab in types_contrat %}<option value="{{ val }}">{{ lab }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack"><span>ETP</span><input class="in" name="etp" inputmode="decimal" value="1" style="width:80px;"></label>
+      <label class="field-stack"><span>Commentaire</span><input class="in" name="commentaire"></label>
+      <button class="btn ok" type="submit">Ajouter le poste</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>💶 Finances ({{ annee }})</h2>
+    <div class="tablewrap">
+      <table class="table">
+        <thead><tr><th>Financeur</th><th>Attribué (€)</th><th>Reçu (€)</th></tr></thead>
+        <tbody>
+          {% for financeur, d in finances.par_financeur.items() %}
+            <tr><td>{{ financeur }}</td><td>{{ '%.2f'|format(d.attribue) }}</td><td>{{ '%.2f'|format(d.recu) }}</td></tr>
+          {% else %}
+            <tr><td colspan="3" class="muted">Aucune subvention pour {{ annee }}.</td></tr>
+          {% endfor %}
+          <tr><th>TOTAL subventions</th><th>{{ '%.2f'|format(finances.total_attribue) }}</th><th>{{ '%.2f'|format(finances.total_recu) }}</th></tr>
+          <tr><th>Charges réalisées (lignes budgétaires)</th><td colspan="2">{{ '%.2f'|format(finances.total_charges_reelles) }} €</td></tr>
+          <tr><th>Masse salariale (module RH, brut chargé)</th><td colspan="2">{{ '%.2f'|format(finances.masse_salariale) }} €</td></tr>
+          <tr><th>Valorisation du bénévolat (compte 87)</th><td colspan="2">{{ '%.2f'|format(finances.valorisation_benevolat) }} €</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">À rapprocher de la comptabilité officielle avant saisie sur senacs.fr.</p>
+  </div>
+
+  <div class="card">
+    <h2>Reste à estimer à part</h2>
+    <p class="muted">
+      <strong>Publics des partenaires hébergés</strong> (sans les mélanger aux publics réguliers),
+      <strong>hors les murs / aller-vers</strong> et <strong>liens à distance</strong>.
+      La saisie officielle se fait sur senacs.fr.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "layout.html" %}
+{% block title %}Caisse{% endblock %}
+{% block body %}
+<style>
+  .caisse-kpis{ display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; margin-top:14px; }
+  .caisse-kpi{ border:1px solid var(--border, #e3e6ef); border-radius:12px; padding:14px; background:var(--panel, #fff); }
+  .caisse-kpi .libelle{ font-size:.82rem; opacity:.7; }
+  .caisse-kpi .valeur{ font-size:1.7rem; font-weight:800; line-height:1.15; }
+  .caisse-kpi .explication{ font-size:.8rem; opacity:.7; margin-top:4px; line-height:1.35; }
+  .caisse-actions{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; margin-top:14px; }
+  .caisse-bloc{ border:1px solid var(--border, #e3e6ef); border-radius:12px; padding:14px; background:var(--panel, #fff); }
+  .caisse-bloc h2{ margin:0 0 4px; font-size:1.02rem; }
+  .caisse-bloc .pourquoi{ font-size:.84rem; opacity:.75; line-height:1.4; margin-bottom:10px; }
+  .caisse-bloc label{ display:block; font-size:.78rem; font-weight:600; margin:6px 0 2px; }
+  .caisse-bloc input{ width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border, #e3e6ef); }
+  .caisse-journal{ margin-top:16px; }
+  .caisse-journal table{ width:100%; border-collapse:collapse; }
+  .caisse-journal th, .caisse-journal td{ padding:7px 10px; font-size:.88rem; border-bottom:1px solid var(--border-soft, #eef0f6); text-align:left; }
+  .caisse-journal td.montant{ text-align:right; font-weight:600; white-space:nowrap; }
+  .ecart-ok{ color:#166534; }
+  .ecart-ko{ color:#b91c1c; font-weight:700; }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">💶 Caisse</h1>
+      <p class="ui-subtitle page-subtitle">
+        La caisse, c'est la boîte physique où vivent les espèces et les chèques.
+        Les règlements et dons saisis dans l'application y entrent tout seuls — ici, on ne fait
+        que trois choses : régler le fond, compter, déposer à la banque.
+      </p>
+    </div>
+  </section>
+
+  <div class="caisse-kpis">
+    <div class="caisse-kpi">
+      <div class="libelle">💰 Espèces en caisse (théorique)</div>
+      <div class="valeur">{{ "%.2f"|format(etat.theorique_especes) }} €</div>
+      <div class="explication">Ce qu'il devrait y avoir dans la boîte : fond de caisse + encaissements − dépôts. Le comptage vérifie que c'est vrai.</div>
+    </div>
+    <div class="caisse-kpi">
+      <div class="libelle">🪙 Fond de caisse</div>
+      <div class="valeur">{{ "%.2f"|format(etat.fond) }} €</div>
+      <div class="explication">La somme permanente pour rendre la monnaie. Elle reste dans la boîte, on ne la dépose jamais.</div>
+    </div>
+    <div class="caisse-kpi">
+      <div class="libelle">🏦 Recette déposable</div>
+      <div class="valeur">{{ "%.2f"|format(etat.recette_deposable) }} €</div>
+      <div class="explication">Les espèces au-dessus du fond de caisse : c'est ce qu'on peut apporter à la banque.</div>
+    </div>
+    <div class="caisse-kpi">
+      <div class="libelle">🧾 Chèques en attente de remise</div>
+      <div class="valeur">{{ "%.2f"|format(etat.cheques_en_attente) }} €</div>
+      <div class="explication">Chèques encaissés mais pas encore déposés. Ils partent avec le prochain dépôt.</div>
+    </div>
+  </div>
+
+  {% if etat.dernier_comptage %}
+    <div class="helper-banner" style="margin-top:12px;">
+      <strong>Dernier comptage</strong>
+      <span class="muted">
+        le {{ etat.dernier_comptage.date_mouvement.strftime('%d/%m/%Y') }} :
+        {{ "%.2f"|format(etat.dernier_comptage.montant) }} € constatés,
+        écart <span class="{{ 'ecart-ok' if (etat.dernier_comptage.ecart or 0)|abs < 0.01 else 'ecart-ko' }}">{{ "%+.2f"|format(etat.dernier_comptage.ecart or 0) }} €</span>.
+        Un comptage régulier (chaque semaine, ou avant chaque dépôt) évite les mauvaises surprises.
+      </span>
+    </div>
+  {% endif %}
+
+  {% if peut_editer %}
+  <div class="caisse-actions no-print">
+    <div class="caisse-bloc">
+      <h2>🔢 Compter la caisse (arrêté)</h2>
+      <div class="pourquoi">Compte TOUTES les espèces de la boîte (fond compris) et saisis le total :
+        l'application compare au théorique et trace l'écart éventuel.</div>
+      <form method="post" action="{{ url_for('main.caisse_comptage') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Total compté (€)</label>
+        <input type="text" name="montant_constate" placeholder="ex. 137,50" required>
+        <label>Commentaire (optionnel)</label>
+        <input type="text" name="commentaire" placeholder="ex. comptage du vendredi">
+        <div style="margin-top:10px;"><button class="btn primary" type="submit">✔ Enregistrer le comptage</button></div>
+      </form>
+    </div>
+
+    <div class="caisse-bloc">
+      <h2>🏦 Faire un dépôt en banque</h2>
+      <div class="pourquoi">On dépose la recette, jamais le fond de caisse. Le bordereau imprimable
+        accompagne les fonds jusqu'à la banque.</div>
+      <form method="post" action="{{ url_for('main.caisse_depot') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Espèces déposées (€) — max {{ "%.2f"|format(etat.recette_deposable) }}</label>
+        <input type="text" name="montant_especes" placeholder="0,00">
+        <label>Chèques déposés (€) — {{ "%.2f"|format(etat.cheques_en_attente) }} en attente</label>
+        <input type="text" name="montant_cheques" placeholder="0,00">
+        <label>Nombre de chèques</label>
+        <input type="number" name="nb_cheques" min="0" placeholder="0">
+        <label>Date du dépôt</label>
+        <input type="date" name="date_depot" value="{{ today.isoformat() }}">
+        <label>Commentaire (optionnel)</label>
+        <input type="text" name="commentaire" placeholder="ex. remise n°12">
+        <div style="margin-top:10px;"><button class="btn primary" type="submit">🏦 Enregistrer le dépôt</button></div>
+      </form>
+    </div>
+
+    <div class="caisse-bloc">
+      <h2>🪙 Régler le fond de caisse</h2>
+      <div class="pourquoi">À faire une fois au départ (ex. 50 €), puis seulement si vous décidez de
+        changer la somme laissée en permanence dans la boîte.</div>
+      <form method="post" action="{{ url_for('main.caisse_fond') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Nouveau fond de caisse (€)</label>
+        <input type="text" name="montant" placeholder="ex. 50,00" required>
+        <label>Commentaire (optionnel)</label>
+        <input type="text" name="commentaire">
+        <div style="margin-top:10px;"><button class="btn" type="submit">Enregistrer</button></div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <section class="caisse-journal">
+    <h2 style="font-size:1.05rem;">📒 Journal de la caisse</h2>
+    <p class="muted" style="margin-top:0;">Les encaissements (règlements, dons) ne sont pas répétés ici :
+      ils se consultent sur les fiches participants et dans les dons. Ce journal trace ce qui est propre
+      à la caisse : fond, comptages, écarts, dépôts.</p>
+    {% if mouvements %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Date</th><th>Mouvement</th><th>Détail</th><th style="text-align:right;">Montant</th><th></th></tr></thead>
+          <tbody>
+            {% for m in mouvements %}
+              <tr>
+                <td>{{ m.date_mouvement.strftime('%d/%m/%Y') }}</td>
+                <td>{{ m.type_label }}{% if m.canal == 'cheque' %} (chèques){% endif %}</td>
+                <td class="muted">
+                  {% if m.type_mouvement == 'comptage' %}
+                    écart <span class="{{ 'ecart-ok' if (m.ecart or 0)|abs < 0.01 else 'ecart-ko' }}">{{ "%+.2f"|format(m.ecart or 0) }} €</span>
+                  {% endif %}
+                  {% if m.nb_cheques %}{{ m.nb_cheques }} chèque(s) · {% endif %}
+                  {{ m.commentaire or '' }}
+                </td>
+                <td class="montant">{{ "%.2f"|format(m.montant) }} €</td>
+                <td>
+                  {% if m.type_mouvement == 'depot' %}
+                    <a class="mini-link" href="{{ url_for('main.caisse_bordereau', mouvement_id=m.id) }}">Bordereau</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="quick-empty">
+        <strong>La caisse démarre ici</strong>
+        Première étape : régler le fond de caisse (la somme laissée en permanence pour rendre la monnaie),
+        puis faire un premier comptage pour partir du réel.
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

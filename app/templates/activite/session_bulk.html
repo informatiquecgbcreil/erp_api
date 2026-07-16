@@ -1,0 +1,72 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>Créer des séances en série</h1>
+        <p class="muted">Atelier : <strong>{{ atelier.nom }}</strong> ({{ atelier.secteur }})</p>
+      </div>
+      <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">⬅ Séances</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="post" class="stack" style="gap:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="inline" style="gap:14px; flex-wrap:wrap;">
+        <div class="field-stack">
+          <label>Du</label>
+          <input class="in" type="date" name="date_debut" required>
+        </div>
+        <div class="field-stack">
+          <label>Au</label>
+          <input class="in" type="date" name="date_fin" required>
+        </div>
+      </div>
+
+      <div>
+        <label>Jours de la semaine</label>
+        <div class="inline" style="gap:14px; flex-wrap:wrap; margin-top:4px;">
+          {% set jours = [(0,'Lundi'),(1,'Mardi'),(2,'Mercredi'),(3,'Jeudi'),(4,'Vendredi'),(5,'Samedi'),(6,'Dimanche')] %}
+          {% for val,lib in jours %}
+            <label class="inline" style="gap:6px; align-items:center;">
+              <input type="checkbox" name="weekday" value="{{ val }}"> {{ lib }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="inline" style="gap:14px; flex-wrap:wrap;">
+        <div class="field-stack">
+          <label>Heure de début</label>
+          <input class="in" type="time" name="heure_debut">
+        </div>
+        <div class="field-stack">
+          <label>Heure de fin</label>
+          <input class="in" type="time" name="heure_fin">
+        </div>
+        <div class="field-stack">
+          <label>Capacité</label>
+          <input class="in" type="number" min="0" step="1" name="capacite"
+                 value="{{ atelier.capacite_defaut or '' }}" placeholder="Places">
+        </div>
+      </div>
+
+      <label class="inline" style="gap:6px; align-items:center;">
+        <input type="checkbox" name="skip_existing" value="1" checked>
+        <span>Ne pas recréer une séance s'il en existe déjà une à la même date</span>
+      </label>
+
+      <div>
+        <button class="btn ok" type="submit">📅 Générer les séances</button>
+      </div>
+      <p class="muted" style="font-size:13px;">
+        Exemple : « tous les jeudis 14:00–16:00 du 01/09 au 30/06 ». Les heures et la capacité
+        s'appliquent à toutes les séances créées (modifiables ensuite séance par séance).
+      </p>
+    </form>
+  </div>
+</div>
+{% endblock %}

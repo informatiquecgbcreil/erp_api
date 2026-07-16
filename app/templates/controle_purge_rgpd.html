@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>Purge RGPD — participants inactifs</h1>
+    <p class="muted">
+      Le règlement européen (RGPD) interdit de conserver indéfiniment les données
+      d'une personne qui ne fréquente plus la structure. Les fiches sans aucune
+      activité depuis <strong>{{ annees }} an(s)</strong> sont anonymisées :
+      le nom, les coordonnées et les informations personnelles sont effacés,
+      mais les chiffres de fréquentation restent comptés dans vos statistiques.
+    </p>
+    <details style="margin:8px 0;">
+      <summary><strong>Les critères, en détail</strong></summary>
+      <div class="muted" style="margin-top:8px; line-height:1.6;">
+        <p><strong>Ce qui compte comme « activité »</strong> (la date la plus récente est retenue) :
+        une présence à une séance, la création ou la modification de la fiche,
+        une orientation, une réponse à un questionnaire, une note ou pièce du
+        passeport pédagogique, une évaluation de compétence.
+        Enregistrer la fiche d'une personne suffit donc à la « réactiver ».</p>
+        <p><strong>Ce que l'anonymisation efface</strong> : nom, prénom (remplacés par
+        « ANONYME P<em>n°</em> »), adresse, ville, e-mail, téléphone, données du
+        parcours insertion (pays d'origine, titre de séjour, diplôme, CIR, dates
+        de dispositif) et droit à l'image.</p>
+        <p><strong>Ce qui est conservé</strong> : les présences, le genre, la date de
+        naissance et le quartier — vos statistiques (tranches d'âge, QPV, bilans
+        financeurs) restent justes. Pour effacer aussi ces données démographiques
+        sur un cas précis, utilisez « Anonymisation renforcée » sur la fiche.</p>
+        <p>Chaque anonymisation est tracée dans le journal de l'application.
+        Une anonymisation manuelle et immédiate est aussi possible : depuis la
+        fiche d'une personne (bloc « Anonymisation RGPD »), ou dans l'annuaire
+        en cochant plusieurs personnes puis « Anonymiser la sélection ».</p>
+      </div>
+    </details>
+    <p class="muted">
+      {% if purge_auto %}
+        ✅ La purge automatique est <strong>active</strong> : elle s'exécute une fois par jour, toute seule.
+      {% else %}
+        ⚠️ La purge automatique est <strong>désactivée</strong> : aucune fiche ne sera anonymisée sans votre action.
+      {% endif %}
+      {% if derniere_purge %}
+        Dernière vérification : {{ derniere_purge.strftime('%d/%m/%Y à %H:%M') }}.
+      {% else %}
+        Aucune purge n'a encore été exécutée.
+      {% endif %}
+    </p>
+  </div>
+
+  {% if can('participants:anonymize') %}
+  <div class="card">
+    <h2>Régler les critères</h2>
+    <p class="muted">Le réglage s'applique immédiatement. Repère habituel :
+      3 ans après le dernier contact (recommandation CNIL pour la gestion des
+      adhérents). Si un financeur exige de justifier plus longtemps, allongez
+      le délai plutôt que de désactiver la purge.</p>
+    <form method="post" action="{{ url_for('main.purge_rgpd_reglages') }}" class="inline-actions" style="flex-wrap:wrap; gap:12px; align-items:flex-end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-stack" style="max-width:240px;">
+        <label>Anonymiser après (années d'inactivité)</label>
+        <input class="in" type="number" name="annees" min="1" max="10" value="{{ annees }}" required>
+      </div>
+      <label style="display:inline-flex; align-items:center; gap:8px; padding-bottom:8px;">
+        <input type="checkbox" name="auto" value="1" {% if purge_auto %}checked{% endif %}>
+        Purge automatique quotidienne
+      </label>
+      <button class="btn ok" type="submit">Enregistrer les réglages</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>{{ en_attente|length }} fiche(s) en attente d'anonymisation</h2>
+    {% if en_attente %}
+      <div class="tablewrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>Prénom</th>
+            <th>Secteur</th>
+            <th>Dernière activité</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in en_attente %}
+            <tr>
+              <td><a href="{{ url_for('participants.edit_participant', participant_id=item.participant.id) }}">{{ item.participant.nom }}</a></td>
+              <td>{{ item.participant.prenom }}</td>
+              <td>{{ item.participant.created_secteur or '—' }}</td>
+              <td>{{ item.derniere_activite.strftime('%d/%m/%Y') }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="muted">
+        Si une personne de cette liste fréquente encore la structure, ouvrez sa
+        fiche et enregistrez-la : cela met à jour sa date d'activité et la
+        retire de la liste.
+      </p>
+      {% if can('participants:anonymize') %}
+        <form method="post" action="{{ url_for('main.purge_rgpd_lancer') }}"
+              onsubmit="return confirm('Anonymiser définitivement {{ en_attente|length }} fiche(s) ? Cette action est irréversible.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn danger" type="submit">Anonymiser maintenant ({{ en_attente|length }})</button>
+        </form>
+      {% endif %}
+    {% else %}
+      <p class="muted">Aucune fiche inactive depuis plus de {{ annees }} ans. Tout est en règle ✅</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,217 @@
+{% extends "layout.html" %}
+{% block title %}Glossaire — le dico du social{% endblock %}
+{% block body %}
+<style>
+  .glossaire-recherche{ margin:14px 0; }
+  .glossaire-recherche input{
+    width:100%; max-width:480px; font-size:1rem;
+    padding:10px 14px; border-radius:12px;
+    border:1px solid var(--border, #e3e6ef);
+  }
+  .glossaire-cat{ margin-top:22px; }
+  .glossaire-cat h2{ margin:0 0 10px; font-size:1.15rem; }
+  .glossaire-grille{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));
+    gap:10px;
+  }
+  .terme-carte{
+    border:1px solid var(--border, #e3e6ef); border-radius:12px;
+    padding:12px 14px; background:var(--panel, #fff);
+    position:relative;
+  }
+  .terme-carte dt{ font-weight:700; margin-bottom:4px; padding-right:30px; }
+  .terme-carte dd{ margin:0; font-size:.9rem; line-height:1.45; opacity:.85; }
+  .terme-carte .dans-app{
+    display:block; margin-top:8px; font-size:.82rem; line-height:1.4;
+    padding:6px 9px; border-radius:8px;
+    background:rgba(90,120,255,.08);
+  }
+  .terme-badge{
+    display:inline-block; margin-left:6px; font-size:.68rem; font-weight:600;
+    padding:1px 7px; border-radius:999px; vertical-align:middle;
+    background:rgba(255,170,40,.18);
+  }
+  .terme-badge--perso{ background:rgba(60,180,110,.16); }
+  .terme-edit-toggle{
+    position:absolute; top:8px; right:8px;
+    border:none; background:none; cursor:pointer; font-size:.95rem; opacity:.5;
+  }
+  .terme-edit-toggle:hover{ opacity:1; }
+  .terme-edit-form{ margin-top:10px; border-top:1px dashed var(--border, #e3e6ef); padding-top:10px; }
+  .terme-edit-form label{ display:block; font-size:.78rem; font-weight:600; margin:6px 0 2px; }
+  .terme-edit-form input, .terme-edit-form textarea{
+    width:100%; padding:6px 8px; border-radius:8px;
+    border:1px solid var(--border, #e3e6ef); font-size:.86rem;
+  }
+  .terme-edit-form .actions{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .glossaire-outils{ margin:10px 0 0; }
+  .glossaire-outils .details-body{ padding:10px 0 0; }
+  .glossaire-vide{ display:none; margin-top:18px; }
+  .glossaire-masques{ margin-top:26px; }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">📖 Glossaire — le dico du social</h1>
+      <p class="ui-subtitle page-subtitle">
+        Tous les mots du métier et de l'application, expliqués simplement.
+        Pensé pour les nouveaux salariés et bénévoles — et pour tous les autres.
+      </p>
+    </div>
+    <div class="ui-actions inline-actions">
+      <a class="btn" href="{{ url_for('main.guides_liste') }}">🧭 Guides pas à pas</a>
+      <a class="btn" href="{{ url_for('main.glossaire_export') }}">⬇️ Exporter (XLSX)</a>
+      <button type="button" class="btn no-print" onclick="window.print()" title="Imprimer le glossaire pour l'afficher ou le remettre à un nouvel arrivant">🖨️ Imprimer</button>
+    </div>
+  </section>
+
+  {% if peut_editer %}
+  <div class="glossaire-outils no-print">
+    <details class="details-card">
+      <summary>➕ Ajouter un mot</summary>
+      <div class="details-body">
+        <form method="post" action="{{ url_for('main.glossaire_enregistrer') }}" class="terme-edit-form" style="border:none; padding:0; max-width:640px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label for="nouveau-terme">Mot ou expression</label>
+          <input id="nouveau-terme" name="terme" required maxlength="180" placeholder="ex. Conseil citoyen">
+          <label for="nouvelle-definition">Définition (en français courant)</label>
+          <textarea id="nouvelle-definition" name="definition" rows="3" required placeholder="Expliquer comme à quelqu'un qui débute…"></textarea>
+          <label for="nouvelle-categorie">Catégorie</label>
+          <input id="nouvelle-categorie" name="categorie" list="glossaire-categories" placeholder="{{ glossaire[0].categorie if glossaire else '' }}">
+          <datalist id="glossaire-categories">
+            {% for cat in glossaire %}<option value="{{ cat.categorie }}">{% endfor %}
+          </datalist>
+          <label for="nouveau-dans-app">Dans l'application (optionnel)</label>
+          <input id="nouveau-dans-app" name="dans_app" placeholder="ex. Menu Participants → onglet…">
+          <div class="actions"><button class="btn primary" type="submit">Ajouter au glossaire</button></div>
+        </form>
+      </div>
+    </details>
+    <details class="details-card" style="margin-top:8px;">
+      <summary>⬆️ Importer des mots (XLSX)</summary>
+      <div class="details-body">
+        <p class="muted" style="max-width:70ch;">
+          Fichier Excel avec une ligne d'en-tête : <strong>Terme</strong> | <strong>Définition</strong> |
+          Catégorie | Dans l'application. Un mot déjà présent est mis à jour, un nouveau est ajouté.
+          Astuce : <a href="{{ url_for('main.glossaire_export') }}">exporte le glossaire actuel</a>, modifie-le, puis réimporte-le.
+        </p>
+        <form method="post" action="{{ url_for('main.glossaire_import') }}" enctype="multipart/form-data" class="ui-actions inline-actions">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="file" name="fichier" accept=".xlsx" required>
+          <button class="btn primary" type="submit">Importer</button>
+        </form>
+      </div>
+    </details>
+  </div>
+  {% endif %}
+
+  <div class="glossaire-recherche no-print">
+    <label class="sr-only" for="glossaire-filtre">Chercher un mot</label>
+    <input id="glossaire-filtre" type="search" placeholder="Chercher un mot… (ex. subvention, séance, SENACS)" autocomplete="off">
+  </div>
+
+  {% for cat in glossaire %}
+    <section class="glossaire-cat" data-glossaire-cat>
+      <h2>{{ cat.icone }} {{ cat.categorie }}</h2>
+      <dl class="glossaire-grille">
+        {% for t in cat.termes %}
+          <div class="terme-carte" data-terme="{{ (t.terme ~ ' ' ~ t.definition ~ ' ' ~ (t.dans_app or ''))|lower }}">
+            <dt>
+              {{ t.terme }}
+              {% if t.origine == 'perso' %}<span class="terme-badge terme-badge--perso" title="Mot ajouté par la structure">ajouté</span>
+              {% elif t.origine == 'modifie' %}<span class="terme-badge" title="Définition modifiée par la structure">modifié</span>{% endif %}
+            </dt>
+            <dd>
+              {{ t.definition }}
+              {% if t.dans_app %}<span class="dans-app">🖥️ Dans l'application : {{ t.dans_app }}</span>{% endif %}
+            </dd>
+            {% if peut_editer %}
+              <button type="button" class="terme-edit-toggle no-print" title="Modifier ce mot"
+                      onclick="this.parentElement.querySelector('.terme-edit-form').hidden ^= true;">✏️</button>
+              <div class="terme-edit-form no-print" hidden>
+                <form method="post" action="{{ url_for('main.glossaire_enregistrer') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="terme_original" value="{{ t.terme }}">
+                  <label>Mot</label>
+                  <input name="terme" value="{{ t.terme }}" required maxlength="180">
+                  <label>Définition</label>
+                  <textarea name="definition" rows="4" required>{{ t.definition }}</textarea>
+                  <label>Catégorie</label>
+                  <input name="categorie" value="{{ cat.categorie }}" list="glossaire-categories">
+                  <label>Dans l'application (optionnel)</label>
+                  <input name="dans_app" value="{{ t.dans_app or '' }}">
+                  <div class="actions">
+                    <button class="btn primary" type="submit">Enregistrer</button>
+                  </div>
+                </form>
+                <div class="actions">
+                  {% if t.origine == 'modifie' %}
+                    <form method="post" action="{{ url_for('main.glossaire_retablir') }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="terme" value="{{ t.terme }}">
+                      <button class="btn" type="submit" title="Revenir à la définition d'origine">↩ Rétablir l'origine</button>
+                    </form>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('main.glossaire_supprimer') }}" onsubmit="return confirm('Retirer « {{ t.terme }} » du glossaire ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="terme" value="{{ t.terme }}">
+                    <button class="btn btn-danger-outline" type="submit">Supprimer</button>
+                  </form>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </dl>
+    </section>
+  {% endfor %}
+
+  <div class="quick-empty glossaire-vide" id="glossaire-vide">
+    <strong>Aucun terme trouvé</strong>
+    Essaie un autre mot, ou parcours les catégories ci-dessus.
+  </div>
+
+  {% if peut_editer and masques %}
+    <section class="glossaire-masques no-print">
+      <details class="details-card">
+        <summary>🗄️ Mots retirés de l'affichage ({{ masques|length }})</summary>
+        <div class="details-body">
+          <div class="ui-actions inline-actions" style="flex-wrap:wrap;">
+            {% for m in masques %}
+              <form method="post" action="{{ url_for('main.glossaire_retablir') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="terme" value="{{ m }}">
+                <button class="btn" type="submit" title="Rétablir ce mot">↩ {{ m }}</button>
+              </form>
+            {% endfor %}
+          </div>
+        </div>
+      </details>
+    </section>
+  {% endif %}
+</div>
+
+<script>
+  (function(){
+    const champ = document.getElementById("glossaire-filtre");
+    if(!champ) return;
+    const cartes = Array.from(document.querySelectorAll("[data-terme]"));
+    const cats = Array.from(document.querySelectorAll("[data-glossaire-cat]"));
+    const vide = document.getElementById("glossaire-vide");
+    champ.addEventListener("input", function(){
+      const q = champ.value.trim().toLowerCase();
+      let visibles = 0;
+      cartes.forEach(function(c){
+        const ok = !q || c.dataset.terme.includes(q);
+        c.style.display = ok ? "" : "none";
+        if(ok) visibles++;
+      });
+      cats.forEach(function(cat){
+        const restantes = cat.querySelectorAll("[data-terme]:not([style*='none'])").length;
+        cat.style.display = restantes ? "" : "none";
+      });
+      vide.style.display = visibles ? "none" : "block";
+    });
+  })();
+</script>
+{% endblock %}

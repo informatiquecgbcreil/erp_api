@@ -1,0 +1,229 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    {% include "_projet_budget_header.html" %}
+  </div>
+
+  {# ===== KPI / SYNTHÈSE PRODUITS ===== #}
+  {% set total_demande = (budget_stats.total_demande or 0) if budget_stats is defined else 0 %}
+  {% set total_accorde = (budget_stats.total_accorde or 0) if budget_stats is defined else 0 %}
+  {% set total_recu = (budget_stats.total_recu or 0) if budget_stats is defined else 0 %}
+  {% set total_charges = (budget_stats.total_charges or 0) if budget_stats is defined else 0 %}
+
+  {% set pct_accorde_sur_charges = (total_accorde / total_charges * 100) if total_charges else 0 %}
+  {% set pct_recu_sur_accorde = (total_recu / total_accorde * 100) if total_accorde else 0 %}
+  {% set reste_a_securiser = (total_charges - total_accorde) if total_charges else 0 %}
+  {% if reste_a_securiser < 0 %}{% set reste_a_securiser = 0 %}{% endif %}
+  {% set pct_reste = (reste_a_securiser / total_charges * 100) if total_charges else 0 %}
+
+  <div class="section-card">
+    <div class="page-kpis">
+      <div class="metric-card">
+        <div class="metric-label">Produits demandés</div>
+        <div class="metric-value">{{ "%.2f"|format(total_demande) }}€</div>
+        <div class="metric-help">Montants sollicités (intention).</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Produits accordés</div>
+        <div class="metric-value">{{ "%.2f"|format(total_accorde) }}€</div>
+        <div class="metric-help">Montants accordés à ce jour.</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Produits reçus</div>
+        <div class="metric-value">{{ "%.2f"|format(total_recu) }}€</div>
+        <div class="metric-help">Montants effectivement reçus.</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Taux de sécurisation</div>
+        <div class="metric-value">{{ "%.0f"|format(pct_accorde_sur_charges) }}%</div>
+        <div class="metric-help">Accordé / charges prévisionnelles.</div>
+      </div>
+    </div>
+
+    <div class="budget-section" style="padding:0; margin-top:12px;">
+      <div class="metric-label">Sécurisé vs à sécuriser</div>
+      <div class="meter">
+        {% set pct_couvert = pct_accorde_sur_charges %}
+        <div class="meter__fill meter__fill--ok" style="width:{{ pct_couvert }}%;"></div>
+      </div>
+      <div class="legend">
+        <span><strong class="mono">{{ "%.2f"|format(total_accorde) }}€</strong> sécurisé</span>
+        <span><strong class="mono">{{ "%.2f"|format(reste_a_securiser) }}€</strong> à sécuriser ({{ "%.0f"|format(pct_reste) }}%)</span>
+        {% if total_accorde %}
+          <span><strong class="mono">{{ "%.0f"|format(pct_recu_sur_accorde) }}%</strong> encaissé (reçu/accordé)</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ===== ALERTES “produits” (simple, actionnable) ===== #}
+  {% set nb_reste_ventiler = 0 %}
+  {% set nb_non_recu = 0 %}
+  {% set nb_refuse = 0 %}
+  {% for p in produits %}
+    {% if (p.reste_a_ventiler or 0) > 0 %}{% set nb_reste_ventiler = nb_reste_ventiler + 1 %}{% endif %}
+    {% if (p.montant_accorde or 0) > 0 and (p.montant_recu or 0) == 0 %}{% set nb_non_recu = nb_non_recu + 1 %}{% endif %}
+    {% if (p.statut or '') == 'refuse' %}{% set nb_refuse = nb_refuse + 1 %}{% endif %}
+  {% endfor %}
+
+  <div class="card callout">
+    <div class="callout__title">À surveiller</div>
+    <ul class="watch-list">
+      {% if nb_reste_ventiler %}
+        <li>{{ nb_reste_ventiler }} financeur(s) ont un reste à ventiler.</li>
+      {% endif %}
+      {% if nb_non_recu %}
+        <li>{{ nb_non_recu }} financeur(s) accordé(s) mais pas encore reçu(s).</li>
+      {% endif %}
+      {% if nb_refuse %}
+        <li>{{ nb_refuse }} financeur(s) sont refusé(s) et doivent être requalifiés ou remplacés.</li>
+      {% endif %}
+      {% if not nb_reste_ventiler and not nb_non_recu and not nb_refuse %}
+        <li class="muted">Aucun point de vigilance n’est remonté pour le moment.</li>
+      {% endif %}
+    </ul>
+  </div>
+
+  {# ===== FORM AJOUT PRODUIT ===== #}
+  <div class="card">
+    <div class="section-title">Ajouter un financeur</div>
+
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="field">
+        <label>Financeur</label>
+        <input name="financeur" placeholder="Ex: CAF Oise" required>
+      </div>
+
+      <div class="field">
+        <label>Catégorie</label>
+        <select name="categorie">
+          <option value="etat">État</option>
+          <option value="region">Région</option>
+          <option value="departement">Département</option>
+          <option value="commune">Commune / Agglo</option>
+          <option value="caf">CAF</option>
+          <option value="europe">Europe</option>
+          <option value="prive">Privé / Fondation</option>
+          <option value="autofinancement">Autofinancement</option>
+          <option value="vente_presta">Vente / presta</option>
+          <option value="autre" selected>Autre</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Statut</label>
+        <select name="statut">
+          <option value="prevu">Prévu</option>
+          <option value="demande">Demandé</option>
+          <option value="accorde">Accordé</option>
+          <option value="partiel">Partiel</option>
+          <option value="refuse">Refusé</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Demandé (€)</label>
+        <input name="montant_demande" type="number" step="0.01" placeholder="0.00">
+      </div>
+
+      <div class="field">
+        <label>Accordé (€)</label>
+        <input name="montant_accorde" type="number" step="0.01" placeholder="0.00">
+      </div>
+
+      <div class="field">
+        <label>Reçu (€)</label>
+        <input name="montant_recu" type="number" step="0.01" placeholder="0.00">
+      </div>
+
+      <div class="field">
+        <label>Référence du dossier</label>
+        <input name="reference_dossier" placeholder="Ex: 2026-CAF-123">
+      </div>
+
+      <div class="field field--wide">
+        <label>Commentaire</label>
+        <input name="commentaire" placeholder="Notes…">
+      </div>
+
+      <div class="field field--actions">
+        <button class="btn ok" type="submit">Ajouter le financeur</button>
+      </div>
+    </form>
+  </div>
+
+  {# ===== TABLE PRODUITS ===== #}
+  <div class="card">
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Financeur</th>
+            <th>Catégorie</th>
+            <th>Statut</th>
+            <th class="num">Demandé</th>
+            <th class="num">Accordé</th>
+            <th class="num">Reçu</th>
+            <th class="num">Ventilé</th>
+            <th class="num">Reste à ventiler</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in produits %}
+          {% set d = (p.montant_demande or 0) %}
+          {% set a = (p.montant_accorde or 0) %}
+          {% set r = (p.montant_recu or 0) %}
+          {% set v = (p.ventile or 0) %}
+          {% set rv = (p.reste_a_ventiler or 0) %}
+          {% set pct_v = (v / a * 100) if a else (v / d * 100 if d else 0) %}
+
+          {% set statut = (p.statut or 'prevu') %}
+                    <tr>
+            <td><strong>{{ p.financeur }}</strong></td>
+            <td class="muted">{{ p.categorie }}</td>
+            <td><span class="status-badge js-auto-status">{{ p.statut or "prévu" }}</span></td>
+
+            <td class="num"><span class="mono">{{ "%.2f"|format(d) }}€</span></td>
+            <td class="num"><span class="mono">{{ "%.2f"|format(a) }}€</span></td>
+            <td class="num"><span class="mono">{{ "%.2f"|format(r) }}€</span></td>
+
+            <td class="num">
+              <div class="cell-money">
+                <div class="cell-money__main mono">{{ "%.2f"|format(v) }}€</div>
+                <div class="meter meter--thin" style="width:140px;">
+                  <div class="meter__fill" style="width:{{ pct_v }}%;"></div>
+                </div>
+                <div class="cell-money__sub muted">{{ "%.0f"|format(pct_v) }}% ventilé</div>
+              </div>
+            </td>
+
+            <td class="num">
+              <span class="status-badge {{ "status-success" if rv == 0 else ("status-warning" if rv < 250 else "status-danger") }}">{{ "%.2f"|format(rv) }}€</span>
+            </td>
+
+            <td class="actions" style="white-space:nowrap">
+              <a class="btn" href="{{ url_for('projets.projet_budget_produit_edit', projet_id=projet.id, produit_id=p.id) }}">✏️</a>
+              <form method="post" action="{{ url_for('projets.projet_budget_produit_delete', projet_id=projet.id, produit_id=p.id) }}" style="display:inline" onsubmit="return confirm('Supprimer ce produit/financeur ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn" type="submit">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9"><div class="quick-empty"><strong>Aucun financeur n’est encore enregistré.</strong>Ajoutez un financeur pour suivre les montants demandés, accordés, reçus et ventilés.</div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

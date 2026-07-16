@@ -1,0 +1,88 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>Notifications automatiques</h1>
+    <p class="muted">
+      Un <strong>récapitulatif e-mail</strong> (au plus un par jour et par destinataire),
+      jamais un e-mail par événement. Rien n'est actif tant que vous ne l'avez pas coché.
+      Si un jour il n'y a rien à signaler, <strong>aucun e-mail ne part</strong>.
+    </p>
+
+    <form method="post" data-no-scroll-restore>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="tablewrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Actif</th>
+              <th>Notification</th>
+              <th>Destinataires</th>
+              <th>Fréquence</th>
+              <th>Seuil</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in reglages %}
+              <tr>
+                <td>
+                  <input type="checkbox" name="actif_{{ r.code }}" value="1"
+                         {% if r.actif %}checked{% endif %}
+                         aria-label="Activer {{ r.label }}">
+                </td>
+                <td>
+                  <strong>{{ r.label }}</strong>
+                  <div class="muted" style="font-size:12px; max-width:340px;">{{ r.description }}</div>
+                </td>
+                <td>
+                  <textarea name="destinataires_{{ r.code }}" rows="2" style="min-width:220px;"
+                            placeholder="adresse@exemple.org, autre@exemple.org">{{ r.destinataires }}</textarea>
+                </td>
+                <td>
+                  <select name="frequence_{{ r.code }}">
+                    {% for code_f, label_f in frequences.items() %}
+                      <option value="{{ code_f }}" {% if r.frequence == code_f %}selected{% endif %}>{{ label_f }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>
+                  {% if r.seuil_label %}
+                    <input type="number" name="seuil_{{ r.code }}" value="{{ r.seuil_jours or '' }}"
+                           min="0" max="365" style="width:80px;" aria-label="{{ r.seuil_label }}">
+                    <div class="muted" style="font-size:12px;">{{ r.seuil_label }}</div>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <button class="btn" type="submit" data-pending-text="Enregistrement…">💾 Enregistrer les réglages</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Tester</h2>
+    <p class="muted">
+      Envoie <strong>maintenant</strong> le récapitulatif des types actifs à leurs destinataires
+      (la fréquence est ignorée pour ce test). Pratique pour vérifier le rendu et la
+      configuration SMTP sans attendre demain.
+    </p>
+    <form method="post" action="{{ url_for('admin.notifications_apercu') }}" data-no-scroll-restore>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit" data-pending-text="Envoi…">📨 Envoyer un aperçu maintenant</button>
+    </form>
+    <p class="ux-helper">
+      L'envoi quotidien réel se déclenche automatiquement à la première utilisation de
+      l'application chaque jour — aucune tâche planifiée à configurer sur le serveur.
+      Le SMTP se règle dans Administration → Nom et logo (ou variables d'environnement).
+    </p>
+  </div>
+</div>
+
+{% endblock %}

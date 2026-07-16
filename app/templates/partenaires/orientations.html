@@ -1,0 +1,318 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .rights-page { gap:16px; }
+  .rights-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; }
+  .rights-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .rights-grid { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(320px, .9fr); gap:14px; align-items:start; }
+  .rights-form { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
+  .rights-form .wide { grid-column:1 / -1; }
+  .rights-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .rights-kpi { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:12px; background:#fff; }
+  .rights-kpi .label { color:#64748b; font-size:12px; }
+  .rights-kpi .value { font-size:28px; font-weight:800; line-height:1.1; }
+  .rights-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+  .rights-stat { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:12px; background:#fff; }
+  .rights-stat h3 { margin:0 0 8px; font-size:16px; }
+  .rights-bar { display:grid; grid-template-columns:minmax(120px, 1fr) 70px; gap:10px; align-items:center; border-top:1px solid rgba(15,23,42,.08); padding:7px 0; }
+  .rights-bar:first-of-type { border-top:0; }
+  .rights-suggestions { display:flex; flex-direction:column; gap:8px; }
+  .rights-suggestion { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:10px 12px; background:rgba(15,23,42,.03); }
+  .rights-chip { display:inline-flex; border:1px solid rgba(15,23,42,.12); border-radius:999px; padding:3px 8px; font-size:12px; color:#475569; background:#fff; }
+  .rights-status { display:inline-flex; border-radius:999px; padding:3px 8px; font-size:12px; background:rgba(15,23,42,.08); color:#334155; }
+  .rights-status--oriente { background:rgba(59,130,246,.13); color:#1d4ed8; }
+  .rights-status--rdv_pris, .rights-status--accompagne { background:rgba(245,158,11,.16); color:#92400e; }
+  .rights-status--resolu { background:rgba(34,197,94,.14); color:#166534; }
+  .rights-status--non_abouti { background:rgba(239,68,68,.13); color:#991b1b; }
+  .rights-filters { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end; }
+  @media (max-width: 980px) {
+    .rights-grid { grid-template-columns:1fr; }
+    .rights-form { grid-template-columns:1fr; }
+  }
+</style>
+
+<div class="monster-shell wide-shell rights-page">
+  <div class="monster-hero">
+    <div class="rights-head">
+      <div>
+        <h1>Orientations accès aux droits</h1>
+        <p>Cartographier les demandes, les domaines de droits et les partenaires sollicités.</p>
+      </div>
+      <div class="rights-actions">
+        <a class="btn" href="{{ url_for('partenaires.index') }}">Annuaire partenaires</a>
+        <a class="btn" href="{{ url_for('partenaires.export_orientations_xlsx') }}?{{ request.query_string.decode('utf-8') }}">Exporter XLSX</a>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="rights-kpis">
+      <div class="rights-kpi"><div class="label">Orientations</div><div class="value">{{ dashboard.kpis.total }}</div></div>
+      <div class="rights-kpi"><div class="label">Personnes</div><div class="value">{{ dashboard.kpis.participants }}</div></div>
+      <div class="rights-kpi"><div class="label">Partenaires</div><div class="value">{{ dashboard.kpis.partenaires }}</div></div>
+      <div class="rights-kpi"><div class="label">Domaines</div><div class="value">{{ dashboard.kpis.domaines }}</div></div>
+      <div class="rights-kpi"><div class="label">Villes</div><div class="value">{{ dashboard.kpis.villes }}</div></div>
+      <div class="rights-kpi"><div class="label">Quartiers</div><div class="value">{{ dashboard.kpis.quartiers }}</div></div>
+      <div class="rights-kpi"><div class="label">À rappeler</div><div class="value">{{ dashboard.kpis.a_rappeler }}</div></div>
+      <div class="rights-kpi"><div class="label">Sans partenaire</div><div class="value">{{ dashboard.kpis.sans_partenaire }}</div></div>
+    </div>
+  </div>
+
+  <div class="monster-card">
+    <h2>Filtres</h2>
+    <form method="get" class="rights-filters">
+      <label class="field-stack">Année
+        <input class="in" type="number" name="year" value="{{ year }}" min="2000" max="2100">
+      </label>
+      {% if can_scope_all %}
+        <label class="field-stack">Secteur
+          <select class="in" name="secteur_filter">
+            <option value="">Tous</option>
+            {% for secteur in SECTEURS %}
+              <option value="{{ secteur }}" {% if current_filters.secteur_filter == secteur %}selected{% endif %}>{{ secteur }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-stack">Domaine
+        <select class="in" name="domaine">
+          <option value="">Tous</option>
+          {% for key,label in orientation_domaines.items() %}
+            <option value="{{ key }}" {% if current_filters.domaine == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Statut
+        <select class="in" name="statut">
+          <option value="">Tous</option>
+          {% for key,label in orientation_statuts.items() %}
+            <option value="{{ key }}" {% if current_filters.statut == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Partenaire
+        <select class="in" name="partenaire_id">
+          <option value="">Tous</option>
+          {% for partenaire in partenaires %}
+            <option value="{{ partenaire.id }}" {% if current_filters.partenaire_id|string == partenaire.id|string %}selected{% endif %}>{{ partenaire.nom }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Ville
+        <input class="in" name="ville" value="{{ current_filters.ville }}" placeholder="Ex. Creil" data-ville-input>
+      </label>
+      <label class="field-stack">Quartier
+        <select class="in" name="quartier_id" data-quartier-select>
+          <option value="">Tous</option>
+          {% for quartier in quartiers %}
+            <option value="{{ quartier.id }}" data-ville="{{ quartier.ville }}" {% if current_filters.quartier_id|string == quartier.id|string %}selected{% endif %}>{{ quartier.ville }} - {{ quartier.nom }}{% if quartier.is_qpv %} (QPV){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Recherche
+        <input class="in" name="q" value="{{ current_filters.q }}" placeholder="Demande, personne, partenaire...">
+      </label>
+      <div class="rights-actions">
+        <button class="btn ok" type="submit">Appliquer</button>
+        <a class="btn" href="{{ url_for('partenaires.orientations') }}">Réinitialiser</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="rights-grid">
+    {% if can_edit_orientations %}
+      <section class="monster-card">
+        <h2>Nouvelle orientation</h2>
+        <form method="post" class="rights-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="field-stack">Date
+            <input class="in" type="date" name="date_orientation" value="{{ year }}-01-01" required>
+          </label>
+          <label class="field-stack">Secteur
+            {% if can_scope_all %}
+              <select class="in" name="secteur">
+                <option value="">Non renseigné</option>
+                {% for secteur in SECTEURS %}
+                  <option value="{{ secteur }}" {% if current_scope_secteur == secteur %}selected{% endif %}>{{ secteur }}</option>
+                {% endfor %}
+              </select>
+            {% else %}
+              <input class="in" value="{{ current_scope_secteur or '' }}" disabled>
+              <input type="hidden" name="secteur" value="{{ current_scope_secteur or '' }}">
+            {% endif %}
+          </label>
+          <label class="field-stack">Personne rattachée
+            <select class="in" name="participant_id">
+              <option value="">Non rattachée / accueil anonyme</option>
+              {% for p in participants %}
+                <option value="{{ p.id }}">{{ p.nom }} {{ p.prenom }}{% if p.ville %} · {{ p.ville }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack">Ville
+            <input class="in" name="ville" placeholder="Ex. Creil" data-ville-input>
+          </label>
+          <label class="field-stack">Quartier
+            <select class="in" name="quartier_id" data-quartier-select>
+              <option value="">Non renseigné</option>
+              {% for quartier in quartiers %}
+                <option value="{{ quartier.id }}" data-ville="{{ quartier.ville }}">{{ quartier.ville }} - {{ quartier.nom }}{% if quartier.is_qpv %} (QPV){% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack">Nom libre si non rattaché
+            <input class="in" name="demandeur_libre" placeholder="Ex. Monsieur B.">
+          </label>
+          <label class="field-stack">Domaine de droit
+            <select class="in" name="domaine" required>
+              {% for key,label in orientation_domaines.items() %}
+                <option value="{{ key }}" {% if current_filters.domaine == key %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack">Partenaire orienté
+            <select class="in" name="partenaire_id">
+              <option value="">Pas encore défini</option>
+              {% for partenaire in partenaires %}
+                <option value="{{ partenaire.id }}">{{ partenaire.nom }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack wide">Demande exprimée
+            <input class="in" name="demande" required placeholder="Ex. Demande de logement social, dossier CAF, aide retraite...">
+          </label>
+          <label class="field-stack">Statut
+            <select class="in" name="statut">
+              {% for key,label in orientation_statuts.items() %}
+                <option value="{{ key }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack">Urgence
+            <select class="in" name="urgence">
+              {% for key,label in orientation_urgences.items() %}
+                <option value="{{ key }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-stack">Suite prévue
+            <input class="in" type="date" name="suite_prevue">
+          </label>
+          <label class="field-stack wide">Note courte
+            <textarea class="in" name="note" rows="3" placeholder="Éviter les détails sensibles inutiles."></textarea>
+          </label>
+          <div class="rights-actions wide">
+            <button class="btn ok" type="submit">Enregistrer l'orientation</button>
+          </div>
+        </form>
+      </section>
+    {% endif %}
+
+    <aside class="monster-card">
+      <h2>Partenaires compétents</h2>
+      {% if current_filters.domaine and suggested_partners %}
+        <div class="rights-suggestions">
+          {% for partenaire in suggested_partners[:10] %}
+            <div class="rights-suggestion">
+              <strong>{{ partenaire.nom }}</strong>
+              <div class="muted">{{ partenaire.territoire_couvert or "Territoire non renseigné" }}</div>
+              <div class="muted">{{ partenaire.modalites_orientation or "Modalités non renseignées" }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif current_filters.domaine %}
+        <div class="empty-state">Aucun partenaire n'a encore cette compétence dans l'annuaire.</div>
+      {% else %}
+        <div class="empty-state">Choisis un domaine dans les filtres pour voir les partenaires compétents.</div>
+      {% endif %}
+    </aside>
+  </div>
+
+  <section class="rights-stats">
+    {% for title, items in [
+      ("Demandes par domaine", dashboard.by_domaine),
+      ("Orientations par partenaire", dashboard.by_partner),
+      ("Statuts", dashboard.by_status),
+      ("Par mois", dashboard.by_month),
+      ("Par ville", dashboard.by_ville),
+      ("Par quartier", dashboard.by_quartier),
+      ("QPV", dashboard.by_qpv),
+      ("Genre", dashboard.by_genre),
+      ("Âge", dashboard.by_age)
+    ] %}
+      <article class="rights-stat">
+        <h3>{{ title }}</h3>
+        {% for item in items %}
+          <div class="rights-bar"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div>
+        {% else %}
+          <div class="muted">Aucune donnée.</div>
+        {% endfor %}
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="monster-card">
+    <h2>Suivi des orientations</h2>
+    <div class="tablewrap clean wide">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Ville / quartier</th>
+            <th>Personne</th>
+            <th>Domaine / demande</th>
+            <th>Partenaire</th>
+            <th>Statut</th>
+            <th>Suite</th>
+            {% if can_edit_orientations %}<th>Actions</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.date_orientation.strftime("%d/%m/%Y") if row.date_orientation else "?" }}<br><span class="muted">{{ row.secteur or "Secteur ?" }}</span></td>
+              <td>
+                <strong>{{ orientation_ville(row) }}</strong>
+                <div class="muted">{{ orientation_quartier_label(row) }}</div>
+              </td>
+              <td>
+                <strong>{{ participant_label(row.participant, row.demandeur_libre) }}</strong>
+                {% if row.participant %}
+                  <div class="muted">{{ "QPV" if row.participant.is_qpv else "Hors / inconnu" }} · {{ row.participant.genre or "Genre ?" }} · {{ row.participant.age or "Âge ?" }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="rights-chip">{{ domain_label(row.domaine) }}</span>
+                <div>{{ row.demande }}</div>
+                {% if row.note %}<div class="muted">{{ row.note }}</div>{% endif %}
+              </td>
+              <td>{{ row.partenaire.nom if row.partenaire else "Non défini" }}</td>
+              <td><span class="rights-status rights-status--{{ row.statut }}">{{ status_label(row.statut) }}</span><br><span class="muted">{{ urgence_label(row.urgence) }}</span></td>
+              <td>{{ row.suite_prevue.strftime("%d/%m/%Y") if row.suite_prevue else "Non renseignée" }}</td>
+              {% if can_edit_orientations %}
+                <td>
+                  <form method="post" action="{{ url_for('partenaires.update_orientation_status', orientation_id=row.id) }}" class="stack" style="gap:6px; min-width:180px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select class="in" name="statut">
+                      {% for key,label in orientation_statuts.items() %}
+                        <option value="{{ key }}" {% if row.statut == key %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                    <input class="in" type="date" name="suite_prevue" value="{{ row.suite_prevue or '' }}">
+                    <button class="btn" type="submit">Mettre à jour</button>
+                  </form>
+                  <form method="post" action="{{ url_for('partenaires.delete_orientation', orientation_id=row.id) }}" onsubmit="return confirm('Supprimer cette orientation ?');" style="margin-top:6px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn danger" type="submit">Supprimer</button>
+                  </form>
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+          {% if rows|length == 0 %}
+            <tr><td colspan="{% if can_edit_orientations %}8{% else %}7{% endif %}" class="muted">Aucune orientation sur ce périmètre.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

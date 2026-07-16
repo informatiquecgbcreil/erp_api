@@ -1,0 +1,318 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>🌱 Transitions · {{ annee }}{% if secteur %} — {{ secteur }}{% endif %}</h1>
+    <p class="muted">
+      Suivi des actions de transition : les chiffres (séances, participations, publics,
+      heures, kWh/CO₂) viennent <strong>automatiquement</strong> de l'émargement des
+      ateliers étiquetés — zéro double saisie. Défis des habitants et mesures chiffrées
+      s'ajoutent à la main.
+    </p>
+
+    <form method="get" class="inline" style="gap:8px; flex-wrap:wrap;">
+      <label for="annee-select" class="muted">Année</label>
+      <select id="annee-select" name="annee" onchange="this.form.submit()">
+        {% for a in annees %}
+          <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+      {% if portee_globale %}
+        <label for="secteur-select" class="muted">Secteur</label>
+        <select id="secteur-select" name="secteur" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for s in secteurs %}
+            <option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
+      <noscript><button class="btn" type="submit">Filtrer</button></noscript>
+    </form>
+
+    <div class="inline" style="gap:8px; flex-wrap:wrap; margin-top:10px;">
+      <a class="btn" href="{{ url_for('transitions.ateliers') }}">🏷️ Étiqueter les ateliers</a>
+      <a class="btn" href="{{ url_for('transitions.export_xlsx', annee=annee, secteur=secteur or none) }}"
+         title="Synthèse annuelle à recopier dans le portail CSAT.">⬇ Bilan annuel (XLSX)</a>
+    </div>
+
+    {% set t = data.totaux %}
+    <div class="inline" style="gap:18px; flex-wrap:wrap; margin-top:14px;">
+      <div><strong style="font-size:22px;">{{ t.nb_ateliers }}</strong> <span class="muted">ateliers</span></div>
+      <div><strong style="font-size:22px;">{{ t.seances }}</strong> <span class="muted">séances</span></div>
+      <div><strong style="font-size:22px;">{{ t.participations }}</strong> <span class="muted">participations</span></div>
+      <div><strong style="font-size:22px;">{{ t.uniques }}</strong> <span class="muted">habitants uniques</span></div>
+      <div><strong style="font-size:22px;">{{ t.heures }}</strong> <span class="muted">heures</span></div>
+      <div><strong style="font-size:22px;">{{ t.kwh }}</strong> <span class="muted">kWh estimés</span></div>
+      <div><strong style="font-size:22px;">{{ t.co2_kg }}</strong> <span class="muted">kg CO₂ estimés</span></div>
+      <div><strong style="font-size:22px;">{{ data.defis_realises }}/{{ data.defis|length }}</strong> <span class="muted">défis réalisés</span></div>
+    </div>
+    {% if not data.ateliers %}
+      <div class="callout" style="margin-top:12px;">
+        Aucun atelier n'est encore étiqueté « transitions ».
+        <a href="{{ url_for('transitions.ateliers') }}">Étiquetez vos ateliers</a> :
+        leurs présences alimenteront ce tableau automatiquement.
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Par thématique</h2>
+    <div class="tablewrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Thématique</th><th>Ateliers</th><th>Séances</th><th>Participations</th>
+          <th>Uniques</th><th>Heures</th><th>kWh</th><th>CO₂ (kg)</th><th>Défis</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in data.thematiques %}
+          <tr>
+            <td><strong>{{ l.thematique.libelle }}</strong></td>
+            <td>{{ l.nb_ateliers }}</td>
+            <td>{{ l.seances }}</td>
+            <td>{{ l.participations }}</td>
+            <td>{{ l.uniques }}</td>
+            <td>{{ l.heures }}</td>
+            <td>{{ l.kwh }}</td>
+            <td>{{ l.co2_kg }}</td>
+            <td>{{ l.defis_realises }}/{{ l.defis_total }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  {% if data.objectifs %}
+  <div class="card">
+    <h2>Croisement thématiques × objectifs sectoriels</h2>
+    <p class="muted">Participations de l'année, réparties selon les objectifs auxquels chaque atelier contribue.</p>
+    <div class="tablewrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Thématique</th>
+          {% for o in data.objectifs %}<th title="{{ o.secteur }} — {{ o.libelle }}">{{ o.code }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in data.croisement %}
+          <tr>
+            <td><strong>{{ c.thematique.libelle }}</strong></td>
+            {% for v in c.cellules %}<td>{{ v or '—' }}</td>{% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted" style="font-size:12px;">
+      {% for o in data.objectifs %}{{ o.code }} = {{ o.libelle }} ({{ o.secteur }}){% if not loop.last %} · {% endif %}{% endfor %}
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>🎯 Défis des habitants — {{ data.defis|length }} sur {{ annee }}</h2>
+    {% if can('transitions:edit') %}
+      <form method="get" class="inline" style="gap:8px; flex-wrap:wrap;">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        {% if secteur %}<input type="hidden" name="secteur" value="{{ secteur }}">{% endif %}
+        <input type="search" name="q_defi" value="{{ q_defi }}" placeholder="Chercher la personne qui s'engage (2 lettres min.)"
+               aria-label="Rechercher une personne pour un défi" style="min-width:260px;">
+        <button class="btn" type="submit">Rechercher</button>
+      </form>
+
+      {% if q_defi and resultats_defi %}
+        <div class="tablewrap" style="margin-top:10px;">
+        <table class="table">
+          <tbody>
+            {% for p in resultats_defi %}
+              <tr>
+                <td>{{ p.nom }} {{ p.prenom }}{% if p.foyer_id %} <span class="muted">(famille rattachée)</span>{% endif %}</td>
+                <td>
+                  <form method="post" action="{{ url_for('transitions.defi_creer') }}" class="inline" style="gap:6px; flex-wrap:wrap;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="participant_id" value="{{ p.id }}">
+                    <input type="text" name="titre" placeholder="Titre du défi (ex. un mois à vélo)" required style="min-width:200px;">
+                    <select name="thematique_id" required aria-label="Thématique du défi">
+                      {% for th in data.thematiques %}
+                        <option value="{{ th.thematique.id }}">{{ th.thematique.libelle }}</option>
+                      {% endfor %}
+                    </select>
+                    <input type="date" name="date_engagement" value="{{ today.isoformat() }}" aria-label="Date d'engagement">
+                    {% if p.foyer_id %}
+                      <label class="muted" style="font-size:12px;">
+                        <input type="checkbox" name="porte_par_foyer" value="1"> toute la famille
+                      </label>
+                    {% endif %}
+                    <button class="btn" type="submit">Engager</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% elif q_defi %}
+        <p class="muted" style="margin-top:8px;">Personne trouvée pour « {{ q_defi }} ».</p>
+      {% endif %}
+    {% endif %}
+
+    {% if data.defis %}
+      <div class="tablewrap" style="margin-top:10px;">
+      <table class="table">
+        <thead><tr><th>Défi</th><th>Thématique</th><th>Porteur</th><th>Engagé le</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {% for d in data.defis %}
+            <tr>
+              <td><strong>{{ d.titre }}</strong>{% if d.commentaire %}<div class="muted" style="font-size:12px;">{{ d.commentaire }}</div>{% endif %}</td>
+              <td>{{ d.thematique.libelle if d.thematique else '—' }}</td>
+              <td>{{ d.porteur_label }}{% if d.foyer_id %} <span class="muted">(famille)</span>{% endif %}</td>
+              <td>{{ d.date_engagement.strftime('%d/%m/%Y') if d.date_engagement else '—' }}</td>
+              <td>
+                {% if d.statut == 'realise' %}<span class="status-badge status-info">Réalisé ✓</span>
+                {% elif d.statut == 'abandonne' %}<span class="muted">Abandonné</span>
+                {% else %}<span class="status-badge">En cours</span>{% endif %}
+              </td>
+              <td>
+                {% if can('transitions:edit') and d.statut == 'en_cours' %}
+                  <form method="post" action="{{ url_for('transitions.defi_statut', defi_id=d.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="statut" value="realise">
+                    <button class="btn" type="submit">🎉 Réalisé</button>
+                  </form>
+                  <form method="post" action="{{ url_for('transitions.defi_statut', defi_id=d.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="statut" value="abandonne">
+                    <button class="btn" type="submit">Abandonné</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin-top:8px;">Aucun défi engagé sur {{ annee }}.
+        {% if can('transitions:edit') %}Cherchez une personne ci-dessus pour lancer le premier.{% endif %}</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>📏 Mesures chiffrées</h2>
+    <p class="muted">
+      Chiffres notés à la main par action : km évités, kg détournés de la benne, repas
+      végétariens servis… Additionnés par mesure et par thématique dans le bilan.
+      Valeurs indicatives, non certifiées.
+    </p>
+
+    {% if can('transitions:edit') and data.ateliers %}
+      <form method="post" action="{{ url_for('transitions.mesure_creer') }}" class="inline" style="gap:6px; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="atelier_id" required aria-label="Atelier concerné">
+          {% for a in data.ateliers %}
+            <option value="{{ a.id }}">{{ a.nom }} ({{ a.secteur }})</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="libelle" placeholder="Mesure (ex. km évités)" required style="min-width:170px;">
+        <input type="text" name="valeur" placeholder="Valeur" required style="width:90px;" inputmode="decimal">
+        <input type="text" name="unite" placeholder="Unité (km, kg…)" style="width:110px;">
+        <input type="date" name="date_mesure" value="{{ today.isoformat() }}" aria-label="Date de la mesure">
+        <button class="btn" type="submit">Enregistrer</button>
+      </form>
+    {% endif %}
+
+    {% if data.mesures %}
+      <div class="tablewrap" style="margin-top:10px;">
+      <table class="table">
+        <thead><tr><th>Mesure</th><th>Thématique</th><th>Total {{ annee }}</th><th>Saisies</th></tr></thead>
+        <tbody>
+          {% for m in data.mesures %}
+            <tr>
+              <td><strong>{{ m.libelle }}</strong></td>
+              <td>{{ m.thematique.libelle if m.thematique else '—' }}</td>
+              <td>{{ m.total }} {{ m.unite }}</td>
+              <td>{{ m.nb_saisies }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% if data.mesures_detail and can('transitions:edit') %}
+        <details style="margin-top:8px;">
+          <summary class="muted">Dernières saisies (corriger / supprimer)</summary>
+          <div class="tablewrap" style="margin-top:8px;">
+          <table class="table">
+            <tbody>
+              {% for m in data.mesures_detail %}
+                <tr>
+                  <td>{{ m.date_mesure.strftime('%d/%m/%Y') }}</td>
+                  <td>{{ m.libelle }} : {{ m.valeur }} {{ m.unite or '' }}</td>
+                  <td class="muted">{{ m.atelier.nom if m.atelier else '' }}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('transitions.mesure_supprimer', mesure_id=m.id) }}" style="display:inline;"
+                          onsubmit="return confirm('Supprimer cette saisie ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit">Supprimer</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </details>
+      {% endif %}
+    {% else %}
+      <p class="muted" style="margin-top:8px;">Aucune mesure saisie sur {{ annee }}.</p>
+    {% endif %}
+  </div>
+
+  {% if can('transitions:edit') %}
+  <div class="card">
+    <h2>Référentiel des thématiques</h2>
+    <div class="tablewrap">
+    <table class="table">
+      <tbody>
+        {% for th in thematiques_referentiel %}
+          <tr>
+            <td>
+              <form method="post" action="{{ url_for('transitions.thematiques_gerer') }}" class="inline" style="gap:6px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="renommer">
+                <input type="hidden" name="thematique_id" value="{{ th.id }}">
+                <input type="text" name="libelle" value="{{ th.libelle }}" aria-label="Renommer la thématique">
+                <button class="btn" type="submit">Renommer</button>
+              </form>
+            </td>
+            <td>
+              {% if th.actif %}<span class="status-badge status-info">active</span>
+              {% else %}<span class="muted">désactivée</span>{% endif %}
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('transitions.thematiques_gerer') }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="basculer">
+                <input type="hidden" name="thematique_id" value="{{ th.id }}">
+                <button class="btn" type="submit">{{ 'Désactiver' if th.actif else 'Réactiver' }}</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <form method="post" action="{{ url_for('transitions.thematiques_gerer') }}" class="inline" style="gap:6px; margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="ajouter">
+      <input type="text" name="libelle" placeholder="Nouvelle thématique (ex. Eau)" required>
+      <button class="btn" type="submit">➕ Ajouter</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

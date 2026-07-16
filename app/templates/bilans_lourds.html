@@ -1,0 +1,224 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block head_extra %}
+  <style>@media print { .no-print { display: none !important; } }</style>
+{% endblock %}
+{% block body %}
+<div class="monster-shell">
+  <div class="monster-card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1 style="margin:0;">Bilans détaillés — rapport</h1>
+        <p class="muted" style="margin:6px 0 0 0;">
+          Rapport d'activité lisible et prêt à partager : synthèse exécutive, indicateurs clés et détail par secteur.
+        </p>
+      </div>
+
+      <form method="get" action="{{ url_for('bilans.bilans_lourds') }}" class="inline no-print" style="gap:8px;">
+        <label for="year" class="muted">Exercice</label>
+        <select id="year" name="year">
+          {% for y in years %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" type="submit">Charger</button>
+        <button class="btn" type="button" onclick="window.print()">🖨️ Imprimer / PDF</button>
+        <a class="btn" href="{{ url_for('bilans.bilans_lourds_export_docx', year=year) }}">⬇️ Export DOCX</a>
+        <a class="btn" href="{{ url_for('bilans.dashboard', year=year) }}">⬅ Retour</a>
+      </form>
+    </div>
+  </div>
+
+  <div class="monster-hero">
+    <div class="monster-head">
+      <h3 style="margin:0;">Résumé exécutif</h3>
+      <span class="tag-soft">Comparaison avec {{ stats.comparatif.annee_precedente }}</span>
+    </div>
+    <ul style="margin:10px 0 0 18px;">
+      {% for sentence in executive_summary %}
+        <li style="margin-bottom:6px;">{{ sentence }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="kpi-grid-flex">
+    <div class="kpi-card">
+      <div class="kpi-label">Séances</div>
+      <div class="kpi-value">{{ stats.activite.nb_sessions }}</div>
+      <div class="muted" style="font-size:12px;">vs N-1 : {% if deltas.sessions is not none %}{{ deltas.sessions }}%{% else %}N/A{% endif %}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Présences</div>
+      <div class="kpi-value">{{ stats.activite.nb_presences }}</div>
+      <div class="muted" style="font-size:12px;">vs N-1 : {% if deltas.presences is not none %}{{ deltas.presences }}%{% else %}N/A{% endif %}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Participants uniques</div>
+      <div class="kpi-value">{{ stats.activite.nb_participants_uniques }}</div>
+      <div class="muted" style="font-size:12px;">vs N-1 : {% if deltas.participants_uniques is not none %}{{ deltas.participants_uniques }}%{% else %}N/A{% endif %}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Participants évalués</div>
+      <div class="kpi-value">{{ stats.evaluations.total }}</div>
+      <div class="muted" style="font-size:12px;">vs N-1 : {% if deltas.evaluations is not none %}{{ deltas.evaluations }}%{% else %}N/A{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="monster-card">
+    <h3>Activité et accompagnement</h3>
+    <table class="compact-table">
+      <tbody>
+        <tr><td>Ateliers actifs</td><td style="text-align:right;"><strong>{{ stats.activite.nb_ateliers }}</strong></td></tr>
+        <tr><td>Séances réalisées</td><td style="text-align:right;"><strong>{{ stats.activite.nb_sessions }}</strong></td></tr>
+        <tr><td>Présences totales</td><td style="text-align:right;"><strong>{{ stats.activite.nb_presences }}</strong></td></tr>
+        <tr><td>Participants uniques</td><td style="text-align:right;"><strong>{{ stats.activite.nb_participants_uniques }}</strong></td></tr>
+        <tr><td>Participants fidèles (≥2 venues)</td><td style="text-align:right;"><strong>{{ stats.activite.nb_participants_retour }}</strong></td></tr>
+        <tr><td>Taux de fidélisation</td><td style="text-align:right;"><strong>{{ stats.activite.taux_fidelisation }}%</strong></td></tr>
+        <tr><td>Intensité d'accompagnement</td><td style="text-align:right;"><strong>{{ stats.activite.intensite_accompagnement }}</strong> séance(s)/participant</td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin:10px 0 0 0;">
+      Remplissage collectif : <strong>{{ stats.activite.taux_remplissage_collectif }}%</strong>
+      {% if stats.activite.total_places_collectif %}
+        ({{ stats.activite.nb_presences_collectif }} / {{ stats.activite.total_places_collectif }})
+      {% endif %}
+    </p>
+    <p class="muted" style="margin:6px 0 0 0;">
+      RDV individuels : <strong>{{ stats.activite.nb_rdv }}</strong> — durée totale : <strong>{{ stats.activite.minutes_rdv }}</strong> min
+    </p>
+  </div>
+
+  <div class="monster-card">
+    <h3>Résultats pédagogiques</h3>
+    <div class="story-grid">
+      <div>
+        <p class="muted">Participants évalués</p>
+        <h2>{{ stats.evaluations.total }}</h2>
+        <div class="muted" style="font-size:12px;">{{ stats.evaluations.total_items }} items d'évaluation</div>
+        {% if stats.evaluations.dont_portail and stats.evaluations.dont_portail['items'] %}
+          <div class="muted" style="font-size:12px;">dont {{ stats.evaluations.dont_portail['participants'] }} participant(s) · {{ stats.evaluations.dont_portail['items'] }} item(s) via le portail</div>
+        {% endif %}
+      </div>
+      <div>
+        <p class="muted">Compétences évaluées</p>
+        <h2>{{ stats.evaluations.nb_competences_uniques }}</h2>
+      </div>
+    </div>
+    <hr>
+    <table class="compact-table">
+      <thead><tr><th>État (items compétences)</th><th style="text-align:right;">Volume</th></tr></thead>
+      <tbody>
+        {% for label, nb in stats.evaluations.par_etat %}
+          <tr><td>{{ label }}</td><td style="text-align:right;">{{ nb }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="monster-card">
+    <div class="inline" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h3 style="margin:0;">Saisie libre (narratif)</h3>
+      <span class="tag-soft">Périmètre note : {{ "Tous secteurs" if narrative_scope == "__ALL__" else narrative_scope }}</span>
+    </div>
+    <form method="post" enctype="multipart/form-data" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="save_notes">
+      <div class="grid" style="grid-template-columns:1fr; gap:10px;">
+        <div>
+          <label>Faits marquants</label>
+          <textarea class="in" name="faits_marquants" rows="3" placeholder="Actions fortes, réussites, chiffres marquants...">{{ narrative.faits_marquants if narrative else '' }}</textarea>
+        </div>
+        <div>
+          <label>Difficultés rencontrées</label>
+          <textarea class="in" name="difficultes" rows="3" placeholder="Freins, points de vigilance, causes...">{{ narrative.difficultes if narrative else '' }}</textarea>
+        </div>
+        <div>
+          <label>Perspectives / actions</label>
+          <textarea class="in" name="perspectives" rows="3" placeholder="Priorités, plan d'action, besoins...">{{ narrative.perspectives if narrative else '' }}</textarea>
+        </div>
+        <div>
+          <label>Frise chronologique (1 ligne = Date | Titre | Détail)</label>
+          <textarea class="in" name="timeline_input" rows="5" placeholder="2026-01-12 | Lancement du cycle IA | 1ère session inter-secteurs&#10;2026-03-08 | Atelier parents | Forte mobilisation">{{ timeline_input or '' }}</textarea>
+        </div>
+        <div>
+          <label>Photographies marquantes</label>
+          <input class="in" type="file" name="photos" accept="image/*" multiple>
+          <div class="muted" style="font-size:12px; margin-top:4px;">Formats supportés : jpg, png, webp, gif.</div>
+        </div>
+
+        {% if narrative_photos and narrative_photos|length > 0 %}
+          <div>
+            <div class="muted" style="margin-bottom:6px;">Photos enregistrées (cocher pour retirer au prochain enregistrement) :</div>
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px;">
+              {% for p in narrative_photos %}
+                <label class="monster-card" style="padding:8px; display:flex; flex-direction:column; gap:6px;">
+                  <img src="{{ media_url(p.path) }}" alt="Photo marquante {{ loop.index }}" style="width:100%; height:120px; object-fit:cover; border-radius:8px;">
+                  <span style="font-size:12px; overflow-wrap:anywhere;">{{ p.path }}</span>
+                  <span style="font-size:12px;"><input type="checkbox" name="remove_photo" value="{{ p.path }}"> Retirer</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+      <div style="margin-top:10px; text-align:right;">
+        <button class="btn" type="submit">Enregistrer le contenu rédigé</button>
+      </div>
+    </form>
+  </div>
+
+  {% if timeline_rows and timeline_rows|length > 0 %}
+    <div class="monster-card">
+      <h3>Frise chronologique</h3>
+      <div class="stack" style="gap:8px;">
+        {% for row in timeline_rows %}
+          <div style="border-left:3px solid var(--accent); padding-left:10px;">
+            <div><strong>{{ row.date or "Date non précisée" }}</strong> — {{ row.titre or "Événement" }}</div>
+            {% if row.detail %}<div class="muted">{{ row.detail }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if narrative_photos and narrative_photos|length > 0 %}
+    <div class="monster-card">
+      <h3>Photographies marquantes</h3>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
+        {% for p in narrative_photos %}
+          <a href="{{ media_url(p.path) }}" target="_blank" class="monster-card" style="padding:8px; text-decoration:none; color:inherit;">
+            <img src="{{ media_url(p.path) }}" alt="Illustration bilan {{ loop.index }}" style="width:100%; height:160px; object-fit:cover; border-radius:8px;">
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="monster-card">
+    <h3>Détail par secteur</h3>
+    <p class="muted">Vue consolidée pour la direction et la finance, ou filtrée automatiquement pour un responsable de secteur.</p>
+    <table class="compact-table">
+      <thead>
+        <tr>
+          <th>Secteur</th>
+          <th style="text-align:right;">Ateliers</th>
+          <th style="text-align:right;">Séances</th>
+          <th style="text-align:right;">Présences</th>
+          <th style="text-align:right;">Participants uniques</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in stats.par_secteur %}
+          <tr>
+            <td>{{ row.secteur }}</td>
+            <td style="text-align:right;">{{ row.nb_ateliers }}</td>
+            <td style="text-align:right;">{{ row.nb_sessions }}</td>
+            <td style="text-align:right;">{{ row.nb_presences }}</td>
+            <td style="text-align:right;">{{ row.nb_participants_uniques }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .certificate-toolbar{max-width:210mm;margin:0 auto 16px;display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+  .certificate-print-area{display:grid;gap:16px}
+  .certificate-page{box-sizing:border-box;width:210mm;min-height:297mm;margin:0 auto;background:#fff;color:#111827;border:1px solid #d7dce5;box-shadow:0 16px 42px rgba(15,23,42,.18);padding:20mm;display:flex;flex-direction:column;font-family:Georgia,"Times New Roman",serif}
+  .certificate-page *{box-sizing:border-box}
+  .certificate-head{display:grid;grid-template-columns:minmax(0,1fr) 42mm;gap:18mm;align-items:start;margin-bottom:26mm}
+  .certificate-address{font-family:Arial,sans-serif;font-size:10.5pt;line-height:1.45;color:#1f2937}
+  .certificate-address strong{display:block;font-size:12pt;margin-bottom:4px;color:#111827}
+  .certificate-logo{display:flex;justify-content:flex-end;align-items:flex-start;min-height:28mm}
+  .certificate-logo img{max-width:38mm;max-height:28mm;object-fit:contain}
+  .certificate-logo-placeholder{width:28mm;height:28mm;border:1px solid #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;font-size:9pt;color:#64748b;text-align:center}
+  .certificate-title{text-align:center;text-transform:uppercase;letter-spacing:.06em;font-size:18pt;line-height:1.25;margin:0 0 18mm;color:#111827}
+  .certificate-body{font-size:12.5pt;line-height:1.75;color:#111827}
+  .certificate-body p{margin:0 0 10mm}
+  .certificate-metrics{margin:0 0 10mm 0;padding:0;list-style:none;display:grid;gap:4mm}
+  .certificate-metrics li{padding-left:9mm;position:relative}
+  .certificate-metrics li::before{content:"";position:absolute;left:0;top:.72em;width:4mm;border-top:1px solid #111827}
+  .certificate-warning{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:6px;padding:4mm;margin:0 0 9mm;font-family:Arial,sans-serif;font-size:10.5pt}
+  .certificate-table{width:100%!important;max-width:100%;min-width:0!important;table-layout:fixed;border-collapse:collapse;margin-top:3mm;font-family:Arial,sans-serif;font-size:8.8pt}
+  .certificate-table th,.certificate-table td{min-width:0!important;border:1px solid #cbd5e1;padding:2mm 2.4mm;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:normal}
+  .certificate-table th{background:#f8fafc;color:#334155;font-weight:700}
+  .certificate-table th:nth-child(1),.certificate-table td:nth-child(1){width:58%}
+  .certificate-table th:nth-child(2),.certificate-table td:nth-child(2){width:20%}
+  .certificate-table th:nth-child(3),.certificate-table td:nth-child(3){width:22%}
+  .certificate-source{margin-top:8mm;font-family:Arial,sans-serif;font-size:9.5pt;color:#475569}
+  .certificate-footer{margin-top:auto;display:grid;grid-template-columns:minmax(0,1fr) 58mm;gap:16mm;align-items:end;font-size:11.5pt;color:#111827}
+  .certificate-stamp{height:36mm;border:1px dashed #94a3b8;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;color:#475569;font-size:10pt;text-align:center}
+  @page{size:A4;margin:0}
+  @media print{
+    body{background:#fff!important}
+    body *{visibility:hidden!important}
+    .certificate-print-area,.certificate-print-area *{visibility:visible!important}
+    .certificate-print-area{position:absolute;left:0;top:0;width:100%;display:block}
+    .certificate-page{width:210mm;min-height:297mm;margin:0;border:0;box-shadow:none;break-after:page;page-break-after:always}
+    .certificate-page:last-child{break-after:auto;page-break-after:auto}
+    .certificate-toolbar{display:none!important}
+  }
+</style>
+
+<div class="certificate-toolbar">
+  <div>
+    <strong>{{ attestations|length }} attestation(s) générée(s)</strong>
+    <div class="muted">Source : présences d’émargement{% if secteur %} · {{ secteur }}{% endif %}</div>
+  </div>
+  <div class="inline-actions">
+    <button class="btn ok" type="button" onclick="window.print()">Imprimer</button>
+    <a class="btn" href="{{ url_for('activite.attestations') }}">Modifier la sélection</a>
+  </div>
+</div>
+
+<div class="certificate-print-area">
+  {% for att in attestations %}
+    {% set p = att.participant %}
+    <article class="certificate-page">
+      <header class="certificate-head">
+        <div class="certificate-address">
+          <strong>{{ document.centre_name }}</strong>
+          {% for line in document.centre_address.splitlines() %}
+            {% if line.strip() %}<div>{{ line }}</div>{% endif %}
+          {% endfor %}
+          {% if document.centre_contact %}<div>{{ document.centre_contact }}</div>{% endif %}
+        </div>
+        <div class="certificate-logo">
+          {% if ORGANIZATION_LOGO_URL or APP_LOGO_URL %}
+            <img src="{{ ORGANIZATION_LOGO_URL or APP_LOGO_URL }}" alt="Logo">
+          {% else %}
+            <div class="certificate-logo-placeholder">Logo</div>
+          {% endif %}
+        </div>
+      </header>
+
+      <h1 class="certificate-title">Attestation de présence et de participation</h1>
+
+      <section class="certificate-body">
+        <p>
+          Je soussigné(e), {{ document.signatory_title }}, atteste que
+          <strong>{{ p.prenom }} {{ p.nom }}</strong>
+          a participé aux activités {{ document.centre_reference }}.
+        </p>
+
+        {% if att.total_sessions == 0 %}
+          <div class="certificate-warning">
+            Aucune présence n’a été trouvée pour cette personne sur la période sélectionnée.
+          </div>
+        {% endif %}
+
+        <ul class="certificate-metrics">
+          {% if options.include_period %}
+            <li>
+              Période prise en compte :
+              {% if date_from and date_to %}
+                du {{ date_from.strftime('%d/%m/%Y') }} au {{ date_to.strftime('%d/%m/%Y') }}
+              {% elif date_from %}
+                depuis le {{ date_from.strftime('%d/%m/%Y') }}
+              {% elif date_to %}
+                jusqu’au {{ date_to.strftime('%d/%m/%Y') }}
+              {% else %}
+                ensemble des présences disponibles
+              {% endif %}.
+            </li>
+          {% endif %}
+          {% if options.include_hours %}
+            <li>Total d’heures réalisées : {{ att.total_hours_label }} heure{% if att.total_hours > 1 %}s{% endif %}.</li>
+          {% endif %}
+          {% if options.include_sessions %}
+            <li>Nombre de séances suivies : {{ att.total_sessions }} séance{% if att.total_sessions > 1 %}s{% endif %}.</li>
+          {% endif %}
+          {% if options.include_ateliers_count %}
+            <li>Nombre d’activités différentes : {{ att.activity_count }} activité{% if att.activity_count > 1 %}s{% endif %}.</li>
+          {% endif %}
+        </ul>
+
+        {% if options.include_activities_detail and att.activity_rows %}
+          <table class="certificate-table">
+            <thead>
+              <tr>
+                <th>Activité</th>
+                <th>Séances</th>
+                <th>Heures</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for activity in att.activity_rows %}
+                <tr>
+                  <td>{{ activity.name }}</td>
+                  <td>{{ activity.sessions }}</td>
+                  <td>{{ activity.hours_label }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+
+        {% if options.include_source %}
+          <div class="certificate-source">
+            Attestation établie à partir des feuilles d’émargement enregistrées dans l’application.
+          </div>
+        {% endif %}
+      </section>
+
+      <footer class="certificate-footer">
+        <div>
+          <div>Fait à {{ document.city }}, le {{ generated_on.strftime('%d/%m/%Y') }}</div>
+          <div style="margin-top:8mm;">{{ document.signatory_title }}</div>
+        </div>
+        <div class="certificate-stamp">Cachet et signature</div>
+      </footer>
+    </article>
+  {% endfor %}
+</div>
+{% endblock %}

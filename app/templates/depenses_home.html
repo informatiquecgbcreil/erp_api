@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+  <section class="screen-hero stack">
+    <div class="card-header">
+      <div>
+        <h1 class="card-title">Dépenses</h1>
+        <p class="card-subtitle">Accédez à la liste des dépenses ou enregistrez une nouvelle dépense.</p>
+      </div>
+    </div>
+
+    <div class="inline">
+      <a class="btn" href="{{ url_for('budget.depenses_list') }}">Liste des dépenses</a>
+      <a class="btn ok" href="{{ url_for('budget.depense_new') }}">Créer une dépense</a>
+    </div>
+
+    {{ ux.callout('À savoir', 'Le filtre « Subvention » de la liste permet de recentrer rapidement l’affichage sur un dossier précis.') }}
+  </section>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <section class="page-hero-soft">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1 class="page-title">Personnaliser mon accueil</h1>
+        <p class="page-subtitle">Choisis tes raccourcis et l’ordre des blocs visibles sur le tableau de bord.</p>
+      </div>
+      <div class="inline-actions">
+        <a class="btn" href="{{ url_for('main.dashboard') }}">Retour au tableau de bord</a>
+        <form method="post" action="{{ url_for('main.dashboard_reset') }}" onsubmit="return confirm('Remettre l’accueil par défaut ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+          <button class="btn btn-danger-outline" type="submit">Réinitialiser mon accueil</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <section class="section-card">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Affichage</h2>
+          <div class="muted">Choisis le mode affiché par défaut pour ton compte.</div>
+        </div>
+      </div>
+      <div class="quick-links-grid" style="grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));">
+        <label class="quick-link-card" style="cursor:pointer;">
+          <span class="eyebrow">✨</span>
+          <span class="title">Mode simple</span>
+          <span class="desc">Affiche d’abord les actions utiles au quotidien.</span>
+          <span><input type="radio" name="ui_mode" value="simple" {% if prefs.ui_mode == 'simple' %}checked{% endif %}> Utiliser ce mode</span>
+        </label>
+        <label class="quick-link-card" style="cursor:pointer;">
+          <span class="eyebrow">🧰</span>
+          <span class="title">Mode expert</span>
+          <span class="desc">Affiche l’interface complète en permanence.</span>
+          <span><input type="radio" name="ui_mode" value="expert" {% if prefs.ui_mode == 'expert' %}checked{% endif %}> Utiliser ce mode</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Mes actions rapides</h2>
+          <div class="muted">Choisis jusqu’à 6 raccourcis. Le premier sera affiché en premier sur l’accueil.</div>
+        </div>
+      </div>
+      <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));gap:12px;">
+        {% for idx in range(1, 7) %}
+          <label class="field-stack">
+            <span>Raccourci {{ idx }}</span>
+            <select class="in" name="quick_action_{{ idx }}">
+              <option value="">-- Aucun raccourci --</option>
+              {% for action in quick_actions_catalog %}
+                <option value="{{ action.key }}" {% if quick_slots[idx-1] == action.key %}selected{% endif %}>{{ action.icon }} {{ action.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="helper-banner" style="margin-top:12px;">
+        <strong>Conseil</strong>
+        <span class="muted">Pour un accueil très simple, garde 4 ou 5 raccourcis maximum.</span>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Blocs visibles sur l’accueil</h2>
+          <div class="muted">Tu peux afficher, masquer et réordonner les grands blocs du tableau de bord.</div>
+        </div>
+      </div>
+      <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;">
+        {% for widget in widgets_catalog %}
+          {% set state = widget_prefs.get(widget.key, {}) %}
+          <div class="recent-card">
+            <h3 style="margin-top:0;">{{ widget.label }}</h3>
+            <p class="muted">{{ widget.hint }}</p>
+            <label class="inline-actions" style="justify-content:flex-start;">
+              <input type="checkbox" name="widget_{{ widget.key }}_visible" value="1" {% if state.get('visible', true) %}checked{% endif %}>
+              <span>Afficher ce bloc</span>
+            </label>
+            <label class="field-stack" style="margin-top:10px;">
+              <span>Position</span>
+              <select class="in" name="widget_{{ widget.key }}_position">
+                {% for pos in range(1, 4) %}
+                  <option value="{{ pos }}" {% if state.get('position', loop.index) == pos %}selected{% endif %}>{{ pos }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <div class="inline-actions" style="justify-content:flex-end;">
+      <a class="btn" href="{{ url_for('main.dashboard') }}">Annuler</a>
+      <button class="btn btn-primary" type="submit">Enregistrer mon accueil</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block body %}
+
+<div class="stack">
+  <div class="card">
+    <h1>🏷️ Étiqueter les ateliers · Transitions</h1>
+    <p class="muted">
+      Cochez les thématiques de transition que chaque atelier touche (et, en option,
+      les objectifs sectoriels auxquels il contribue). Dès qu'un atelier est étiqueté,
+      ses séances, présences et éco-consommation alimentent le tableau de bord —
+      <strong>rien d'autre à saisir</strong>.
+    </p>
+    <div class="inline" style="gap:8px; flex-wrap:wrap;">
+      <a class="btn" href="{{ url_for('transitions.dashboard') }}">← Tableau de bord transitions</a>
+    </div>
+    <form method="get" class="inline" style="gap:8px; margin-top:10px;">
+      <input type="search" name="q" value="{{ q }}" placeholder="Filtrer les ateliers par nom"
+             aria-label="Filtrer les ateliers">
+      <button class="btn" type="submit">Filtrer</button>
+    </form>
+  </div>
+
+  {% if ateliers %}
+    {% for a in ateliers %}
+      <div class="card">
+        <h2 style="margin-top:0;">{{ a.nom }} <span class="muted" style="font-weight:400; font-size:14px;">· {{ a.secteur }}{% if a.est_intersecteur %} · intersecteur{% endif %}{% if not a.is_active %} · inactif{% endif %}</span></h2>
+        {% if can('transitions:edit') %}
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="atelier_id" value="{{ a.id }}">
+          <input type="hidden" name="q" value="{{ q }}">
+
+          <div class="inline" style="gap:14px; flex-wrap:wrap;">
+            <fieldset style="border:none; padding:0; margin:0;">
+              <legend class="muted" style="font-size:13px;">Thématiques</legend>
+              <div class="inline" style="gap:10px; flex-wrap:wrap;">
+                {% for th in thematiques %}
+                  <label style="white-space:nowrap;">
+                    <input type="checkbox" name="thematique_ids" value="{{ th.id }}"
+                           {% if th in a.transition_thematiques %}checked{% endif %}>
+                    {{ th.libelle }}
+                  </label>
+                {% endfor %}
+              </div>
+            </fieldset>
+          </div>
+
+          {% if objectifs %}
+          <div style="margin-top:8px;">
+            <fieldset style="border:none; padding:0; margin:0;">
+              <legend class="muted" style="font-size:13px;">Objectifs sectoriels (option)</legend>
+              <div class="inline" style="gap:10px; flex-wrap:wrap;">
+                {% for o in objectifs %}
+                  <label style="white-space:nowrap;" title="{{ o.libelle }}">
+                    <input type="checkbox" name="objectif_ids" value="{{ o.id }}"
+                           {% if o in a.transition_objectifs %}checked{% endif %}>
+                    {{ o.code }} <span class="muted">({{ o.secteur }})</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </fieldset>
+          </div>
+          {% endif %}
+
+          <button class="btn" type="submit" style="margin-top:10px;" data-pending-text="Enregistrement…">💾 Enregistrer</button>
+        </form>
+        {% else %}
+          <p class="muted">
+            Thématiques : {{ a.transition_thematiques|map(attribute='libelle')|join(', ') or 'aucune' }}
+          </p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="card">
+      <p class="muted">Aucun atelier dans le périmètre{% if q %} pour « {{ q }} »{% endif %}.</p>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

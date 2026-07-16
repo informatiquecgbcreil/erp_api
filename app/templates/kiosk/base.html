@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta name="theme-color" content="#2563eb"/>
+  <title>{{ title or 'Émargement' }} · {{ ORGANIZATION_NAME }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kiosk.css') }}">
+</head>
+<body class="k-body">
+  <div class="k-wrap {% block wrap_class %}{% endblock %}">
+    <header class="k-header">
+      {% if ORGANIZATION_LOGO_URL %}
+        <img class="k-header__logo" src="{{ ORGANIZATION_LOGO_URL }}" alt="">
+      {% elif APP_LOGO_URL %}
+        <img class="k-header__logo" src="{{ APP_LOGO_URL }}" alt="">
+      {% endif %}
+      <div>
+        <div class="k-header__org">{{ ORGANIZATION_NAME }}</div>
+        <div class="k-header__title">{% block header_title %}Émargement{% endblock %}</div>
+      </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+          <div class="k-flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block body %}{% endblock %}
+
+    <div class="k-footer">Espace d'émargement · {{ ORGANIZATION_NAME }}</div>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

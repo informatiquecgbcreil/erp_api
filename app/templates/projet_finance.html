@@ -1,0 +1,393 @@
+{% extends "layout.html" %}
+{% block body %}
+{% set k = finance.kpis %}
+<style>
+  .finance-shell{display:flex;flex-direction:column;gap:16px}
+  .finance-hero{
+    border:1px solid rgba(120,130,160,.22);
+    border-radius:24px;
+    padding:22px;
+    background:linear-gradient(135deg, rgba(59,130,246,.10), rgba(16,185,129,.07));
+  }
+  .finance-title{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .finance-title h1{margin:0}
+  .finance-tabs{display:flex;gap:8px;flex-wrap:wrap}
+  .finance-tabs .btn.ok{font-weight:800}
+  .finance-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .finance-card{
+    border:1px solid rgba(120,130,160,.22);
+    border-radius:18px;
+    padding:14px;
+    background:var(--card-bg, rgba(255,255,255,.72));
+    box-shadow:0 8px 24px rgba(15,23,42,.06);
+  }
+  .finance-card .label{font-size:.86rem;color:var(--muted,#667085);font-weight:700}
+  .finance-card .value{font-size:1.45rem;font-weight:900;margin-top:4px}
+  .finance-bar{height:12px;background:rgba(120,130,160,.18);border-radius:999px;overflow:hidden;margin-top:8px}
+  .finance-bar span{display:block;height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e);border-radius:999px}
+  .finance-bar.warn span{background:linear-gradient(90deg,#f97316,#facc15)}
+  .finance-bar.bad span{background:linear-gradient(90deg,#ef4444,#f97316)}
+  .finance-alerts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .finance-alert{border-radius:16px;padding:12px;border:1px solid rgba(120,130,160,.22);background:rgba(255,255,255,.65)}
+  .finance-alert.danger{border-color:rgba(239,68,68,.35)}
+  .finance-alert.warn{border-color:rgba(245,158,11,.35)}
+  .finance-alert.ok{border-color:rgba(34,197,94,.35)}
+  .finance-alert.info{border-color:rgba(59,130,246,.35)}
+  .finance-split{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+  .finance-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .finance-note{font-size:.92rem;color:var(--muted,#667085)}
+  .finance-table td,.finance-table th{vertical-align:top}
+  .quick-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .quick-action-card{border:1px solid rgba(120,130,160,.22);border-radius:18px;padding:14px;background:rgba(255,255,255,.55)}
+  .quick-action-card h3{margin-top:0}
+  .mini-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  @media(max-width:1000px){
+    .finance-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .finance-alerts,.finance-split,.quick-action-grid{grid-template-columns:1fr}
+  }
+  @media(max-width:640px){
+    .finance-kpis,.mini-form-grid{grid-template-columns:1fr}
+  }
+</style>
+
+<div class="finance-shell">
+
+  <div class="finance-hero">
+    <div class="finance-title">
+      <div>
+        <h1>Dossier financier</h1>
+        <p class="muted"><strong>{{ projet.nom }}</strong> · {{ projet.secteur }} · Exercice {{ year }}</p>
+      </div>
+      <div class="finance-actions">
+        <a class="btn" href="{{ url_for('projets.projets_edit', projet_id=projet.id) }}">Retour au projet</a>
+        <a class="btn" href="{{ url_for('projets.projets_list') }}">Tous les projets</a>
+        <a class="btn ok" href="{{ url_for('projets.finance_secteur', secteur=projet.secteur, year=year) }}">Pilotage annuel</a>
+      </div>
+    </div>
+
+    <form method="get" class="inline" style="margin-top:12px;">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <label class="muted">Exercice</label>
+      <select class="in" name="year" onchange="this.form.submit()">
+        {% for y in finance.years %}
+          <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  <div class="finance-kpis">
+    <div class="finance-card">
+      <div class="label">Budget prévu</div>
+      <div class="value">{{ "%.2f"|format(k.charges_prevues or 0) }}€</div>
+      <div class="finance-note">Charges prévues du projet.</div>
+    </div>
+    <div class="finance-card">
+      <div class="label">Financement sécurisé</div>
+      <div class="value">{{ "%.2f"|format(k.financement_reference or 0) }}€</div>
+      <div class="finance-bar {{ 'bad' if (k.pct_financement or 0) < 50 else ('warn' if (k.pct_financement or 0) < 90 else '') }}">
+        <span style="width:{{ k.pct_financement or 0 }}%"></span>
+      </div>
+      <div class="finance-note">{{ k.pct_financement or 0 }}% du budget prévu.</div>
+    </div>
+    <div class="finance-card">
+      <div class="label">Dépenses engagées</div>
+      <div class="value">{{ "%.2f"|format(k.depenses_total or 0) }}€</div>
+      <div class="finance-bar {{ 'bad' if (k.pct_depenses or 0) > 105 else ('warn' if (k.pct_depenses or 0) > 85 else '') }}">
+        <span style="width:{{ k.pct_depenses or 0 }}%"></span>
+      </div>
+      <div class="finance-note">{{ k.pct_depenses or 0 }}% du budget consommé.</div>
+    </div>
+    <div class="finance-card">
+      <div class="label">Solde exécuté</div>
+      <div class="value">{{ "%.2f"|format(k.solde_execution or 0) }}€</div>
+      <div class="finance-note">Reçu détecté - dépenses engagées.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="finance-tabs">
+      <a class="btn {% if tab == 'vue' %}ok{% endif %}" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='vue') }}">Vue d’ensemble</a>
+      <a class="btn {% if tab == 'budget' %}ok{% endif %}" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='budget') }}">Budget prévu</a>
+      <a class="btn {% if tab == 'financements' %}ok{% endif %}" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='financements') }}">Financements</a>
+      <a class="btn {% if tab == 'depenses' %}ok{% endif %}" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='depenses') }}">Dépenses & réalisé</a>
+      <a class="btn {% if tab == 'exports' %}ok{% endif %}" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='exports') }}">Exports</a>
+    </div>
+  </div>
+
+  {% if tab == 'vue' %}
+  <div class="finance-split">
+    <div class="card">
+      <h2>Lecture rapide</h2>
+      <div class="finance-kpis" style="grid-template-columns:repeat(2,minmax(0,1fr));">
+        <div class="finance-card">
+          <div class="label">Reste à financer</div>
+          <div class="value">{{ "%.2f"|format(k.reste_a_financer or 0) }}€</div>
+          <div class="finance-note">Charges prévues - financements sécurisés/demandés.</div>
+        </div>
+        <div class="finance-card">
+          <div class="label">Reste à encaisser</div>
+          <div class="value">{{ "%.2f"|format(k.reste_a_encaisser or 0) }}€</div>
+          <div class="finance-note">Attribué - reçu.</div>
+        </div>
+        <div class="finance-card">
+          <div class="label">Reste à dépenser</div>
+          <div class="value">{{ "%.2f"|format(k.reste_a_depenser or 0) }}€</div>
+          <div class="finance-note">Budget prévu - dépenses engagées.</div>
+        </div>
+        <div class="finance-card">
+          <div class="label">Dossiers financeurs</div>
+          <div class="value">{{ k.nb_dossiers }}</div>
+          <div class="finance-note">{{ k.nb_subventions }} subvention(s), {{ k.nb_depenses }} dépense(s).</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Alertes</h2>
+      <div class="finance-alerts">
+        {% for a in finance.alerts %}
+          <div class="finance-alert {{ a.level }}">
+            <strong>{{ "OK" if a.level == "ok" else ("Attention" if a.level == "warn" else ("Alerte" if a.level == "danger" else "Info")) }}</strong>
+            <div>{{ a.text }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Actions rapides</h2>
+    <p class="muted">P0.2B : tu peux maintenant poser les bases financières directement depuis le dossier projet, sans partir en exploration spéléologique dans les menus.</p>
+    <div class="finance-actions">
+      <a class="btn" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='budget') }}">Ajouter du budget prévu</a>
+      <a class="btn" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='financements') }}">Créer / rattacher un financement</a>
+      <a class="btn" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='depenses') }}">Ajouter une dépense</a>
+      <a class="btn" href="{{ url_for('projets.projet_budget_synthese', projet_id=projet.id) }}">Ancien budget AAP</a>
+      <a class="btn" href="{{ url_for('previsionnel.index') }}">Budgets prévisionnels</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'budget' %}
+  <div class="quick-action-grid">
+    <div class="quick-action-card">
+      <h3>Ajouter une charge prévue</h3>
+      <form method="post" action="{{ url_for('projets.projet_finance_action', projet_id=projet.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="action" value="quick_charge">
+        <div class="mini-form-grid">
+          <label class="field-stack"><span>Libellé</span><input class="in" name="libelle" placeholder="Petit équipement, animation..." required></label>
+          <label class="field-stack"><span>Compte</span><input class="in" name="code_plan" value="60"></label>
+          <label class="field-stack"><span>Montant prévu</span><input class="in" name="montant_previsionnel" inputmode="decimal" placeholder="Ex. 1200"></label>
+          <label class="field-stack"><span>Bloc</span><select class="in" name="bloc"><option value="directe">Directe</option><option value="indirecte">Indirecte</option></select></label>
+        </div>
+        <label class="field-stack"><span>Commentaire</span><input class="in" name="commentaire"></label>
+        <button class="btn ok" type="submit">Ajouter la charge</button>
+      </form>
+    </div>
+    <div class="quick-action-card">
+      <h3>Ajouter un produit prévu</h3>
+      <form method="post" action="{{ url_for('projets.projet_finance_action', projet_id=projet.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="action" value="quick_produit">
+        <div class="mini-form-grid">
+          <label class="field-stack"><span>Financeur</span><input class="in" name="financeur" placeholder="CAF, QPV, Ville..." required></label>
+          <label class="field-stack"><span>Catégorie</span><select class="in" name="categorie"><option value="caf">CAF</option><option value="etat">État</option><option value="commune">Commune</option><option value="departement">Département</option><option value="region">Région</option><option value="prive">Privé</option><option value="autofinancement">Autofinancement</option><option value="autre">Autre</option></select></label>
+          <label class="field-stack"><span>Demandé</span><input class="in" name="montant_demande" inputmode="decimal" placeholder="Ex. 5000"></label>
+          <label class="field-stack"><span>Accordé</span><input class="in" name="montant_accorde" inputmode="decimal" placeholder="Ex. 4000"></label>
+        </div>
+        <button class="btn ok" type="submit">Ajouter le produit</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Budget prévu issu du prévisionnel global</h2>
+    <p class="muted">Lignes du budget prévisionnel annuel rattachées directement à ce projet.</p>
+    <div class="tablewrap clean wide">
+      <table class="table finance-table">
+        <thead><tr><th>Nature</th><th>Compte</th><th>Libellé</th><th>Montant</th><th>Commentaire</th></tr></thead>
+        <tbody>
+          {% for l in finance.prev_lines %}
+          <tr>
+            <td>{{ "Produit" if l.nature == "produit" else "Charge" }}</td>
+            <td>{{ l.compte }}</td>
+            <td><strong>{{ l.libelle }}</strong></td>
+            <td>{{ "%.2f"|format(l.montant or 0) }}€</td>
+            <td>{{ l.commentaire or "" }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">Aucune ligne prévisionnelle rattachée à ce projet pour {{ year }}.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Ancien budget projet / AAP</h2>
+    <p class="muted">Ces données viennent du module historique Charges / Produits / Ventilation du projet.</p>
+    <div class="finance-kpis">
+      <div class="finance-card"><div class="label">Charges AAP prévues</div><div class="value">{{ "%.2f"|format(k.aap_charges_prevues or 0) }}€</div></div>
+      <div class="finance-card"><div class="label">Charges AAP réelles</div><div class="value">{{ "%.2f"|format(k.aap_charges_reelles or 0) }}€</div></div>
+      <div class="finance-card"><div class="label">Produits AAP accordés</div><div class="value">{{ "%.2f"|format(k.aap_produits_accordes or 0) }}€</div></div>
+      <div class="finance-card"><div class="label">Ventilé</div><div class="value">{{ "%.2f"|format(k.aap_ventile or 0) }}€</div></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'financements' %}
+  <div class="quick-action-grid">
+    <div class="quick-action-card">
+      <h3>Créer une subvention liée</h3>
+      <form method="post" action="{{ url_for('projets.projet_finance_action', projet_id=projet.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="action" value="create_subvention_linked">
+        <div class="mini-form-grid">
+          <label class="field-stack"><span>Nom</span><input class="in" name="nom" placeholder="CAF - Accès aux droits" required></label>
+          <label class="field-stack"><span>Demandé</span><input class="in" name="montant_demande" inputmode="decimal" placeholder="Ex. 5000"></label>
+          <label class="field-stack"><span>Attribué</span><input class="in" name="montant_attribue" inputmode="decimal" placeholder="Ex. 4000"></label>
+          <label class="field-stack"><span>Reçu</span><input class="in" name="montant_recu" inputmode="decimal" placeholder="Ex. 2000"></label>
+        </div>
+        <label class="inline" style="margin:8px 0;"><input type="checkbox" name="create_product_line" value="1" checked> Créer aussi une ligne produit 74 dans la subvention</label>
+        <button class="btn ok" type="submit">Créer et rattacher</button>
+      </form>
+    </div>
+    <div class="quick-action-card">
+      <h3>Rattacher une subvention existante</h3>
+      {% if finance.available_subventions %}
+      <form method="post" action="{{ url_for('projets.projet_finance_action', projet_id=projet.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="action" value="link_subvention">
+        <label class="field-stack"><span>Subvention disponible</span><select class="in" name="subvention_id" required>{% for s in finance.available_subventions %}<option value="{{ s.id }}">{{ s.nom }} — demandé {{ "%.2f"|format(s.montant_demande or 0) }}€</option>{% endfor %}</select></label>
+        <button class="btn ok" type="submit">Rattacher au projet</button>
+      </form>
+      {% else %}
+        <p class="muted">Aucune subvention non rattachée disponible pour {{ projet.secteur }} en {{ year }}.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Subventions rattachées au projet</h2>
+    <div class="tablewrap clean wide">
+      <table class="table finance-table">
+        <thead><tr><th>Subvention</th><th>Demandé</th><th>Attribué</th><th>Reçu</th><th>Lignes</th><th>Engagé</th><th></th></tr></thead>
+        <tbody>
+        {% for s in finance.subventions %}
+          <tr>
+            <td><strong>{{ s.nom }}</strong><br><span class="muted">{{ s.secteur }} · {{ s.annee_exercice }}</span></td>
+            <td>{{ "%.2f"|format(s.montant_demande or 0) }}€</td>
+            <td>{{ "%.2f"|format(s.montant_attribue or 0) }}€</td>
+            <td>{{ "%.2f"|format(s.montant_recu or 0) }}€</td>
+            <td>{{ "%.2f"|format(s.total_reel_lignes or 0) }}€</td>
+            <td>{{ "%.2f"|format(s.total_engage or 0) }}€</td>
+            <td><a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=s.id) }}">Ouvrir</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="muted">Aucune subvention rattachée à ce projet pour {{ year }}.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Dossiers / budgets d’appels à projet</h2>
+    <div class="tablewrap clean wide">
+      <table class="table finance-table">
+        <thead><tr><th>Dossier</th><th>Financeur</th><th>Charges retenues</th><th>Produits retenus</th><th>Solde</th><th></th></tr></thead>
+        <tbody>
+        {% for a in finance.dossiers %}
+          <tr>
+            <td><strong>{{ a.nom }}</strong><br><span class="muted">{{ a.statut }}</span></td>
+            <td>{{ a.financeur or (a.subvention.nom if a.subvention else "") }}</td>
+            <td>{{ "%.2f"|format(a.total_charges or 0) }}€</td>
+            <td>{{ "%.2f"|format(a.total_produits or 0) }}€</td>
+            <td>{{ "%.2f"|format(a.solde or 0) }}€</td>
+            <td><a class="btn" href="{{ url_for('previsionnel.appel_detail', appel_id=a.id) }}">Ouvrir</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="muted">Aucun dossier d’appel à projet lié.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'depenses' %}
+  <div class="quick-action-card">
+    <h3>Ajouter une dépense rapide</h3>
+    {% if finance.subvention_charge_lines %}
+    <form method="post" action="{{ url_for('projets.projet_finance_action', projet_id=projet.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="year" value="{{ year }}">
+      <input type="hidden" name="action" value="quick_depense">
+      <div class="mini-form-grid">
+        <label class="field-stack"><span>Ligne de charge subvention</span><select class="in" name="ligne_budget_id" required>{% for l in finance.subvention_charge_lines %}<option value="{{ l.id }}">{{ l.source_sub.nom }} — {{ l.compte }} {{ l.libelle }} · reste {{ "%.2f"|format(l.reste or 0) }}€</option>{% endfor %}</select></label>
+        <label class="field-stack"><span>Charge projet liée</span><select class="in" name="charge_projet_id"><option value="">Non affectée</option>{% for c in finance.aap_charges %}<option value="{{ c.id }}">{{ c.code_plan }} — {{ c.libelle }}</option>{% endfor %}</select></label>
+        <label class="field-stack"><span>Libellé</span><input class="in" name="libelle" required placeholder="Facture, achat, prestation..."></label>
+        <label class="field-stack"><span>Montant</span><input class="in" name="montant" inputmode="decimal" required placeholder="Ex. 155"></label>
+        <label class="field-stack"><span>Date</span><input class="in" type="date" name="date_paiement"></label>
+        <label class="field-stack"><span>Fournisseur</span><input class="in" name="fournisseur"></label>
+        <label class="field-stack"><span>Référence</span><input class="in" name="reference_piece"></label>
+        <label class="field-stack"><span>Type</span><select class="in" name="type_depense"><option>Fonctionnement</option><option>Investissement</option><option>Prestations</option><option>Déplacements</option><option>Autre</option></select></label>
+      </div>
+      <button class="btn ok" type="submit">Créer la dépense</button>
+      <p class="muted">La dépense sera imputée à 100% sur la ligne choisie. Clique ensuite sur “Ouvrir / répartir” pour la partager entre CAF, QPV, fonds propres, etc.</p>
+    </form>
+    {% else %}
+      <p class="muted">Aucune ligne de charge disponible. Crée d’abord une subvention liée avec au moins une ligne de charge.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Dépenses & réalisé</h2>
+    <p class="muted">Dépenses détectées via les subventions rattachées au projet et/ou via les charges projet.</p>
+    <div class="tablewrap clean wide">
+      <table class="table finance-table">
+        <thead><tr><th>Date</th><th>Dépense</th><th>Montant</th><th>Affecté</th><th>Reste</th><th>Fournisseur</th><th>Ligne budgétaire</th><th>Charge projet</th><th></th></tr></thead>
+        <tbody>
+          {% for d in finance.depenses %}
+          <tr>
+            <td>{{ d.date_paiement or d.created_at.date() if d.created_at else "" }}</td>
+            <td><strong>{{ d.libelle }}</strong><br><span class="muted">{{ d.reference_piece or "" }}</span></td>
+            <td>{{ "%.2f"|format(d.montant or 0) }}€</td>
+            <td>{{ "%.2f"|format(d.total_affecte or 0) }}€</td>
+            <td>{{ "%.2f"|format(d.reste_a_affecter or 0) }}€</td>
+            <td>{{ d.fournisseur or "" }}</td>
+            <td>{% if d.budget_source %}{{ d.budget_source.compte }} — {{ d.budget_source.libelle }}{% else %}<span class="muted">Multi-affectation</span>{% endif %}</td>
+            <td>{% if d.charge_projet %}{{ d.charge_projet.libelle }}{% else %}<span class="muted">Non affectée</span>{% endif %}</td>
+            <td><a class="btn" href="{{ url_for('budget.depense_edit', depense_id=d.id) }}">Ouvrir / répartir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="muted">Aucune dépense détectée pour ce projet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'exports' %}
+  <div class="card">
+    <h2>Exports et sorties utiles</h2>
+    <p class="muted">Cette première version centralise les liens. Les exports “dossier financier projet” viendront en P0.2B.</p>
+    <div class="finance-actions">
+      <a class="btn" href="{{ url_for('projets.projet_budget_synthese', projet_id=projet.id) }}">Synthèse budget AAP</a>
+      <a class="btn" href="{{ url_for('previsionnel.index') }}">Exports prévisionnels</a>
+      {% for a in finance.dossiers %}
+        <a class="btn" href="{{ url_for('previsionnel.export_appel', appel_id=a.id) }}">Exporter {{ a.nom }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

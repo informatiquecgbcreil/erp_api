@@ -1,0 +1,308 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="page-shell long-form-shell stack">
+  <style>
+    .guide-card{border:1px solid var(--border-soft);border-radius:18px;background:color-mix(in srgb, var(--surface-soft) 92%, transparent);padding:14px 16px}
+    .guide-card h2,.guide-card h3{margin:0 0 6px 0}
+    .guide-card p{margin:0;color:var(--muted);line-height:1.5}
+    .mini-steps{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .mini-step{border:1px solid var(--border-soft);border-radius:999px;padding:6px 10px;font-size:12px;background:color-mix(in srgb, var(--surface) 88%, transparent)}
+    .section-card{border:1px solid var(--border-soft);border-radius:20px;padding:16px;background:var(--surface);box-shadow:var(--shadow)}
+    .section-card + .section-card{margin-top:14px}
+    .section-card__title{margin:0 0 4px 0;font-size:20px}
+    .section-card__subtitle{margin:0 0 12px 0;color:var(--muted);line-height:1.5}
+    .field-help{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+    .field-stack label{font-weight:800;color:var(--text)}
+    .field-stack label .req{color:var(--danger)}
+    .field-stack .in{width:100%}
+    .details-soft{border:1px solid var(--border-soft);border-radius:16px;padding:12px;background:color-mix(in srgb, var(--surface-soft) 92%, transparent)}
+    .details-soft > summary{cursor:pointer;font-weight:800;list-style:none}
+    .details-soft > summary::-webkit-details-marker{display:none}
+    .form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .form-actions .btn{min-width:160px;text-align:center}
+  </style>
+
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">{{ 'Ajouter un participant' if not item else 'Modifier une fiche participant' }}</h1>
+      <p class="page-subtitle">Une fiche simple, lisible et rassurante. Commence par l’essentiel, puis ouvre les champs complémentaires seulement si tu en as besoin.</p>
+    </div>
+    <div class="hero-actions">
+      {% if item %}<a class="btn" href="{{ url_for('participants.synthese_participant', participant_id=item.id) }}">Synthèse</a>{% endif %}
+      <a class="btn" href="{{ url_for('participants.list_participants') }}">⬅ Retour à la liste</a>
+    </div>
+  </div>
+
+  <div class="guide-card">
+    <h2>Avant de commencer</h2>
+    <p>Les champs vraiment utiles au quotidien sont en haut. Rien ne t’oblige à tout remplir d’un coup. Le but est surtout de retrouver la personne facilement et de savoir dans quel cadre elle est suivie.</p>
+    <div class="mini-steps">
+      <span class="mini-step">1. Identité</span>
+      <span class="mini-step">2. Contact</span>
+      <span class="mini-step">3. Localisation</span>
+      <span class="mini-step">4. Informations complémentaires</span>
+    </div>
+  </div>
+
+  {% if item and not is_editable %}
+    <div class="guide-card">🔒 <strong>Lecture seule :</strong> ce participant a été créé pour <strong>{{ item.created_secteur or '—' }}</strong>. Tu peux consulter la fiche et l’utiliser pour l’émargement, mais pas la modifier.</div>
+  {% endif %}
+
+  {% if doublons_candidats %}
+    <div class="section-card" style="border:2px solid rgba(245,158,11,.5); background:rgba(245,158,11,.07);">
+      <h2 class="section-card__title" style="margin-top:0;">🤔 Cette personne existe peut-être déjà</h2>
+      <p class="section-card__subtitle">Avant de créer une nouvelle fiche, vérifie qu'il ne s'agit pas d'une de ces personnes (une fiche en double fausse toutes les statistiques) :</p>
+      <div class="person-list" style="display:flex; flex-direction:column; gap:6px;">
+        {% for c in doublons_candidats %}
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; border:1px solid rgba(15,23,42,.12); border-radius:8px; padding:8px 12px; background:#fff;">
+            <span><strong>{{ c.nom }} {{ c.prenom }}</strong>{% if c.ville %} · {{ c.ville }}{% endif %}{% if c.date_naissance %} · né(e) le {{ c.date_naissance.strftime('%d/%m/%Y') }}{% endif %}{% if c.created_secteur %} · secteur {{ c.created_secteur }}{% endif %}</span>
+            <a class="btn" href="{{ url_for('participants.synthese_participant', participant_id=c.id) }}">✔ C'est cette personne</a>
+          </div>
+        {% endfor %}
+      </div>
+      <form method="post" style="margin-top:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="force_creation" value="1">
+        {% for champ, valeur in pending.items() %}
+          {% if champ not in ('csrf_token', 'force_creation') %}<input type="hidden" name="{{ champ }}" value="{{ valeur }}">{% endif %}
+        {% endfor %}
+        <button class="btn btn-danger-outline" type="submit">Non, c'est une nouvelle personne → créer quand même</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <form method="post" class="stack" data-pending-form="participant">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <section class="section-card">
+      <h2 class="section-card__title">Informations essentielles</h2>
+      <p class="section-card__subtitle">Ces champs suffisent pour créer une fiche exploitable rapidement.</p>
+      <div class="form-grid-2 stretch-input">
+        <div class="field-stack">
+          <label>Nom <span class="req">*</span></label>
+          <input class="in" type="text" name="nom" value="{{ item.nom if item else '' }}" {% if item and not is_editable %}disabled{% endif %}>
+          <div class="field-help">Nom de famille de la personne.</div>
+        </div>
+        <div class="field-stack">
+          <label>Prénom <span class="req">*</span></label>
+          <input class="in" type="text" name="prenom" value="{{ item.prenom if item else '' }}" {% if item and not is_editable %}disabled{% endif %}>
+          <div class="field-help">Prénom utilisé au quotidien.</div>
+        </div>
+        <div class="field-stack">
+          <label>Téléphone</label>
+          <input class="in" type="text" name="telephone" value="{{ item.telephone if item and item.telephone else '' }}" {% if item and not is_editable %}disabled{% endif %}>
+          <div class="field-help">Pratique pour recontacter la personne ou confirmer une présence.</div>
+        </div>
+        <div class="field-stack">
+          <label>Email</label>
+          <input class="in" type="email" name="email" value="{{ item.email if item and item.email else '' }}" {% if item and not is_editable %}disabled{% endif %}>
+          <div class="field-help">Laisse vide si la personne n’en a pas ou ne l’utilise pas.</div>
+        </div>
+        <div class="field-stack">
+          <label>Date de naissance</label>
+          <input class="in" type="date" name="date_naissance" value="{% if item and item.date_naissance %}{{ item.date_naissance }}{% endif %}" {% if item and not is_editable %}disabled{% endif %}>
+          <div class="field-help">Sert aux statistiques par tranches d’âge (CAF, SENACS, bilans financeurs). Complétable plus tard depuis l’annuaire.</div>
+        </div>
+        <div class="field-stack">
+          <label>Genre</label>
+          {% set g = (item.genre if item and item.genre else '') %}
+          <select class="in" name="genre" {% if item and not is_editable %}disabled{% endif %}>
+            <option value="" {% if not g %}selected{% endif %}>—</option>
+            <option value="Homme" {% if g == 'Homme' %}selected{% endif %}>Homme</option>
+            <option value="Femme" {% if g == 'Femme' %}selected{% endif %}>Femme</option>
+            <option value="Autre" {% if g == 'Autre' %}selected{% endif %}>Autre</option>
+          </select>
+          <div class="field-help">Utilisé uniquement pour les statistiques agrégées.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <h2 class="section-card__title">Adresse et rattachement</h2>
+      <p class="section-card__subtitle">Cette partie aide pour les statistiques, les quartiers et le suivi par secteur.</p>
+      <div class="form-grid-2 stretch-input">
+        <div class="field-stack grow-2">
+          <label>Adresse</label>
+          <input class="in" type="text" name="adresse" value="{{ item.adresse if item and item.adresse else '' }}" {% if item and not is_editable %}disabled{% endif %}>
+        </div>
+        <div class="field-stack">
+          <label>Ville</label>
+          <input class="in" type="text" name="ville" value="{{ item.ville if item and item.ville else '' }}" data-ville-input {% if item and not is_editable %}disabled{% endif %}>
+          <div class="field-help">Exemple : Creil, Nogent-sur-Oise…</div>
+        </div>
+        <div class="field-stack">
+          <label>Quartier</label>
+          <select class="in" name="quartier_id" data-quartier-select {% if item and not is_editable %}disabled{% endif %}>
+            <option value="">—</option>
+            {% for q in quartiers %}
+              <option value="{{ q.id }}" data-ville="{{ q.ville }}" {% if item and item.quartier_id == q.id %}selected{% endif %}>{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
+            {% endfor %}
+          </select>
+          <div class="field-help">La liste se filtre automatiquement selon la ville saisie.</div>
+        </div>
+        <div class="field-stack">
+          <label>Secteur de création</label>
+          {% if can('participants:view_all') %}
+            <select class="in" name="created_secteur">
+              <option value="">—</option>
+              {% for sec in secteurs_creation %}
+                <option value="{{ sec }}" {% if ((item.created_secteur if item else secteur) == sec) %}selected{% endif %}>{{ sec }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input class="in" type="text" value="{{ (item.created_secteur if item and item.created_secteur else secteur) or '—' }}" disabled>
+            <input type="hidden" name="created_secteur" value="{{ (item.created_secteur if item and item.created_secteur else secteur) or '' }}">
+          {% endif %}
+          <div class="field-help">Le secteur permet de savoir qui suit la personne et où la retrouver.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <h2 class="section-card__title">Droit à l'image (RGPD)</h2>
+      <p class="section-card__subtitle">Demandez à la personne si elle accepte d'apparaître sur des photos ou vidéos (bilans, communication). Sa réponse est enregistrée avec la date et votre nom : c'est la preuve du recueil.</p>
+      <div class="form-grid-2 stretch-input">
+        <div class="field-stack">
+          <label>Réponse de la personne</label>
+          {% set di = (item.droit_image_statut if item and item.droit_image_statut else 'non_renseigne') %}
+          <select class="in" name="droit_image_statut" {% if item and not is_editable %}disabled{% endif %}>
+            <option value="non_renseigne" {% if di == 'non_renseigne' %}selected{% endif %}>Non renseigné</option>
+            <option value="accepte" {% if di == 'accepte' %}selected{% endif %}>Accepte (photos/vidéos autorisées)</option>
+            <option value="refuse" {% if di == 'refuse' %}selected{% endif %}>Refuse (aucune photo/vidéo)</option>
+          </select>
+          {% if item and item.droit_image_date %}
+            <div class="field-help">Recueilli le {{ item.droit_image_date.strftime('%d/%m/%Y') }} par {{ item.droit_image_recueilli_par or '—' }}.</div>
+          {% else %}
+            <div class="field-help">La date et votre nom seront enregistrés automatiquement.</div>
+          {% endif %}
+        </div>
+        {% if item %}
+        <div class="field-stack">
+          <label>Droit d'accès (RGPD)</label>
+          <a class="btn" href="{{ url_for('participants.export_rgpd', participant_id=item.id) }}">Exporter toutes les données de la personne</a>
+          <div class="field-help">À remettre à la personne si elle demande une copie de ses données (obligation légale, délai d'un mois).</div>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    {% if item and is_editable and can('participants:anonymize') %}
+    <section class="section-card">
+      <h2 class="section-card__title">Anonymisation (RGPD)</h2>
+      <p class="section-card__subtitle">
+        Efface définitivement ce qui identifie la personne — nom, prénom, adresse, ville,
+        e-mail, téléphone, données du parcours insertion et droit à l'image — tout en
+        conservant les présences et les chiffres : vos statistiques et bilans restent justes.
+        La fiche devient « ANONYME P{{ item.id }} ». À utiliser quand la personne le demande
+        (droit à l'effacement) ou qu'elle ne fréquente plus la structure.
+      </p>
+      <div class="inline-actions" style="flex-wrap:wrap; gap:10px;">
+        <form method="post" action="{{ url_for('participants.anonymize_participant', participant_id=item.id) }}"
+              onsubmit="return confirm('Anonymiser définitivement cette fiche ? Le nom et les coordonnées seront effacés, les statistiques conservées. Cette action est irréversible.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn warn" type="submit">Anonymiser cette fiche</button>
+        </form>
+        {% if can('participants:view_all') or can('scope:all_secteurs') %}
+        <form method="post" action="{{ url_for('participants.anonymize_participant', participant_id=item.id) }}"
+              onsubmit="return confirm('Anonymisation renforcée : le genre, la date de naissance et le quartier seront AUSSI effacés (les statistiques démographiques perdront cette fiche). Continuer ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="strict" value="1">
+          <button class="btn warn" type="submit">Anonymisation renforcée</button>
+        </form>
+        {% endif %}
+        {% if can('controle:view') %}
+        <a class="btn" href="{{ url_for('main.purge_rgpd') }}" title="Règles d'anonymisation automatique des personnes inactives.">⚙️ Purge automatique (règles)</a>
+        {% endif %}
+      </div>
+      <div class="field-help" style="margin-top:8px;">
+        L'anonymisation automatique s'occupe déjà des personnes sans activité depuis plusieurs
+        années (voir Contrôle → Purge RGPD). Ce bouton sert pour un cas individuel immédiat.
+      </div>
+    </section>
+    {% endif %}
+
+    <details class="details-soft" open>
+      <summary>Informations complémentaires</summary>
+      <div class="spacer"></div>
+      <div class="form-grid-2 stretch-input">
+        <div class="field-stack">
+          <label>Type de public {{ ux.tooltip("Distingue les habitants (comptés dans les statistiques CAF/SENACS) des bénévoles, salariés et partenaires. Dans le doute : Habitant.") }}</label>
+          {% set tp = (item.type_public if item and item.type_public else 'H') %}
+          <select class="in" name="type_public" {% if item and not is_editable %}disabled{% endif %}>
+            <option value="H" {% if tp == 'H' %}selected{% endif %}>Habitant</option>
+            <option value="P" {% if tp == 'P' %}selected{% endif %}>Partenaire</option>
+            <option value="B" {% if tp == 'B' %}selected{% endif %}>Bénévole</option>
+            <option value="S" {% if tp == 'S' %}selected{% endif %}>Salarié</option>
+            <option value="A" {% if tp == 'A' %}selected{% endif %}>Autre</option>
+          </select>
+        </div>
+      </div>
+    </details>
+
+    {% if can_view_sensitive_insertion %}
+      <section class="section-card">
+        <h2 class="section-card__title">Parcours insertion</h2>
+        <p class="section-card__subtitle">Section sensible réservée aux profils habilités. Elle n’est pas visible pour les autres collègues.</p>
+        {% if item %}
+          <div class="field-help" style="margin-bottom:12px;">Le module insertion détaillé reste disponible. <a href="{{ url_for('insertion.participant_detail', participant_id=item.id) }}">Ouvrir la fiche insertion séparée</a>.</div>
+        {% endif %}
+        <div class="form-grid-2 stretch-input">
+          <div class="field-stack">
+            <label>Pays d'origine</label>
+            <input class="in" type="text" name="pays_origine" value="{{ item.pays_origine if item and item.pays_origine else '' }}" {% if not can_edit_insertion %}disabled{% endif %}>
+          </div>
+          <div class="field-stack">
+            <label>Type de titre de séjour</label>
+            <select class="in" name="titre_sejour_type" {% if not can_edit_insertion %}disabled{% endif %}>
+              <option value="" {% if not item or not item.titre_sejour_type %}selected{% endif %}>Non renseigné</option>
+              {% for val in titre_sejour_options %}
+                <option value="{{ val }}" {% if item and item.titre_sejour_type == val %}selected{% endif %}>{{ val }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field-stack">
+            <label>Date d'entrée dans le dispositif</label>
+            <input class="in" type="date" name="date_entree_dispositif" value="{% if item and item.date_entree_dispositif %}{{ item.date_entree_dispositif }}{% endif %}" {% if not can_edit_insertion %}disabled{% endif %}>
+          </div>
+          <div class="field-stack">
+            <label>Date de sortie du dispositif</label>
+            <input class="in" type="date" name="date_sortie_dispositif" value="{% if item and item.date_sortie_dispositif %}{{ item.date_sortie_dispositif }}{% endif %}" {% if not can_edit_insertion %}disabled{% endif %}>
+          </div>
+          <div class="field-stack">
+            <label>Diplôme linguistique</label>
+            <select class="in" name="diplome_obtenu" {% if not can_edit_insertion %}disabled{% endif %}>
+              <option value="" {% if not item or not item.diplome_obtenu %}selected{% endif %}>Non renseigné</option>
+              {% for val in diplome_options %}
+                <option value="{{ val }}" {% if item and item.diplome_obtenu == val %}selected{% endif %}>{{ val }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field-stack">
+            <label>CIR obtenu</label>
+            <select class="in" name="cir_obtenu" {% if not can_edit_insertion %}disabled{% endif %}>
+              <option value="" {% if not item or item.cir_obtenu is none %}selected{% endif %}>Non renseigné</option>
+              <option value="1" {% if item and item.cir_obtenu is sameas true %}selected{% endif %}>Oui</option>
+              <option value="0" {% if item and item.cir_obtenu is sameas false %}selected{% endif %}>Non</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="guide-card">
+      <h3>Avant d’enregistrer</h3>
+      <p>Vérifie surtout le nom, le prénom et au moins un moyen de rattacher la personne à ton suivi : téléphone, email, ville ou secteur. Le reste peut être complété plus tard.</p>
+    </div>
+
+    <div class="form-actions">
+      {% if not item %}
+        <button class="btn ok" type="submit">Créer la fiche</button>
+      {% elif is_editable %}
+        <button class="btn ok" type="submit">Enregistrer les modifications</button>
+      {% endif %}
+      <a class="btn" href="{{ url_for('participants.list_participants') }}">Revenir sans enregistrer</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

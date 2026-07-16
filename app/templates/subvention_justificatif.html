@@ -1,0 +1,143 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>@media print { .no-print { display:none !important; } }</style>
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">📊 Justificatif — {{ sub.nom }}</h1>
+      <p class="page-subtitle">
+        {% if sub.financeur %}Financeur : <strong>{{ sub.financeur }}</strong> · {% endif %}
+        exercice {{ annee }} · montant {{ base_label }} : <strong>{{ '%.2f'|format(montant_base) }} €</strong>.
+        Activité réelle mesurée par l'émargement sur les ateliers financés.
+      </p>
+    </div>
+    <div class="hero-actions no-print">
+      <a class="btn" href="{{ url_for('main.subvention_pilotage', subvention_id=sub.id) }}">⬅ Pilotage</a>
+      <a class="btn" href="{{ url_for('main.subvention_justificatif_xlsx', subvention_id=sub.id) }}">⬇ Export Excel</a>
+      <a class="btn" href="{{ url_for('main.subvention_feuille_temps', subvention_id=sub.id) }}">⏱️ Feuille de temps</a>
+      <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  {% if not lignes %}
+    <div class="callout-soft">
+      <strong>Aucun atelier rattaché à cette subvention.</strong>
+      Depuis le pilotage, rattache les ateliers financés (carte « Activités financées ») pour générer le justificatif.
+    </div>
+  {% else %}
+
+  <div class="kpi-grid-modern">
+    <div class="kpi-box"><div class="muted">Séances réalisées</div><strong>{{ mesures_global.sessions }}</strong></div>
+    <div class="kpi-box"><div class="muted">Heures d'activité</div><strong>{{ mesures_global.heures }}</strong></div>
+    <div class="kpi-box"><div class="muted">Participants uniques</div><strong>{{ mesures_global.uniques }}</strong></div>
+    <div class="kpi-box"><div class="muted">Présences</div><strong>{{ mesures_global.presences }}</strong></div>
+  </div>
+
+  {% if couts_global %}
+  <section class="section-card">
+    <h2 class="section-title">Synthèse ({{ '%g'|format(total_pct) }} % de la subvention = {{ '%.2f'|format(montant_global) }} €)</h2>
+    <div class="kpi-grid-modern">
+      <div class="kpi-box"><div class="muted">Coût / participant</div><strong>{% if couts_global.par_participant is not none %}{{ '%.2f'|format(couts_global.par_participant) }} €{% else %}—{% endif %}</strong></div>
+      <div class="kpi-box"><div class="muted">Coût / présence</div><strong>{% if couts_global.par_presence is not none %}{{ '%.2f'|format(couts_global.par_presence) }} €{% else %}—{% endif %}</strong></div>
+      <div class="kpi-box"><div class="muted">Coût / heure</div><strong>{% if couts_global.par_heure is not none %}{{ '%.2f'|format(couts_global.par_heure) }} €{% else %}—{% endif %}</strong></div>
+      <div class="kpi-box"><div class="muted">Coût / séance</div><strong>{% if couts_global.par_seance is not none %}{{ '%.2f'|format(couts_global.par_seance) }} €{% else %}—{% endif %}</strong></div>
+    </div>
+    <p class="muted" style="font-size:13px;">
+      « La subvention {{ sub.nom }}{% if sub.financeur %} ({{ sub.financeur }}){% endif %} de {{ '%.0f'|format(montant_base) }} €
+      a financé {{ mesures_global.sessions }} séances et {{ '%g'|format(mesures_global.heures) }} heures d'activité
+      pour {{ mesures_global.uniques }} participants,
+      soit {% if couts_global.par_participant is not none %}{{ '%.2f'|format(couts_global.par_participant) }} € par participant{% endif %}. »
+    </p>
+    {% if total_pct > 100 %}
+      <div class="callout-soft" style="border-color: color-mix(in srgb, var(--warn,#f59e0b) 55%, var(--border));">
+        ⚠ La somme des parts dépasse 100 % ({{ '%g'|format(total_pct) }} %) : vérifie les pourcentages des ateliers.
+      </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="section-card compact">
+    <h2 class="section-title">Détail par atelier financé</h2>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead><tr><th>Atelier</th><th>Part</th><th>Montant affecté</th><th>Séances</th><th>Heures</th><th>Participants</th><th>Présences</th><th>Coût / participant</th><th>Justification</th></tr></thead>
+        <tbody>
+          {% for l in lignes %}
+            <tr>
+              <td><strong>{{ l.atelier.nom if l.atelier else '?' }}</strong></td>
+              <td>{{ '%g'|format(l.lien.poids_pct) }} %</td>
+              <td>{{ '%.2f'|format(l.montant) }} €</td>
+              <td>{{ l.mesures.sessions }}</td>
+              <td>{{ l.mesures.heures }}</td>
+              <td>{{ l.mesures.uniques }}</td>
+              <td>{{ l.mesures.presences }}</td>
+              <td>{% if l.couts.par_participant is not none %}{{ '%.2f'|format(l.couts.par_participant) }} €{% else %}—{% endif %}</td>
+              <td class="muted">{{ l.lien.justification or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ---------- Dossier de justification : publics, dépenses, bénévolat ---------- #}
+  {% if demographie %}
+  <section class="section-card">
+    <h2 class="section-title">Publics touchés ({{ demographie.total }} participant{{ 's' if demographie.total > 1 else '' }} unique{{ 's' if demographie.total > 1 else '' }})</h2>
+    <div class="form-grid-3">
+      <div>
+        <h3 style="margin:4px 0;">Genre</h3>
+        {% for g, n in demographie.genres %}
+          <div style="display:flex; justify-content:space-between; font-size:.9rem; padding:2px 0;"><span>{{ g }}</span><strong>{{ n }}</strong></div>
+        {% endfor %}
+      </div>
+      <div>
+        <h3 style="margin:4px 0;">Âges</h3>
+        {% for t, n in demographie.tranches %}
+          <div style="display:flex; justify-content:space-between; font-size:.9rem; padding:2px 0;"><span>{{ t }}</span><strong>{{ n }}</strong></div>
+        {% endfor %}
+      </div>
+      <div>
+        <h3 style="margin:4px 0;">Territoire</h3>
+        <div style="display:flex; justify-content:space-between; font-size:.9rem; padding:2px 0;"><span>Habitants QPV</span><strong>{{ demographie.qpv }} ({{ demographie.qpv_pct }} %)</strong></div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if depenses %}
+  <section class="section-card">
+    <h2 class="section-title">Dépenses imputées à cette subvention — {{ '%.2f'|format(total_depenses) }} €</h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>Date</th><th>Libellé</th><th>Fournisseur</th><th style="text-align:right;">Montant imputé</th></tr></thead>
+        <tbody>
+          {% for d in depenses %}
+            <tr>
+              <td>{{ d.date.strftime('%d/%m/%Y') if d.date else '—' }}</td>
+              <td>{{ d.libelle }}</td>
+              <td class="muted">{{ d.fournisseur or '—' }}</td>
+              <td style="text-align:right;"><strong>{{ '%.2f'|format(d.montant) }} €</strong></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if benevolat %}
+  <section class="section-card">
+    <h2 class="section-title">Contributions volontaires (bénévolat)</h2>
+    <p style="margin:4px 0;">
+      Secteur {{ sub.secteur }}, exercice {{ annee }} :
+      <strong>{{ benevolat.heures }} h</strong> de bénévolat,
+      valorisées <strong>{{ '%.2f'|format(benevolat.valorisation) }} €</strong>
+      (taux {{ '%.2f'|format(benevolat.taux) }} €/h — compte 87).
+    </p>
+    <p class="muted" style="font-size:.85rem;">Heures saisies pour l'ensemble du secteur (le bénévolat n'est pas rattaché atelier par atelier).</p>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

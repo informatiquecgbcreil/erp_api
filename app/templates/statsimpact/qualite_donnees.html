@@ -1,0 +1,95 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .quality-page { gap:18px; }
+  .quality-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .quality-score { font-size:42px; font-weight:800; line-height:1; }
+  .quality-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
+  .quality-issue { border:1px solid rgba(15,23,42,.12); border-radius:8px; padding:14px; background:#fff; }
+  .quality-issue--bad { border-left:4px solid #ef4444; }
+  .quality-issue--warn { border-left:4px solid #f59e0b; }
+  .quality-issue--info { border-left:4px solid #3b82f6; }
+  .quality-issue h2 { margin:0; font-size:18px; }
+  .quality-count { font-size:28px; font-weight:800; }
+  .quality-list { margin:10px 0 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
+  .quality-list li { display:flex; justify-content:space-between; gap:10px; border-top:1px solid rgba(15,23,42,.08); padding-top:6px; }
+  @media (max-width: 720px) {
+    .quality-list li { flex-direction:column; }
+  }
+</style>
+
+<div class="monster-shell wide-shell quality-page">
+  <div class="monster-hero">
+    <div class="monster-head">
+      <div>
+        <h1>Qualité des données</h1>
+        <p>Contrôles rapides sur la sélection actuelle.</p>
+      </div>
+      <div class="quality-actions">
+        <a class="btn" href="{{ url_for('statsimpact.dashboard') }}?{{ request.query_string.decode('utf-8') }}">Retour aux résultats des activités</a>
+        <a class="btn" href="{{ url_for('statsimpact.export_fidele_xlsx') }}?{{ request.query_string.decode('utf-8') }}">Exporter selon les filtres</a>
+      </div>
+    </div>
+
+    <form method="get" class="filters-panel" style="margin-top:16px;">
+      {% if secteurs %}
+        <label class="field-stack">Secteur
+          <select class="in" name="secteur">
+            <option value="">Tous</option>
+            {% for s in secteurs %}
+              <option value="{{ s }}" {% if flt.secteur == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-stack">Atelier
+        <select class="in" name="atelier_ids">
+          <option value="">Tous les ateliers</option>
+          {% for a in ateliers %}
+            <option value="{{ a.id }}" {% if flt.atelier_ids and a.id in flt.atelier_ids %}selected{% endif %}>{{ a.secteur }} · {{ a.nom }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field-stack">Début<input class="in" type="date" name="date_from" value="{{ flt.date_from or '' }}"></label>
+      <label class="field-stack">Fin<input class="in" type="date" name="date_to" value="{{ flt.date_to or '' }}"></label>
+      <button class="btn ok" type="submit">Analyser</button>
+    </form>
+
+    <div class="spacer"></div>
+    <div class="kpi-grid-flex">
+      <div class="box"><div class="muted">Score</div><div class="quality-score">{{ quality.score }}</div></div>
+      <div class="box"><div class="muted">Participants contrôlés</div><div class="v">{{ quality.participants_count }}</div></div>
+      <div class="box"><div class="muted">Présences</div><div class="v">{{ quality.presences_count }}</div></div>
+      <div class="box"><div class="muted">Séances</div><div class="v">{{ quality.sessions_count }}</div></div>
+      <div class="box"><div class="muted">Points critiques</div><div class="v">{{ quality.bad_count }}</div></div>
+      <div class="box"><div class="muted">À surveiller</div><div class="v">{{ quality.warn_count }}</div></div>
+    </div>
+  </div>
+
+  <section class="quality-grid">
+    {% for issue in quality.issues %}
+      <article class="quality-issue quality-issue--{{ issue['severity'] }}">
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+          <div>
+            <h2>{{ issue['title'] }}</h2>
+            <p class="muted">{{ issue['why'] }}</p>
+          </div>
+          <div class="quality-count">{{ issue['count'] }}</div>
+        </div>
+        {% if issue['items'] %}
+          <ul class="quality-list">
+            {% for item in issue['items'] %}
+              <li>
+                <div><strong>{{ item['label'] }}</strong><br><span class="muted">{{ item['detail'] }}</span></div>
+                <a class="btn" href="{{ item['url'] }}">Corriger</a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="empty-state">Aucun point détecté.</div>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card" style="max-width:860px; margin:0 auto;">
+  <h1>Assistant de premier démarrage</h1>
+  <p class="muted">Bienvenue 👋 Remplissez simplement ces champs pour initialiser l’application pour votre association.</p>
+
+  <form method="post" class="stack" style="gap:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <h3 style="margin-bottom:0;">1) Identité</h3>
+    <div class="row">
+      <div>
+        <label>Nom de l’application</label>
+        <input class="in" name="app_name" placeholder="Ex: Gestion Association" required>
+      </div>
+      <div>
+        <label>Nom de votre structure</label>
+        <input class="in" name="organization_name" placeholder="Ex: Association Exemple" required>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:0;">2) Compte administrateur</h3>
+    <div class="row">
+      <div>
+        <label>Nom de l’administrateur</label>
+        <input class="in" name="admin_name" placeholder="Ex: Madame Dupont" required>
+      </div>
+      <div>
+        <label>Email administrateur</label>
+        <input class="in" type="email" name="admin_email" placeholder="admin@association.fr" required>
+      </div>
+    </div>
+
+    <div>
+      <label>Mot de passe administrateur (8 caractères minimum)</label>
+      <input class="in" type="password" name="admin_password" required>
+    </div>
+
+    <h3 style="margin-bottom:0;">3) URL publique de l'application</h3>
+    <p class="muted" style="margin-top:0;">Utilisée dans les emails (réinitialisation mot de passe). Exemple: <code>http://192.168.1.42:8000</code>.</p>
+    <div>
+      <label>URL publique (optionnel, recommandé en réseau local)</label>
+      <input class="in" name="public_base_url" placeholder="http://192.168.1.42:8000">
+    </div>
+
+    <h3 style="margin-bottom:0;">4) Email SMTP (optionnel mais recommandé)</h3>
+    <p class="muted" style="margin-top:0;">Permet d’envoyer les emails de récupération de mot de passe.</p>
+    <div class="row">
+      <div>
+        <label>Serveur SMTP</label>
+        <input class="in" name="smtp_host" placeholder="smtp.votre-domaine.fr">
+      </div>
+      <div>
+        <label>Port SMTP</label>
+        <input class="in" type="number" name="smtp_port" placeholder="587" min="1" max="65535">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Utilisateur SMTP (optionnel)</label>
+        <input class="in" name="smtp_username" placeholder="no-reply@association.fr">
+      </div>
+      <div>
+        <label>Mot de passe SMTP (optionnel)</label>
+        <input class="in" type="password" name="smtp_password" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Adresse expéditeur</label>
+        <input class="in" type="email" name="smtp_sender" placeholder="no-reply@association.fr">
+      </div>
+      <div style="display:flex; align-items:flex-end;">
+        <label style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+          <input type="checkbox" name="smtp_use_tls" value="1" checked>
+          Utiliser STARTTLS
+        </label>
+      </div>
+    </div>
+
+    <div class="muted" style="font-size:13px;">
+      Après validation, vous pourrez tout modifier dans <strong>Administration &gt; Identité app</strong>.
+    </div>
+
+    <div style="text-align:right;">
+      <button class="btn" type="submit">Terminer l’installation</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends 'layout.html' %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+  {% set ns = namespace(total=ateliers|length, actifs=0, inactifs=0, collectifs=0, individuels=0) %}
+  {% for a in ateliers %}
+    {% if a.is_active %}{% set ns.actifs = ns.actifs + 1 %}{% else %}{% set ns.inactifs = ns.inactifs + 1 %}{% endif %}
+    {% if a.type_atelier == 'COLLECTIF' %}{% set ns.collectifs = ns.collectifs + 1 %}{% else %}{% set ns.individuels = ns.individuels + 1 %}{% endif %}
+  {% endfor %}
+  <div class="stack">
+    <div class="page-hero-soft">
+      <div class="section-head">
+        <div>
+          <h1 style="margin:0;">Présences · {{ secteur or 'Aucun secteur sélectionné' }}</h1>
+          <div class="muted">Choisissez un atelier puis ouvrez la feuille du jour. Les réglages plus avancés restent accessibles plus bas.</div>
+        </div>
+        <div class="section-actions">
+          <a class="btn" href="{{ url_for('activite.participants') }}">Voir les personnes inscrites</a>
+          <a class="btn ok" href="{{ url_for('activite.atelier_new') }}">Ajouter un atelier</a>
+          <details class="nav-more">
+            <summary class="btn">Options avancées</summary>
+            <div class="nav-more-panel" style="left:auto; right:0; min-width:260px;">
+              {% if corbeille %}
+                <a class="pill" href="{{ url_for('activite.index') }}">Voir les ateliers actifs</a>
+              {% else %}
+                {% if show_inactive %}
+                  <a class="pill" href="{{ url_for('activite.index') }}">Masquer les ateliers inactifs</a>
+                {% else %}
+                  <a class="pill" href="{{ url_for('activite.index', inactifs=1) }}">Afficher les ateliers inactifs</a>
+                {% endif %}
+                <a class="pill" href="{{ url_for('activite.index', corbeille=1) }}">Ouvrir la corbeille</a>
+              {% endif %}
+              {% if can('ateliers:edit') %}<a class="pill" href="{{ url_for('activite.emargement_models') }}">Gérer les modèles de feuille</a>{% endif %}
+            </div>
+          </details>
+        </div>
+      </div>
+      {{ ux.callout('Repère rapide', 'Commencez par ouvrir les séances d’un atelier actif. Les ateliers inactifs, la corbeille et les modèles restent disponibles dans les options avancées.') }}
+      <div class="page-kpis">
+        <div class="metric-card"><div class="metric-label">Ateliers affichés</div><div class="metric-value">{{ ns.total }}</div><div class="metric-help">{{ 'Corbeille' if corbeille else 'Périmètre actuel' }}</div></div>
+        <div class="metric-card"><div class="metric-label">Actives</div><div class="metric-value">{{ ns.actifs }}</div><div class="metric-help">Disponibles pour la saisie</div></div>
+        <div class="metric-card"><div class="metric-label">Collectives</div><div class="metric-value">{{ ns.collectifs }}</div><div class="metric-help">Capacité en places</div></div>
+        <div class="metric-card"><div class="metric-label">Individuelles</div><div class="metric-value">{{ ns.individuels }}</div><div class="metric-help">Capacité en heures</div></div>
+      </div>
+    </div>
+
+    <div class="section-card compact">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Ateliers disponibles</h2>
+          <div class="muted">Les ateliers actifs servent au quotidien. Ouvrez ensuite une séance pour remplir la feuille de présence.</div>
+        </div>
+        <div class="context-strip">
+          {% if corbeille %}<span class="chip">Affichage : corbeille</span>{% endif %}
+          {% if show_inactive and not corbeille %}<span class="chip">Activités inactives visibles</span>{% endif %}
+        </div>
+      </div>
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Type</th>
+              <th>Capacité</th>
+              <th>Durée</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in ateliers %}
+              <tr>
+                <td><strong>{{ a.nom }}</strong><br><span class="muted">{{ a.description or 'Aucune description renseignée.' }}</span></td>
+                <td><span class="status-badge {{ 'status-info' if a.type_atelier == 'COLLECTIF' else 'status-warning' }}">{{ 'Collectif' if a.type_atelier == 'COLLECTIF' else 'Individuel mensuel' }}</span></td>
+                <td>
+                  {% if a.type_atelier == 'COLLECTIF' %}
+                    {{ a.capacite_defaut or '—' }} place(s) par défaut
+                  {% else %}
+                    {{ a.heures_dispo_defaut_mois or 0 }} h / mois par défaut
+                  {% endif %}
+                </td>
+                <td>{{ a.duree_defaut_minutes or '—' }} min</td>
+                <td>
+                  <span class="status-badge {{ 'status-success' if a.is_active else 'status-warning' }}">{{ 'Active' if a.is_active else 'Inactive' }}</span>
+                  {% if a.continuity_parent %}<div class="muted" style="font-size:12px; margin-top:6px;">Suite de : {{ a.continuity_parent.nom }}</div>{% endif %}
+                </td>
+                <td>
+                  <div class="table-actions">
+                  {% if not corbeille %}
+                    <a class="btn" href="{{ url_for('activite.sessions', atelier_id=a.id) }}">Ouvrir les séances</a>
+                    <a class="btn" href="{{ url_for('activite.atelier_edit', atelier_id=a.id) }}">Modifier l’atelier</a>
+                    <form method="post" action="{{ url_for('activite.atelier_delete', atelier_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Placer cette activité dans la corbeille ? Elle pourra être restaurée ensuite.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn danger">Archiver</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('activite.atelier_restore', atelier_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Remettre en service cette activité ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn ok">Remettre en service</button>
+                    </form>
+                  {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6"><div class="quick-empty"><strong>{{ 'La corbeille est vide.' if corbeille else 'Aucune activité n’est disponible pour le moment.' }}</strong>{{ 'Aucune activité archivée n’est disponible à la restauration.' if corbeille else 'Créez une activité pour planifier des sessions et enregistrer les présences.' }}</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block body %}
+  {% set ns = namespace(total=factures|length, validees=0, brouillons=0, montant=0) %}
+  {% for f in factures %}
+    {% set ns.montant = ns.montant + (f.total or 0) %}
+    {% if f.statut == 'valide' %}{% set ns.validees = ns.validees + 1 %}{% else %}{% set ns.brouillons = ns.brouillons + 1 %}{% endif %}
+  {% endfor %}
+  <div class="page-shell dense-list-shell stack">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1 class="page-title">Factures</h1>
+        <p class="page-subtitle">Une facture peut contenir plusieurs lignes puis générer plusieurs dépenses quand elle est validée.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="btn ok" href="{{ url_for('inventaire.facture_new') }}">➕ Nouvelle facture</a>
+      </div>
+    </div>
+
+    <div class="page-kpis">
+      <div class="metric-card"><div class="metric-label">Factures</div><div class="metric-value">{{ ns.total }}</div><div class="metric-help">Toutes origines confondues</div></div>
+      <div class="metric-card"><div class="metric-label">Validées</div><div class="metric-value">{{ ns.validees }}</div><div class="metric-help">Prêtes côté dépenses</div></div>
+      <div class="metric-card"><div class="metric-label">Brouillons</div><div class="metric-value">{{ ns.brouillons }}</div><div class="metric-help">Restent à contrôler</div></div>
+      <div class="metric-card"><div class="metric-label">Montant total</div><div class="metric-value">{{ "%.2f"|format(ns.montant) }} €</div><div class="metric-help">Somme des factures visibles</div></div>
+    </div>
+
+    <div class="section-card compact">
+      <div class="table-toolbar">
+        <div class="muted">Vue d’ensemble des factures importées ou saisies. Ouvre une facture pour valider, générer les dépenses ou créer l’inventaire.</div>
+      </div>
+      <div class="tablewrap clean">
+        <table class="js-sortable">
+          <thead>
+            <tr><th>Date</th><th>Secteur</th><th>Fournisseur</th><th>Référence</th><th>Statut</th><th>Total</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for f in factures %}
+              <tr data-highlight="facture-{{ f.id }}">
+                <td>{{ f.date_facture or "—" }}</td>
+                <td>{{ f.secteur_principal }}</td>
+                <td>{{ f.fournisseur or "—" }}</td>
+                <td><span class="muted">{{ f.reference_facture or "—" }}</span></td>
+                <td><span class="status-badge js-auto-status">{{ 'validée' if f.statut == 'valide' else 'brouillon' }}</span></td>
+                <td><strong>{{ "%.2f"|format(f.total or 0) }} €</strong></td>
+                <td style="text-align:right"><a class="btn" href="{{ url_for('inventaire.facture_detail', facture_id=f.id) }}#top">Ouvrir</a></td>
+              </tr>
+            {% endfor %}
+            {% if not factures %}
+              <tr><td colspan="7"><div class="quick-empty"><strong>Aucune facture</strong>Ajoute ta première facture pour lancer la chaîne dépenses / inventaire.</div></td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Liste des factures (vue compacte)">
+        {% for f in factures %}
+          <article class="responsive-card">
+            <header class="responsive-card__head">
+              <strong>{{ f.fournisseur or "Fournisseur non renseigné" }}</strong>
+              <span class="chip">{{ "%.2f"|format(f.total or 0) }} €</span>
+            </header>
+            <dl class="responsive-card__grid">
+              <div><dt>Date</dt><dd>{{ f.date_facture or "—" }}</dd></div>
+              <div><dt>Secteur</dt><dd>{{ f.secteur_principal }}</dd></div>
+              <div><dt>Référence</dt><dd class="muted">{{ f.reference_facture or "—" }}</dd></div>
+              <div><dt>Statut</dt><dd><span class="status-badge js-auto-status">{{ 'validée' if f.statut == 'valide' else 'brouillon' }}</span></dd></div>
+            </dl>
+            <div class="inline-actions">
+              <a class="btn" href="{{ url_for('inventaire.facture_detail', facture_id=f.id) }}#top">Ouvrir</a>
+            </div>
+          </article>
+        {% else %}
+          <div class="quick-empty"><strong>Aucune facture</strong>Ajoute ta première facture pour lancer la chaîne dépenses / inventaire.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

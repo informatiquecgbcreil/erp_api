@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Résultats de recherche</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;background:#f4f6fb;color:#0f172a}
+    .wrap{max-width:980px;margin:0 auto;padding:24px 16px}
+    .card{background:#fff;border:1px solid rgba(15,23,42,.12);border-radius:18px;padding:16px;margin-bottom:12px}
+    .muted{color:#475569}.tag{display:inline-block;padding:6px 10px;border:1px solid rgba(15,23,42,.14);border-radius:999px;margin-right:6px}
+    a{color:inherit;text-decoration:none} a:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 style="margin:0 0 8px;">Résultats de recherche</h1>
+      <div class="muted">Requête : <strong>{{ query or '—' }}</strong></div>
+      <div style="margin-top:12px;"><a class="tag" href="javascript:history.back()">Retour</a></div>
+    </div>
+    {% if results %}
+      {% for item in results %}
+        <a class="card" href="{{ item.url if item.url else '#' }}">
+          <div class="muted" style="font-size:12px;text-transform:uppercase;font-weight:700;">{{ item.type or 'Résultat' }}</div>
+          <div style="font-size:18px;font-weight:800;margin-top:4px;">{{ item.label or 'Résultat sans titre' }}</div>
+          {% if item.meta %}<div class="muted" style="margin-top:6px;">{{ item.meta }}</div>{% endif %}
+        </a>
+      {% endfor %}
+    {% else %}
+      <div class="card">
+        <div style="font-weight:800;margin-bottom:6px;">Aucun résultat</div>
+        <div class="muted">La page détaillée a rencontré un souci d’affichage, mais la recherche reste disponible dans la barre du haut.</div>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

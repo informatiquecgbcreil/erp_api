@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+
+{% block body %}
+  <div class="stack">
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <h1>Périodes enregistrées</h1>
+        <a class="btn" href="/stats-impact">← Retour Stats</a>
+      </div>
+      <p class="muted">Ces périodes servent à filtrer rapidement les stats (ex : “CAF FADO 2026”).</p>
+
+      <form method="post" class="row four" style="margin-top:12px; align-items:end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div>
+          <label for="nom">Nom</label>
+          <input id="nom" name="nom" type="text" placeholder="CAF FADO 2026" required>
+        </div>
+        <div>
+          <label for="date_debut">Début</label>
+          <input id="date_debut" name="date_debut" type="date" required>
+        </div>
+        <div>
+          <label for="date_fin">Fin</label>
+          <input id="date_fin" name="date_fin" type="date" required>
+        </div>
+        <div>
+          <label for="secteur">Secteur</label>
+          {% if user_sec %}
+            <input type="text" value="{{ user_sec }}" disabled>
+            <input type="hidden" name="secteur" value="{{ user_sec }}">
+          {% else %}
+            <select id="secteur" name="secteur">
+              <option value="">Global (tous secteurs)</option>
+              {% for s in secteurs %}
+                <option value="{{ s }}">{{ s }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
+        </div>
+        <div>
+          <button class="btn primary" type="submit">Créer</button>
+        </div>
+      </form>
+
+      <hr style="margin:16px 0;">
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Secteur</th>
+            <th>Nom</th>
+            <th>Début</th>
+            <th>Fin</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in items %}
+            <tr>
+              <td>{% if p.secteur %}{{ p.secteur }}{% else %}<span class="muted">Global</span>{% endif %}</td>
+              <td>{{ p.nom }}</td>
+              <td>{{ p.date_debut }}</td>
+              <td>{{ p.date_fin }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">Aucune période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="muted" style="margin-top:10px;">Suppression / édition : on l’ajoute au prochain patch si besoin (pour l’instant, on garde ça simple et safe).</p>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="page-head">
+    <h1 style="margin:0;">Compétences et suivi · modules</h1>
+    <p class="muted" style="margin:6px 0 0 0;">Prépare des modules réutilisables pour gagner du temps lors des séances et des évaluations.</p>
+  </div>
+
+  <div class="ux-callout">
+    <div class="ux-callout__title">Conseil</div>
+    <div class="ux-callout__text">Commence par créer un module simple avec un nom clair, puis ajoute seulement les compétences vraiment utiles. Tu pourras l'enrichir ensuite.</div>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2 style="margin-top:0;">Créer un module</h2>
+      <form method="post" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="create_module">
+        <div>
+          <label>Nom du module</label>
+          <input class="in" name="nom" required placeholder="Ex. Premiers pas sur ordinateur">
+        </div>
+        <div>
+          <label>Description</label>
+          <textarea class="in" name="description" rows="2" placeholder="À quoi sert ce module ? Pour quel atelier ?"></textarea>
+        </div>
+
+        <details open>
+          <summary><strong>Choisir les compétences du module</strong></summary>
+          <div class="muted" style="margin:8px 0 12px 0;">Coche uniquement les compétences qui vont souvent ensemble.</div>
+          {% for ref in referentiels %}
+            <div class="card" style="background:var(--surface-soft); margin-bottom:10px;">
+              <strong>{{ ref.nom }}</strong>
+              <div class="stack" style="margin-top:8px; gap:6px;">
+                {% for comp in ref.competences %}
+                  <label style="display:block;"><input type="checkbox" name="competence_ids" value="{{ comp.id }}"> {{ comp.code }} · {{ comp.nom }}</label>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </details>
+
+        <div class="form-actions">
+          <button class="btn ok" type="submit">Enregistrer le module</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Modules existants</h2>
+      <p class="muted">Retrouve ici les modules déjà prêts à être réutilisés.</p>
+      <div class="stack" style="gap:10px;">
+        {% for mod in modules %}
+          <div class="card" style="background:var(--surface-soft);">
+            <strong>{{ mod.nom }}</strong>
+            <div class="muted" style="margin-top:4px;">{{ mod.description or 'Sans description.' }}</div>
+            <div class="muted" style="margin-top:8px;">{{ mod.competences|length }} compétence{% if mod.competences|length > 1 %}s{% endif %}</div>
+          </div>
+        {% else %}
+          <div class="empty-state">Aucun module n'est encore créé.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

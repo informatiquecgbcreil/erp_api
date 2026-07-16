@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card">
+  <h1 style="margin-top:0;">Demande invalide</h1>
+  <p class="muted">L'action demandée n'a pas pu être comprise. Revenez à l'écran précédent puis réessayez.</p>
+  <div class="inline" style="margin-top:16px; gap:8px; flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('main.dashboard') }}">Retour à l'accueil</a>
+    <a class="btn" href="javascript:history.back()">Retour à la page précédente</a>
+  </div>
+</div>
+{% endblock %}

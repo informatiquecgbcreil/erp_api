@@ -1,0 +1,99 @@
+/* Carte des habitants */
+#carte-habitants,
+#carte-partenaires {
+  height: 600px;
+  max-height: 72vh;
+  width: 100%;
+  border-radius: 12px;
+  z-index: 0;
+}
+
+.carte-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.carte-toolbar .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.carte-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.carte-legend .dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.carte-legend .dot.qpv {
+  background: #d9534f;
+}
+
+.carte-legend .dot.std {
+  background: #2a6fb0;
+}
+
+/* Pastille de comptage au centre des bulles */
+.leaflet-tooltip.carte-count {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+  padding: 0;
+}
+
+.carte-count::before {
+  display: none;
+}
+
+.carte-pop-titre {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.carte-pop-total {
+  margin-bottom: 6px;
+}
+
+.carte-pop-sec ul {
+  margin: 2px 0 6px 0;
+  padding-left: 16px;
+}
+
+.carte-qpv {
+  background: #d9534f;
+  color: #fff;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.carte-pop-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.carte-pop .chip {
+  font-size: 11px;
+}

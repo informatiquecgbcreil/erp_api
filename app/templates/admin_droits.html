@@ -1,0 +1,184 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+<div class="page-shell stack-lg admin-dense-page">
+  <section class="page-hero">
+    <div class="hero-top">
+      <div>
+        <h1 style="margin:0;">Droits d’accès 🔐</h1>
+        <p class="muted" style="margin:6px 0 0;">Choisissez ce que chaque rôle peut voir ou modifier. Les codes techniques restent affichés en second pour la maintenance.</p>
+      </div>
+      <div class="hero-actions">
+        <span class="pill">{{ users|length }} utilisateur{{ 's' if users|length > 1 else '' }}</span>
+        <span class="pill">{{ roles|length }} rôle{{ 's' if roles|length > 1 else '' }}</span>
+        <span class="pill">{{ perms|length }} droit{{ 's' if perms|length > 1 else '' }}</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="admin-grid admin-grid-dense">
+    <section class="admin-card stack">
+      <div class="toolbar-line">
+        <div>
+          <h2 style="margin:0;">Utilisateurs</h2>
+          <div class="muted">Attribuez les rôles existants. Utilisez Ctrl/Cmd + clic pour sélectionner plusieurs rôles si nécessaire.</div>
+        </div>
+      </div>
+      <div class="admin-scroll compact-scroll">
+        <table class="admin-table compact-table">
+          <thead>
+            <tr><th>Nom</th><th>Email</th><th>Rôles attribués</th></tr>
+          </thead>
+          <tbody>
+          {% for u in users %}
+            {% set assigned = u.roles | map(attribute='code') | list if u.roles is defined else [] %}
+            <tr>
+              <td><strong>{{ u.nom }}</strong></td>
+              <td>{{ u.email }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin.set_user_roles') }}" class="stack compact-stack">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <select class="rbac-select role-select compact-select" name="role_codes" multiple>
+                    {% for r in roles %}
+                      <option value="{{ r.code }}" {% if r.code in assigned %}selected{% endif %}>{{ r.label or r.code }}{% if r.label %} ({{ r.code }}){% endif %}</option>
+                    {% endfor %}
+                  </select>
+                  <div class="inline-actions compact-actions">
+                    <button class="btn" type="submit">Enregistrer</button>
+                  </div>
+                </form>
+                <div class="admin-meta">
+                  {% for role in u.roles %}<span class="pill">{{ role.label or role.code }}{% if role.label %} <small>({{ role.code }})</small>{% endif %}</span>{% endfor %}
+                  {% if u.secteur_assigne %}<span class="pill">{{ u.secteur_assigne }}</span>{% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="muted">Après une modification de droits, un rechargement complet du navigateur peut être nécessaire pour actualiser le menu.</div>
+    </section>
+
+    <section class="admin-card stack-lg admin-rbac-card">
+      <div>
+        <h2 style="margin:0 0 8px;">Rôles</h2>
+        <div class="muted">Créez un rôle puis attribuez-lui les droits nécessaires par famille fonctionnelle.</div>
+      </div>
+
+      <div class="rbac-panel-top">
+        <form method="post" action="{{ url_for('admin.create_role') }}" class="rbac-inline-grid create-role-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input class="rbac-input compact" name="code" placeholder="Code court, ex. accueil" required>
+          <input class="rbac-input compact" name="label" placeholder="Nom affiché, ex. Équipe d’accueil">
+          <button class="btn" type="submit">+ Créer</button>
+        </form>
+
+        <form method="post" action="{{ url_for('admin.delete_role') }}" class="rbac-inline-grid delete-role-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label for="delete_role_code" class="muted compact-label">Supprimer</label>
+          <select id="delete_role_code" class="rbac-select compact" name="role_code" required>
+            <option value="">-- sélectionner --</option>
+            {% for r in roles %}<option value="{{ r.code }}">{{ r.label or r.code }}{% if r.label %} ({{ r.code }}){% endif %}</option>{% endfor %}
+          </select>
+          <button class="btn danger" type="submit">Supprimer</button>
+        </form>
+      </div>
+
+      <form method="post" action="{{ url_for('admin.save_role_perms') }}" class="stack-lg">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="permission-toolbar compact">
+          <div class="permission-toolbar-main">
+            <label for="role_code" class="muted compact-label">Rôle</label>
+            <select id="role_code" class="rbac-select compact rbac-role-picker" name="role_code" required>
+              <option value="">-- sélectionner --</option>
+              {% for r in roles %}
+                <option value="{{ r.code }}">{{ r.label or r.code }}{% if r.label %} ({{ r.code }}){% endif %}</option>
+              {% endfor %}
+            </select>
+            <input id="permSearch" class="rbac-input compact perm-search" type="search" placeholder="Rechercher un droit…">
+            <label class="pill compact-pill"><input id="showCheckedOnly" type="checkbox" style="width:auto;margin:0 6px 0 0;">actives seulement</label>
+            <span id="permSummary" class="pill compact-pill">0 visible</span>
+          </div>
+          <div class="permission-toolbar-side">
+            <button class="btn" type="submit">Enregistrer</button>
+          </div>
+        </div>
+
+        <div class="admin-scroll compact-scroll permissions-scroll">
+          <div class="permission-groups dense compact-group-list">
+            {% for title, items in grouped_permissions.items() %}
+              {% if items %}
+              <section class="perm-group compact-group flat-group" data-group="{{ title|lower }}">
+                <div class="perm-group-head">
+                  <span class="group-title">{{ title }}</span>
+                  <span class="perm-count">{{ items|length }} droit{{ 's' if items|length > 1 else '' }}</span>
+                </div>
+                <div class="permission-grid dense-grid compact-permission-grid">
+                  {% for p in items %}
+                    <label class="permission-card compact-card" data-perm-card data-label="{{ (p.code ~ ' ' ~ (p.label or ''))|lower }}">
+                      <input type="checkbox" name="perm_codes" value="{{ p.code }}">
+                      <div>
+                        <strong>{{ p.label or p.code }}</strong>
+                        <small><code>{{ p.code }}</code></small>
+                      </div>
+                    </label>
+                  {% endfor %}
+                </div>
+              </section>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+
+<script>
+  const roleSel = document.getElementById('role_code');
+  const permBoxes = Array.from(document.querySelectorAll('input[name="perm_codes"]'));
+  async function loadRolePerms(code){
+    permBoxes.forEach(cb => cb.checked = false);
+    if(!code) { updatePermFilter(); return; }
+    try{
+      const resp = await fetch(`{{ url_for('admin.get_role_perms', role_code='__ROLE__') }}`.replace('__ROLE__', encodeURIComponent(code)));
+      if(!resp.ok) { updatePermFilter(); return; }
+      const data = await resp.json();
+      const set = new Set(data.perms || []);
+      permBoxes.forEach(cb => { if(set.has(cb.value)) cb.checked = true; });
+    }catch(e){}
+    updatePermFilter();
+  }
+  roleSel?.addEventListener('change', e => loadRolePerms(e.target.value));
+
+  const search = document.getElementById('permSearch');
+  const checkedOnly = document.getElementById('showCheckedOnly');
+  const summary = document.getElementById('permSummary');
+  const cards = Array.from(document.querySelectorAll('[data-perm-card]'));
+  const groupsEls = Array.from(document.querySelectorAll('.perm-group'));
+  function updatePermFilter(){
+    const q = (search?.value || '').trim().toLowerCase();
+    let visible = 0;
+    cards.forEach(card => {
+      const matchText = !q || (card.dataset.label || '').includes(q);
+      const matchChecked = !checkedOnly?.checked || card.querySelector('input')?.checked;
+      const show = matchText && matchChecked;
+      card.style.display = show ? '' : 'none';
+      if(show) visible += 1;
+    });
+    groupsEls.forEach(group => {
+      const any = !!group.querySelector('.permission-card:not([style*="display: none"])');
+      group.style.display = any ? '' : 'none';
+    });
+    if(summary) summary.textContent = `${visible} visible${visible > 1 ? 's' : ''}`;
+  }
+  search?.addEventListener('input', updatePermFilter);
+  checkedOnly?.addEventListener('change', updatePermFilter);
+  permBoxes.forEach(cb => cb.addEventListener('change', updatePermFilter));
+  updatePermFilter();
+</script>
+{% endblock %}

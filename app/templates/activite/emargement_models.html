@@ -1,0 +1,115 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="page-head">
+    <h1 style="margin:0;">Modèles d’émargement</h1>
+    <p class="muted" style="margin:6px 0 0 0;">Gérez les modèles disponibles par secteur pour les feuilles d’émargement.</p>
+  </div>
+
+  <div class="card">
+    <form method="get" class="filters-grid" style="grid-template-columns:1fr auto auto;">
+      {% if is_admin_global %}
+      <div>
+        <label class="muted">Secteur</label>
+        <select class="in" name="secteur">
+          <option value="">Tous les secteurs</option>
+          {% for secteur in secteurs %}
+            <option value="{{ secteur }}" {% if selected_secteur == secteur %}selected{% endif %}>{{ secteur }}</option>
+          {% endfor %}
+          <option value="{{ global_scope }}" {% if selected_secteur == global_scope %}selected{% endif %}>Tous secteurs (modèles communs)</option>
+        </select>
+      </div>
+      {% else %}
+      <div>
+        <label class="muted">Secteur</label>
+        <div class="in" style="display:flex;align-items:center;">{{ selected_secteur or 'Votre secteur' }}</div>
+      </div>
+      {% endif %}
+      <div style="display:flex;align-items:end;gap:8px;">
+        <button class="pill active" type="submit">Filtrer</button>
+        <a class="pill" href="{{ url_for('activite.emargement_models') }}">Réinitialiser</a>
+      </div>
+      <div style="display:flex;align-items:end;justify-content:flex-end;">
+        <a class="pill active" href="{{ url_for('activite.emargement_model_new', secteur=selected_secteur or None) }}">Ajouter un modèle</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Liste des modèles</div>
+    {% if rows %}
+      <div class="tablewrap clean">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Ordre</th>
+              <th>Libellé</th>
+              <th>Type</th>
+              <th>Secteur</th>
+              <th>Moteur</th>
+              <th>Statut</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td>{{ row.sort_order }}</td>
+              <td>
+                <strong>{{ row.label }}</strong>
+                {% if row.description %}<div class="muted">{{ row.description }}</div>{% endif %}
+              </td>
+              <td>{{ 'Collectif' if row.session_family == 'COLLECTIF' else 'Individuel mensuel' }}</td>
+              <td>{{ 'Tous secteurs' if row.secteur == global_scope else row.secteur }}</td>
+              <td>{{ engine_registry[row.engine].label if engine_registry.get(row.engine) else row.engine }}</td>
+              <td>{{ 'Actif' if row.is_active else 'Inactif' }}</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <a class="pill" href="{{ url_for('activite.emargement_model_edit', model_key=row.key) }}">Modifier</a>
+                {% if not row.is_builtin %}
+                <form method="post" action="{{ url_for('activite.emargement_model_delete', model_key=row.key) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce modèle ?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="pill danger" type="submit">Supprimer</button>
+                </form>
+                {% else %}
+                <span class="muted">Modèle de base</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Modèles d’émargement (vue compacte)">
+        {% for row in rows %}
+        <article class="responsive-card">
+          <header class="responsive-card__head">
+            <strong>{{ row.label }}</strong>
+            <span class="chip">{{ row.sort_order }}</span>
+          </header>
+          <p class="muted">{{ row.description or '—' }}</p>
+          <dl class="responsive-card__grid">
+            <div><dt>Type</dt><dd>{{ 'Collectif' if row.session_family == 'COLLECTIF' else 'Individuel mensuel' }}</dd></div>
+            <div><dt>Secteur</dt><dd>{{ 'Tous secteurs' if row.secteur == global_scope else row.secteur }}</dd></div>
+            <div><dt>Moteur</dt><dd>{{ engine_registry[row.engine].label if engine_registry.get(row.engine) else row.engine }}</dd></div>
+            <div><dt>Statut</dt><dd>{{ 'Actif' if row.is_active else 'Inactif' }}</dd></div>
+          </dl>
+          <div class="inline-actions">
+            <a class="pill" href="{{ url_for('activite.emargement_model_edit', model_key=row.key) }}">Modifier</a>
+            {% if not row.is_builtin %}
+            <form method="post" action="{{ url_for('activite.emargement_model_delete', model_key=row.key) }}" onsubmit="return confirm('Supprimer ce modèle ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="pill danger" type="submit">Supprimer</button>
+            </form>
+            {% else %}
+            <span class="muted">Modèle de base</span>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">Aucun modèle d’émargement n’est disponible pour ce périmètre.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

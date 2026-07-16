@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+{% block body %}
+  {% set has_filters = filtre_q or filtre_secteur or filtre_categorie or filtre_localisation or filtre_etat %}
+  <div class="page-shell dense-list-shell stack">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1 class="page-title">Inventaire</h1>
+        <p class="page-subtitle">Suivi du matériel avec filtres rapides, rattachements budgétaires et informations terrain.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="btn ok" href="{{ url_for('inventaire_materiel.new_item') }}">➕ Nouvelle entrée</a>
+      </div>
+    </div>
+
+    <div class="filters-panel">
+      <form method="get" action="{{ url_for('inventaire_materiel.list_items') }}" class="filters-grid" data-filter-summary="true">
+        <div class="field-stack">
+          <label>Recherche</label>
+          <input type="text" name="q" placeholder="Désignation, ID, série…" value="{{ filtre_q }}">
+        </div>
+        <div class="field-stack">
+          <label>Secteur</label>
+          <input type="text" name="secteur" placeholder="Secteur" value="{{ filtre_secteur }}">
+        </div>
+        <div class="field-stack">
+          <label>Catégorie</label>
+          <input type="text" name="categorie" placeholder="Catégorie" value="{{ filtre_categorie }}">
+        </div>
+        <div class="field-stack">
+          <label>Localisation</label>
+          <input type="text" name="localisation" placeholder="Localisation" value="{{ filtre_localisation }}">
+        </div>
+        <div class="field-stack">
+          <label>État</label>
+          <input type="text" name="etat" placeholder="OK, HS…" value="{{ filtre_etat }}">
+        </div>
+        <div class="field-stack">
+          <label>Tri</label>
+          <select name="sort">
+            <option value="recent" {% if filtre_sort=='recent' %}selected{% endif %}>Plus récent</option>
+            <option value="id" {% if filtre_sort=='id' %}selected{% endif %}>ID</option>
+            <option value="designation" {% if filtre_sort=='designation' %}selected{% endif %}>Désignation</option>
+            <option value="categorie" {% if filtre_sort=='categorie' %}selected{% endif %}>Catégorie</option>
+          </select>
+        </div>
+        <div class="hero-actions">
+          <button class="btn" type="submit">Filtrer</button>
+          <a class="btn" href="{{ url_for('inventaire_materiel.list_items') }}">Réinitialiser</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="section-card compact">
+      <div class="table-toolbar">
+        <div class="muted">Les liens éventuels vers les dépenses facilitent le suivi entre budget et matériel.</div>
+      </div>
+      <div class="tablewrap clean">
+        <table class="js-sortable">
+          <thead>
+            <tr>
+              <th>ID interne</th>
+              <th>Secteur</th>
+              <th>Catégorie</th>
+              <th>Désignation</th>
+              <th>Qté</th>
+              <th>État</th>
+              <th>Localisation</th>
+              <th>Valeur</th>
+              <th>Liens</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in items %}
+              <tr>
+                <td><strong>{{ it.id_interne or ('#' ~ it.id) }}</strong></td>
+                <td>{{ it.secteur }}</td>
+                <td>{{ it.categorie or "—" }}</td>
+                <td>
+                  <strong>{{ it.designation }}</strong>
+                  {% if it.marque or it.modele %}
+                    <div class="muted" style="font-size:12px">{{ it.marque or "" }} {{ it.modele or "" }}</div>
+                  {% endif %}
+                  {% if it.numero_serie %}
+                    <div class="muted" style="font-size:12px">S/N: {{ it.numero_serie }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ it.quantite }}</td>
+                <td><span class="badge">{{ it.etat }}</span></td>
+                <td>{{ it.localisation or "—" }}</td>
+                <td>{% if it.valeur_unitaire is not none %}{{ "%.2f"|format(it.valeur_unitaire) }} €{% else %}—{% endif %}</td>
+                <td>
+                  {% if it.depense_id %}
+                    <a href="{{ url_for('budget.depense_edit', depense_id=it.depense_id) }}">Dépense #{{ it.depense_id }}</a>
+                  {% else %}<span class="muted">—</span>{% endif %}
+                </td>
+                <td style="text-align:right">
+                  <a class="btn" href="{{ url_for('inventaire_materiel.edit_item', item_id=it.id) }}">Ouvrir</a>
+                </td>
+              </tr>
+            {% endfor %}
+            {% if not items %}
+              <tr><td colspan="10">{{ ui.empty_state(
+                "Aucun matériel ne correspond aux filtres" if has_filters else "L’inventaire est vide",
+                "Réinitialisez les filtres pour revoir tout le matériel." if has_filters else "Ajoutez le premier équipement pour suivre son état, sa localisation et son éventuel lien avec une dépense.",
+                url_for('inventaire_materiel.list_items') if has_filters else url_for('inventaire_materiel.new_item'),
+                "Réinitialiser les filtres" if has_filters else "Ajouter du matériel",
+                "📦"
+              ) }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="responsive-card-list" aria-label="Liste inventaire (vue compacte)">
+        {% for it in items %}
+          <article class="responsive-card">
+            <header class="responsive-card__head">
+              <strong>{{ it.designation }}</strong>
+              <span class="chip">{{ it.id_interne or ('#' ~ it.id) }}</span>
+            </header>
+            <dl class="responsive-card__grid">
+              <div><dt>Secteur / catégorie</dt><dd>{{ it.secteur }}<br><span class="muted">{{ it.categorie or "—" }}</span></dd></div>
+              <div><dt>Qté / état</dt><dd>{{ it.quantite }}<br><span class="badge">{{ it.etat }}</span></dd></div>
+              <div><dt>Localisation</dt><dd>{{ it.localisation or "—" }}</dd></div>
+              <div><dt>Valeur</dt><dd>{% if it.valeur_unitaire is not none %}{{ "%.2f"|format(it.valeur_unitaire) }} €{% else %}—{% endif %}</dd></div>
+              <div><dt>Lien dépense</dt><dd>{% if it.depense_id %}<a href="{{ url_for('budget.depense_edit', depense_id=it.depense_id) }}">Dépense #{{ it.depense_id }}</a>{% else %}<span class="muted">—</span>{% endif %}</dd></div>
+            </dl>
+            <div class="inline-actions">
+              <a class="btn" href="{{ url_for('inventaire_materiel.edit_item', item_id=it.id) }}">Ouvrir</a>
+            </div>
+          </article>
+        {% else %}
+          {{ ui.empty_state(
+            "Aucun matériel ne correspond aux filtres" if has_filters else "L’inventaire est vide",
+            "Réinitialisez les filtres pour revoir tout le matériel." if has_filters else "Ajoutez le premier équipement pour suivre son état, sa localisation et son éventuel lien avec une dépense.",
+            url_for('inventaire_materiel.list_items') if has_filters else url_for('inventaire_materiel.new_item'),
+            "Réinitialiser les filtres" if has_filters else "Ajouter du matériel",
+            "📦"
+          ) }}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}
