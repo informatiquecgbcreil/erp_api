@@ -250,3 +250,26 @@ def test_permissions_rbac(app):
         direction = Role.query.filter_by(code="direction").first()
         codes = {p.code for p in direction.permissions}
         assert {"transitions:view", "transitions:edit"} <= codes
+
+
+def test_mesures_group_by_compatible_postgres(app):
+    """Non-régression du GroupingError PostgreSQL (bug prod du 16/07/2026).
+
+    SQLite (utilisé par les tests) accepte de grouper sur un COALESCE bindé
+    différent de celui du SELECT ; PostgreSQL non. On compile donc la requête
+    en dialecte PostgreSQL et on vérifie que le GROUP BY ne contient que des
+    colonnes brutes (aucun paramètre bindé / aucun COALESCE)."""
+    from datetime import date as _date
+
+    from sqlalchemy.dialects import postgresql
+
+    from app.services.transitions import _mesures_agregees_query
+
+    with app.app_context():
+        query = _mesures_agregees_query(_date(2026, 1, 1), _date(2026, 12, 31))
+        sql = str(query.statement.compile(dialect=postgresql.dialect()))
+
+    group_by = sql.split("GROUP BY", 1)[1]
+    assert "coalesce" not in group_by.lower(), sql
+    assert "%(" not in group_by, sql
+    assert "transition_mesure.unite" in group_by

@@ -148,6 +148,32 @@ def _conso_ateliers(atelier_ids: list[int], debut: date, fin: date) -> dict:
     return {"kwh": agg["total_kwh"], "co2_kg": agg["total_co2"]}
 
 
+def _mesures_agregees_query(debut: date, fin: date):
+    """Cumul des mesures par (libellé, unité, thématique) sur la période.
+
+    PostgreSQL refuse de grouper sur un COALESCE à valeur bindée quand le
+    même COALESCE figure aussi dans le SELECT : SQLAlchemy génère deux
+    paramètres différents et Postgres ne reconnaît plus l'expression comme
+    identique (même piège que dans consumption.py). On groupe donc sur la
+    colonne BRUTE — sans effet métier : l'unité vide est normalisée à NULL
+    à la saisie — et on garde le COALESCE côté SELECT pour l'affichage.
+    """
+    return (
+        db.session.query(
+            TransitionMesure.libelle,
+            func.coalesce(TransitionMesure.unite, ""),
+            TransitionMesure.thematique_id,
+            func.sum(TransitionMesure.valeur),
+            func.count(TransitionMesure.id),
+        )
+        .filter(TransitionMesure.date_mesure >= debut,
+                TransitionMesure.date_mesure <= fin)
+        .group_by(TransitionMesure.libelle,
+                  TransitionMesure.unite,
+                  TransitionMesure.thematique_id)
+    )
+
+
 def tableau_de_bord(annee: int, secteur: str | None = None) -> dict:
     """Toutes les données du tableau de bord transitions pour un exercice."""
     seed_thematiques()
@@ -205,21 +231,7 @@ def tableau_de_bord(annee: int, secteur: str | None = None) -> dict:
     )
 
     # --- Mesures manuelles, additionnées par (libellé, unité) ---------------
-    mesures_rows = (
-        db.session.query(
-            TransitionMesure.libelle,
-            func.coalesce(TransitionMesure.unite, ""),
-            TransitionMesure.thematique_id,
-            func.sum(TransitionMesure.valeur),
-            func.count(TransitionMesure.id),
-        )
-        .filter(TransitionMesure.date_mesure >= debut,
-                TransitionMesure.date_mesure <= fin)
-        .group_by(TransitionMesure.libelle,
-                  func.coalesce(TransitionMesure.unite, ""),
-                  TransitionMesure.thematique_id)
-        .all()
-    )
+    mesures_rows = _mesures_agregees_query(debut, fin).all()
     them_par_id = {t.id: t for t in TransitionThematique.query.all()}
     mesures = [
         {
