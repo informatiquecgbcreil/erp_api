@@ -120,6 +120,7 @@ def create_app():
     from app.insertion.routes import bp as insertion_bp
     from app.setup import bp as setup_bp
     from app.aide import bp as aide_bp
+    from app.veille_financements import bp as veille_bp
 
     app.register_blueprint(setup_bp)
     app.register_blueprint(aide_bp)
@@ -143,6 +144,7 @@ def create_app():
     app.register_blueprint(questionnaires_bp)
     app.register_blueprint(insertion_bp)
     app.register_blueprint(transitions_bp)
+    app.register_blueprint(veille_bp)
 
     @app.before_request
     def _facade_kiosque_publique():
@@ -246,6 +248,41 @@ def create_app():
 
         if notifications_actives():
             digest_quotidien_si_necessaire()
+        return None
+
+    # ------------------------------------------------------------------
+    # Veille financements : collecte automatique tous les 3 jours, même
+    # mécanique paresseuse que la purge RGPD (aucun planificateur externe).
+    # Le marqueur mémoire limite le test à une fois par jour et par
+    # processus ; le service vérifie ensuite en base si les 3 jours sont
+    # réellement écoulés, puis collecte dans un thread d'arrière-plan pour
+    # ne jamais ralentir la requête en cours.
+    # ------------------------------------------------------------------
+    _veille_marqueur = {"jour": None}
+
+    @app.before_request
+    def _veille_financements_periodique():
+        from datetime import date as _date
+
+        endpoint = (request.endpoint or "")
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+            return None
+
+        # Jamais de collecte réseau pendant les tests, ni si désactivée.
+        if app.config.get("TESTING") or not app.config.get("VEILLE_AUTO", True):
+            return None
+
+        aujourd_hui = _date.today()
+        if _veille_marqueur["jour"] == aujourd_hui:
+            return None
+        _veille_marqueur["jour"] = aujourd_hui
+
+        from app.services.veille_financements import lancer_rafraichissement_arriere_plan
+
+        try:
+            lancer_rafraichissement_arriere_plan(app)
+        except Exception:
+            app.logger.exception("Veille financements : échec du déclenchement")
         return None
 
     # ------------------------------------------------------------------

@@ -3225,3 +3225,114 @@ ObjectifSectoriel.ateliers_transitions = db.relationship(
     secondary=atelier_transition_objectif,
     backref=db.backref("transition_objectifs", lazy="selectin"),
 )
+
+
+# ---------- VEILLE FINANCEMENTS ----------
+class VeilleSource(db.Model):
+    """Une source surveillée par la veille financements.
+
+    Trois familles (``type_source``) :
+    - ``aides_territoires`` : l'API publique Aides-territoires (État, régions,
+      départements, Europe...) — la plus riche, filtrée « associations » ;
+    - ``rss`` : n'importe quel flux RSS/Atom (fondations, collectivités...) ;
+    - ``html_liens`` : une page web dont on extrait les liens ressemblant à
+      des appels à projets (villes, agglos, CAF... sans flux RSS).
+    """
+
+    __tablename__ = "veille_source"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(160), nullable=False)
+    type_source = db.Column(db.String(30), nullable=False, default="rss")
+    url = db.Column(db.String(500), nullable=False)
+    # Clé API facultative (nécessaire uniquement pour Aides-territoires :
+    # compte gratuit sur aides-territoires.beta.gouv.fr → « Mon compte » → API).
+    api_cle = db.Column(db.String(255), nullable=True)
+    actif = db.Column(db.Boolean, nullable=False, default=True)
+    # Identifiant stable des sources livrées avec l'application : permet de
+    # re-proposer le catalogue par défaut sans dupliquer ni écraser les
+    # personnalisations de l'utilisateur.
+    code_defaut = db.Column(db.String(60), nullable=True, unique=True)
+
+    derniere_verification = db.Column(db.DateTime, nullable=True)
+    dernier_statut = db.Column(db.String(20), nullable=True)  # ok | erreur
+    dernier_message = db.Column(db.String(500), nullable=True)
+    dernieres_trouvailles = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<VeilleSource {self.nom} ({self.type_source})>"
+
+
+class VeilleOpportunite(db.Model):
+    """Un financement repéré par la veille (AAP, AMI, appel à candidatures...).
+
+    Dédoublonnée par ``url_hash`` : un même appel revu lors d'un
+    rafraîchissement ultérieur est mis à jour, jamais dupliqué, et le statut
+    de suivi posé par l'équipe est conservé.
+    """
+
+    __tablename__ = "veille_opportunite"
+
+    STATUTS = {
+        "nouveau": "Nouveau",
+        "a_etudier": "À étudier",
+        "en_cours": "Candidature en cours",
+        "depose": "Dossier déposé",
+        "retenu": "Financement obtenu",
+        "ecarte": "Écarté",
+    }
+
+    TYPES = {
+        "aap": "Appel à projets",
+        "ami": "Appel à manifestation d'intérêt",
+        "candidature": "Appel à candidatures",
+        "subvention": "Subvention / aide",
+        "prix": "Prix / concours",
+        "autre": "Autre",
+    }
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_id = db.Column(
+        db.Integer, db.ForeignKey("veille_source.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    titre = db.Column(db.String(300), nullable=False)
+    financeur = db.Column(db.String(200), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    url = db.Column(db.String(600), nullable=False)
+    url_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+
+    type_dispositif = db.Column(db.String(20), nullable=False, default="autre")
+    date_publication = db.Column(db.Date, nullable=True)
+    date_cloture = db.Column(db.Date, nullable=True, index=True)
+
+    # Pertinence pour la structure : somme des poids des mots-clés du profil
+    # associatif retrouvés dans le titre/la description (voir le service).
+    score = db.Column(db.Integer, nullable=False, default=0)
+    mots_cles = db.Column(db.String(300), nullable=True)
+
+    statut = db.Column(db.String(20), nullable=False, default="nouveau", index=True)
+    commentaire = db.Column(db.String(500), nullable=True)
+
+    cree_le = db.Column(db.DateTime, default=utcnow, nullable=False)
+    maj_le = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    source = db.relationship(
+        "VeilleSource",
+        backref=db.backref("opportunites", passive_deletes=True),
+    )
+
+    @property
+    def est_expiree(self) -> bool:
+        return self.date_cloture is not None and self.date_cloture < date.today()
+
+    @property
+    def jours_restants(self) -> int | None:
+        if self.date_cloture is None:
+            return None
+        return (self.date_cloture - date.today()).days
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<VeilleOpportunite {self.titre[:40]!r} ({self.statut})>"

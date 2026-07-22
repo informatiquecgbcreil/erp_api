@@ -544,7 +544,7 @@
             <span>Menu</span>
           </button>
 
-          {% set is_finance = ep.startswith('projets.finance') or ep.startswith('budget.') or ep.startswith('main.subventions') or ep.startswith('previsionnel.') %}
+          {% set is_finance = ep.startswith('projets.finance') or ep.startswith('budget.') or ep.startswith('main.subventions') or ep.startswith('previsionnel.') or ep.startswith('veille.') %}
           {% set is_publics = ep == 'main.hub_publics' or ep.startswith('participants.') or ep.startswith('insertion.') or ep.startswith('quartiers.') %}
           {% set is_presences = ep.startswith('activite.') or ep.startswith('kiosk.') %}
           {% set is_activites = ep == 'main.hub_activites' or ep.startswith('statsimpact.') or ep.startswith('pedagogie.') %}
@@ -599,6 +599,9 @@
                   {% if can('partenaires:view') %}
                     <a class="pill {% if ep.startswith('partenaires.') and ep != 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.index') }}">Partenaires</a>
                     <a class="pill {% if ep == 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.carte') }}">Carte des partenaires</a>
+                  {% endif %}
+                  {% if can('veille:view') %}
+                    <a class="pill {% if ep.startswith('veille.') %}active{% endif %}" href="{{ url_for('veille.index') }}">📡 Veille financements</a>
                   {% endif %}
                   {% if can('questionnaires:view') %}
                     <a class="pill {% if ep.startswith('questionnaires.') %}active{% endif %}" href="{{ url_for('questionnaires.index') }}">Questionnaires</a>
@@ -680,6 +683,9 @@
                     <a class="pill {% if ep.startswith('previsionnel.') and ep != 'previsionnel.generateur' %}active{% endif %}" href="{{ url_for('previsionnel.index') }}">Budgets demandés</a>
                     <a class="pill {% if ep == 'previsionnel.generateur' %}active{% endif %}" href="{{ url_for('previsionnel.generateur') }}">Générateur de budget</a>
                     <a class="pill {% if ep.startswith('main.subventions') %}active{% endif %}" href="{{ url_for('main.subventions_list') }}">Financements accordés</a>
+                  {% endif %}
+                  {% if can('veille:view') %}
+                    <a class="pill {% if ep.startswith('veille.') %}active{% endif %}" href="{{ url_for('veille.index') }}">📡 Veille financements</a>
                   {% endif %}
                   {% if can('depenses:view') %}
                     <a class="pill {% if ep.startswith('budget.') %}active{% endif %}" href="{{ url_for('budget.depenses_list') }}">Dépenses</a>
@@ -917,6 +923,7 @@
         'inventaire_materiel': 'Ressources',
         'quartiers': 'Publics & parcours',
         'partenaires': 'Ressources',
+        'veille': 'Finances',
         'questionnaires': 'Bilans & exports',
         'admin': 'Administration',
         'auth': 'Connexion',
@@ -939,6 +946,7 @@
         'inventaire_materiel': 'inventaire:view',
         'quartiers': 'quartiers:view',
         'partenaires': 'partenaires:view',
+        'veille': 'veille:view',
         'questionnaires': 'questionnaires:view',
         'admin': 'admin:users'
       } %}
@@ -972,6 +980,7 @@
           'inventaire': 'inventaire_materiel.list_items',
           'inventaire_materiel': 'inventaire_materiel.list_items',
           'partenaires': 'partenaires.index',
+          'veille': 'veille.index',
           'admin': 'admin.users'
         } %}
         {% set module_hub = safe_url_for(module_hubs.get(endpoint_module, 'invalide.endpoint'), fallback='') %}

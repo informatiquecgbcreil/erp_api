@@ -41,6 +41,10 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     ("aap:synthese_view", "Voir la synthèse AAP"),
     ("aap:export", "Exporter le budget AAP (PDF/Excel/Doc)"),
 
+    # Veille financements (appels à projets, AMI...)
+    ("veille:view", "Voir la veille financements et suivre les opportunités"),
+    ("veille:edit", "Gérer les sources de la veille financements"),
+
     # Subventions (catalogue)
     ("subventions:view", "Voir les subventions"),
     ("subventions:edit", "Créer / modifier une subvention"),
@@ -191,7 +195,8 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
             "questionnaires:delete",
             "questionnaires:respond",
             "questionnaires:export",
-        
+            "veille:view",
+
         ],
     },
 
@@ -227,6 +232,9 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
 
             # Subventions (CRUD + lien projet) MAIS uniquement sur son secteur (routes)
             "subventions:view", "subventions:edit", "subventions:delete", "subventions:link",
+
+            # Veille financements (consultation + suivi des opportunités)
+            "veille:view",
 
             # Dépenses (CRUD) MAIS uniquement sur son secteur (routes)
             "depenses:view", "depenses:create", "depenses:edit", "depenses:delete", "depenses:imputer_aap",
@@ -290,6 +298,8 @@ PERMS_AUTO_GRANT = {
     "inscriptions:edit": ("direction", "directrice", "finance", "responsable_secteur"),
     "transitions:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
     "transitions:edit": ("direction", "directrice", "finance", "responsable_secteur"),
+    "veille:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
+    "veille:edit": ("direction", "directrice", "finance"),
 }
 
 
@@ -327,6 +337,7 @@ def _category_from_code(code: str) -> str:
         "aap": "Budget AAP",
         "subventions": "Subventions",
         "depenses": "Dépenses",
+        "veille": "Veille financements",
     }
     return mapping.get(module, module.capitalize())
 

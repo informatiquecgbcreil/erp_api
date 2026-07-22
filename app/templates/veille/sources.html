@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>⚙️ Sources surveillées</h1>
+        <p class="muted" style="margin-top:6px;">
+          La veille lit chacune de ces sources tous les 3 jours. Une source en erreur n'empêche jamais les autres :
+          son message d'erreur s'affiche ici pour vous permettre de corriger l'adresse.
+        </p>
+      </div>
+      <a class="btn" href="{{ url_for('veille.index') }}">← Retour à la veille</a>
+    </div>
+    <div class="card" style="margin-top:10px; background:rgba(37,99,235,.06);">
+      <strong>💡 Conseil :</strong> la source <em>Aides-territoires</em> est de loin la plus riche (État, régions,
+      départements, Europe, agences — pré-filtrée « associations »). Elle demande une clé API <strong>gratuite</strong> :
+      créez un compte sur <a href="https://aides-territoires.beta.gouv.fr" target="_blank" rel="noopener">aides-territoires.beta.gouv.fr</a>,
+      récupérez le jeton dans « Mon compte → API » et collez-le dans le champ « Clé API » ci-dessous.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Type</th>
+            <th>Dernière lecture</th>
+            <th style="width:340px;">Modifier</th>
+            <th style="width:180px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sources %}
+            <tr>
+              <td>
+                <strong>{{ s.nom }}</strong>
+                {% if not s.actif %}<span class="badge" style="background:#9ca3af;color:#fff;margin-left:6px;">en pause</span>{% endif %}
+                <div class="muted" style="font-size:12px; word-break:break-all;"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url[:80] }}{% if s.url|length > 80 %}…{% endif %}</a></div>
+              </td>
+              <td class="muted">{{ types_source.get(s.type_source, s.type_source) }}</td>
+              <td>
+                {% if s.derniere_verification %}
+                  {{ s.derniere_verification.strftime("%d/%m/%Y %H:%M") }}<br>
+                  {% if s.dernier_statut == 'ok' %}
+                    <span style="color:#16a34a;">✔ {{ s.dernier_message }}</span>
+                  {% else %}
+                    <span style="color:#dc2626;" title="{{ s.dernier_message }}">✖ {{ (s.dernier_message or 'erreur')[:120] }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">jamais</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if can('veille:edit') %}
+                <form method="post" action="{{ url_for('veille.source_modifier', source_id=s.id) }}" class="stack" style="gap:4px;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input class="in" name="nom" value="{{ s.nom }}" placeholder="Nom">
+                  <input class="in" name="url" value="{{ s.url }}" placeholder="Adresse (URL ou flux)">
+                  {% if s.type_source == 'aides_territoires' %}
+                    <input class="in" name="api_cle" value="" placeholder="{% if s.api_cle %}Clé API enregistrée ✔ (coller pour remplacer){% else %}Clé API Aides-territoires (obligatoire){% endif %}">
+                  {% endif %}
+                  <button class="btn" type="submit">Enregistrer</button>
+                </form>
+                {% else %}<span class="muted">—</span>{% endif %}
+              </td>
+              <td>
+                {% if can('veille:edit') %}
+                <div class="stack" style="gap:6px;">
+                  <form method="post" action="{{ url_for('veille.source_modifier', source_id=s.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="basculer">
+                    <button class="btn" type="submit">{{ "⏸ Mettre en pause" if s.actif else "▶ Réactiver" }}</button>
+                  </form>
+                  <form method="post" action="{{ url_for('veille.source_modifier', source_id=s.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="supprimer">
+                    <button class="btn danger" type="submit" onclick="return confirm('Supprimer cette source ? Les opportunités déjà trouvées sont conservées.');">🗑️ Supprimer</button>
+                  </form>
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if can('veille:edit') %}
+  <div class="card">
+    <h2>➕ Ajouter une source</h2>
+    <p class="muted">Un flux RSS de fondation, la page « appels à projets » de votre ville ou de votre agglo... </p>
+    <form method="post" action="{{ url_for('veille.source_ajouter') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <input class="in" name="nom" placeholder="Nom (ex : Fondation SNCF)" required style="min-width:220px;">
+        <input class="in" name="url" placeholder="Adresse de la page ou du flux" required style="min-width:320px;">
+        <select class="in" name="type_source">
+          {% for code, label in types_source.items() if code != 'aides_territoires' %}
+            <option value="{{ code }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn primary" type="submit">Ajouter</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">
+        « Page web (extraction de liens) » : la veille repère automatiquement sur la page les liens contenant
+        « appel à projets », « appel à candidatures », « subvention »...
+      </div>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

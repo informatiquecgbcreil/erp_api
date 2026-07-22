@@ -1,0 +1,133 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>📡 Veille financements</h1>
+        <p class="muted" style="margin-top:6px;">
+          Appels à projets, AMI, appels à candidatures et subventions repérés automatiquement pour l'association
+          (fondations, CAF, Oise, Hauts-de-France, FEDER/FSE, État...).
+          La veille se met à jour toute seule tous les {{ intervalle_jours }} jours.
+          {% if derniere_verif %}Dernière collecte : {{ derniere_verif.strftime("%d/%m/%Y à %H:%M") }} (UTC).{% else %}Aucune collecte pour l'instant : lancez la première !{% endif %}
+        </p>
+      </div>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        <form method="post" action="{{ url_for('veille.rafraichir') }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn primary" type="submit" onclick="this.disabled=true;this.textContent='Collecte en cours (jusqu’à 1 min)...';this.form.submit();">🔄 Rafraîchir maintenant</button>
+        </form>
+        <a class="btn" href="{{ url_for('veille.sources') }}">⚙️ Sources surveillées</a>
+      </div>
+    </div>
+
+    <div class="inline" style="gap:16px; margin-top:12px; flex-wrap:wrap;">
+      <div><strong style="font-size:20px;">{{ stats.nouveaux }}</strong> <span class="muted">nouvelle(s)</span></div>
+      <div><strong style="font-size:20px;">{{ stats.a_etudier }}</strong> <span class="muted">à étudier</span></div>
+      <div><strong style="font-size:20px;">{{ stats.cloture_proche }}</strong> <span class="muted">clôture sous 15 jours</span></div>
+    </div>
+
+    <form method="get" style="margin-top:12px;">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <input class="in" name="q" placeholder="Rechercher (titre, financeur, mot-clé)" value="{{ q }}" style="min-width:260px;">
+        <select class="in" name="statut">
+          <option value="">Tous les statuts (sauf écartés)</option>
+          {% for code, label in statuts.items() %}
+            <option value="{{ code }}" {% if statut == code %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <select class="in" name="source">
+          <option value="">Toutes les sources</option>
+          {% for s in sources %}
+            <option value="{{ s.id }}" {% if source_id == s.id %}selected{% endif %}>{{ s.nom }}</option>
+          {% endfor %}
+        </select>
+        <select class="in" name="tri">
+          {% for code, label in tris.items() %}
+            <option value="{{ code }}" {% if tri == code %}selected{% endif %}>Trier par : {{ label }}</option>
+          {% endfor %}
+        </select>
+        <label class="inline" style="gap:6px;"><input type="checkbox" name="tout" value="1" {% if afficher_tout %}checked{% endif %}> Voir aussi clôturés / écartés</label>
+        <button class="btn" type="submit">Appliquer</button>
+        {% if q or statut or source_id or afficher_tout %}
+          <a class="btn" href="{{ url_for('veille.index') }}">Réinitialiser</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    {% if not opportunites %}
+      <p class="muted">Rien à afficher pour l'instant. Cliquez sur « Rafraîchir maintenant » pour lancer la première collecte,
+      puis vérifiez la page <a href="{{ url_for('veille.sources') }}">Sources surveillées</a> (la source Aides-territoires,
+      la plus riche, demande une clé API gratuite).</p>
+    {% else %}
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Opportunité</th>
+            <th>Type</th>
+            <th>Financeur / source</th>
+            <th>Clôture</th>
+            <th>Pertinence</th>
+            <th style="width:190px;">Suivi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in opportunites %}
+            <tr>
+              <td>
+                <a href="{{ o.url }}" target="_blank" rel="noopener noreferrer"><strong>{{ o.titre }}</strong> ↗</a>
+                {% if o.statut == 'nouveau' %}<span class="badge" style="background:#2563eb;color:#fff;margin-left:6px;">nouveau</span>{% endif %}
+                {% if o.description %}
+                  <div class="muted" style="font-size:12px; margin-top:4px; max-width:520px;">{{ o.description[:220] }}{% if o.description|length > 220 %}…{% endif %}</div>
+                {% endif %}
+                {% if o.mots_cles %}
+                  <div class="muted" style="font-size:11px; margin-top:2px;">🔑 {{ o.mots_cles }}</div>
+                {% endif %}
+              </td>
+              <td class="muted">{{ types.get(o.type_dispositif, o.type_dispositif) }}</td>
+              <td class="muted">
+                {{ o.financeur or "—" }}
+                {% if o.source %}<div style="font-size:11px;">via {{ o.source.nom }}</div>{% endif %}
+              </td>
+              <td>
+                {% if o.date_cloture %}
+                  {% set jr = o.jours_restants %}
+                  <span {% if jr is not none and jr < 0 %}class="muted"{% elif jr is not none and jr <= 15 %}style="color:#dc2626;font-weight:bold;"{% endif %}>
+                    {{ o.date_cloture.strftime("%d/%m/%Y") }}
+                    {% if jr is not none and jr >= 0 %}<br><small>J-{{ jr }}</small>{% elif jr is not none %}<br><small>clôturé</small>{% endif %}
+                  </span>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if o.score > 0 %}
+                  <strong>{{ o.score }}</strong>
+                  <span title="Score de pertinence pour l'association">{{ "★" * ((o.score // 4) if o.score < 20 else 5) }}</span>
+                {% else %}
+                  <span class="muted">0</span>
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="{{ url_for('veille.changer_statut', opp_id=o.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="retour" value="{{ request.full_path }}">
+                  <select class="in" name="statut" onchange="this.form.submit()" style="width:100%;">
+                    {% for code, label in statuts.items() %}
+                      <option value="{{ code }}" {% if o.statut == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
