@@ -370,6 +370,27 @@ AIDE_PAGES: dict[str, dict] = {
     # ------------------------------------------------------------------
     # Subventions et dépenses
     # ------------------------------------------------------------------
+    "veille.index": {
+        "titre": "La veille financements",
+        "resume": "L'application surveille internet pour vous : appels à projets, AMI, appels à candidatures et subventions susceptibles de financer l'association, collectés automatiquement tous les 3 jours.",
+        "etapes": [
+            "Les opportunités les plus pertinentes (score le plus haut) sont en haut de la liste : le score compte les mots-clés qui correspondent à l'association (Oise, éducation populaire, CAF, jeunesse…).",
+            "Cliquez sur un titre pour ouvrir l'appel sur le site du financeur.",
+            "Changez le statut (« À étudier », « Candidature en cours », « Écarté »…) pour organiser le travail d'équipe : la veille s'en souvient.",
+            "Les dates de clôture à moins de 15 jours s'affichent en rouge : ne les laissez pas passer !",
+        ],
+        "astuce": "« Rafraîchir maintenant » relance la collecte sans attendre. La première fois, ouvrez la page Sources : la source Aides-territoires (la plus riche) demande une clé API gratuite.",
+    },
+    "veille.sources": {
+        "titre": "Les sources de la veille",
+        "resume": "La liste des sites que la veille lit tous les 3 jours : ajoutez, corrigez ou mettez en pause une source.",
+        "etapes": [
+            "Chaque source affiche sa dernière lecture : un ✔ vert si tout va bien, un ✖ rouge avec le message d'erreur sinon (adresse à corriger, clé API manquante…).",
+            "Pour Aides-territoires : créez un compte gratuit sur aides-territoires.beta.gouv.fr et collez votre clé API dans la fiche.",
+            "Ajoutez vos propres sources : le flux RSS d'une fondation, la page « appels à projets » de votre ville ou de votre agglomération.",
+        ],
+        "astuce": "Le type « Page web (extraction de liens) » fonctionne avec n'importe quel site : la veille y repère les liens contenant « appel à projets », « subvention », etc.",
+    },
     "main.subventions_list": {
         "titre": "Les subventions",
         "resume": "Chaque financement reçu (CAF, Ville, État…) est une subvention, découpée en lignes de budget.",
