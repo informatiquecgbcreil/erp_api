@@ -33,6 +33,26 @@ def test_score_insensible_accents_et_casse():
     assert score > 0
 
 
+def test_score_tolere_tirets_et_apostrophes():
+    # « Hauts de France » sans tirets doit matcher le mot-clé du profil.
+    score, mots = vf.calculer_score("Dispositif régional Hauts de France pour les QPV")
+    assert "hauts de france" in mots
+    assert "qpv" in mots
+
+
+def test_malus_hors_territoire():
+    # Une aide bretonne sans lien avec notre territoire : score négatif.
+    score, mots = vf.calculer_score("Appel à projets jeunesse de la Région Bretagne")
+    assert score < 0
+    assert any("hors territoire" in m for m in mots)
+    # La même thématique ancrée chez nous : aucun malus.
+    score_local, mots_local = vf.calculer_score(
+        "Appel à projets jeunesse dans l'Oise, ouvert aussi en Bretagne"
+    )
+    assert score_local > 0
+    assert not any("hors territoire" in m for m in mots_local)
+
+
 def test_detection_type_dispositif():
     assert vf.detecter_type("Appel à projets 2026 de la CAF") == "aap"
     assert vf.detecter_type("Appel à manifestation d'intérêt FEDER") == "ami"
@@ -139,6 +159,51 @@ def test_seed_sources_par_defaut_idempotent(contexte):
     VeilleSource.query.filter_by(code_defaut="fondation_de_france").delete()
     db.session.commit()
     assert vf.seed_sources_par_defaut() == 1
+
+
+def test_seed_migre_les_defauts(contexte):
+    # Installation antérieure : URL d'origine (non personnalisée) et source
+    # caf.fr désormais retirée du catalogue.
+    ancienne = VeilleSource(
+        nom="Europe HDF", type_source="html_liens",
+        url="https://www.europe-en-hautsdefrance.eu/", code_defaut="europe_hdf",
+        dernier_statut="erreur", dernier_message="ancienne erreur",
+    )
+    caf = VeilleSource(
+        nom="Caf.fr", type_source="html_liens",
+        url="https://www.caf.fr/partenaires", code_defaut="caf_partenaires",
+    )
+    # URL personnalisée par l'utilisateur : elle ne doit JAMAIS être touchée.
+    perso = VeilleSource(
+        nom="Oise perso", type_source="html_liens",
+        url="https://www.oise.fr/ma-page-a-moi", code_defaut="oise_departement",
+    )
+    db.session.add_all([ancienne, caf, perso])
+    db.session.commit()
+
+    vf.seed_sources_par_defaut()
+
+    db.session.refresh(ancienne)
+    assert ancienne.url == "https://www.europe-en-hautsdefrance.eu/appels-a-projets/"
+    assert ancienne.dernier_statut is None  # l'erreur mémorisée est effacée
+    assert VeilleSource.query.filter_by(code_defaut="caf_partenaires").count() == 0
+    db.session.refresh(perso)
+    assert perso.url == "https://www.oise.fr/ma-page-a-moi"
+
+
+def test_rescoring_applique_le_nouveau_profil(contexte):
+    opp = VeilleOpportunite(
+        titre="Appel à projets de la Région Bretagne",
+        url="https://exemple.org/aap-bretagne",
+        url_hash=vf._hash_url("https://exemple.org/aap-bretagne"),
+        score=12,  # score obsolète, calculé avant le malus hors territoire
+    )
+    db.session.add(opp)
+    db.session.commit()
+    vf.rescorer_toutes_les_opportunites()
+    db.session.refresh(opp)
+    assert opp.score < 0
+    assert "hors territoire" in (opp.mots_cles or "")
 
 
 def test_rafraichir_isole_les_erreurs(contexte, monkeypatch):
