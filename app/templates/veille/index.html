@@ -47,7 +47,7 @@
             <option value="{{ code }}" {% if tri == code %}selected{% endif %}>Trier par : {{ label }}</option>
           {% endfor %}
         </select>
-        <label class="inline" style="gap:6px;"><input type="checkbox" name="tout" value="1" {% if afficher_tout %}checked{% endif %}> Voir aussi clôturés / écartés</label>
+        <label class="inline" style="gap:6px;"><input type="checkbox" name="tout" value="1" {% if afficher_tout %}checked{% endif %}> Voir aussi clôturés, écartés et hors territoire</label>
         <button class="btn" type="submit">Appliquer</button>
         {% if q or statut or source_id or afficher_tout %}
           <a class="btn" href="{{ url_for('veille.index') }}">Réinitialiser</a>

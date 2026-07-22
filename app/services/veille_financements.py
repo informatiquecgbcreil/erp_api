@@ -36,6 +36,7 @@ import hashlib
 import html as html_lib
 import json
 import re
+import ssl
 import threading
 import unicodedata
 import urllib.error
@@ -58,21 +59,41 @@ from app.utils.dates import utcnow
 
 INTERVALLE_JOURS = 3  # cadence de rafraîchissement automatique
 DELAI_HTTP = 25  # secondes par requête
-USER_AGENT = "AppGestion-ERP/1.0 (veille financements associative)"
+# User-Agent de navigateur : plusieurs sites publics (oise.fr...) renvoient
+# 403 aux clients qui s'annoncent comme des scripts, alors que la page est
+# librement consultable. On lit des pages publiques, à petite cadence.
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
 MAX_PAGES_AIDES_TERRITOIRES = 3  # 3 pages de 50 = les ~150 aides les plus récentes
 
 AIDES_TERRITOIRES_BASE = "https://aides-territoires.beta.gouv.fr"
+# Territoire de recherche sur Aides-territoires : filtre les aides à celles
+# qui COUVRENT ce périmètre (donc Oise + Hauts-de-France + national +
+# Europe), au lieu du flux national brut qui remonte les dispositifs des
+# autres régions.
+TERRITOIRE_PERIMETRE = "Oise"
 
 # Profil de pertinence de l'association : mots-clés pondérés.
 # Le score d'une opportunité est la somme des poids des mots-clés retrouvés
-# dans son titre + sa description. Plus le score est haut, plus l'appel
-# « ressemble » à l'association (loi 1901, CAF, JEP, Oise, HDF).
+# dans son titre + sa description (comparaison sans accents, apostrophes ni
+# tirets). Plus le score est haut, plus l'appel « ressemble » à
+# l'association (centre social loi 1901, agréments CAF et JEP, QPV des
+# Hauts de Creil, Oise, HDF).
 PROFIL_MOTS_CLES: dict[str, int] = {
     # Territoire (le plus discriminant)
     "oise": 5,
     "creil": 5,
-    "hauts-de-france": 4,
+    "hauts de creil": 6,
+    "hauts de france": 4,
     "picardie": 3,
+    # Politique de la ville / QPV
+    "qpv": 5,
+    "quartier prioritaire": 5,
+    "quartiers prioritaires": 5,
+    "contrat de ville": 4,
+    "renovation urbaine": 2,
     # Cœur de métier
     "education populaire": 5,
     "jeunesse": 3,
@@ -103,10 +124,41 @@ PROFIL_MOTS_CLES: dict[str, int] = {
     "erasmus": 2,
 }
 
-# Détection du type de dispositif à partir du texte.
+# Mots-clés du profil qui prouvent que l'aide concerne NOTRE territoire.
+MOTS_TERRITOIRE = {"oise", "creil", "hauts de creil", "hauts de france", "picardie"}
+
+# Autres régions (et outre-mer) : quand une aide les mentionne SANS
+# mentionner notre territoire, c'est presque toujours un dispositif
+# régional qui ne nous concerne pas → malus par région citée. Les aides
+# nationales (qui ne citent aucune région) ne sont pas touchées.
+MALUS_HORS_TERRITOIRE = -6
+REGIONS_HORS_TERRITOIRE = [
+    "auvergne rhone alpes",
+    "bourgogne franche comte",
+    "bretagne",
+    "centre val de loire",
+    "corse",
+    "grand est",
+    "ile de france",
+    "normandie",
+    "nouvelle aquitaine",
+    "occitanie",
+    "pays de la loire",
+    "provence alpes cote d azur",
+    "guadeloupe",
+    "martinique",
+    "guyane",
+    "la reunion",
+    "mayotte",
+    "nouvelle caledonie",
+    "polynesie",
+]
+
+# Détection du type de dispositif à partir du texte (formes normalisées :
+# minuscules, sans accents, apostrophes et tirets remplacés par des espaces).
 TYPES_DISPOSITIF: list[tuple[str, str]] = [
     ("ami", "appel a manifestation"),
-    ("ami", "manifestation d'interet"),
+    ("ami", "manifestation d interet"),
     ("candidature", "appel a candidature"),
     ("aap", "appel a projet"),
     ("aap", "appels a projet"),
@@ -159,13 +211,7 @@ SOURCES_PAR_DEFAUT: list[tuple[str, str, str, str]] = [
         "europe_hdf",
         "L'Europe s'engage en Hauts-de-France (FEDER / FSE+)",
         "html_liens",
-        "https://www.europe-en-hautsdefrance.eu/",
-    ),
-    (
-        "caf_partenaires",
-        "Caf.fr — espace partenaires (appels à projets)",
-        "html_liens",
-        "https://www.caf.fr/partenaires",
+        "https://www.europe-en-hautsdefrance.eu/appels-a-projets/",
     ),
     (
         "fondation_de_france",
@@ -187,15 +233,34 @@ SOURCES_PAR_DEFAUT: list[tuple[str, str, str, str]] = [
     ),
 ]
 
+# Anciennes adresses des sources par défaut : quand une ligne porte encore
+# l'ancienne URL (donc jamais personnalisée par l'utilisateur), le seed la
+# met à jour vers la nouvelle. Une URL modifiée à la main n'est jamais touchée.
+ANCIENNES_URLS_DEFAUT: dict[str, list[str]] = {
+    "europe_hdf": ["https://www.europe-en-hautsdefrance.eu/"],
+}
+
+# Sources par défaut retirées du catalogue (ex : caf.fr est une application
+# JavaScript — le HTML ne contient aucun lien, la collecte ne peut pas y
+# fonctionner ; les appels à projets des Caf remontent via Aides-territoires).
+# La ligne n'est supprimée que si l'utilisateur ne l'a pas repointée ailleurs.
+DEFAUTS_RETIRES: dict[str, list[str]] = {
+    "caf_partenaires": ["https://www.caf.fr/partenaires"],
+}
+
 
 # ---------------------------------------------------------------------------
 # Petits utilitaires texte
 # ---------------------------------------------------------------------------
 
 def _sans_accents(texte: str) -> str:
-    """Minuscule + suppression des accents, pour des comparaisons robustes."""
+    """Forme canonique pour la comparaison de mots-clés : minuscules, sans
+    accents, apostrophes/tirets/slashs remplacés par des espaces (pour que
+    « Hauts-de-France », « Hauts de France » et « d'intérêt » matchent)."""
     texte = unicodedata.normalize("NFKD", texte or "")
-    return "".join(c for c in texte if not unicodedata.combining(c)).lower()
+    texte = "".join(c for c in texte if not unicodedata.combining(c)).lower()
+    texte = re.sub(r"[-'’/_.]", " ", texte)
+    return re.sub(r"\s+", " ", texte)
 
 
 def _nettoyer_html(fragment: str) -> str:
@@ -205,7 +270,11 @@ def _nettoyer_html(fragment: str) -> str:
 
 
 def calculer_score(texte: str) -> tuple[int, list[str]]:
-    """Score de pertinence + liste des mots-clés du profil retrouvés."""
+    """Score de pertinence + liste des mots-clés du profil retrouvés.
+
+    Une aide qui cite une autre région sans citer notre territoire reçoit un
+    malus (score négatif possible) : la veille la masque par défaut.
+    """
     corpus = _sans_accents(texte)
     score = 0
     trouves: list[str] = []
@@ -213,6 +282,11 @@ def calculer_score(texte: str) -> tuple[int, list[str]]:
         if mot in corpus:
             score += poids
             trouves.append(mot)
+    if not any(mot in MOTS_TERRITOIRE for mot in trouves):
+        for region in REGIONS_HORS_TERRITOIRE:
+            if region in corpus:
+                score += MALUS_HORS_TERRITOIRE
+                trouves.append("hors territoire : " + region)
     return score, trouves
 
 
@@ -258,18 +332,73 @@ def _parser_date(valeur) -> date | None:
 # Téléchargement
 # ---------------------------------------------------------------------------
 
+def _contexte_certifi() -> ssl.SSLContext | None:
+    """Contexte TLS basé sur le magasin de certificats du paquet certifi.
+
+    Secours pour les installations Windows dont le magasin système est
+    incomplet (erreur « CERTIFICATE_VERIFY_FAILED : unable to get local
+    issuer certificate » sur des sites pourtant valides). La vérification
+    TLS reste TOUJOURS active : on change seulement d'autorités de
+    confiance, on ne les désactive jamais.
+    """
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return None
+
+
 def _telecharger(url: str, en_tetes: dict | None = None, timeout: int = DELAI_HTTP) -> bytes:
-    entetes = {"User-Agent": USER_AGENT, "Accept-Language": "fr"}
+    entetes = {
+        "User-Agent": USER_AGENT,
+        "Accept-Language": "fr",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.9,*/*;q=0.8",
+    }
     if en_tetes:
         entetes.update(en_tetes)
     requete = urllib.request.Request(url, headers=entetes)
-    with urllib.request.urlopen(requete, timeout=timeout) as reponse:
-        return reponse.read()
+    try:
+        with urllib.request.urlopen(requete, timeout=timeout) as reponse:
+            return reponse.read()
+    except urllib.error.URLError as exc:
+        # Magasin de certificats système incomplet : on retente avec certifi.
+        if isinstance(getattr(exc, "reason", None), ssl.SSLCertVerificationError):
+            contexte = _contexte_certifi()
+            if contexte is not None:
+                with urllib.request.urlopen(requete, timeout=timeout, context=contexte) as reponse:
+                    return reponse.read()
+        raise
 
 
 # ---------------------------------------------------------------------------
 # Collecteur 1 : API Aides-territoires
 # ---------------------------------------------------------------------------
+
+def _resoudre_perimetre(entetes: dict, nom: str) -> str | None:
+    """Retrouve l'identifiant Aides-territoires du périmètre (ex : « Oise »).
+
+    Meilleur effort : en cas d'échec (API indisponible, format inattendu),
+    on renvoie None et la collecte continue sans filtre territorial — le
+    malus « hors territoire » du scoring prend alors le relais.
+    """
+    try:
+        brut = _telecharger(
+            AIDES_TERRITOIRES_BASE + "/api/perimeters/?q=" + urllib.parse.quote(nom),
+            en_tetes=entetes,
+        )
+        resultats = (json.loads(brut.decode("utf-8", "replace")) or {}).get("results") or []
+        cible = _sans_accents(nom)
+        # Priorité au département portant exactement ce nom.
+        for p in resultats:
+            if _sans_accents(p.get("name") or "") == cible and (p.get("scale") or "") == "department":
+                return p.get("id")
+        for p in resultats:
+            if _sans_accents(p.get("name") or "") == cible:
+                return p.get("id")
+        return resultats[0].get("id") if resultats else None
+    except Exception:
+        return None
 
 def _collecter_aides_territoires(source: VeilleSource) -> list[dict]:
     """Interroge l'API Aides-territoires (agrégateur public national).
@@ -284,16 +413,33 @@ def _collecter_aides_territoires(source: VeilleSource) -> list[dict]:
             "récupérez votre jeton API (Mon compte → API) et collez-le dans cette source."
         )
 
-    brut = _telecharger(
-        AIDES_TERRITOIRES_BASE + "/api/connexion/",
-        en_tetes={"X-AUTH-TOKEN": source.api_cle.strip(), "Accept": "application/json"},
-    )
+    try:
+        brut = _telecharger(
+            AIDES_TERRITOIRES_BASE + "/api/connexion/",
+            en_tetes={"X-AUTH-TOKEN": source.api_cle.strip(), "Accept": "application/json"},
+        )
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise RuntimeError(
+                "Clé API refusée par Aides-territoires : vérifiez le jeton copié depuis "
+                "Mon compte → API (il expire parfois, il suffit d'en régénérer un)."
+            ) from exc
+        raise
     jeton = (json.loads(brut.decode("utf-8", "replace")) or {}).get("token")
     if not jeton:
         raise RuntimeError("Connexion à l'API refusée : vérifiez la clé API.")
 
     entetes = {"Authorization": "Bearer " + jeton, "Accept": "application/json"}
     url = source.url
+    # Filtre territorial : sans lui, l'API renvoie le flux national brut,
+    # y compris les dispositifs propres aux autres régions. Le périmètre
+    # « Oise » restreint aux aides qui couvrent le département (donc aussi
+    # les aides régionales HDF, nationales et européennes). Si l'URL de la
+    # source contient déjà un perimeter=..., on respecte ce choix manuel.
+    if "perimeter=" not in url:
+        perimetre_id = _resoudre_perimetre(entetes, TERRITOIRE_PERIMETRE)
+        if perimetre_id:
+            url += ("&" if "?" in url else "?") + "perimeter=" + urllib.parse.quote(str(perimetre_id))
     items: list[dict] = []
     for _ in range(MAX_PAGES_AIDES_TERRITOIRES):
         if not url:
@@ -505,14 +651,30 @@ def seed_sources_par_defaut() -> int:
     recréée tant que sa ligne existe ; supprimée, elle réapparaîtra au
     prochain appel — c'est le comportement voulu du bouton « réinitialiser ».
     """
-    existants = {s.code_defaut for s in VeilleSource.query.filter(VeilleSource.code_defaut.isnot(None))}
+    lignes = {
+        s.code_defaut: s for s in VeilleSource.query.filter(VeilleSource.code_defaut.isnot(None))
+    }
+    changements = 0
     ajouts = 0
     for code, nom, type_source, url in SOURCES_PAR_DEFAUT:
-        if code in existants:
-            continue
-        db.session.add(VeilleSource(nom=nom, type_source=type_source, url=url, code_defaut=code))
-        ajouts += 1
-    if ajouts:
+        ligne = lignes.get(code)
+        if ligne is None:
+            db.session.add(VeilleSource(nom=nom, type_source=type_source, url=url, code_defaut=code))
+            ajouts += 1
+        elif ligne.url in ANCIENNES_URLS_DEFAUT.get(code, []):
+            # L'utilisateur n'a pas touché l'URL : on applique la correction
+            # du catalogue (et on efface l'erreur mémorisée, désormais caduque).
+            ligne.url = url
+            ligne.dernier_statut = None
+            ligne.dernier_message = None
+            changements += 1
+    for code, urls_defaut in DEFAUTS_RETIRES.items():
+        ligne = lignes.get(code)
+        if ligne is not None and ligne.url in urls_defaut:
+            VeilleOpportunite.query.filter_by(source_id=ligne.id).update({"source_id": None})
+            db.session.delete(ligne)
+            changements += 1
+    if ajouts or changements:
         db.session.commit()
     return ajouts
 
@@ -520,6 +682,22 @@ def seed_sources_par_defaut() -> int:
 # ---------------------------------------------------------------------------
 # Rafraîchissement
 # ---------------------------------------------------------------------------
+
+def rescorer_toutes_les_opportunites() -> None:
+    """Recalcule score, mots-clés et type de TOUTES les opportunités.
+
+    Appelé à chaque rafraîchissement : ainsi, une évolution du profil de
+    mots-clés (nouveaux termes, malus hors territoire...) s'applique aussi
+    aux trouvailles déjà en base, pas seulement aux prochaines.
+    """
+    for opp in VeilleOpportunite.query.all():
+        texte = (opp.titre or "") + " " + (opp.description or "")
+        score, mots = calculer_score(texte)
+        opp.score = score
+        opp.mots_cles = ", ".join(mots)[:300] or None
+        opp.type_dispositif = detecter_type(texte)
+    db.session.commit()
+
 
 def rafraichir_toutes_sources() -> dict:
     """Collecte toutes les sources actives. Retourne un résumé par source.
@@ -550,6 +728,7 @@ def rafraichir_toutes_sources() -> dict:
             source.dernieres_trouvailles = 0
             resume["sources_erreur"] += 1
         db.session.commit()
+    rescorer_toutes_les_opportunites()
     return resume
 
 

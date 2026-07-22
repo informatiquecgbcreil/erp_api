@@ -70,6 +70,9 @@ def index():
                 VeilleOpportunite.date_cloture >= date.today(),
             )
         )
+        # Score négatif = dispositif d'une autre région (malus hors
+        # territoire) : masqué par défaut, visible via « tout afficher ».
+        requete = requete.filter(VeilleOpportunite.score >= 0)
     if source_id:
         requete = requete.filter(VeilleOpportunite.source_id == source_id)
 
