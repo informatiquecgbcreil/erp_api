@@ -35,11 +35,12 @@ from app.utils.dates import utcnow
 # Options du flux (JSON par utilisateur, valeurs sûres par défaut)
 # ---------------------------------------------------------------------------
 
-CHAMPS_DESCRIPTION = ["type", "horaire", "modules", "capacite", "presences", "emargement", "secteur"]
+CHAMPS_DESCRIPTION = ["type", "horaire", "modules", "bilan", "capacite", "presences", "emargement", "secteur"]
 CHAMPS_DESCRIPTION_LABELS = {
     "type": "Type de séance (collective / individuelle / événement)",
     "horaire": "Horaire",
     "modules": "Thématiques / modules pédagogiques travaillés",
+    "bilan": "Intention de séance et observations (bilan pédagogique)",
     "capacite": "Capacité de l'atelier",
     "presences": "Nombre de présences saisies (jamais les noms)",
     "emargement": "Rappel « émargement à faire » sur les séances passées",
@@ -304,6 +305,15 @@ def _description_seance(s, atelier, presences: int, options: dict) -> str:
         noms = sorted({(m.nom or "").strip() for m in (getattr(s, "modules", []) or []) if getattr(m, "nom", None)})
         if noms:
             lignes.append("Thématiques : " + ", ".join(noms))
+    if "bilan" in champs:
+        intention = (getattr(s, "intention_seance", None) or "").strip()
+        if intention:
+            lignes.append(f"Intention : {intention}")
+        observations = (getattr(s, "bilan_qualitatif", None) or "").strip()
+        if observations:
+            if len(observations) > 500:
+                observations = observations[:500].rstrip() + "…"
+            lignes.append(f"Observations : {observations}")
     if "capacite" in champs and atelier and atelier.capacite_defaut:
         lignes.append(f"Capacité : {atelier.capacite_defaut} places")
     if "presences" in champs and presences:
