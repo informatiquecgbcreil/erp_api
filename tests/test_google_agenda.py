@@ -348,6 +348,26 @@ def test_connexion_redirige_vers_google(app, admin_client):
         app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
 
 
+def test_redirect_base_dediee_pour_oauth(app, admin_client):
+    """GOOGLE_OAUTH_REDIRECT_BASE découple l'URI de retour OAuth de l'URL
+    publique (QR codes en IP LAN vs localhost imposé par Google en http)."""
+    app.config["GOOGLE_OAUTH_CLIENT_ID"] = "client-test.apps.googleusercontent.com"
+    app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = "secret-test"
+    app.config["PUBLIC_BASE_URL"] = "http://192.168.1.200:8000"
+    app.config["GOOGLE_OAUTH_REDIRECT_BASE"] = "http://127.0.0.1:8000"
+    try:
+        r = admin_client.get("/mon-agenda/google/connecter")
+        assert r.status_code == 302
+        import urllib.parse as up
+        params = dict(up.parse_qsl(up.urlsplit(r.headers["Location"]).query))
+        assert params["redirect_uri"] == "http://127.0.0.1:8000/mon-agenda/google/retour"
+    finally:
+        app.config["GOOGLE_OAUTH_CLIENT_ID"] = ""
+        app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
+        app.config["PUBLIC_BASE_URL"] = ""
+        app.config["GOOGLE_OAUTH_REDIRECT_BASE"] = ""
+
+
 def test_retour_oauth_etat_invalide(app, admin_client):
     app.config["GOOGLE_OAUTH_CLIENT_ID"] = "client-test.apps.googleusercontent.com"
     app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = "secret-test"
