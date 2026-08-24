@@ -120,6 +120,11 @@ class Config:
     # Mode d'emploi : docs/google-agenda.md
     GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
     GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+    # Base de l'URI de retour OAuth, si différente de l'URL publique. Google
+    # n'accepte en http que localhost/127.0.0.1 (port libre) : quand
+    # ERP_PUBLIC_BASE_URL pointe sur l'IP LAN (QR codes), mettre ici
+    # http://127.0.0.1:<port> et faire la connexion Google depuis le serveur.
+    GOOGLE_OAUTH_REDIRECT_BASE = os.environ.get("GOOGLE_OAUTH_REDIRECT_BASE", "").strip().rstrip("/")
 
     # Façade kiosque « hors les murs » : nom d'hôte PUBLIC (tunnel Cloudflare,
     # Tailscale Funnel…) par lequel SEUL l'émargement kiosque doit répondre.

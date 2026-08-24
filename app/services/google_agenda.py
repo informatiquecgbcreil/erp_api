@@ -92,8 +92,15 @@ def est_configure(app=None) -> bool:
 
 def uri_de_retour() -> str:
     """URL de retour OAuth — DOIT être déclarée telle quelle dans la
-    console Google Cloud (« URI de redirection autorisés »)."""
-    base = (public_base_url() or "").rstrip("/")
+    console Google Cloud (« URI de redirection autorisés »).
+
+    GOOGLE_OAUTH_REDIRECT_BASE permet de découpler cette URI de l'URL
+    publique : Google n'accepte en http que localhost/127.0.0.1, alors que
+    l'URL publique d'une installation LAN est souvent une IP privée.
+    """
+    base = (current_app.config.get("GOOGLE_OAUTH_REDIRECT_BASE") or "").strip().rstrip("/")
+    if not base:
+        base = (public_base_url() or "").rstrip("/")
     return f"{base}{url_for('main.google_agenda_retour')}"
 
 

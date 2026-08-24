@@ -62,10 +62,40 @@ Il faut créer des identifiants OAuth dans la console Google Cloud (gratuit) :
    de la page *Mon agenda* propose alors **Connecter mon agenda Google** à
    chaque membre de l'équipe.
 
-> **Important** : l'URL publique (`ERP_PUBLIC_BASE_URL`) doit être joignable
-> par le navigateur de la personne au moment de la connexion (le retour OAuth
-> est une simple redirection de navigateur — Google n'a pas besoin d'atteindre
-> le serveur). En LAN, `http://erp-cgb:8000` fonctionne donc très bien.
+## Application locale / LAN : quelle URI de redirection ?
+
+Le retour OAuth est une **simple redirection de navigateur** — les serveurs
+de Google n'ont jamais besoin d'atteindre le vôtre. Une application 100 %
+locale fonctionne donc. Mais Google impose des règles sur l'URI déclarée :
+
+- en `http` (sans TLS), **seuls `localhost` et `127.0.0.1` sont acceptés**
+  (n'importe quel port : `http://127.0.0.1:8000/...` est valide) ;
+- une IP privée (`http://192.168.…`) est **refusée** par la console ;
+- tout le reste doit être en `https` avec un vrai nom de domaine.
+
+En pratique pour une installation LAN :
+
+1. Gardez `ERP_PUBLIC_BASE_URL` sur l'adresse LAN (elle sert aux QR codes),
+   et mettez dans `.env` :
+
+   ```ini
+   GOOGLE_OAUTH_REDIRECT_BASE=http://127.0.0.1:8000
+   ```
+
+   (le port où l'application écoute sur le serveur). La carte de la page
+   *Mon agenda* affiche alors l'URI exacte à coller dans la console Google —
+   la correspondance est stricte, **port compris**. La console accepte
+   plusieurs URIs : déclarez-en une par port utilisé (ex. 5000 en debug,
+   8000 en service).
+2. Avec `127.0.0.1`, la connexion doit se faire depuis un navigateur ouvert
+   **sur la machine serveur** (ou en bureau à distance). Ce n'est nécessaire
+   qu'**une seule fois par personne** : chacun s'y connecte à l'ERP avec son
+   compte, clique « Connecter mon agenda Google », s'authentifie avec son
+   compte Google — ensuite la synchro tourne entièrement côté serveur, sans
+   navigateur.
+3. Pour permettre un jour la connexion depuis n'importe quel poste, il
+   faudra une URL en `https` avec un nom de domaine (reverse proxy ou
+   tunnel) — mais rien d'autre ne change.
 
 ## Notes techniques
 
