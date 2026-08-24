@@ -53,6 +53,57 @@
     </details>
   </div>
 
+  <div class="agenda-carte" style="margin-top:12px;">
+    <h2 style="margin-top:0; font-size:1.05rem;">⚡ Synchro Google Agenda en temps réel</h2>
+    {% if google_compte %}
+      <p class="muted" style="margin-top:0;">
+        Compte connecté : <strong>{{ google_compte.google_email or "compte Google" }}</strong>.
+        Tes séances sont poussées dans un calendrier dédié « Séances — … » de ton Google Agenda
+        <strong>dès leur création ou modification</strong> (créneau réservé, description mise à jour :
+        présences saisies, thématiques, annulations…).
+        {% if google_compte.derniere_synchro %}
+          Dernière synchronisation : {{ google_compte.derniere_synchro.strftime('%d/%m/%Y %H:%M') }} (UTC).
+        {% endif %}
+      </p>
+      {% if google_compte.derniere_erreur %}
+        <p style="color:#b3261e; font-size:.88rem;">⚠️ Dernière erreur : {{ google_compte.derniere_erreur }}</p>
+      {% endif %}
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <form method="post" action="{{ url_for('main.google_agenda_resynchroniser') }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn" type="submit">🔄 Resynchroniser maintenant</button>
+        </form>
+        <form method="post" action="{{ url_for('main.google_agenda_deconnecter') }}" style="margin:0;"
+              onsubmit="return confirm('Déconnecter ? Le calendrier dédié sera retiré de ton Google Agenda et l\'accès révoqué.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-danger-outline" type="submit">🔌 Déconnecter mon compte Google</button>
+        </form>
+      </div>
+    {% elif google_configure %}
+      <p class="muted" style="margin-top:0;">
+        Le lien ci-dessus est relu par Google à son rythme (souvent 24 h de délai). En connectant ton compte
+        Google ici, l'application <strong>pousse chaque séance instantanément</strong> : la création réserve le
+        créneau, et la description se met à jour toute seule (nombre de présences saisies, thématiques
+        travaillées, annulations…) selon tes réglages « Ce que contient mon agenda » ci-dessous.
+        Les événements vont dans un calendrier dédié — jamais dans ton calendrier principal — et
+        <strong>aucun nom de participant</strong> n'est envoyé.
+      </p>
+      <a class="btn primary" href="{{ url_for('main.google_agenda_connecter') }}">🔗 Connecter mon agenda Google</a>
+    {% else %}
+      <p class="muted" style="margin-top:0;">
+        La synchro temps réel avec Google Agenda est possible mais pas encore configurée sur cette
+        installation. Une personne de l'équipe technique doit créer des identifiants OAuth dans la
+        console Google Cloud et les renseigner dans le fichier <code>.env</code>
+        (<code>GOOGLE_OAUTH_CLIENT_ID</code> / <code>GOOGLE_OAUTH_CLIENT_SECRET</code>) —
+        mode d'emploi pas à pas dans <code>docs/google-agenda.md</code>.
+        {% if google_uri_retour %}
+          URI de redirection à déclarer côté Google : <code>{{ google_uri_retour }}</code>
+        {% endif %}
+        En attendant, l'abonnement par lien ci-dessus fonctionne (mise à jour différée).
+      </p>
+    {% endif %}
+  </div>
+
   <div class="agenda-grid2" style="margin-top:12px;">
     <div class="agenda-carte agenda-form">
       <h2 style="margin-top:0; font-size:1.05rem;">⚙️ Ce que contient mon agenda</h2>

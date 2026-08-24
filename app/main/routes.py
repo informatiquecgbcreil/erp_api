@@ -15,6 +15,7 @@ from app.main import (  # noqa: F401
     couts,
     dashboard,
     dons,
+    google_agenda,
     guides,
     hart,
     impayes,

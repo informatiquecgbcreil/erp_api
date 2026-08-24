@@ -98,8 +98,20 @@ def mon_agenda():
         .all()
     )
 
+    from app.services import google_agenda as ga
+
+    google_configure = ga.est_configure()
+    google_compte = getattr(current_user, "google_agenda", None)
+    try:
+        google_uri_retour = ga.uri_de_retour()
+    except Exception:
+        google_uri_retour = None
+
     return render_template(
         "mon_agenda.html",
+        google_configure=google_configure,
+        google_compte=google_compte,
+        google_uri_retour=google_uri_retour,
         subventions=subventions,
         url_https=url_https,
         url_webcal=url_webcal,

@@ -113,6 +113,14 @@ class Config:
     # Exemple : http://erp-cgb:8000 ou http://192.168.1.10:8000
     PUBLIC_BASE_URL = os.environ.get("ERP_PUBLIC_BASE_URL", "")
 
+    # --- Synchronisation Google Agenda (push temps réel) ---------------------
+    # Identifiants OAuth 2.0 créés dans la console Google Cloud (type
+    # « application Web », URI de redirection : <URL publique>/mon-agenda/google/retour).
+    # Vides = fonctionnalité masquée ; le flux iCal reste disponible.
+    # Mode d'emploi : docs/google-agenda.md
+    GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
+    GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+
     # Façade kiosque « hors les murs » : nom d'hôte PUBLIC (tunnel Cloudflare,
     # Tailscale Funnel…) par lequel SEUL l'émargement kiosque doit répondre.
     # Quand une requête arrive par cet hôte, tout le reste de l'application
