@@ -286,6 +286,41 @@ def create_app():
         return None
 
     # ------------------------------------------------------------------
+    # Google Agenda : synchro push temps réel. Les écouteurs SQLAlchemy
+    # détectent séances/présences modifiées et poussent en arrière-plan
+    # dès le commit ; un rattrapage périodique (même mécanique paresseuse
+    # que la veille) resynchronise tout si quelque chose a été manqué.
+    # Coût nul tant que GOOGLE_OAUTH_CLIENT_ID/SECRET ne sont pas définis.
+    # ------------------------------------------------------------------
+    from app.services.google_agenda import enregistrer_ecouteurs as _ga_ecouteurs
+
+    _ga_ecouteurs(app)
+    _google_agenda_marqueur = {"heure": None}
+
+    @app.before_request
+    def _google_agenda_rattrapage_periodique():
+        from datetime import datetime as _datetime
+
+        endpoint = (request.endpoint or "")
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+            return None
+        if app.config.get("TESTING") or not app.config.get("GOOGLE_AGENDA_AUTO", True):
+            return None
+
+        heure_courante = _datetime.now().strftime("%Y-%m-%d %H")
+        if _google_agenda_marqueur["heure"] == heure_courante:
+            return None
+        _google_agenda_marqueur["heure"] = heure_courante
+
+        from app.services.google_agenda import lancer_rattrapage_arriere_plan
+
+        try:
+            lancer_rattrapage_arriere_plan(app)
+        except Exception:
+            app.logger.exception("Google Agenda : échec du déclenchement du rattrapage")
+        return None
+
+    # ------------------------------------------------------------------
     # RBAC helpers
     # ------------------------------------------------------------------
     from app.rbac import bootstrap_rbac, can

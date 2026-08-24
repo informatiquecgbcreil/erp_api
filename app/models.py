@@ -3081,6 +3081,61 @@ class AgendaCreneau(db.Model):
             return 0
 
 
+class GoogleAgendaCompte(db.Model):
+    """Connexion Google Agenda d'une personne (synchro « push » temps réel).
+
+    Complète le flux iCal : au lieu d'attendre que Google relise le flux
+    (souvent 24 h), l'application POUSSE chaque séance via l'API Google
+    Calendar dès sa création/modification. Les événements vont dans un
+    calendrier dédié créé dans le compte Google de la personne — jamais
+    dans son calendrier principal — pour pouvoir tout retirer proprement.
+    """
+    __tablename__ = "google_agenda_compte"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    #: Adresse du compte Google connecté (affichage/vérification uniquement).
+    google_email = db.Column(db.String(255), nullable=True)
+    #: Jeton long-terme délivré par Google (access_type=offline). Révocable
+    #: à tout moment côté application (déconnexion) ou côté compte Google.
+    refresh_token = db.Column(db.Text, nullable=False)
+    #: Jeton court-terme mis en cache (renouvelé automatiquement à expiration).
+    access_token = db.Column(db.Text, nullable=True)
+    access_token_expire_at = db.Column(db.DateTime, nullable=True)
+    #: Calendrier dédié « Séances — … » créé à la connexion.
+    calendar_id = db.Column(db.String(255), nullable=True)
+    actif = db.Column(db.Boolean, nullable=False, default=True)
+    derniere_synchro = db.Column(db.DateTime, nullable=True)
+    #: Dernière erreur rencontrée (None = tout va bien). Affichée sur la
+    #: page Mon agenda pour que la personne sache si la synchro décroche.
+    derniere_erreur = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    user = db.relationship("User", backref=db.backref("google_agenda", uselist=False, cascade="all, delete-orphan"))
+    evenements = db.relationship("GoogleAgendaEvenement", backref="compte", cascade="all, delete-orphan")
+
+
+class GoogleAgendaEvenement(db.Model):
+    """Correspondance séance ↔ événement Google (par compte connecté).
+
+    ``empreinte`` est le hachage du contenu poussé : si la séance n'a pas
+    changé, aucune requête n'est envoyée à Google (la resynchronisation
+    périodique reste alors quasi gratuite).
+    """
+    __tablename__ = "google_agenda_evenement"
+
+    id = db.Column(db.Integer, primary_key=True)
+    compte_id = db.Column(db.Integer, db.ForeignKey("google_agenda_compte.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("session_activite.id", ondelete="CASCADE"), nullable=False, index=True)
+    google_event_id = db.Column(db.String(255), nullable=False)
+    empreinte = db.Column(db.String(64), nullable=True)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("compte_id", "session_id", name="uq_google_agenda_compte_session"),
+    )
+
+
 # ---------- TRANSITIONS (thématiques, défis, mesures) ----------
 
 #: Thématiques par défaut, créées au premier usage (modifiables ensuite).

@@ -35,10 +35,11 @@ from app.utils.dates import utcnow
 # Options du flux (JSON par utilisateur, valeurs sûres par défaut)
 # ---------------------------------------------------------------------------
 
-CHAMPS_DESCRIPTION = ["type", "horaire", "capacite", "presences", "emargement", "secteur"]
+CHAMPS_DESCRIPTION = ["type", "horaire", "modules", "capacite", "presences", "emargement", "secteur"]
 CHAMPS_DESCRIPTION_LABELS = {
     "type": "Type de séance (collective / individuelle / événement)",
     "horaire": "Horaire",
+    "modules": "Thématiques / modules pédagogiques travaillés",
     "capacite": "Capacité de l'atelier",
     "presences": "Nombre de présences saisies (jamais les noms)",
     "emargement": "Rappel « émargement à faire » sur les séances passées",
@@ -299,6 +300,10 @@ def _description_seance(s, atelier, presences: int, options: dict) -> str:
         lignes.append(_type_seance(s))
     if "horaire" in champs and heure_debut:
         lignes.append(f"Horaire : {heure_debut}" + (f"–{heure_fin}" if heure_fin else ""))
+    if "modules" in champs:
+        noms = sorted({(m.nom or "").strip() for m in (getattr(s, "modules", []) or []) if getattr(m, "nom", None)})
+        if noms:
+            lignes.append("Thématiques : " + ", ".join(noms))
     if "capacite" in champs and atelier and atelier.capacite_defaut:
         lignes.append(f"Capacité : {atelier.capacite_defaut} places")
     if "presences" in champs and presences:
