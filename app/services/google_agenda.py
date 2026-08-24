@@ -43,6 +43,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from app.extensions import db
 from app.models import (
+    AgendaCreneau,
     GoogleAgendaCompte,
     GoogleAgendaEvenement,
     SessionActivite,
@@ -55,6 +56,7 @@ from app.services.calendrier import (
     _secteur_du_flux,
     _type_seance,
     charger_options,
+    creneaux_du_flux,
     sessions_du_flux,
     _presences_par_session,
 )
@@ -389,12 +391,32 @@ def _identifiant_evenement(session_id: int) -> str:
     return f"erpseance{session_id}"
 
 
+def _identifiant_creneau(creneau_id: int) -> str:
+    return f"erpcreneau{creneau_id}"
+
+
 def _dt_iso(d: date, heure: str | None) -> str | None:
     try:
         hh, mm = (heure or "").strip().split(":")[:2]
         return f"{d.isoformat()}T{int(hh):02d}:{int(mm):02d}:00"
     except Exception:
         return None
+
+
+def _horaires(d: date, heure_debut: str | None, heure_fin: str | None) -> tuple[dict, dict]:
+    """start/end Google : horodatés si une heure de début existe, sinon
+    « journée entière » (fin exclusive à J+1)."""
+    debut_iso = _dt_iso(d, heure_debut)
+    if debut_iso:
+        fin_iso = _dt_iso(d, heure_fin or _plus_une_heure(heure_debut)) or debut_iso
+        return (
+            {"dateTime": debut_iso, "timeZone": FUSEAU},
+            {"dateTime": fin_iso, "timeZone": FUSEAU},
+        )
+    return (
+        {"date": d.isoformat()},
+        {"date": (d + timedelta(days=1)).isoformat()},
+    )
 
 
 def corps_evenement(s: SessionActivite, options: dict, *, lien_base: str = "") -> dict:
@@ -426,16 +448,7 @@ def corps_evenement(s: SessionActivite, options: dict, *, lien_base: str = "") -
         lien = f"{lien_base}/activite/session/{s.id}/emargement"
         description = (description + f"\n\nFeuille d'émargement : {lien}").strip()
 
-    debut_iso = _dt_iso(d, heure_debut)
-    if debut_iso:
-        fin_iso = _dt_iso(d, heure_fin) or debut_iso
-        debut = {"dateTime": debut_iso, "timeZone": FUSEAU}
-        fin = {"dateTime": fin_iso, "timeZone": FUSEAU}
-    else:
-        # Pas d'heure : événement « journée entière » (fin exclusive à J+1).
-        debut = {"date": d.isoformat()}
-        fin = {"date": (d + timedelta(days=1)).isoformat()}
-
+    debut, fin = _horaires(d, heure_debut, heure_fin)
     return {
         "summary": titre,
         "location": (s.secteur or "").strip(),
@@ -446,6 +459,22 @@ def corps_evenement(s: SessionActivite, options: dict, *, lien_base: str = "") -
         # Une séance annulée ne bloque plus le créneau (libre/occupé).
         "transparency": "transparent" if annulee else "opaque",
         "extendedProperties": {"private": {"erp_seance": str(s.id)}},
+    }
+
+
+def corps_evenement_creneau(c: AgendaCreneau) -> dict:
+    """Corps JSON d'un créneau hors ateliers (réunion, préparation…) —
+    même contenu que dans le flux iCal."""
+    debut, fin = _horaires(c.date_creneau, c.heure_debut, c.heure_fin)
+    return {
+        "summary": f"{c.type_label} — {c.titre}"[:200],
+        "location": "",
+        "description": (c.description or "").strip(),
+        "start": debut,
+        "end": fin,
+        "status": "confirmed",
+        "transparency": "opaque",
+        "extendedProperties": {"private": {"erp_creneau": str(c.id)}},
     }
 
 
@@ -478,6 +507,30 @@ def _session_visible(s: SessionActivite | None, user, options: dict, *, fenetre:
     if secteur and (s.secteur or "") != secteur:
         if not (options.get("evenements_tous_secteurs") and getattr(s, "est_evenement", False)):
             return False
+    if fenetre:
+        today = date.today()
+        if d < today - timedelta(days=options.get("jours_passe", 30)):
+            return False
+        if d > today + timedelta(days=options.get("jours_futur", 180)):
+            return False
+    return True
+
+
+def _creneau_visible(c: AgendaCreneau | None, compte: GoogleAgendaCompte,
+                     options: dict, *, fenetre: bool = True) -> bool:
+    """Le créneau a-t-il sa place dans le calendrier de ce compte ?
+
+    Un créneau est personnel : seul le compte de SON auteur le reçoit.
+    Le réglage « inclure mes créneaux hors ateliers » (partagé avec le
+    flux iCal) fait foi. Même logique de fenêtre que les séances.
+    """
+    if c is None or c.user_id != compte.user_id:
+        return False
+    if not options.get("inclure_creneaux", True):
+        return False
+    d = c.date_creneau
+    if d is None:
+        return False
     if fenetre:
         today = date.today()
         if d < today - timedelta(days=options.get("jours_passe", 30)):
@@ -559,10 +612,54 @@ def synchroniser_session_pour_compte(compte: GoogleAgendaCompte, s: SessionActiv
     return resultat
 
 
+def synchroniser_creneau_pour_compte(compte: GoogleAgendaCompte, c: AgendaCreneau | None,
+                                     creneau_id: int, options: dict | None = None) -> str | None:
+    """Aligne UN créneau hors ateliers sur le calendrier Google du compte.
+
+    Renvoie "cree", "modifie", "supprime" ou None (rien à faire). Un
+    créneau supprimé (suppression définitive, pas de corbeille) est
+    retrouvé via sa correspondance et retiré du calendrier.
+    """
+    options = options if options is not None else charger_options(compte.user)
+
+    correspondance = GoogleAgendaEvenement.query.filter_by(
+        compte_id=compte.id, creneau_id=creneau_id
+    ).first()
+
+    if not _creneau_visible(c, compte, options, fenetre=(correspondance is None)):
+        if correspondance is None:
+            return None
+        _api(compte, "DELETE",
+             _chemin_evenement(compte, correspondance.google_event_id), absent_ok=True)
+        db.session.delete(correspondance)
+        db.session.commit()
+        return "supprime"
+
+    corps = corps_evenement_creneau(c)
+    empreinte = _empreinte(corps)
+    if correspondance is not None and correspondance.empreinte == empreinte:
+        return None
+
+    event_id = correspondance.google_event_id if correspondance else _identifiant_creneau(creneau_id)
+    _pousser(compte, corps, event_id, existe=correspondance is not None)
+    if correspondance is None:
+        correspondance = GoogleAgendaEvenement(
+            compte_id=compte.id, creneau_id=creneau_id, google_event_id=event_id
+        )
+        db.session.add(correspondance)
+        resultat = "cree"
+    else:
+        resultat = "modifie"
+    correspondance.empreinte = empreinte
+    db.session.commit()
+    return resultat
+
+
 def synchronisation_complete(compte: GoogleAgendaCompte) -> dict:
-    """Resynchronise tout le périmètre de la personne (fenêtre du flux) et
-    retire les événements devenus orphelins. Idempotente et quasi gratuite
-    quand rien n'a changé (empreintes)."""
+    """Resynchronise tout le périmètre de la personne (fenêtre du flux) —
+    séances ET créneaux hors ateliers — et retire les événements devenus
+    orphelins. Idempotente et quasi gratuite quand rien n'a changé
+    (empreintes)."""
     user = compte.user
     options = charger_options(user)
     lien_base = lien_base_application()
@@ -571,29 +668,37 @@ def synchronisation_complete(compte: GoogleAgendaCompte) -> dict:
     au = today + timedelta(days=options.get("jours_futur", 180))
 
     bilan = {"cree": 0, "modifie": 0, "supprime": 0, "inchange": 0}
-    seances = sessions_du_flux(user, options, du=du, au=au)
-    vus = set()
-    for s in seances:
-        vus.add(s.id)
+    vus_sessions: set[int] = set()
+    for s in sessions_du_flux(user, options, du=du, au=au):
+        vus_sessions.add(s.id)
         resultat = synchroniser_session_pour_compte(
             compte, s, s.id, options, lien_base=lien_base
         )
         bilan[resultat or "inchange"] += 1
 
-    # Correspondances dont la séance a quitté le périmètre (corbeille,
-    # changement de secteur, suppression pure) — la simple sortie de la
-    # fenêtre de jours, elle, conserve l'événement (historique).
-    restantes = (
-        GoogleAgendaEvenement.query
-        .filter(GoogleAgendaEvenement.compte_id == compte.id)
-        .filter(~GoogleAgendaEvenement.session_id.in_(vus) if vus else db.true())
-        .all()
-    )
-    for correspondance in restantes:
-        s = db.session.get(SessionActivite, correspondance.session_id)
-        resultat = synchroniser_session_pour_compte(
-            compte, s, correspondance.session_id, options, lien_base=lien_base
-        )
+    vus_creneaux: set[int] = set()
+    if options.get("inclure_creneaux", True):
+        for c in creneaux_du_flux(user, du=du, au=au):
+            vus_creneaux.add(c.id)
+            resultat = synchroniser_creneau_pour_compte(compte, c, c.id, options)
+            bilan[resultat or "inchange"] += 1
+
+    # Correspondances dont la source a quitté le périmètre (corbeille,
+    # changement de secteur, créneau supprimé, réglage décoché…) — la
+    # simple sortie de la fenêtre de jours, elle, conserve l'événement
+    # (l'historique Google n'est pas effacé parce qu'il vieillit).
+    for correspondance in GoogleAgendaEvenement.query.filter_by(compte_id=compte.id).all():
+        resultat = None
+        if correspondance.session_id is not None and correspondance.session_id not in vus_sessions:
+            s = db.session.get(SessionActivite, correspondance.session_id)
+            resultat = synchroniser_session_pour_compte(
+                compte, s, correspondance.session_id, options, lien_base=lien_base
+            )
+        elif correspondance.creneau_id is not None and correspondance.creneau_id not in vus_creneaux:
+            c = db.session.get(AgendaCreneau, correspondance.creneau_id)
+            resultat = synchroniser_creneau_pour_compte(
+                compte, c, correspondance.creneau_id, options
+            )
         if resultat:
             bilan[resultat] += 1
 
@@ -612,7 +717,7 @@ def _comptes_actifs() -> list[GoogleAgendaCompte]:
     )
 
 
-def _traiter(session_ids: set[int], complet: bool) -> None:
+def _traiter(session_ids: set[int], creneau_ids: set[int], complet: bool) -> None:
     """Corps du travailleur d'arrière-plan (déjà sous app_context)."""
     for compte in _comptes_actifs():
         try:
@@ -626,6 +731,9 @@ def _traiter(session_ids: set[int], complet: bool) -> None:
                     synchroniser_session_pour_compte(
                         compte, s, session_id, options, lien_base=lien_base
                     )
+                for creneau_id in sorted(creneau_ids):
+                    c = db.session.get(AgendaCreneau, creneau_id)
+                    synchroniser_creneau_pour_compte(compte, c, creneau_id, options)
                 compte.derniere_erreur = None
             db.session.commit()
         except GoogleAgendaErreur as exc:
@@ -646,17 +754,20 @@ def _traiter(session_ids: set[int], complet: bool) -> None:
 
 # --- File d'attente en mémoire + travailleur unique par processus ----------
 
-_etat_file = {"ids": set(), "complet": False}
+_etat_file = {"ids": set(), "creneaux": set(), "complet": False}
 _verrou_file = threading.Lock()
 _verrou_travail = threading.Lock()
 
 
-def lancer_synchro_arriere_plan(app, session_ids=None, complet: bool = False) -> None:
+def lancer_synchro_arriere_plan(app, session_ids=None, creneau_ids=None,
+                                complet: bool = False) -> None:
     """Empile le travail et lance (si besoin) le thread démon qui draine la
     file. Le rattrapage périodique corrige tout oubli résiduel."""
     with _verrou_file:
         if session_ids:
             _etat_file["ids"].update(int(i) for i in session_ids)
+        if creneau_ids:
+            _etat_file["creneaux"].update(int(i) for i in creneau_ids)
         if complet:
             _etat_file["complet"] = True
 
@@ -669,12 +780,14 @@ def lancer_synchro_arriere_plan(app, session_ids=None, complet: bool = False) ->
                     with _verrou_file:
                         ids = set(_etat_file["ids"])
                         _etat_file["ids"].clear()
+                        creneaux = set(_etat_file["creneaux"])
+                        _etat_file["creneaux"].clear()
                         faire_complet = _etat_file["complet"]
                         _etat_file["complet"] = False
-                    if not ids and not faire_complet:
+                    if not ids and not creneaux and not faire_complet:
                         break
                     try:
-                        _traiter(ids, faire_complet)
+                        _traiter(ids, creneaux, faire_complet)
                     except Exception:
                         app.logger.exception("Google Agenda : travailleur en échec")
         finally:
@@ -683,14 +796,14 @@ def lancer_synchro_arriere_plan(app, session_ids=None, complet: bool = False) ->
     threading.Thread(target=_tache, name="google-agenda-sync", daemon=True).start()
 
 
-def planifier_synchro(app, session_ids: set[int]) -> None:
+def planifier_synchro(app, session_ids: set[int], creneau_ids: set[int] = frozenset()) -> None:
     """Point d'entrée des écouteurs : filtre puis délègue à l'arrière-plan.
     Isolé pour être remplaçable dans les tests (monkeypatch)."""
     if app.config.get("TESTING"):
         return
     if not est_configure(app):
         return
-    lancer_synchro_arriere_plan(app, session_ids=session_ids)
+    lancer_synchro_arriere_plan(app, session_ids=session_ids, creneau_ids=creneau_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -702,18 +815,21 @@ _ecouteurs_poses = False
 _app_courante = {"app": None}
 
 
-def _ids_touches(db_session) -> set[int]:
-    """Séances concernées par le flush en cours (créations, modifications,
-    suppressions de séances ; émargements qui changent le compteur)."""
+def _ids_touches(db_session) -> tuple[set[int], set[int]]:
+    """(séances, créneaux) concernés par le flush en cours : créations,
+    modifications, suppressions ; émargements qui changent le compteur."""
     from app.models import PresenceActivite  # import local : cycle évité
 
-    ids: set[int] = set()
+    sessions: set[int] = set()
+    creneaux: set[int] = set()
     for obj in list(db_session.new) + list(db_session.dirty) + list(db_session.deleted):
         if isinstance(obj, SessionActivite) and obj.id is not None:
-            ids.add(obj.id)
+            sessions.add(obj.id)
         elif isinstance(obj, PresenceActivite) and obj.session_id is not None:
-            ids.add(obj.session_id)
-    return ids
+            sessions.add(obj.session_id)
+        elif isinstance(obj, AgendaCreneau) and obj.id is not None:
+            creneaux.add(obj.id)
+    return sessions, creneaux
 
 
 def enregistrer_ecouteurs(app) -> None:
@@ -734,20 +850,26 @@ def enregistrer_ecouteurs(app) -> None:
 
     @event.listens_for(SessionSA, "after_flush")
     def _collecter(db_session, flush_context):
-        ids = _ids_touches(db_session)
-        if ids:
-            db_session.info.setdefault(_CLE_INFO, set()).update(ids)
+        sessions, creneaux = _ids_touches(db_session)
+        if sessions or creneaux:
+            charge = db_session.info.setdefault(_CLE_INFO, {"sessions": set(), "creneaux": set()})
+            charge["sessions"].update(sessions)
+            charge["creneaux"].update(creneaux)
 
     @event.listens_for(SessionSA, "after_commit")
     def _pousser_apres_commit(db_session):
-        ids = db_session.info.pop(_CLE_INFO, None)
-        if not ids:
+        charge = db_session.info.pop(_CLE_INFO, None)
+        if not charge:
+            return
+        sessions = charge.get("sessions") or set()
+        creneaux = charge.get("creneaux") or set()
+        if not sessions and not creneaux:
             return
         app_active = _app_courante["app"]
         if app_active is None:
             return
         try:
-            planifier_synchro(app_active, ids)
+            planifier_synchro(app_active, sessions, creneaux)
         except Exception:
             app_active.logger.exception("Google Agenda : planification impossible")
 

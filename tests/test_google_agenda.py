@@ -303,12 +303,12 @@ def test_synchro_arriere_plan_sans_contexte_de_requete(app, monkeypatch):
     app.config["PUBLIC_BASE_URL"] = ""
     try:
         with app.app_context():  # contexte d'application, PAS de requête
-            ga._traiter({sid}, False)  # poussée incrémentale (création séance)
+            ga._traiter({sid}, set(), False)  # poussée incrémentale (création séance)
             compte = db.session.get(GoogleAgendaCompte, cid)
             assert compte.derniere_erreur is None
             assert GoogleAgendaEvenement.query.filter_by(compte_id=cid, session_id=sid).first() is not None
 
-            ga._traiter(set(), True)  # rattrapage complet, même contrainte
+            ga._traiter(set(), set(), True)  # rattrapage complet, même contrainte
             compte = db.session.get(GoogleAgendaCompte, cid)
             assert compte.derniere_erreur is None
             assert compte.derniere_synchro is not None
@@ -326,7 +326,10 @@ def test_ecouteurs_detectent_seances_et_presences(app, monkeypatch):
     from app.services import google_agenda as ga
 
     captures = []
-    monkeypatch.setattr(ga, "planifier_synchro", lambda application, ids: captures.append(set(ids)))
+    monkeypatch.setattr(
+        ga, "planifier_synchro",
+        lambda application, sessions, creneaux=frozenset(): captures.append(set(sessions)),
+    )
 
     suf = uuid.uuid4().hex[:6]
     sid = _seance(app, secteur=f"Num{suf}", nom=f"Ecoute{suf}")
@@ -347,6 +350,124 @@ def test_ecouteurs_detectent_seances_et_presences(app, monkeypatch):
         s.heure_debut = "09:00"
         db.session.commit()
     assert any(sid in ids for ids in captures), "une modification de séance doit être détectée"
+
+
+# ---------------------------------------------------------------------------
+# Créneaux hors ateliers (réunions, préparation…)
+# ---------------------------------------------------------------------------
+
+def _creneau(app, user_id, *, titre, jour_offset=2, heure_debut="10:00", heure_fin="11:00"):
+    from app.extensions import db
+    from app.models import AgendaCreneau
+    with app.app_context():
+        c = AgendaCreneau(
+            user_id=user_id, type_creneau="reunion", titre=titre,
+            date_creneau=dt.date.today() + dt.timedelta(days=jour_offset),
+            heure_debut=heure_debut, heure_fin=heure_fin,
+            description="Ordre du jour : rentrée.",
+        )
+        db.session.add(c)
+        db.session.commit()
+        return c.id
+
+
+def test_synchronisation_creneau_cree_modifie_supprime(app, monkeypatch):
+    from app.extensions import db
+    from app.models import AgendaCreneau, GoogleAgendaCompte, GoogleAgendaEvenement
+    from app.services import google_agenda as ga
+
+    suf = uuid.uuid4().hex[:6]
+    uid = _user(app, email=f"cren-{suf}@ex.org", secteur=f"Num{suf}")
+    cid = _compte(app, uid)
+    creneau_id = _creneau(app, uid, titre=f"Réunion {suf}")
+
+    faux = _FauxGoogle()
+    monkeypatch.setattr(ga, "_api", faux)
+
+    with app.app_context():
+        compte = db.session.get(GoogleAgendaCompte, cid)
+        c = db.session.get(AgendaCreneau, creneau_id)
+
+        # 1) Création : POST avec identifiant déterministe + correspondance.
+        assert ga.synchroniser_creneau_pour_compte(compte, c, creneau_id) == "cree"
+        methode, chemin, corps = faux.appels[-1]
+        assert methode == "POST" and corps["id"] == f"erpcreneau{creneau_id}"
+        assert corps["summary"].startswith("Réunion — ")
+        assert "Ordre du jour" in corps["description"]
+        assert corps["start"]["dateTime"].endswith("T10:00:00")
+
+        # 2) Rien n'a changé : aucun appel réseau.
+        nb = len(faux.appels)
+        assert ga.synchroniser_creneau_pour_compte(compte, c, creneau_id) is None
+        assert len(faux.appels) == nb
+
+        # 3) Modification : PUT sur l'événement existant.
+        c.heure_fin = "12:00"
+        db.session.commit()
+        assert ga.synchroniser_creneau_pour_compte(compte, c, creneau_id) == "modifie"
+        methode, chemin, corps = faux.appels[-1]
+        assert methode == "PUT" and chemin.endswith(f"/events/erpcreneau{creneau_id}")
+
+        # 4) Suppression DÉFINITIVE (pas de corbeille pour les créneaux) :
+        #    la correspondance survit et permet de retirer l'événement.
+        db.session.delete(c)
+        db.session.commit()
+        assert ga.synchroniser_creneau_pour_compte(compte, None, creneau_id) == "supprime"
+        assert faux.appels[-1][0] == "DELETE"
+        assert GoogleAgendaEvenement.query.filter_by(compte_id=cid, creneau_id=creneau_id).first() is None
+
+
+def test_synchronisation_complete_couvre_les_creneaux(app, monkeypatch):
+    from app.extensions import db
+    from app.models import GoogleAgendaCompte, GoogleAgendaEvenement, User
+    from app.services import google_agenda as ga
+    from app.services.calendrier import OPTIONS_DEFAUT, sauvegarder_options
+
+    suf = uuid.uuid4().hex[:6]
+    uid = _user(app, email=f"crenfull-{suf}@ex.org", secteur=f"Num{suf}")
+    cid = _compte(app, uid)
+    creneau_id = _creneau(app, uid, titre=f"Prépa {suf}")
+
+    faux = _FauxGoogle()
+    monkeypatch.setattr(ga, "_api", faux)
+
+    with app.app_context():
+        compte = db.session.get(GoogleAgendaCompte, cid)
+        bilan = ga.synchronisation_complete(compte)
+        assert bilan["cree"] >= 1
+        assert GoogleAgendaEvenement.query.filter_by(compte_id=cid, creneau_id=creneau_id).first() is not None
+
+        # Réglage « inclure mes créneaux » décoché : l'événement est retiré.
+        options = dict(OPTIONS_DEFAUT)
+        options["inclure_creneaux"] = False
+        sauvegarder_options(db.session.get(User, uid), options)
+        bilan = ga.synchronisation_complete(compte)
+        assert bilan["supprime"] >= 1
+        assert GoogleAgendaEvenement.query.filter_by(compte_id=cid, creneau_id=creneau_id).first() is None
+
+
+def test_ecouteurs_detectent_les_creneaux(app, monkeypatch):
+    from app.extensions import db
+    from app.models import AgendaCreneau
+    from app.services import google_agenda as ga
+
+    captures = []
+    monkeypatch.setattr(
+        ga, "planifier_synchro",
+        lambda application, sessions, creneaux=frozenset(): captures.append(set(creneaux)),
+    )
+
+    suf = uuid.uuid4().hex[:6]
+    uid = _user(app, email=f"ecoutcren-{suf}@ex.org", secteur=f"Num{suf}")
+    creneau_id = _creneau(app, uid, titre=f"Réunion {suf}")
+    assert any(creneau_id in ids for ids in captures), "la création d'un créneau doit être détectée"
+
+    with app.app_context():
+        captures.clear()
+        c = db.session.get(AgendaCreneau, creneau_id)
+        db.session.delete(c)
+        db.session.commit()
+    assert any(creneau_id in ids for ids in captures), "la suppression d'un créneau doit être détectée"
 
 
 # ---------------------------------------------------------------------------
