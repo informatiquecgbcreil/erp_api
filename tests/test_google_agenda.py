@@ -92,6 +92,26 @@ def test_corps_evenement_horaire_et_description(app):
     assert corps["extendedProperties"]["private"]["erp_seance"] == str(sid)
 
 
+def test_corps_evenement_intention_et_observations(app):
+    from app.extensions import db
+    from app.models import SessionActivite
+    from app.services import google_agenda as ga
+
+    suf = uuid.uuid4().hex[:6]
+    sid = _seance(app, secteur=f"Num{suf}", nom=f"Bilan{suf}")
+    with app.app_context():
+        s = db.session.get(SessionActivite, sid)
+        s.intention_seance = "Travailler la confiance à l'oral"
+        s.bilan_qualitatif = "Groupe très participatif, exercice du dialogue réussi."
+        db.session.commit()
+        corps = ga.corps_evenement(
+            s, {"titre_format": "{atelier}", "champs_description": ["bilan"]}, lien_base=""
+        )
+
+    assert "Intention : Travailler la confiance à l'oral" in corps["description"]
+    assert "Observations : Groupe très participatif" in corps["description"]
+
+
 def test_corps_evenement_journee_entiere_sans_heure(app):
     from app.extensions import db
     from app.models import SessionActivite

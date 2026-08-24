@@ -1733,6 +1733,17 @@ class SessionActivite(db.Model):
     # comptée à part dans le volet événementiel du SENACS.
     est_evenement = db.Column(db.Boolean, nullable=False, default=False, index=True)
 
+    # Volet pédagogique porté par la séance (saisi par l'animateur·rice) :
+    # intention préparée avant, bilan qualitatif et observations après.
+    intention_seance = db.Column(db.String(255), nullable=True)
+    intention_seance_detail = db.Column(db.Text, nullable=True)
+    bilan_qualitatif = db.Column(db.Text, nullable=True)
+    pertinence = db.Column(db.String(30), nullable=True)
+    difficulte = db.Column(db.String(30), nullable=True)
+    participation_groupe = db.Column(db.String(30), nullable=True)
+    a_reprendre = db.Column(db.Boolean, nullable=True)
+    commentaire_pedagogique = db.Column(db.Text, nullable=True)
+
     presences = db.relationship("PresenceActivite", backref="session", cascade="all, delete-orphan")
     competences = db.relationship(
         "Competence",
