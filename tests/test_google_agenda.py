@@ -282,6 +282,40 @@ def test_synchronisation_complete_retire_les_orphelins(app, monkeypatch):
         assert GoogleAgendaEvenement.query.filter_by(compte_id=cid, session_id=sid).first() is None
 
 
+def test_synchro_arriere_plan_sans_contexte_de_requete(app, monkeypatch):
+    """Régression : le travailleur tourne dans un thread SANS requête. Sans
+    ERP_PUBLIC_BASE_URL configurée, il ne doit pas planter (les liens vers
+    l'application sont simplement omis des descriptions)."""
+    from app.extensions import db
+    from app.models import GoogleAgendaCompte, GoogleAgendaEvenement
+    from app.services import google_agenda as ga
+
+    suf = uuid.uuid4().hex[:6]
+    secteur = f"Num{suf}"
+    uid = _user(app, email=f"ctx-{suf}@ex.org", secteur=secteur)
+    sid = _seance(app, secteur=secteur, nom=f"Ctx{suf}")
+    cid = _compte(app, uid)
+
+    faux = _FauxGoogle()
+    monkeypatch.setattr(ga, "_api", faux)
+
+    ancienne = app.config.get("PUBLIC_BASE_URL")
+    app.config["PUBLIC_BASE_URL"] = ""
+    try:
+        with app.app_context():  # contexte d'application, PAS de requête
+            ga._traiter({sid}, False)  # poussée incrémentale (création séance)
+            compte = db.session.get(GoogleAgendaCompte, cid)
+            assert compte.derniere_erreur is None
+            assert GoogleAgendaEvenement.query.filter_by(compte_id=cid, session_id=sid).first() is not None
+
+            ga._traiter(set(), True)  # rattrapage complet, même contrainte
+            compte = db.session.get(GoogleAgendaCompte, cid)
+            assert compte.derniere_erreur is None
+            assert compte.derniere_synchro is not None
+    finally:
+        app.config["PUBLIC_BASE_URL"] = ancienne
+
+
 # ---------------------------------------------------------------------------
 # Détection automatique des changements (écouteurs SQLAlchemy)
 # ---------------------------------------------------------------------------

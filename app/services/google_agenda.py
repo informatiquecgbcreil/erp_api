@@ -78,6 +78,20 @@ class GoogleAgendaErreur(Exception):
     """Erreur de dialogue avec Google (réseau, refus, jeton révoqué…)."""
 
 
+def lien_base_application() -> str:
+    """Base des liens vers l'application dans les descriptions d'événements.
+
+    ``public_base_url`` retombe sur l'hôte de la requête en cours quand
+    aucune URL publique n'est configurée — or les synchronisations tournent
+    dans un thread d'arrière-plan, HORS requête. Dans ce cas on renvoie
+    simplement une base vide : les liens sont omis, la synchro continue.
+    """
+    try:
+        return public_base_url()
+    except RuntimeError:
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -510,7 +524,7 @@ def synchroniser_session_pour_compte(compte: GoogleAgendaCompte, s: SessionActiv
     user = compte.user
     options = options if options is not None else charger_options(user)
     if lien_base is None:
-        lien_base = public_base_url()
+        lien_base = lien_base_application()
 
     correspondance = GoogleAgendaEvenement.query.filter_by(
         compte_id=compte.id, session_id=session_id
@@ -551,7 +565,7 @@ def synchronisation_complete(compte: GoogleAgendaCompte) -> dict:
     quand rien n'a changé (empreintes)."""
     user = compte.user
     options = charger_options(user)
-    lien_base = public_base_url()
+    lien_base = lien_base_application()
     today = date.today()
     du = today - timedelta(days=options.get("jours_passe", 30))
     au = today + timedelta(days=options.get("jours_futur", 180))
@@ -606,7 +620,7 @@ def _traiter(session_ids: set[int], complet: bool) -> None:
                 synchronisation_complete(compte)
             else:
                 options = charger_options(compte.user)
-                lien_base = public_base_url()
+                lien_base = lien_base_application()
                 for session_id in sorted(session_ids):
                     s = db.session.get(SessionActivite, session_id)
                     synchroniser_session_pour_compte(
@@ -618,9 +632,16 @@ def _traiter(session_ids: set[int], complet: bool) -> None:
             db.session.rollback()
             compte.derniere_erreur = str(exc)[:2000]
             db.session.commit()
-        except Exception:
+        except Exception as exc:
+            # Toujours VISIBLE sur la page Mon agenda : une synchro qui
+            # échoue en silence est indiagnosticable pour l'utilisateur.
             db.session.rollback()
             current_app.logger.exception("Google Agenda : échec de synchronisation (compte %s)", compte.id)
+            try:
+                compte.derniere_erreur = f"Erreur interne : {exc}"[:2000]
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
 
 # --- File d'attente en mémoire + travailleur unique par processus ----------

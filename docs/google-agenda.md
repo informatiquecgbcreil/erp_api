@@ -62,6 +62,25 @@ Il faut créer des identifiants OAuth dans la console Google Cloud (gratuit) :
    de la page *Mon agenda* propose alors **Connecter mon agenda Google** à
    chaque membre de l'équipe.
 
+### Mode « Test » vs « En production » (important)
+
+Tant que l'application Google est en mode **Test** (statut par défaut du
+type « Externe ») :
+
+- seules les adresses ajoutées dans **Google Auth Platform → Audience →
+  Utilisateurs test** peuvent se connecter — sinon Google affiche
+  « Accès bloqué … Erreur 403 : access_denied » ;
+- les jetons de rafraîchissement **expirent au bout de 7 jours** : la
+  synchro s'arrête et chacun doit reconnecter son compte chaque semaine.
+
+Une fois le fonctionnement validé, cliquer **« Publier l'application »**
+(même écran Audience) pour passer **En production** : les jetons ne
+expirent plus. Sans validation par Google, l'écran de connexion affiche
+alors un avertissement « Google n'a pas validé cette application » —
+cliquer *Paramètres avancés → Accéder à … (non sécurisé)* : c'est attendu
+pour un outil interne, l'accès reste limité aux comptes qui se connectent
+volontairement.
+
 ## Application locale / LAN : quelle URI de redirection ?
 
 Le retour OAuth est une **simple redirection de navigateur** — les serveurs
