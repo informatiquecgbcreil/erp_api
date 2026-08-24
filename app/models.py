@@ -3127,23 +3127,29 @@ class GoogleAgendaCompte(db.Model):
 
 
 class GoogleAgendaEvenement(db.Model):
-    """Correspondance séance ↔ événement Google (par compte connecté).
+    """Correspondance séance OU créneau ↔ événement Google (par compte).
 
-    ``empreinte`` est le hachage du contenu poussé : si la séance n'a pas
-    changé, aucune requête n'est envoyée à Google (la resynchronisation
-    périodique reste alors quasi gratuite).
+    Exactement une des deux références (``session_id`` / ``creneau_id``)
+    est renseignée. ``empreinte`` est le hachage du contenu poussé : si
+    rien n'a changé, aucune requête n'est envoyée à Google (la
+    resynchronisation périodique reste alors quasi gratuite).
     """
     __tablename__ = "google_agenda_evenement"
 
     id = db.Column(db.Integer, primary_key=True)
     compte_id = db.Column(db.Integer, db.ForeignKey("google_agenda_compte.id", ondelete="CASCADE"), nullable=False, index=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("session_activite.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("session_activite.id", ondelete="CASCADE"), nullable=True, index=True)
+    #: Créneau hors ateliers. Référence SOUPLE (pas de clé étrangère) : un
+    #: créneau se supprime définitivement, et la correspondance doit lui
+    #: survivre le temps d'aller retirer l'événement côté Google.
+    creneau_id = db.Column(db.Integer, nullable=True, index=True)
     google_event_id = db.Column(db.String(255), nullable=False)
     empreinte = db.Column(db.String(64), nullable=True)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     __table_args__ = (
         db.UniqueConstraint("compte_id", "session_id", name="uq_google_agenda_compte_session"),
+        db.UniqueConstraint("compte_id", "creneau_id", name="uq_google_agenda_compte_creneau"),
     )
 
 

@@ -58,7 +58,8 @@
     {% if google_compte %}
       <p class="muted" style="margin-top:0;">
         Compte connecté : <strong>{{ google_compte.google_email or "compte Google" }}</strong>.
-        Tes séances sont poussées dans un calendrier dédié « Séances — … » de ton Google Agenda
+        Tes séances <strong>et tes créneaux hors ateliers</strong> (réunions, préparation…) sont poussés
+        dans un calendrier dédié « Séances — … » de ton Google Agenda
         <strong>dès leur création ou modification</strong> (créneau réservé, description mise à jour :
         présences saisies, thématiques, annulations…).
         {% if google_compte.derniere_synchro %}
@@ -82,9 +83,10 @@
     {% elif google_configure %}
       <p class="muted" style="margin-top:0;">
         Le lien ci-dessus est relu par Google à son rythme (souvent 24 h de délai). En connectant ton compte
-        Google ici, l'application <strong>pousse chaque séance instantanément</strong> : la création réserve le
-        créneau, et la description se met à jour toute seule (nombre de présences saisies, thématiques
-        travaillées, annulations…) selon tes réglages « Ce que contient mon agenda » ci-dessous.
+        Google ici, l'application <strong>pousse chaque séance et chaque créneau hors ateliers
+        instantanément</strong> : la création réserve le créneau, et la description se met à jour toute
+        seule (nombre de présences saisies, thématiques travaillées, annulations…) selon tes réglages
+        « Ce que contient mon agenda » ci-dessous.
         Les événements vont dans un calendrier dédié — jamais dans ton calendrier principal — et
         <strong>aucun nom de participant</strong> n'est envoyé.
       </p>

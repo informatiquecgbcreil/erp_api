@@ -28,6 +28,10 @@ Dans les deux cas, **aucun nom de participant ne sort** : seuls des agrégats
   feuille d'émargement.
 - Une séance **annulée** reste visible (préfixe « Annulée · ») mais libère le
   créneau (disponibilité « libre ») ; une séance à la corbeille disparaît.
+- Les **créneaux hors ateliers** (réunions, préparation, formations…) sont
+  poussés de la même façon, dans le calendrier de leur auteur uniquement —
+  le réglage « Inclure mes créneaux hors ateliers » de la page *Mon agenda*
+  fait foi. Supprimer un créneau le retire aussitôt du calendrier.
 - Une **empreinte** du contenu est mémorisée : si rien n'a changé, aucun appel
   à Google. Un **rattrapage automatique** (toutes les ~6 h) resynchronise tout
   ce qui aurait été manqué (coupure réseau, import Excel massif…).
