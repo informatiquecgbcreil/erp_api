@@ -157,7 +157,7 @@ def _scoped_participants_query_for_stats(flt):
             .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
             .filter(SessionActivite.is_deleted.is_(False))
             .filter(AtelierActivite.is_deleted.is_(False))
-            .filter(AtelierActivite.secteur == eff_secteur)
+            .filter(SessionActivite.secteur == eff_secteur)
         )
     return q
 

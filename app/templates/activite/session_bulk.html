@@ -54,6 +54,23 @@
         </div>
       </div>
 
+      {% if secteurs_imputation|default([])|length > 1 %}
+        <div class="field-stack">
+          <label>Secteur d'imputation</label>
+          <select class="in" name="secteur_impute">
+            {% for s_lbl in secteurs_imputation %}
+              <option value="{{ s_lbl }}" {% if s_lbl == atelier.secteur %}selected{% endif %}>
+                {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="muted" style="font-size:13px;">
+            Secteur dont les statistiques compteront ces séances. S'applique à toutes les séances
+            générées (modifiable ensuite séance par séance).
+          </div>
+        </div>
+      {% endif %}
+
       <label class="inline" style="gap:6px; align-items:center;">
         <input type="checkbox" name="skip_existing" value="1" checked>
         <span>Ne pas recréer une séance s'il en existe déjà une à la même date</span>

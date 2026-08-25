@@ -11,7 +11,7 @@ from flask import abort, request, send_file, Response
 from flask_login import login_required, current_user
 from app.rbac import can
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
 from openpyxl import Workbook
@@ -463,10 +463,29 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
     if not can("scope:all_secteurs"):
         eff_secteur = (getattr(current_user, "secteur_assigne", None) or "").strip() or eff_secteur
 
-    # Liste des ateliers dans le périmètre
+    # Liste des ateliers dans le périmètre. Une séance pouvant être imputée à
+    # un autre secteur que celui de son atelier, on retient : les ateliers du
+    # secteur (même sans séance, pour garder les lignes à 0 qui signalent un
+    # atelier dormant) ET ceux qui portent une séance imputée au secteur.
     aq = _apply_atelier_lifecycle_filters(AtelierActivite.query, flt)
     if eff_secteur:
-        aq = aq.filter(AtelierActivite.secteur == eff_secteur)
+        ateliers_impute_q = (
+            db.session.query(SessionActivite.atelier_id)
+            .filter(SessionActivite.is_deleted.is_(False))
+            .filter(SessionActivite.secteur == eff_secteur)
+        )
+        if flt.date_from:
+            ateliers_impute_q = ateliers_impute_q.filter(
+                func.coalesce(SessionActivite.rdv_date, SessionActivite.date_session) >= flt.date_from
+            )
+        if flt.date_to:
+            ateliers_impute_q = ateliers_impute_q.filter(
+                func.coalesce(SessionActivite.rdv_date, SessionActivite.date_session) <= flt.date_to
+            )
+        aq = aq.filter(or_(
+            AtelierActivite.secteur == eff_secteur,
+            AtelierActivite.id.in_(ateliers_impute_q),
+        ))
     ateliers = aq.order_by(AtelierActivite.secteur.asc(), AtelierActivite.nom.asc()).all()
     consumption_by_atelier = _consumption_by_atelier_for_filter(flt)
 
@@ -551,6 +570,9 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
             .filter(SessionActivite.atelier_id.in_(atelier_ids))
             .filter(SessionActivite.is_deleted.is_(False))
         )
+        if eff_secteur:
+            # Seules les séances imputées à ce secteur comptent pour lui.
+            sess_q = sess_q.filter(SessionActivite.secteur == eff_secteur)
         if flt.date_from:
             sess_q = sess_q.filter(func.coalesce(SessionActivite.rdv_date, SessionActivite.date_session) >= flt.date_from)
         if flt.date_to:
@@ -688,6 +710,11 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
 
         ws.append([f"{at.secteur} — {group_label}"])
         ws.append([f"Période : {_export_period_label(flt)}"])
+        secteurs_impute = sorted({(s.secteur or "").strip() for s in sessions if (s.secteur or "").strip()})
+        if secteurs_impute != [(at.secteur or "").strip()]:
+            # Séances animées pour un autre secteur que celui de l'atelier :
+            # on l'affiche pour qu'aucun écart de total ne reste inexpliqué.
+            ws.append([f"Séances imputées à : {', '.join(secteurs_impute) or '—'}"])
 
         ws.append(["Statistiques", "Valeur"])
         ws.append(["Nb séances prévisionnelles", sessions_planned])

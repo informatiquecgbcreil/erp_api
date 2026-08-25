@@ -544,8 +544,44 @@ def _atelier_est_accessible(atelier) -> bool:
 
 def _session_est_accessible(s) -> bool:
     """Idem pour une séance : son atelier intersecteur ouvre l'accès, sinon
-    contrôle sur le secteur (d'imputation) de la séance."""
+    le secteur d'imputation de la séance OU celui de son atelier suffisent.
+
+    L'union des deux est volontaire : une séance peut être imputée à un autre
+    secteur que celui de son atelier (« j'anime pour les Familles »). Le
+    secteur bénéficiaire doit la voir — ce sont ses statistiques — et le
+    secteur porteur de l'atelier ne doit pas perdre la main sur une séance
+    créée chez lui.
+    """
     atelier = getattr(s, "atelier", None)
     if atelier is not None and getattr(atelier, "est_intersecteur", False):
         return True
-    return _can_access_activity_secteur(getattr(s, "secteur", None))
+    if _can_access_activity_secteur(getattr(s, "secteur", None)):
+        return True
+    return atelier is not None and _can_access_activity_secteur(getattr(atelier, "secteur", None))
+
+
+def _secteurs_imputation_possibles(atelier) -> list[str]:
+    """Secteurs proposables pour l'imputation d'une séance.
+
+    Tous les secteurs actifs : chacun peut animer pour un autre secteur. Le
+    secteur de l'atelier est garanti présent (c'est le choix par défaut).
+    """
+    labels = _available_secteur_labels()
+    secteur_atelier = (getattr(atelier, "secteur", None) or "").strip()
+    if secteur_atelier and secteur_atelier not in labels:
+        labels = [secteur_atelier] + labels
+    return labels
+
+
+def _secteur_imputation_depuis_formulaire(atelier, form, defaut: str | None = None) -> str:
+    """Secteur d'imputation choisi dans un formulaire de séance.
+
+    Retombe toujours sur une valeur sûre (secteur de la séance en cours
+    d'édition, sinon celui de l'atelier) : un libellé inconnu ne doit jamais
+    envoyer les statistiques dans un secteur fantôme.
+    """
+    defaut = (defaut or getattr(atelier, "secteur", None) or "").strip()
+    choisi = (form.get("secteur_impute") or "").strip()
+    if not choisi:
+        return defaut
+    return choisi if choisi in _secteurs_imputation_possibles(atelier) else defaut

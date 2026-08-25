@@ -47,10 +47,43 @@
           </div>
         {% endif %}
 
+        {% if secteurs_imputation|default([])|length > 1 %}
+          <div class="field-stack" style="margin-top:10px;">
+            <label>Secteur d'imputation {{ ux.tooltip("Secteur dont les statistiques compteront cette séance et ses présences. Par défaut celui de l'atelier ; choisissez-en un autre quand vous animez pour un autre secteur.") }}</label>
+            <select class="in" name="secteur_impute">
+              {% for s_lbl in secteurs_imputation %}
+                <option value="{{ s_lbl }}" {% if s_lbl == (secteur_impute_choisi or atelier.secteur) %}selected{% endif %}>
+                  {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted" style="font-size:13px;">
+              La séance reste visible ici comme dans le secteur choisi ; seules les statistiques changent de côté.
+            </div>
+          </div>
+        {% endif %}
+
         <label class="inline" style="gap:8px; align-items:center; margin-top:10px;">
           <input type="checkbox" name="est_evenement" value="1">
           <span>🎉 Séance événementielle (fête de quartier, temps fort, sortie…) — comptée à part dans le volet événementiel du SENACS</span>
         </label>
+
+        {% if secteurs_imputation|default([])|length > 1 %}
+          <div class="field-stack" style="margin-top:12px;">
+            <label>Secteur d'imputation {{ ux.tooltip("Secteur pour lequel cette séance est animée : c'est lui qui la compte dans ses statistiques (séances, présences, heures). Par défaut, le secteur de l'atelier.") }}</label>
+            <select class="in" name="secteur_impute">
+              {% for s_lbl in secteurs_imputation %}
+                <option value="{{ s_lbl }}" {% if s_lbl == (secteur_impute_choisi or atelier.secteur) %}selected{% endif %}>
+                  {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted" style="font-size:.85rem;">
+              Si tu animes pour un autre secteur, choisis-le ici : la séance et ses présences compteront
+              dans <strong>ses</strong> statistiques, pas dans les tiennes. Elle reste accessible aux deux secteurs.
+            </div>
+          </div>
+        {% endif %}
 
 <div class="section-card compact" style="margin-top:12px;">
   <h2 style="margin-top:0;">Matériel utilisé</h2>

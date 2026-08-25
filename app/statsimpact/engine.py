@@ -35,8 +35,18 @@ def _sanitize_atelier_ids_for_scope(selected_ids: List[int], secteur_scope: Opti
         return selected_ids
     rows = (
         db.session.query(AtelierActivite.id)
+        .outerjoin(SessionActivite, SessionActivite.atelier_id == AtelierActivite.id)
         .filter(AtelierActivite.id.in_(selected_ids))
-        .filter(AtelierActivite.secteur == secteur_scope)
+        .filter(
+            db.or_(
+                AtelierActivite.secteur == secteur_scope,
+                db.and_(
+                    SessionActivite.is_deleted.is_(False),
+                    SessionActivite.secteur == secteur_scope,
+                ),
+            )
+        )
+        .distinct()
         .all()
     )
     allowed = {int(r[0]) for r in rows}
@@ -361,7 +371,9 @@ def _apply_common_filters(query, flt: StatsFilters):
 
     eff_secteur = _resolve_secteur_scope(flt)
     if eff_secteur:
-        query = query.filter(AtelierActivite.secteur == eff_secteur)
+        # Imputation PAR SÉANCE : une séance animée pour un autre secteur
+        # compte pour lui, pas pour celui qui porte l'atelier.
+        query = query.filter(SessionActivite.secteur == eff_secteur)
 
     if selected_atelier_ids:
         query = query.filter(AtelierActivite.id.in_(selected_atelier_ids))
@@ -386,7 +398,9 @@ def _query_sessions_for_period(flt: StatsFilters, date_from: Optional[date], dat
 
     eff_secteur = _resolve_secteur_scope(flt)
     if eff_secteur:
-        query = query.filter(AtelierActivite.secteur == eff_secteur)
+        # Imputation PAR SÉANCE : une séance animée pour un autre secteur
+        # compte pour lui, pas pour celui qui porte l'atelier.
+        query = query.filter(SessionActivite.secteur == eff_secteur)
 
     if selected_atelier_ids:
         query = query.filter(AtelierActivite.id.in_(selected_atelier_ids))
