@@ -15,6 +15,19 @@ titre des événements, lignes de description, périmètre, fenêtre de jours).
 Dans les deux cas, **aucun nom de participant ne sort** : seuls des agrégats
 (nombre de présences saisies) apparaissent.
 
+## Voir son agenda dans l'application
+
+La page **🗓️ Agenda** (menu, ou bouton depuis *Mon agenda*) affiche les
+séances et les créneaux mois par mois, avec une vue semaine et la navigation
+par flèches. Elle est en **lecture** : la saisie reste sur les écrans qui
+portent les règles métier (formulaire de séance, créneaux de *Mon agenda*),
+et un clic sur une séance ouvre sa feuille d'émargement.
+
+Son contenu vient des mêmes fonctions que le flux iCal : mêmes réglages de
+titre et de description, même périmètre secteur, mêmes séances annulées ou
+non. Ce que vous voyez à l'écran est donc exactement ce qui part dans
+l'agenda abonné ou synchronisé.
+
 ## Ce que fait la synchro push
 
 - À la connexion, un **calendrier dédié** « Séances — \<nom de l'appli\> » est

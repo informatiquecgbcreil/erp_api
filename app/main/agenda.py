@@ -30,11 +30,14 @@ from app.services.calendrier import (
     TITRE_PRESETS,
     apercu_evenement,
     charger_options,
+    evenements_pour_periode,
     generer_ics,
+    grouper_par_jour,
     regenerer_token,
     sauvegarder_options,
     token_ou_creer,
 )
+from app.services.poste_travail import JOURS_FR, MOIS_FR
 from app.services.public_urls import kiosk_public_base_url, public_base_url
 
 
@@ -242,3 +245,64 @@ def mon_agenda_regenerer():
     regenerer_token(current_user)
     flash("Nouveau lien généré : l'ancien ne fonctionne plus. Mets à jour ton agenda avec le nouveau lien.", "success")
     return redirect(url_for("main.mon_agenda"))
+
+
+# ---------------------------------------------------------------------------
+# Vue calendrier (lecture) : le même contenu que le flux, mais dans l'app
+# ---------------------------------------------------------------------------
+
+def _mois_decale(reference: date, pas: int) -> date:
+    """1er du mois situé `pas` mois avant/après la date de référence."""
+    mois = reference.month - 1 + pas
+    annee = reference.year + mois // 12
+    return date(annee, mois % 12 + 1, 1)
+
+
+@bp.route("/mon-agenda/calendrier")
+@login_required
+@require_perm("emargement:view")
+def mon_agenda_calendrier():
+    """Agenda mois par mois (ou semaine) directement dans l'application.
+
+    Lecture seule : la saisie reste sur les écrans qui portent les règles
+    métier (formulaire de séance, créneaux de Mon agenda). Le contenu vient
+    des mêmes fonctions que le flux iCal, donc rien ne peut diverger.
+    """
+    import calendar as _calendar
+
+    vue = (request.args.get("vue") or "mois").strip().lower()
+    if vue not in {"mois", "semaine"}:
+        vue = "mois"
+    ancre = _parse_date(request.args.get("ancre")) or date.today()
+
+    if vue == "semaine":
+        debut = ancre - timedelta(days=ancre.weekday())
+        semaines = [[debut + timedelta(days=i) for i in range(7)]]
+        du, au = debut, debut + timedelta(days=6)
+        titre_periode = f"Semaine du {debut.strftime('%d/%m')} au {(debut + timedelta(days=6)).strftime('%d/%m/%Y')}"
+        precedent, suivant = debut - timedelta(days=7), debut + timedelta(days=7)
+    else:
+        premier = ancre.replace(day=1)
+        semaines = _calendar.Calendar(firstweekday=0).monthdatescalendar(premier.year, premier.month)
+        du, au = semaines[0][0], semaines[-1][-1]
+        titre_periode = f"{MOIS_FR[premier.month - 1].capitalize()} {premier.year}"
+        precedent, suivant = _mois_decale(premier, -1), _mois_decale(premier, 1)
+
+    options = charger_options(current_user)
+    evenements = evenements_pour_periode(current_user, du=du, au=au, options=options)
+
+    return render_template(
+        "mon_agenda_calendrier.html",
+        vue=vue,
+        ancre=ancre,
+        semaines=semaines,
+        par_jour=grouper_par_jour(evenements),
+        total_evenements=len(evenements),
+        titre_periode=titre_periode,
+        precedent=precedent,
+        suivant=suivant,
+        aujourdhui=date.today(),
+        mois_affiche=(ancre.replace(day=1) if vue == "mois" else None),
+        jours_fr=[j.capitalize() for j in JOURS_FR],
+        options=options,
+    )

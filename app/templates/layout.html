@@ -657,7 +657,8 @@
                   <a class="pill {% if ep == 'main.hub_activites' %}active{% endif %}" href="{{ url_for('main.hub_activites') }}">Accueil activités</a>
                   {% if can('emargement:view') %}
                     <a class="pill {% if is_presences %}active{% endif %}" href="{{ url_for('activite.index') }}">Présences / émargement</a>
-                    <a class="pill {% if ep.startswith('main.mon_agenda') %}active{% endif %}" href="{{ url_for('main.mon_agenda') }}">📅 Mon agenda (synchro)</a>
+                    <a class="pill {% if ep == 'main.mon_agenda_calendrier' %}active{% endif %}" href="{{ url_for('main.mon_agenda_calendrier') }}">🗓️ Agenda</a>
+                    <a class="pill {% if ep.startswith('main.mon_agenda') and ep != 'main.mon_agenda_calendrier' %}active{% endif %}" href="{{ url_for('main.mon_agenda') }}">📅 Mon agenda (synchro)</a>
                   {% endif %}
                   {% if can('statsimpact:view') or can('stats:view') %}
                     <a class="pill {% if ep.startswith('statsimpact.') %}active{% endif %}" href="{{ url_for('statsimpact.dashboard') }}">Fréquentation &amp; résultats</a>

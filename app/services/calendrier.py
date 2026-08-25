@@ -458,3 +458,93 @@ def apercu_evenement(options: dict) -> dict:
                           secteur="Jeunesse", type_seance="Séance collective", heure="14:00")
     description = _description_seance(exemple, _AtelierExemple, 8, options)
     return {"titre": titre, "lignes": description.split("\n") if description else []}
+
+
+# ---------------------------------------------------------------------------
+# Vue calendrier dans l'application
+# ---------------------------------------------------------------------------
+
+def _minutes_du_jour(heure: str | None) -> int:
+    """Minutes depuis minuit ; -1 pour une journée entière (affichée en tête)."""
+    try:
+        hh, mm = (heure or "").strip().split(":")[:2]
+        return int(hh) * 60 + int(mm)
+    except Exception:
+        return -1
+
+
+def _categorie_seance(s) -> str:
+    if getattr(s, "est_evenement", False):
+        return "evenement"
+    return "individuelle" if s.session_type != "COLLECTIF" else "collective"
+
+
+def evenements_pour_periode(user, *, du: date, au: date, options: dict | None = None) -> list[dict]:
+    """Séances et créneaux d'une période, normalisés pour l'affichage calendrier.
+
+    Même périmètre et mêmes réglages que le flux iCal : ce qui s'affiche ici
+    est exactement ce qui part dans l'agenda abonné ou synchronisé — un seul
+    endroit à régler, aucun écart possible entre les deux.
+    """
+    options = _assainir_options(options if options is not None else charger_options(user))
+    evenements: list[dict] = []
+
+    seances = sessions_du_flux(user, options, du=du, au=au)
+    presences_par_sid = _presences_par_session([s.id for s in seances])
+    for s in seances:
+        d = s.rdv_date or s.date_session
+        if d is None:
+            continue
+        heure_debut = s.rdv_debut or s.heure_debut
+        atelier = s.atelier
+        nom_atelier = atelier.nom if atelier else f"Atelier #{s.atelier_id}"
+        presences = presences_par_sid.get(s.id, 0)
+        description = _description_seance(s, atelier, presences, options)
+        evenements.append({
+            "type": "seance",
+            "id": s.id,
+            "categorie": _categorie_seance(s),
+            "date": d,
+            "heure_debut": heure_debut,
+            "heure_fin": s.rdv_fin or s.heure_fin or _plus_une_heure(heure_debut),
+            "titre": _rendre_titre(
+                options["titre_format"],
+                atelier=nom_atelier, secteur=s.secteur or "",
+                type_seance=_type_seance(s), heure=heure_debut or "",
+            ),
+            "atelier": nom_atelier,
+            "atelier_id": s.atelier_id,
+            "secteur": (s.secteur or "").strip(),
+            "annulee": (s.statut or "").strip().lower() == "annulee",
+            "presences": presences,
+            "lignes": [ligne for ligne in description.split("\n") if ligne],
+        })
+
+    if options.get("inclure_creneaux", True):
+        for c in creneaux_du_flux(user, du=du, au=au):
+            evenements.append({
+                "type": "creneau",
+                "id": c.id,
+                "categorie": (c.type_creneau or "autre"),
+                "date": c.date_creneau,
+                "heure_debut": c.heure_debut,
+                "heure_fin": c.heure_fin,
+                "titre": f"{c.type_label} — {c.titre}",
+                "atelier": None,
+                "atelier_id": None,
+                "secteur": "",
+                "annulee": False,
+                "presences": 0,
+                "lignes": [ligne for ligne in [(c.description or "").strip()] if ligne],
+            })
+
+    evenements.sort(key=lambda e: (e["date"], _minutes_du_jour(e["heure_debut"]), e["titre"]))
+    return evenements
+
+
+def grouper_par_jour(evenements: list[dict]) -> dict:
+    """Index date -> événements, pour peupler une grille de calendrier."""
+    par_jour: dict = {}
+    for e in evenements:
+        par_jour.setdefault(e["date"], []).append(e)
+    return par_jour
