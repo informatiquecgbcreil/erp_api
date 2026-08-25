@@ -1227,7 +1227,14 @@ def compute_magatomatique(
         part_q = part_q.limit(max_participants)
 
     participants = [
-        {"id": p.id, "nom": p.nom or "", "prenom": p.prenom or "", "ville": p.ville, "quartier": p.quartier.nom if p.quartier else None}
+        {
+            "id": p.id,
+            "nom": p.nom or "",
+            "prenom": p.prenom or "",
+            "genre": _participant_genre_bucket(p),
+            "ville": p.ville,
+            "quartier": p.quartier.nom if p.quartier else None,
+        }
         for p in part_q.all()
     ]
     participant_ids = [p["id"] for p in participants]
