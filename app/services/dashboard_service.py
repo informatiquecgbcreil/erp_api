@@ -236,7 +236,10 @@ def build_dashboard_context(
 
     session_date_expr = _session_effective_date_expr()
     sessions_q = SessionActivite.query.filter_by(is_deleted=False)
-    pres_q = PresenceActivite.query.join(SessionActivite)
+    # Même règle que les séances : une présence rattachée à une séance mise
+    # à la corbeille ne compte plus (sinon le tableau de bord et les stats
+    # affichent des totaux différents).
+    pres_q = PresenceActivite.query.join(SessionActivite).filter(SessionActivite.is_deleted.is_(False))
     if not has_scope_all:
         sessions_q = sessions_q.filter(SessionActivite.secteur == user.secteur_assigne)
         pres_q = pres_q.filter(SessionActivite.secteur == user.secteur_assigne)

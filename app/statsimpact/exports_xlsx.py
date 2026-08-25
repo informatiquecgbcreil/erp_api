@@ -38,6 +38,7 @@ from .engine import (
     compute_participants_stats,
     compute_magatomatique,
     normalize_filters,
+    _participant_genre_bucket,
     _session_duration_minutes,
 )
 
@@ -201,6 +202,48 @@ def _build_statsimpact_scope_workbook(flt) -> Workbook:
     for ws in wb.worksheets:
         _auto_fit_statsimpact_ws(ws)
     return wb
+
+#: Répartition par genre : mêmes catégories que la feuille « Publics » de
+#: l'export fidèle et que le tableau de bord, pour que les chiffres se
+#: recoupent d'un export à l'autre.
+GENRE_BUCKETS = ("Femmes", "Hommes", "Autre / non renseigné")
+
+#: En-têtes courts pour les colonnes de synthèse (largeur raisonnable).
+GENRE_ENTETES = ("Femmes", "Hommes", "Autre / NR")
+
+#: Feuille « Synthèse » du Magatomatique : 17 colonnes d'activité, puis la
+#: provenance (5 quartiers) et la répartition par genre (3).
+SYNTHESE_NB_COLONNES = 17 + 5 + len(GENRE_ENTETES)
+
+#: Libellé au singulier pour une ligne individuelle (matrice de présence).
+_GENRE_INDIVIDUEL = {"Femmes": "Femme", "Hommes": "Homme"}
+
+#: Colonnes d'identification à gauche de la matrice participants × séances.
+MATRICE_COLONNES_FIXES = ("Nom", "Prénom", "Genre", "Âge", "Ville", "Quartier")
+MATRICE_LARGEURS = (20, 18, 14, 8, 18, 22)
+
+
+def _largeurs_matrice(ws, nb_colonnes: int) -> None:
+    """Colonnes d'identification lisibles, colonnes de séances compactes."""
+    for idx, largeur in enumerate(MATRICE_LARGEURS, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = largeur
+    for col_idx in range(len(MATRICE_LARGEURS) + 1, nb_colonnes + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 12
+
+
+def _repartition_genre(participants) -> dict:
+    """Compte les participants par genre (mêmes buckets que les autres stats)."""
+    out = {cle: 0 for cle in GENRE_BUCKETS}
+    for p in participants:
+        out[_participant_genre_bucket(p)] += 1
+    return out
+
+
+def _genre_individuel(participant) -> str:
+    """Genre d'une personne, normalisé : les filtres Excel restent fiables
+    même si la saisie varie (« F », « féminin », « Femme »…)."""
+    return _GENRE_INDIVIDUEL.get(_participant_genre_bucket(participant), "Non renseigné")
+
 
 def _quartier_bucket(name: str | None) -> str:
     """Regroupe les quartiers en 4 grandes catégories + Inconnu."""
@@ -481,10 +524,12 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         "Rouher",
         "Autres",
         "Inconnu",
+        *GENRE_ENTETES,
     ])
 
-    # Agrégats globaux provenance + lecture financeur
+    # Agrégats globaux provenance + genre + lecture financeur
     global_prov = {"Bas de Creil": 0, "Hauts de Creil": 0, "Rouher": 0, "Autres": 0, "Inconnu": 0}
+    global_genre = {cle: 0 for cle in GENRE_BUCKETS}
     global_sessions_real = 0
     global_presences = 0
     global_uniques_sum = 0
@@ -498,8 +543,14 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
     for _gid, members in grouped_ateliers.items():
         at = sorted(members, key=lambda x: x.nom)[0]
         atelier_ids = [m.id for m in members]
-        # Sessions de l'atelier dans la période
-        sess_q = db.session.query(SessionActivite).filter(SessionActivite.atelier_id.in_(atelier_ids))
+        # Sessions de l'atelier dans la période. Le filtre corbeille est
+        # indispensable : une séance supprimée (mais pas encore purgée)
+        # gonflerait sinon le nombre de séances, les heures et les présences.
+        sess_q = (
+            db.session.query(SessionActivite)
+            .filter(SessionActivite.atelier_id.in_(atelier_ids))
+            .filter(SessionActivite.is_deleted.is_(False))
+        )
         if flt.date_from:
             sess_q = sess_q.filter(func.coalesce(SessionActivite.rdv_date, SessionActivite.date_session) >= flt.date_from)
         if flt.date_to:
@@ -533,7 +584,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
 
         if sessions_planned == 0:
             # atelier sans session dans le filtre -> ligne 0 + pas de feuille matrice
-            ws0.append([at.secteur, at.nom, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", "", 0, 0, 0, 0, 0, 0, 0, 0])
+            ws0.append([at.secteur, at.nom, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
             financeur_alert_rows.append(["Info", f"{at.secteur} — {at.nom} : aucune séance dans le périmètre filtré."])
             continue
 
@@ -565,6 +616,10 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
             prov[b] = prov.get(b, 0) + 1
         for k in global_prov:
             global_prov[k] += prov.get(k, 0)
+
+        genre_counts = _repartition_genre(participants)
+        for k in global_genre:
+            global_genre[k] += genre_counts.get(k, 0)
 
         occupation_rate = round((presences_total / real_capacity * 100.0), 1) if real_capacity > 0 else 0.0
         avg_per_session = round((presences_total / sessions_real), 2) if sessions_real > 0 else 0.0
@@ -620,6 +675,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
             prov.get("Rouher", 0),
             prov.get("Autres", 0),
             prov.get("Inconnu", 0),
+            *[genre_counts.get(cle, 0) for cle in GENRE_BUCKETS],
         ])
 
         # 2) Feuille atelier : bloc stats + matrice
@@ -651,6 +707,13 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         ws.append(["Séances équipées", conso_sessions])
 
         ws.append([])
+        ws.append(["Répartition par genre", "Nb inscrits", "Part (%)"])
+        for cle in GENRE_BUCKETS:
+            nb = genre_counts.get(cle, 0)
+            part = round(nb / inscrits_uniques * 100.0, 1) if inscrits_uniques else 0.0
+            ws.append([cle, nb, part])
+
+        ws.append([])
         ws.append(["Provenance (quartiers)", "Nb inscrits"])
         ws.append(["Bas de Creil", prov.get("Bas de Creil", 0)])
         ws.append(["Hauts de Creil", prov.get("Hauts de Creil", 0)])
@@ -661,8 +724,8 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         ws.append([])
 
         # Matrice participants × sessions
-        # (A) Antoine wanted a quick visual identification: âge + ville + quartier à côté du nom/prénom.
-        headers = ["Nom", "Prénom", "Âge", "Ville", "Quartier"] + [
+        # (A) Antoine wanted a quick visual identification: genre + âge + ville + quartier à côté du nom/prénom.
+        headers = list(MATRICE_COLONNES_FIXES) + [
             ((d.strftime("%d/%m/%Y")) if (d := (s.rdv_date or s.date_session)) else "Sans date")
             for s in sessions
         ]
@@ -677,13 +740,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
             # Le bloc stats au-dessus de la matrice rendait le défilement pénible
             # en scindant Excel en 4 zones. Les filtres du tableau restent actifs.
             ws.freeze_panes = None
-            ws.column_dimensions[get_column_letter(1)].width = 20
-            ws.column_dimensions[get_column_letter(2)].width = 18
-            ws.column_dimensions[get_column_letter(3)].width = 8
-            ws.column_dimensions[get_column_letter(4)].width = 18
-            ws.column_dimensions[get_column_letter(5)].width = 22
-            for col_idx in range(6, len(headers) + 1):
-                ws.column_dimensions[get_column_letter(col_idx)].width = 12
+            _largeurs_matrice(ws, len(headers))
             continue
 
         # Participants (objets) pour trier + infos d'identification (âge/ville/quartier)
@@ -698,6 +755,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         sid_index = {int(s.id): idx for idx, s in enumerate(sessions)}
         present = {(int(pid), int(sid)) for (pid, sid) in pres_rows if pid is not None and sid is not None}
 
+        nb_colonnes_fixes = len(MATRICE_COLONNES_FIXES)
         for p in parts:
             pid = int(p.id)
             nom = p.nom or ""
@@ -707,10 +765,10 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
             ville = p.ville or ""
             quartier = p.quartier.nom if getattr(p, "quartier", None) is not None else ""
 
-            row = [nom, prenom, age, ville, quartier] + [""] * len(sessions)
+            row = [nom, prenom, _genre_individuel(p), age, ville, quartier] + [""] * len(sessions)
             for sid, idx in sid_index.items():
                 if (int(pid), int(sid)) in present:
-                    row[5 + idx] = "1"
+                    row[nb_colonnes_fixes + idx] = "1"
             ws.append(row)
 
         matrix_last_row = ws.max_row
@@ -723,17 +781,11 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         ws.sheet_view.showGridLines = False
 
         # Largeurs
-        ws.column_dimensions[get_column_letter(1)].width = 20
-        ws.column_dimensions[get_column_letter(2)].width = 18
-        ws.column_dimensions[get_column_letter(3)].width = 8
-        ws.column_dimensions[get_column_letter(4)].width = 18
-        ws.column_dimensions[get_column_letter(5)].width = 22
-        for col_idx in range(6, len(headers) + 1):
-            ws.column_dimensions[get_column_letter(col_idx)].width = 12
+        _largeurs_matrice(ws, len(headers))
 
     synthese_last_row = ws0.max_row
-    _format_xlsx_header_row(ws0, 3, 22)
-    _add_excel_table(ws0, "SyntheseAteliers", 3, synthese_last_row, 22, style="TableStyleMedium9")
+    _format_xlsx_header_row(ws0, 3, SYNTHESE_NB_COLONNES)
+    _add_excel_table(ws0, "SyntheseAteliers", 3, synthese_last_row, SYNTHESE_NB_COLONNES, style="TableStyleMedium9")
     ws0.freeze_panes = "C4"
     ws0.sheet_view.showGridLines = False
 
@@ -752,6 +804,9 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         ["Séances réalisées", global_sessions_real, "Volume total de séances non annulées dans le périmètre."],
         ["Présences totales", global_presences, "Nombre total d'émargements saisis."],
         ["Participants uniques cumulés", global_uniques_sum, "Somme des participants uniques par atelier ; un participant présent sur plusieurs ateliers peut être compté plusieurs fois."],
+        ["Dont femmes", global_genre.get("Femmes", 0), "Répartition par genre sur ce même cumul par atelier."],
+        ["Dont hommes", global_genre.get("Hommes", 0), "Répartition par genre sur ce même cumul par atelier."],
+        ["Dont autre / non renseigné", global_genre.get("Autre / non renseigné", 0), "Genre non saisi ou hors catégories : à réduire pour fiabiliser les bilans."],
         ["Heures réalisées", round(global_real_hours, 2), "Volume horaire animé sur les séances réalisées."],
         ["Remplissage moyen estimé (%)", avg_fill_global, "Indicateur de lecture rapide basé sur présences / capacité réelle cumulée."],
         ["Consommation estimée (kWh)", round(global_conso_kwh, 3), "Estimation issue du matériel renseigné par séance."],
@@ -768,8 +823,17 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
     ws0.append(["Autres", global_prov.get("Autres", 0)])
     ws0.append(["Inconnu", global_prov.get("Inconnu", 0)])
 
+    # Bloc "Répartition par genre" globale (cumul par atelier : une personne
+    # présente sur plusieurs ateliers est comptée dans chacun d'eux).
+    ws0.append([])
+    ws0.append(["Répartition par genre (cumul des inscrits uniques par atelier)"])
+    for cle in GENRE_BUCKETS:
+        nb = global_genre.get(cle, 0)
+        part = round(nb / global_uniques_sum * 100.0, 1) if global_uniques_sum else 0.0
+        ws0.append([cle, nb, part])
+
     # Largeurs synthèse
-    for col in range(1, 23):
+    for col in range(1, SYNTHESE_NB_COLONNES + 1):
         ws0.column_dimensions[get_column_letter(col)].width = 20 if col <= 2 else 18
 
     _format_magato_workbook(wb)
@@ -909,13 +973,14 @@ def magatomatique_export():
     if magato.get("participants"):
         ws2 = wb.create_sheet("Participants")
         ws2.append(["Participants (dans le périmètre filtré)"])
-        ws2.append(["Nom", "Prénom", "Ville", "Quartier", "Nb présences", "1ère venue", "Dernière venue"])
+        ws2.append(["Nom", "Prénom", "Genre", "Ville", "Quartier", "Nb présences", "1ère venue", "Dernière venue"])
         for p in magato["participants"]:
             fd = p.get("first_date")
             ld = p.get("last_date")
             ws2.append([
                 p.get("nom",""),
                 p.get("prenom",""),
+                p.get("genre") or "",
                 p.get("ville") or "",
                 p.get("quartier") or "",
                 int(p.get("nb_presences",0)),
@@ -930,11 +995,11 @@ def magatomatique_export():
         participants = magato["participants"]
         matrix = magato.get("matrix") or {}
 
-        header = ["Nom", "Prénom"] + [f'{s["atelier"]} · {s["label"]}' for s in sessions]
+        header = ["Nom", "Prénom", "Genre"] + [f'{s["atelier"]} · {s["label"]}' for s in sessions]
         ws3.append(header)
 
         for p in participants:
-            row = [p.get("nom",""), p.get("prenom","")]
+            row = [p.get("nom",""), p.get("prenom",""), p.get("genre") or ""]
             pid = int(p["id"])
             for s in sessions:
                 sid = int(s["id"])
@@ -943,10 +1008,10 @@ def magatomatique_export():
 
         # Ajuste largeur colonnes
         for col_idx in range(1, len(header) + 1):
-            ws3.column_dimensions[get_column_letter(col_idx)].width = 16 if col_idx <= 2 else 12
+            ws3.column_dimensions[get_column_letter(col_idx)].width = 16 if col_idx <= 3 else 12
 
         ws4 = wb.create_sheet("Participations")
-        ws4.append(["Nom", "Prénom", "Atelier", "Secteur", "Date session", "ID session"])
+        ws4.append(["Nom", "Prénom", "Genre", "Atelier", "Secteur", "Date session", "ID session"])
         for p in participants:
             pid = int(p["id"])
             for s in sessions:
@@ -956,6 +1021,7 @@ def magatomatique_export():
                         [
                             p.get("nom", ""),
                             p.get("prenom", ""),
+                            p.get("genre") or "",
                             s.get("atelier", ""),
                             s.get("secteur", ""),
                             s.get("date").strftime("%Y-%m-%d") if s.get("date") else "",
@@ -963,7 +1029,7 @@ def magatomatique_export():
                         ]
                     )
 
-        for col_idx in range(1, 7):
+        for col_idx in range(1, 8):
             ws4.column_dimensions[get_column_letter(col_idx)].width = 18
 
     bio = BytesIO()
