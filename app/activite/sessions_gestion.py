@@ -34,6 +34,8 @@ from app.services.consumption import (
 from app.activite.helpers import (
     _can_access_activity_secteur,
     _atelier_est_accessible,
+    _secteur_imputation_depuis_formulaire,
+    _secteurs_imputation_possibles,
     _session_est_accessible,
     _collect_session_competences,
     _deny_activity_access,
@@ -77,11 +79,13 @@ def session_new(atelier_id: int):
                     projets_atelier=[],
                     projet_id=None,
                     materiels=list_materiels_actifs(),
+                    secteurs_imputation=_secteurs_imputation_possibles(atelier),
+                    secteur_impute_choisi=_secteur_imputation_depuis_formulaire(atelier, request.form),
                 )
             rdv_date_obj = datetime.strptime(rdv_date, "%Y-%m-%d").date()
             s = SessionActivite(
                 atelier_id=atelier.id,
-                secteur=atelier.secteur,
+                secteur=_secteur_imputation_depuis_formulaire(atelier, request.form),
                 session_type="INDIVIDUEL_MENSUEL",
                 rdv_date=rdv_date_obj,
                 rdv_debut=rdv_debut,
@@ -104,11 +108,13 @@ def session_new(atelier_id: int):
                     projets_atelier=[],
                     projet_id=None,
                     materiels=list_materiels_actifs(),
+                    secteurs_imputation=_secteurs_imputation_possibles(atelier),
+                    secteur_impute_choisi=_secteur_imputation_depuis_formulaire(atelier, request.form),
                 )
             date_obj = datetime.strptime(date_session, "%Y-%m-%d").date()
             s = SessionActivite(
                 atelier_id=atelier.id,
-                secteur=atelier.secteur,
+                secteur=_secteur_imputation_depuis_formulaire(atelier, request.form),
                 session_type="COLLECTIF",
                 date_session=date_obj,
                 heure_debut=heure_debut,
@@ -181,6 +187,8 @@ def session_new(atelier_id: int):
         projets_atelier=projets_atelier,
         projet_id=projet_id,
         materiels=list_materiels_actifs(),
+        secteurs_imputation=_secteurs_imputation_possibles(atelier),
+        secteur_impute_choisi=atelier.secteur,
     )
 
 
@@ -220,6 +228,7 @@ def session_bulk_new(atelier_id: int):
         capacite_raw = request.form.get("capacite") or atelier.capacite_defaut
         capacite = int(capacite_raw) if capacite_raw else None
         eviter_doublons = request.form.get("skip_existing") == "1"
+        secteur_impute = _secteur_imputation_depuis_formulaire(atelier, request.form)
 
         existantes = set()
         if eviter_doublons:
@@ -244,7 +253,7 @@ def session_bulk_new(atelier_id: int):
                 else:
                     db.session.add(SessionActivite(
                         atelier_id=atelier.id,
-                        secteur=atelier.secteur,
+                        secteur=secteur_impute,
                         session_type="COLLECTIF",
                         date_session=d,
                         heure_debut=heure_debut,
@@ -258,10 +267,17 @@ def session_bulk_new(atelier_id: int):
         msg = f"{crees} séance(s) créée(s)."
         if ignores:
             msg += f" {ignores} ignorée(s) (déjà existantes)."
+        if secteur_impute and secteur_impute != atelier.secteur:
+            msg += f" Imputées au secteur « {secteur_impute} »."
         flash(msg, "success")
         return redirect(url_for("activite.sessions", atelier_id=atelier.id))
 
-    return render_template("activite/session_bulk.html", secteur=secteur, atelier=atelier)
+    return render_template(
+        "activite/session_bulk.html",
+        secteur=secteur,
+        atelier=atelier,
+        secteurs_imputation=_secteurs_imputation_possibles(atelier),
+    )
 
 
 @bp.route("/session/<int:session_id>/edit-schedule", methods=["GET", "POST"])
@@ -288,6 +304,7 @@ def session_edit_schedule(session_id: int):
         old_date = s.rdv_date if s.session_type == "INDIVIDUEL_MENSUEL" else s.date_session
         old_start = s.rdv_debut if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_debut
         old_end = s.rdv_fin if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_fin
+        old_secteur = s.secteur
 
         if s.session_type == "INDIVIDUEL_MENSUEL":
             rdv_date = request.form.get("rdv_date")
@@ -308,13 +325,24 @@ def session_edit_schedule(session_id: int):
             capacite = request.form.get("capacite")
             s.capacite = int(capacite) if capacite else None
 
+        # Secteur d'imputation : décide dans quelles statistiques la séance
+        # compte. Le changer est aussi sensible qu'un changement de date, donc
+        # il passe par la même page tracée.
+        s.secteur = _secteur_imputation_depuis_formulaire(atelier, request.form, defaut=old_secteur)
+
         new_date = s.rdv_date if s.session_type == "INDIVIDUEL_MENSUEL" else s.date_session
         new_start = s.rdv_debut if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_debut
         new_end = s.rdv_fin if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_fin
 
-        if old_date == new_date and old_start == new_start and old_end == new_end:
-            flash("Aucun changement détecté sur date/heure.", "info")
+        if (old_date == new_date and old_start == new_start and old_end == new_end
+                and old_secteur == s.secteur):
+            flash("Aucun changement détecté sur date/heure ou secteur d'imputation.", "info")
             return redirect(url_for("activite.session_edit_schedule", session_id=s.id))
+
+        if old_secteur != s.secteur:
+            # Le journal ne porte pas de colonne secteur : on consigne le
+            # changement dans la raison, qui reste ainsi auto-portante.
+            reason = f"[Imputation : {old_secteur or '—'} → {s.secteur or '—'}] {reason}"
 
         log = SessionScheduleEditLog(
             session_id=s.id,
@@ -331,7 +359,13 @@ def session_edit_schedule(session_id: int):
         )
         db.session.add(log)
         db.session.commit()
-        flash("Date/heure de session mises à jour et tracées.", "success")
+        if old_secteur != s.secteur:
+            flash(
+                f"Séance mise à jour et tracée. Elle compte désormais dans les statistiques du secteur « {s.secteur} ».",
+                "success",
+            )
+        else:
+            flash("Date/heure de session mises à jour et tracées.", "success")
         return redirect(url_for("activite.emargement", session_id=s.id))
 
     edits = (
@@ -346,6 +380,7 @@ def session_edit_schedule(session_id: int):
         atelier=atelier,
         session=s,
         edits=edits,
+        secteurs_imputation=_secteurs_imputation_possibles(atelier),
     )
 
 

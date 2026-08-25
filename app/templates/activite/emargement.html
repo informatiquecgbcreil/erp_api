@@ -112,6 +112,9 @@
           {% else %}
             RDV : {{ session.rdv_date }} {{ session.rdv_debut or '' }}{% if session.rdv_fin %}-{{ session.rdv_fin }}{% endif %}
           {% endif %}
+          {% if session.secteur and session.secteur != atelier.secteur %}
+            · <strong title="Cette séance et ses présences comptent dans les statistiques de ce secteur.">↗ Imputée au secteur {{ session.secteur }}</strong>
+          {% endif %}
         </div>
       </div>
       <div class="hero-actions toolbar-line">

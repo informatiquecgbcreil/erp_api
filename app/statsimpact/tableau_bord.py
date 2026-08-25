@@ -398,7 +398,7 @@ def dashboard():
             .filter(AtelierActivite.is_active.is_(True))
         )
         if eff_secteur:
-            years_q = years_q.filter(AtelierActivite.secteur == eff_secteur)
+            years_q = years_q.filter(SessionActivite.secteur == eff_secteur)
         years = [int(r.y) for r in years_q.distinct().order_by(year_expr.desc()).all() if r and r.y]
     except Exception:
         years = []

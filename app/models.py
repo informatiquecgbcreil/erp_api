@@ -1692,6 +1692,12 @@ class SessionActivite(db.Model):
     __tablename__ = "session_activite"
     id = db.Column(db.Integer, primary_key=True)
     atelier_id = db.Column(db.Integer, db.ForeignKey("atelier_activite.id"), nullable=False)
+    #: Secteur d'IMPUTATION de la séance : c'est lui qui décide dans quelles
+    #: statistiques la séance et ses présences sont comptées. Il vaut par
+    #: défaut le secteur de l'atelier, mais peut être changé séance par séance
+    #: (ex. animer une séance pour un autre secteur : elle compte alors pour
+    #: ce secteur-là, pas pour le sien). L'accès reste ouvert aux deux
+    #: secteurs concernés — voir _session_est_accessible.
     secteur = db.Column(db.String(80), nullable=False, index=True)
     session_type = db.Column(db.String(30), nullable=False, default="COLLECTIF")
     # COLLECTIF

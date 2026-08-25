@@ -25,6 +25,23 @@
         {% endif %}
 
         <div class="spacer"></div>
+        {% if secteurs_imputation|default([])|length > 1 %}
+          <div class="field-stack" style="margin-top:10px;">
+            <label>Secteur d'imputation</label>
+            <select class="in" name="secteur_impute">
+              {% for s_lbl in secteurs_imputation %}
+                <option value="{{ s_lbl }}" {% if s_lbl == session.secteur %}selected{% endif %}>
+                  {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted" style="font-size:13px;">
+              Secteur dont les statistiques comptent cette séance et ses présences. Le changement est tracé
+              ci-dessous comme une correction de date.
+            </div>
+          </div>
+        {% endif %}
+
         <label>Raison de modification (obligatoire)</label>
         <textarea class="in" name="edit_reason" rows="3" placeholder="Ex: erreur de saisie constatée après émargement, session déplacée suite à fermeture du site..." required></textarea>
 

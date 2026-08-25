@@ -57,6 +57,10 @@
                   {% else %}
                     {{ s.rdv_date }} {{ s.rdv_debut or '' }}{% if s.rdv_fin %}-{{ s.rdv_fin }}{% endif %}
                   {% endif %}
+                  {% if s.secteur and atelier and s.secteur != atelier.secteur %}
+                    <span class="pill" title="Séance imputée à un autre secteur : elle compte dans les statistiques de ce secteur."
+                          style="font-size:.72rem; font-weight:700; padding:1px 8px; border-radius:999px; background:rgba(90,120,255,.16);">↗ {{ s.secteur }}</span>
+                  {% endif %}
                 </td>
                 <td>{{ s.session_type }}</td>
                 <td>{{ nb }}</td>
