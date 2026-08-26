@@ -1,0 +1,113 @@
+{% extends "layout.html" %}
+{% block title %}Agenda{% endblock %}
+{% block body %}
+<style>
+  .cal-barre{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+  .cal-titre{ font-size:1.15rem; font-weight:800; min-width:230px; }
+  .cal-grille{ display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:1px;
+               background:var(--border,#e3e6ef); border:1px solid var(--border,#e3e6ef);
+               border-radius:12px; overflow:hidden; }
+  .cal-entete{ background:var(--surface-soft,#f1f4fb); padding:6px 8px; font-size:.78rem;
+               font-weight:700; text-transform:uppercase; letter-spacing:.03em; text-align:center; }
+  .cal-jour{ background:var(--panel,#fff); min-height:104px; padding:5px 6px 7px; }
+  .cal-jour.hors-mois{ background:var(--surface-soft,#fafbfe); opacity:.55; }
+  .cal-jour.aujourdhui{ box-shadow:inset 0 0 0 2px #3b82f6; }
+  .cal-jour.week-end{ background:var(--surface-soft,#fafbfe); }
+  .cal-num{ font-size:.8rem; font-weight:700; opacity:.7; margin-bottom:3px; }
+  .cal-jour.aujourdhui .cal-num{ color:#3b82f6; opacity:1; }
+  .cal-ev{ display:block; margin:2px 0; padding:3px 6px; border-radius:7px; font-size:.76rem;
+           line-height:1.25; text-decoration:none; color:inherit; border-left:3px solid #94a3b8;
+           background:rgba(148,163,184,.14); }
+  .cal-ev:hover{ filter:brightness(.96); }
+  .cal-ev .h{ font-weight:700; opacity:.8; }
+  .cal-ev.collective{ border-left-color:#3b82f6; background:rgba(59,130,246,.13); }
+  .cal-ev.individuelle{ border-left-color:#8b5cf6; background:rgba(139,92,246,.13); }
+  .cal-ev.evenement{ border-left-color:#f59e0b; background:rgba(245,158,11,.16); }
+  .cal-ev.creneau{ border-left-color:#10b981; background:rgba(16,185,129,.13); }
+  .cal-ev.annulee{ text-decoration:line-through; opacity:.55; }
+  .cal-plus{ display:block; font-size:.72rem; font-weight:700; opacity:.7; margin-top:2px; text-decoration:none; }
+  .cal-legende{ display:flex; gap:14px; flex-wrap:wrap; font-size:.8rem; margin-top:10px; align-items:center; }
+  .cal-legende .p{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+  .cal-sem .cal-jour{ min-height:200px; }
+  @media (max-width:760px){
+    .cal-grille{ grid-template-columns:1fr; }
+    .cal-entete{ display:none; }
+    .cal-jour{ min-height:0; }
+    .cal-jour.hors-mois{ display:none; }
+    .cal-num::after{ content:' ' attr(data-jour); font-weight:500; opacity:.75; }
+  }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">🗓️ Agenda</h1>
+      <p class="ui-subtitle page-subtitle">
+        Séances et créneaux, mois par mois. C'est exactement le contenu de ton flux et de ta synchro
+        Google : ce que tu vois ici est ce qui part dans ton agenda.
+      </p>
+    </div>
+  </section>
+
+  <div class="cal-barre">
+    <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=precedent.isoformat()) }}">←</a>
+    <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue) }}">Aujourd'hui</a>
+    <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=suivant.isoformat()) }}">→</a>
+    <span class="cal-titre">{{ titre_periode }}</span>
+    <span style="flex:1"></span>
+    <a class="btn {% if vue == 'mois' %}primary{% endif %}"
+       href="{{ url_for('main.mon_agenda_calendrier', vue='mois', ancre=ancre.isoformat()) }}">Mois</a>
+    <a class="btn {% if vue == 'semaine' %}primary{% endif %}"
+       href="{{ url_for('main.mon_agenda_calendrier', vue='semaine', ancre=ancre.isoformat()) }}">Semaine</a>
+    <a class="btn" href="{{ url_for('main.mon_agenda') }}">⚙️ Réglages & synchro</a>
+  </div>
+
+  <div class="cal-grille {% if vue == 'semaine' %}cal-sem{% endif %}">
+    {% for jour_label in jours_fr %}<div class="cal-entete">{{ jour_label }}</div>{% endfor %}
+    {% for semaine in semaines %}
+      {% for jour in semaine %}
+        {% set evenements = par_jour.get(jour, []) %}
+        <div class="cal-jour
+                    {% if mois_affiche and jour.month != mois_affiche.month %}hors-mois{% endif %}
+                    {% if jour == aujourdhui %}aujourdhui{% endif %}
+                    {% if jour.weekday() >= 5 %}week-end{% endif %}">
+          <div class="cal-num" data-jour="{{ jours_fr[jour.weekday()] }} {{ jour.strftime('%d/%m') }}">{{ jour.day }}</div>
+          {% set limite = evenements|length if vue == 'semaine' else 4 %}
+          {% for e in evenements[:limite] %}
+            {% if e.type == 'seance' %}
+              {% set lien = url_for('activite.emargement', session_id=e.id) %}
+            {% else %}
+              {% set lien = url_for('main.mon_agenda') %}
+            {% endif %}
+            <a class="cal-ev {{ e.categorie if e.type == 'seance' else 'creneau' }} {% if e.annulee %}annulee{% endif %}"
+               href="{{ lien }}"
+               title="{{ e.titre }}{% if e.heure_debut %} · {{ e.heure_debut }}{% if e.heure_fin %}–{{ e.heure_fin }}{% endif %}{% endif %}{% for l in e.lignes %}&#10;{{ l }}{% endfor %}">
+              {% if e.heure_debut %}<span class="h">{{ e.heure_debut }}</span> {% endif %}{{ e.titre }}
+            </a>
+          {% endfor %}
+          {% if evenements|length > limite %}
+            <a class="cal-plus" href="{{ url_for('main.mon_agenda_calendrier', vue='semaine', ancre=jour.isoformat()) }}">
+              +{{ evenements|length - limite }} autre{{ 's' if evenements|length - limite > 1 }}
+            </a>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <div class="cal-legende muted">
+    <span><span class="p" style="background:#3b82f6;"></span>Séance collective</span>
+    <span><span class="p" style="background:#8b5cf6;"></span>Séance individuelle</span>
+    <span><span class="p" style="background:#f59e0b;"></span>Événement / temps fort</span>
+    <span><span class="p" style="background:#10b981;"></span>Créneau hors atelier</span>
+    <span style="margin-left:auto;">{{ total_evenements }} élément{{ 's' if total_evenements > 1 }} sur la période</span>
+  </div>
+
+  {% if total_evenements == 0 %}
+    <div class="quick-empty" style="margin-top:12px;">
+      <strong>Rien sur cette période</strong>
+      Les séances apparaissent dès leur création dans Activité ; les réunions et temps de préparation
+      s'ajoutent depuis <a href="{{ url_for('main.mon_agenda') }}">Mon agenda</a>.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

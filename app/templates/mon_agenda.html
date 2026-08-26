@@ -33,6 +33,14 @@
     </div>
   </section>
 
+  <div class="agenda-carte" style="margin-top:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+    <div style="flex:1; min-width:260px;">
+      <strong>🗓️ Voir mon agenda mois par mois</strong>
+      <div class="muted" style="font-size:.88rem;">Séances et créneaux affichés directement dans l'application.</div>
+    </div>
+    <a class="btn primary" href="{{ url_for('main.mon_agenda_calendrier') }}">Ouvrir l'agenda</a>
+  </div>
+
   <div class="agenda-carte" style="margin-top:14px;">
     <h2 style="margin-top:0; font-size:1.05rem;">🔗 Ton lien personnel</h2>
     <p class="muted" style="margin-top:0;">Garde-le pour toi : ce lien secret donne accès à ton planning. Il fonctionne avec Google Agenda, Apple Calendrier, Outlook…</p>
