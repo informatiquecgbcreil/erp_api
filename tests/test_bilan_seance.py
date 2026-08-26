@@ -116,11 +116,29 @@ def test_script_de_repliage_servi(app, admin_client):
     sid = _seance(app, nom=f"Atelier{tag}", secteur=f"Num{tag}")
 
     body = admin_client.get(f"/activite/session/{sid}/emargement").get_data(as_text=True)
-    assert "js/emargement-repli.js" in body
+    assert "js/emargement-ui.js" in body
     # Les blocs restent dans le HTML : sans JavaScript, rien n'est masqué.
     assert "Enregistrer une présence" in body
     assert "Consommation estimée" in body
 
-    r = admin_client.get("/static/js/emargement-repli.js")
+    r = admin_client.get("/static/js/emargement-ui.js")
     assert r.status_code == 200
     assert "repli-corps" in r.get_data(as_text=True)
+
+
+def test_fenetres_masquees_sans_bootstrap(app, admin_client):
+    """Le gabarit charge Bootstrap depuis un CDN : sans Internet, les
+    fenêtres (une note rapide par participant) restaient affichées en pleine
+    page. Le remplaçant local doit être servi et prévoir de les masquer."""
+    tag = uuid.uuid4().hex[:6]
+    sid = _seance(app, nom=f"Atelier{tag}", secteur=f"Num{tag}")
+
+    body = admin_client.get(f"/activite/session/{sid}/emargement").get_data(as_text=True)
+    assert "js/emargement-ui.js" in body
+    assert ".sans-bootstrap .modal{ display:none; }" in body
+
+    script = admin_client.get("/static/js/emargement-ui.js").get_data(as_text=True)
+    # Prend la main uniquement si Bootstrap est absent
+    assert "if (window.bootstrap && window.bootstrap.Modal) { return; }" in script
+    for protocole in ('data-bs-toggle="modal"', 'data-bs-dismiss="modal"', "Escape"):
+        assert protocole in script

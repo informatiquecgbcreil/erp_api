@@ -99,7 +99,33 @@
   </style>
 
 <style>
-  /* Repliage des blocs secondaires (voir static/js/emargement-repli.js) */
+  /* Repliage des blocs secondaires (voir static/js/emargement-ui.js) */
+  /* Fenêtres (notes rapides, évaluation) : le gabarit suit le protocole
+     Bootstrap, chargé depuis un CDN. En réseau local sans Internet la
+     bibliothèque n'arrive jamais et les fenêtres restent affichées en pleine
+     page. Ces règles ne s'appliquent que dans ce cas (classe posée par le
+     script), donc rien ne change là où Bootstrap fonctionne. */
+  .sans-bootstrap .modal{ display:none; }
+  .sans-bootstrap .modal.modal-ouverte{
+    display:block; position:fixed; inset:0; z-index:1050;
+    background:rgba(15,23,42,.55); overflow-y:auto; padding:24px 12px; }
+  .sans-bootstrap .modal-ouverte .modal-dialog{
+    max-width:min(680px, calc(100vw - 24px)); margin:0 auto; }
+  .sans-bootstrap .modal-ouverte .modal-content{
+    background:var(--panel,#fff); border:1px solid var(--border,#e3e6ef);
+    border-radius:16px; box-shadow:0 20px 50px rgba(15,23,42,.28); overflow:hidden; }
+  .sans-bootstrap .modal-ouverte .modal-header,
+  .sans-bootstrap .modal-ouverte .modal-footer{
+    display:flex; align-items:center; gap:10px; padding:12px 16px; }
+  .sans-bootstrap .modal-ouverte .modal-header{ border-bottom:1px solid var(--border,#e3e6ef); }
+  .sans-bootstrap .modal-ouverte .modal-footer{ border-top:1px solid var(--border,#e3e6ef); justify-content:flex-end; }
+  .sans-bootstrap .modal-ouverte .modal-title{ margin:0; font-size:1rem; }
+  .sans-bootstrap .modal-ouverte .modal-body{ padding:14px 16px; }
+  .sans-bootstrap .modal-ouverte .btn-close{
+    margin-left:auto; border:0; background:transparent; font-size:1.2rem; cursor:pointer; line-height:1; }
+  .sans-bootstrap .modal-ouverte .btn-close::before{ content:'\2715'; }
+
+  .repli-barre{ display:flex; justify-content:flex-end; margin:6px 0 -4px; }
   .repli-entete{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .repli-entete > h2{ flex:0 1 auto; }
   .repli-bouton{ margin-left:auto; display:inline-flex; align-items:center; gap:8px;
@@ -1274,5 +1300,5 @@
   })();
   </script>
 
-  <script src="{{ url_for('static', filename='js/emargement-repli.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/emargement-ui.js') }}" defer></script>
 {% endblock %}
