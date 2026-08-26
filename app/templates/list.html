@@ -155,7 +155,8 @@
             <td><div>{{ item.ville or '—' }}</div><div class="muted">{{ item.quartier.nom if item.quartier else '—' }}</div></td>
             <td>{{ item.type_public or '—' }}</td>
             <td>{% if item._presence_count is defined %}<strong>{{ item._presence_count }}</strong><span class="muted"> visite(s)</span>{% else %}—{% endif %}</td>
-            <td><div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=item.id) }}">Voir la fiche</a>{% if can('participants:delete') %}<form method="post" action="{{ url_for('participants.delete_participant', participant_id=item.id) }}" onsubmit="return confirm('Supprimer ce participant ? Cette action est irréversible.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Supprimer</button></form>{% endif %}</div></td>
+            <td><div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=item.id) }}">Voir la fiche</a>{% if can('participants:delete') %}<a class="btn danger" href="{{ url_for('participants.edit_participant', participant_id=item.id) }}#suppression"
+             title="La suppression définitive se fait depuis la fiche, avec confirmation.">Supprimer</a>{% endif %}</div></td>
           </tr>
           {% else %}
           <tr><td colspan="6"><div class="quick-empty"><strong>Aucun participant ne correspond aux filtres sélectionnés.</strong>Modifiez un critère ou réinitialisez les filtres pour élargir la recherche.</div></td></tr>

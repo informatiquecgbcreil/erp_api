@@ -1242,9 +1242,18 @@ def edit_participant(participant_id: int):
     quartiers = Quartier.query.order_by(Quartier.ville.asc(), Quartier.nom.asc()).all()
     titre_sejour_options = _active_reference_options(InsertionTitreSejourTypeRef, current_value=p.titre_sejour_type, legacy_column="titre_sejour_type")
     diplome_options = _active_reference_options(InsertionDiplomeRef, current_value=p.diplome_obtenu, legacy_column="diplome_obtenu")
+
+    # Ce que la suppression détruirait : affiché avant de décider.
+    suppression_resume = None
+    if is_editable and can("participants:delete"):
+        from app.services.participant_suppression import analyser
+
+        suppression_resume = analyser(p)
+
     return render_template(
         "participants/form.html",
         item=p,
+        suppression_resume=suppression_resume,
         secteur=_current_secteur(),
         is_editable=is_editable,
         can_view_sensitive_insertion=_can_view_sensitive_insertion(),
@@ -1341,6 +1350,23 @@ def anonymize_participant(participant_id: int):
 @bp.route("/<int:participant_id>/delete", methods=["POST"])
 @login_required
 def delete_participant(participant_id: int):
+    """Suppression DÉFINITIVE d'une fiche et de tout son historique.
+
+    Réservée aux erreurs de saisie. Pour une personne réellement passée par
+    la structure, l'anonymisation reste la bonne réponse : elle efface
+    l'identité mais garde les présences, donc les bilans déjà transmis aux
+    financeurs restent justes.
+
+    Garde-fous : permission dédiée, secteur, confirmation par la saisie du
+    nom, et trace complète au journal d'audit avant l'effacement.
+    """
+    from app.services.audit import journaliser
+    from app.services.participant_suppression import (
+        analyser,
+        instantane,
+        supprimer_definitivement,
+    )
+
     if not can('participants:delete'):
         abort(403)
 
@@ -1348,8 +1374,11 @@ def delete_participant(participant_id: int):
     if not _can_edit_participant(p):
         abort(403)
 
-    # garde-fou : un responsable secteur ne supprime pas si le participant existe ailleurs
-    if not current_user.has_perm("participants:view_all"):
+    # Garde-fou : on ne supprime pas une personne suivie dans un autre secteur.
+    # La portée qui compte ici est scope:all_secteurs (agir partout), et non
+    # participants:view_all qui n'ouvre que la LECTURE de l'annuaire — sans
+    # cette distinction, le garde-fou ne s'appliquait à personne.
+    if not can("scope:all_secteurs"):
         sec = _current_secteur()
         other = (
             db.session.query(PresenceActivite.id)
@@ -1362,15 +1391,36 @@ def delete_participant(participant_id: int):
             flash("La suppression est refusée : ce participant est présent dans d'autres secteurs. Utilisez l'anonymisation à la place.", "err")
             return redirect(url_for("participants.edit_participant", participant_id=p.id))
 
-    db.session.query(PresenceActivite).filter(PresenceActivite.participant_id == p.id).delete(synchronize_session=False)
-    db.session.query(Evaluation).filter(Evaluation.participant_id == p.id).delete(synchronize_session=False)
-    db.session.delete(p)
-    commit_delete(
-        f"le participant « {p.nom_complet()} »",
-        "Participant supprimé définitivement.",
+    # Confirmation : le nom de famille doit être retapé. Un bouton seul se
+    # clique par erreur ; retaper un nom, non.
+    attendu = (p.nom or "").strip().casefold()
+    saisi = (request.form.get("confirmation_nom") or "").strip().casefold()
+    if not attendu or saisi != attendu:
+        flash(
+            f"Suppression annulée : pour confirmer, retapez le nom de famille exact « {p.nom} ».",
+            "err",
+        )
+        return redirect(url_for("participants.edit_participant", participant_id=p.id))
+
+    # Trace AVANT l'effacement : après, il ne reste plus rien à consigner.
+    resume = analyser(p)
+    trace = {
+        "participant": instantane(p),
+        "historique_supprime": {libelle: nombre for libelle, nombre in resume["details"]},
+        "total_elements_supprimes": resume["total"],
+        "motif": (request.form.get("motif") or "").strip()[:500] or None,
+    }
+    etiquette = f"{p.nom} {p.prenom} (#{p.id})"
+
+    supprimer_definitivement(p)
+    ok = commit_delete(
+        f"le participant « {etiquette} »",
+        "Fiche supprimée définitivement, avec tout son historique.",
         success_category="warning",
-        blocked_message=f"Impossible de supprimer le participant « {p.nom_complet()} » : il est encore utilisé ailleurs. Utilisez plutôt l'anonymisation si vous souhaitez conserver l'historique.",
+        blocked_message=f"Impossible de supprimer « {etiquette} » : des données y sont encore rattachées. Utilisez plutôt l'anonymisation pour conserver l'historique.",
     )
+    if ok:
+        journaliser("participant.delete", cible=etiquette, details=trace)
     return redirect(url_for("participants.list_participants"))
 
 
@@ -1469,8 +1519,14 @@ def actions_groupees():
         if not can("participants:delete"):
             abort(403)
         from sqlalchemy.exc import IntegrityError
+
+        from app.services.participant_suppression import (
+            analyser,
+            instantane,
+            supprimer_definitivement,
+        )
         supprimes, proteges, bloques = 0, [], []
-        est_global = current_user.has_perm("participants:view_all")
+        est_global = can("scope:all_secteurs")   # agir partout, pas seulement lire
         sec = _current_secteur()
         for p in membres:
             # Même garde que la suppression unitaire : un agent borné à son
@@ -1487,12 +1543,20 @@ def actions_groupees():
                     proteges.append(f"{p.prenom} {p.nom}")
                     continue
             nom_complet = f"{p.prenom} {p.nom}"
+            etiquette = f"{p.nom} {p.prenom} (#{p.id})"
             try:
-                db.session.query(PresenceActivite).filter(PresenceActivite.participant_id == p.id).delete(synchronize_session=False)
-                db.session.query(Evaluation).filter(Evaluation.participant_id == p.id).delete(synchronize_session=False)
-                db.session.delete(p)
+                # Même chemin que la suppression unitaire : toutes les
+                # dépendances partent, et la trace est consignée avant.
+                resume = analyser(p)
+                trace = {
+                    "participant": instantane(p),
+                    "historique_supprime": {lib: nb for lib, nb in resume["details"]},
+                    "total_elements_supprimes": resume["total"],
+                    "origine": "action groupée",
+                }
+                supprimer_definitivement(p)
                 db.session.commit()
-                journaliser("participant.delete", cible=nom_complet)
+                journaliser("participant.delete", cible=etiquette, details=trace)
                 supprimes += 1
             except IntegrityError:
                 db.session.rollback()
