@@ -28,6 +28,22 @@ titre et de description, même périmètre secteur, mêmes séances annulées ou
 non. Ce que vous voyez à l'écran est donc exactement ce qui part dans
 l'agenda abonné ou synchronisé.
 
+### Saisir depuis le calendrier
+
+- **Survoler une case** fait apparaître un **+** : il ouvre un panneau de
+  saisie de créneau (réunion, préparation, formation…) avec la date déjà
+  remplie, y compris la répétition hebdomadaire.
+- **Cliquer sur un créneau** rouvre ce panneau pour le modifier ou le
+  supprimer. Changer sa date suffit à le **déplacer** d'un jour à l'autre.
+- Le même panneau propose **« Créer une séance »** : choisissez l'atelier et
+  le formulaire de séance habituel s'ouvre avec la date pré-remplie. Capacité,
+  secteur d'imputation, modules et matériel s'y règlent comme d'ordinaire —
+  aucune règle métier n'est contournée.
+
+Tout passe par l'URL (aucun JavaScript) : le bouton « retour » du navigateur
+fonctionne, et les formulaires de la page *Mon agenda* gardent exactement leur
+comportement d'avant.
+
 ## Ce que fait la synchro push
 
 - À la connexion, un **calendrier dédié** « Séances — \<nom de l'appli\> » est

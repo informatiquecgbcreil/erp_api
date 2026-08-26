@@ -34,13 +34,13 @@
 
         {% if atelier.type_atelier == 'INDIVIDUEL_MENSUEL' %}
           <div class="form-grid-3">
-            <div><label>Date du rendez-vous</label><input class="in" type="date" name="rdv_date" required></div>
+            <div><label>Date du rendez-vous</label><input class="in" type="date" name="rdv_date" value="{{ date_prefill|default('') }}" required></div>
             <div><label>Heure de début</label><input class="in" type="text" name="rdv_debut" placeholder="09:00"></div>
             <div><label>Heure de fin</label><input class="in" type="text" name="rdv_fin" placeholder="09:45"></div>
           </div>
         {% else %}
           <div class="form-grid-4">
-            <div><label>Date de la séance</label><input class="in" type="date" name="date_session" required></div>
+            <div><label>Date de la séance</label><input class="in" type="date" name="date_session" value="{{ date_prefill|default('') }}" required></div>
             <div><label>Heure de début</label><input class="in" type="text" name="heure_debut" placeholder="14:00"></div>
             <div><label>Heure de fin</label><input class="in" type="text" name="heure_fin" placeholder="16:00"></div>
             <div><label>Capacité {{ ux.tooltip('Nombre maximal de participants attendus pour cette séance.') }}</label><input class="in" type="number" name="capacite" value="{{ atelier.capacite_defaut or '' }}" min="0"></div>

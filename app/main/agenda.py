@@ -22,7 +22,7 @@ from flask_login import current_user, login_required
 
 from app.extensions import db
 from app.main.common import bp
-from app.models import AgendaCreneau, Subvention, TYPES_CRENEAU, TYPES_CRENEAU_LABELS, User
+from app.models import AgendaCreneau, AtelierActivite, Subvention, TYPES_CRENEAU, TYPES_CRENEAU_LABELS, User
 from app.rbac import require_perm
 from app.services.calendrier import (
     CHAMPS_DESCRIPTION,
@@ -132,6 +132,31 @@ def mon_agenda():
     )
 
 
+@bp.get("/mon-agenda/calendrier/nouvelle-seance")
+@login_required
+@require_perm("emargement:view")
+def aller_creer_seance():
+    """Aiguillage depuis le calendrier vers le formulaire de séance habituel.
+
+    Un formulaire GET ne peut pas fabriquer une URL à segment variable : cette
+    route traduit « atelier + date » en redirection vers l'écran de création
+    existant, qui garde toutes ses règles métier.
+    """
+    from app.activite.helpers import _atelier_est_accessible
+
+    atelier_id = request.args.get("atelier_id", type=int)
+    jour = _parse_date(request.args.get("date"))
+    atelier = db.session.get(AtelierActivite, atelier_id) if atelier_id else None
+    if atelier is None or atelier.is_deleted or not _atelier_est_accessible(atelier):
+        flash("Atelier introuvable ou hors de ta portée.", "danger")
+        return redirect(url_for("main.mon_agenda_calendrier"))
+    return redirect(url_for(
+        "activite.session_new",
+        atelier_id=atelier.id,
+        date=jour.isoformat() if jour else None,
+    ))
+
+
 @bp.post("/mon-agenda/preferences")
 @login_required
 @require_perm("emargement:view")
@@ -152,49 +177,96 @@ def mon_agenda_preferences():
     return redirect(url_for("main.mon_agenda"))
 
 
-@bp.post("/mon-agenda/creneau")
-@login_required
-@require_perm("emargement:view")
-def mon_agenda_creneau_creer():
+def _retour_apres_creneau(defaut_date: date | None = None):
+    """Redirection après action sur un créneau.
+
+    Quand la demande vient de la vue calendrier, le formulaire poste un champ
+    ``retour_calendrier`` (date ISO) : on revient sur le mois concerné plutôt
+    que sur la page de réglages. Aucune URL libre n'est acceptée — seulement
+    une date et une vue connue — donc pas de redirection ouverte possible.
+    """
+    if "retour_calendrier" not in request.form:
+        # Formulaire de la page Mon agenda : comportement historique inchangé.
+        return redirect(url_for("main.mon_agenda"))
+    ancre = _parse_date(request.form.get("retour_calendrier")) or defaut_date or date.today()
+    vue = (request.form.get("retour_vue") or "mois").strip().lower()
+    if vue not in {"mois", "semaine"}:
+        vue = "mois"
+    return redirect(url_for("main.mon_agenda_calendrier", vue=vue, ancre=ancre.isoformat()))
+
+
+def _champs_creneau_du_formulaire() -> dict | None:
+    """Champs communs à la création et à la modification d'un créneau.
+    Renvoie None si le minimum (titre + date) manque."""
     titre = (request.form.get("titre") or "").strip()
     d = _parse_date(request.form.get("date_creneau"))
     if not titre or d is None:
-        flash("Le titre et la date du créneau sont obligatoires.", "danger")
-        return redirect(url_for("main.mon_agenda"))
+        return None
     type_creneau = (request.form.get("type_creneau") or "reunion").strip()
     if type_creneau not in TYPES_CRENEAU:
         type_creneau = "autre"
-    heure_debut = (request.form.get("heure_debut") or "").strip() or None
-    heure_fin = (request.form.get("heure_fin") or "").strip() or None
-    description = (request.form.get("description") or "").strip() or None
-    try:
-        repetitions = max(0, min(52, int(request.form.get("repeter_semaines") or 0)))
-    except Exception:
-        repetitions = 0
     try:
         subvention_id = int(request.form.get("subvention_id") or 0) or None
     except Exception:
         subvention_id = None
     if subvention_id is not None and db.session.get(Subvention, subvention_id) is None:
         subvention_id = None
+    return {
+        "titre": titre[:200],
+        "date_creneau": d,
+        "type_creneau": type_creneau,
+        "heure_debut": (request.form.get("heure_debut") or "").strip() or None,
+        "heure_fin": (request.form.get("heure_fin") or "").strip() or None,
+        "description": (request.form.get("description") or "").strip() or None,
+        "subvention_id": subvention_id,
+    }
+
+
+@bp.post("/mon-agenda/creneau")
+@login_required
+@require_perm("emargement:view")
+def mon_agenda_creneau_creer():
+    champs = _champs_creneau_du_formulaire()
+    if champs is None:
+        flash("Le titre et la date du créneau sont obligatoires.", "danger")
+        return _retour_apres_creneau()
+    try:
+        repetitions = max(0, min(52, int(request.form.get("repeter_semaines") or 0)))
+    except Exception:
+        repetitions = 0
 
     for i in range(repetitions + 1):
         db.session.add(AgendaCreneau(
             user_id=current_user.id,
-            type_creneau=type_creneau,
-            titre=titre,
-            date_creneau=d + timedelta(weeks=i),
-            heure_debut=heure_debut,
-            heure_fin=heure_fin,
-            description=description,
-            subvention_id=subvention_id,
+            **{**champs, "date_creneau": champs["date_creneau"] + timedelta(weeks=i)},
         ))
     db.session.commit()
+    titre = champs["titre"]
     if repetitions:
         flash(f"Créneau « {titre} » ajouté ({repetitions + 1} occurrences hebdomadaires).", "success")
     else:
         flash(f"Créneau « {titre} » ajouté à ton agenda.", "success")
-    return redirect(url_for("main.mon_agenda"))
+    return _retour_apres_creneau(champs["date_creneau"])
+
+
+@bp.post("/mon-agenda/creneau/<int:creneau_id>/modifier")
+@login_required
+@require_perm("emargement:view")
+def mon_agenda_creneau_modifier(creneau_id: int):
+    """Modifie un créneau existant — y compris sa date, ce qui permet de le
+    déplacer depuis la vue calendrier."""
+    c = db.session.get(AgendaCreneau, creneau_id)
+    if c is None or c.user_id != current_user.id:
+        abort(404)
+    champs = _champs_creneau_du_formulaire()
+    if champs is None:
+        flash("Le titre et la date du créneau sont obligatoires.", "danger")
+        return _retour_apres_creneau(c.date_creneau)
+    for cle, valeur in champs.items():
+        setattr(c, cle, valeur)
+    db.session.commit()
+    flash(f"Créneau « {c.titre} » mis à jour.", "success")
+    return _retour_apres_creneau(c.date_creneau)
 
 
 @bp.post("/mon-agenda/creneau/<int:creneau_id>/supprimer")
@@ -204,10 +276,11 @@ def mon_agenda_creneau_supprimer(creneau_id: int):
     c = db.session.get(AgendaCreneau, creneau_id)
     if c is None or c.user_id != current_user.id:
         abort(404)
+    jour = c.date_creneau
     db.session.delete(c)
     db.session.commit()
     flash("Créneau supprimé.", "info")
-    return redirect(url_for("main.mon_agenda"))
+    return _retour_apres_creneau(jour)
 
 
 @bp.route("/mon-agenda/export.ics")
@@ -291,6 +364,45 @@ def mon_agenda_calendrier():
     options = charger_options(current_user)
     evenements = evenements_pour_periode(current_user, du=du, au=au, options=options)
 
+    # Panneau de saisie : ouvert soit sur un jour vide (« + »), soit sur un
+    # créneau existant à modifier. Tout passe par l'URL, donc pas une ligne de
+    # JavaScript et un bouton « retour » du navigateur qui fonctionne.
+    jour_saisie = _parse_date(request.args.get("jour"))
+    creneau_actif = None
+    creneau_id = request.args.get("creneau", type=int)
+    if creneau_id:
+        candidat = db.session.get(AgendaCreneau, creneau_id)
+        if candidat is not None and candidat.user_id == current_user.id:
+            creneau_actif = candidat
+            jour_saisie = candidat.date_creneau
+
+    ateliers_disponibles = []
+    subventions = []
+    if jour_saisie is not None:
+        subventions = (
+            Subvention.query
+            .filter(Subvention.est_archive.is_(False))
+            .order_by(Subvention.annee_exercice.desc(), Subvention.nom.asc())
+            .limit(100)
+            .all()
+        )
+        # Ateliers proposés pour le raccourci « nouvelle séance » : ceux que la
+        # personne peut réellement utiliser (son secteur, ou tous si portée
+        # globale), plus les ateliers intersecteurs ouverts à tout le monde.
+        aq = AtelierActivite.query.filter(
+            AtelierActivite.is_deleted.is_(False),
+            AtelierActivite.is_active.is_(True),
+        )
+        secteur_perso = (getattr(current_user, "secteur_assigne", None) or "").strip()
+        if secteur_perso and not current_user.has_perm("scope:all_secteurs"):
+            aq = aq.filter(db.or_(
+                AtelierActivite.secteur == secteur_perso,
+                AtelierActivite.est_intersecteur.is_(True),
+            ))
+        ateliers_disponibles = aq.order_by(
+            AtelierActivite.secteur.asc(), AtelierActivite.nom.asc()
+        ).limit(300).all()
+
     return render_template(
         "mon_agenda_calendrier.html",
         vue=vue,
@@ -305,4 +417,11 @@ def mon_agenda_calendrier():
         mois_affiche=(ancre.replace(day=1) if vue == "mois" else None),
         jours_fr=[j.capitalize() for j in JOURS_FR],
         options=options,
+        jour_saisie=jour_saisie,
+        creneau_actif=creneau_actif,
+        ateliers_disponibles=ateliers_disponibles,
+        subventions=subventions,
+        types_creneau=TYPES_CRENEAU,
+        types_creneau_labels=TYPES_CRENEAU_LABELS,
+        peut_creer_seance=current_user.has_perm("ateliers:edit"),
     )
