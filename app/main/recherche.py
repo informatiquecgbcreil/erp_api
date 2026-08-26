@@ -106,6 +106,15 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
         return {"results": [], "query": term, "facets": {"types": {}, "secteurs": {}}, "debug": {"duration_ms": 0}}
 
     active_secteur_filter = secteur_filter or (None if has_global_scope else user_secteur)
+
+    # Participants : la liste (app/participants/routes.py) ouvre la vue à tous
+    # les secteurs dès que participants:view_all est accordé — c'est le cas du
+    # rôle responsable_secteur. La recherche doit dire la même chose, sinon on
+    # voit une personne dans la liste sans jamais pouvoir la retrouver en la
+    # cherchant. Un filtre « secteur: » tapé explicitement reste honoré.
+    secteur_filter_participants = active_secteur_filter
+    if secteur_filter_participants and not secteur_filter and can("participants:view_all"):
+        secteur_filter_participants = None
     wanted_type = SEARCH_TYPE_ALIASES.get(type_filter or "")
     dialect_name = ((db.session.bind.dialect.name if db.session.bind else "") or "").lower()
     results: list[dict] = []
@@ -185,17 +194,17 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
                     _like(Quartier.ville, f"%{quartier_filter}%"),
                 )
             )
-        if active_secteur_filter:
+        if secteur_filter_participants:
             has_presence_in_user_secteur = (
                 db.session.query(PresenceActivite.id)
                 .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
                 .filter(PresenceActivite.participant_id == Participant.id)
-                .filter(SessionActivite.secteur == active_secteur_filter)
+                .filter(SessionActivite.secteur == secteur_filter_participants)
                 .exists()
             )
             participants_q = participants_q.filter(
                 db.or_(
-                    Participant.created_secteur == active_secteur_filter,
+                    Participant.created_secteur == secteur_filter_participants,
                     has_presence_in_user_secteur,
                 )
             )
