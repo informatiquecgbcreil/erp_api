@@ -26,6 +26,21 @@
   .cal-ev.creneau{ border-left-color:#10b981; background:rgba(16,185,129,.13); }
   .cal-ev.annulee{ text-decoration:line-through; opacity:.55; }
   .cal-plus{ display:block; font-size:.72rem; font-weight:700; opacity:.7; margin-top:2px; text-decoration:none; }
+  .cal-jour{ position:relative; }
+  .cal-ajout{ position:absolute; top:3px; right:4px; width:20px; height:20px; border-radius:6px;
+              display:flex; align-items:center; justify-content:center; text-decoration:none;
+              font-weight:800; font-size:.9rem; line-height:1; color:#3b82f6;
+              background:rgba(59,130,246,.12); opacity:0; transition:opacity .12s; }
+  .cal-jour:hover .cal-ajout, .cal-ajout:focus{ opacity:1; }
+  .cal-jour.selection{ box-shadow:inset 0 0 0 2px #10b981; }
+  .cal-panneau{ border:1px solid var(--border,#e3e6ef); border-left:4px solid #10b981;
+                border-radius:12px; padding:14px 16px; background:var(--panel,#fff); margin:12px 0; }
+  .cal-panneau h2{ margin:0 0 4px; font-size:1.02rem; }
+  .cal-panneau label{ display:block; font-size:.78rem; font-weight:600; margin:8px 0 3px; }
+  .cal-panneau input[type="text"], .cal-panneau input[type="date"], .cal-panneau input[type="time"],
+  .cal-panneau input[type="number"], .cal-panneau select{
+    width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border,#e3e6ef); }
+  .cal-champs{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; align-items:end; }
   .cal-legende{ display:flex; gap:14px; flex-wrap:wrap; font-size:.8rem; margin-top:10px; align-items:center; }
   .cal-legende .p{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:middle; }
   .cal-sem .cal-jour{ min-height:200px; }
@@ -61,6 +76,114 @@
     <a class="btn" href="{{ url_for('main.mon_agenda') }}">⚙️ Réglages & synchro</a>
   </div>
 
+  {% if jour_saisie %}
+    {% set c = creneau_actif %}
+    <div class="cal-panneau" id="saisie">
+      <h2>{% if c %}✏️ Modifier le créneau{% else %}➕ Nouveau créneau{% endif %}
+        — {{ jours_fr[jour_saisie.weekday()] }} {{ jour_saisie.strftime('%d/%m/%Y') }}</h2>
+      <div class="muted" style="font-size:.86rem;">
+        Réunion, temps de préparation, formation… Ces créneaux comptent dans ta feuille de temps et
+        partent dans ton agenda synchronisé, comme les séances.
+      </div>
+
+      <form method="post" style="margin-top:8px;"
+            action="{% if c %}{{ url_for('main.mon_agenda_creneau_modifier', creneau_id=c.id) }}{% else %}{{ url_for('main.mon_agenda_creneau_creer') }}{% endif %}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="retour_calendrier" value="{{ jour_saisie.isoformat() }}">
+        <input type="hidden" name="retour_vue" value="{{ vue }}">
+
+        <div class="cal-champs">
+          <div>
+            <label>Type</label>
+            <select name="type_creneau">
+              {% for t in types_creneau %}
+                <option value="{{ t }}" {% if c and c.type_creneau == t %}selected{% endif %}>{{ types_creneau_labels[t] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="grid-column:span 2;">
+            <label>Titre</label>
+            <input type="text" name="titre" required maxlength="200" placeholder="ex. Réunion d'équipe"
+                   value="{{ c.titre if c else '' }}">
+          </div>
+          <div>
+            <label>Date</label>
+            <input type="date" name="date_creneau" required value="{{ (c.date_creneau if c else jour_saisie).isoformat() }}">
+          </div>
+          <div>
+            <label>Début</label>
+            <input type="time" name="heure_debut" value="{{ (c.heure_debut if c else '') or '' }}">
+          </div>
+          <div>
+            <label>Fin</label>
+            <input type="time" name="heure_fin" value="{{ (c.heure_fin if c else '') or '' }}">
+          </div>
+          {% if not c %}
+            <div>
+              <label>Répéter (semaines)</label>
+              <input type="number" name="repeter_semaines" min="0" max="52" value="0"
+                     title="0 = une seule fois ; 12 = chaque semaine pendant 12 semaines de plus">
+            </div>
+          {% endif %}
+          <div style="grid-column:span 2;">
+            <label>Compte sur le projet (optionnel)</label>
+            <select name="subvention_id">
+              <option value="">— Aucun —</option>
+              {% for sub in subventions %}
+                <option value="{{ sub.id }}" {% if c and c.subvention_id == sub.id %}selected{% endif %}>
+                  {{ sub.nom }}{% if sub.financeur %} · {{ sub.financeur }}{% endif %} ({{ sub.annee_exercice }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="grid-column:span 2;">
+            <label>Détail (optionnel)</label>
+            <input type="text" name="description" maxlength="500" placeholder="ex. point projet CAF"
+                   value="{{ (c.description if c else '') or '' }}">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:center;">
+          <button class="btn primary" type="submit">{% if c %}💾 Enregistrer{% else %}➕ Ajouter le créneau{% endif %}</button>
+          <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=ancre.isoformat()) }}">Annuler</a>
+        </div>
+      </form>
+
+      {% if c %}
+        <form method="post" action="{{ url_for('main.mon_agenda_creneau_supprimer', creneau_id=c.id) }}"
+              style="margin-top:8px;" onsubmit="return confirm('Supprimer ce créneau ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="retour_calendrier" value="{{ jour_saisie.isoformat() }}">
+          <input type="hidden" name="retour_vue" value="{{ vue }}">
+          <button class="btn btn-danger-outline" type="submit">🗑️ Supprimer ce créneau</button>
+        </form>
+      {% endif %}
+
+      {% if peut_creer_seance and ateliers_disponibles %}
+        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--border,#e3e6ef);">
+          <strong style="font-size:.92rem;">Plutôt une séance d'atelier ce jour-là ?</strong>
+          <div class="muted" style="font-size:.84rem; margin-bottom:6px;">
+            Le formulaire habituel s'ouvre avec la date déjà remplie — capacité, secteur d'imputation,
+            modules et matériel s'y règlent comme d'ordinaire.
+          </div>
+          <form method="get" action="{{ url_for('main.aller_creer_seance') }}"
+                style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
+            <input type="hidden" name="date" value="{{ jour_saisie.isoformat() }}">
+            <div style="flex:1; min-width:220px;">
+              <label>Atelier</label>
+              <select name="atelier_id" required>
+                {% for a in ateliers_disponibles %}
+                  <option value="{{ a.id }}">{{ a.nom }} · {{ a.secteur }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button class="btn" type="submit">📝 Créer une séance</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <div class="cal-grille {% if vue == 'semaine' %}cal-sem{% endif %}">
     {% for jour_label in jours_fr %}<div class="cal-entete">{{ jour_label }}</div>{% endfor %}
     {% for semaine in semaines %}
@@ -69,14 +192,17 @@
         <div class="cal-jour
                     {% if mois_affiche and jour.month != mois_affiche.month %}hors-mois{% endif %}
                     {% if jour == aujourdhui %}aujourdhui{% endif %}
+                    {% if jour == jour_saisie %}selection{% endif %}
                     {% if jour.weekday() >= 5 %}week-end{% endif %}">
           <div class="cal-num" data-jour="{{ jours_fr[jour.weekday()] }} {{ jour.strftime('%d/%m') }}">{{ jour.day }}</div>
+          <a class="cal-ajout" title="Ajouter un créneau ce jour-là"
+             href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=ancre.isoformat(), jour=jour.isoformat()) }}#saisie">+</a>
           {% set limite = evenements|length if vue == 'semaine' else 4 %}
           {% for e in evenements[:limite] %}
             {% if e.type == 'seance' %}
               {% set lien = url_for('activite.emargement', session_id=e.id) %}
             {% else %}
-              {% set lien = url_for('main.mon_agenda') %}
+              {% set lien = url_for('main.mon_agenda_calendrier', vue=vue, ancre=ancre.isoformat(), creneau=e.id) ~ '#saisie' %}
             {% endif %}
             <a class="cal-ev {{ e.categorie if e.type == 'seance' else 'creneau' }} {% if e.annulee %}annulee{% endif %}"
                href="{{ lien }}"

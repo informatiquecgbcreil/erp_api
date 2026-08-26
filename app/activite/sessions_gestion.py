@@ -178,6 +178,12 @@ def session_new(atelier_id: int):
             .all()
         )
 
+    # Date pré-remplie quand on arrive depuis la vue calendrier (?date=).
+    try:
+        date_prefill = datetime.strptime((request.args.get("date") or "").strip(), "%Y-%m-%d").date().isoformat()
+    except Exception:
+        date_prefill = ""
+
     return render_template(
         "activite/session_form.html",
         secteur=secteur,
@@ -189,6 +195,7 @@ def session_new(atelier_id: int):
         materiels=list_materiels_actifs(),
         secteurs_imputation=_secteurs_imputation_possibles(atelier),
         secteur_impute_choisi=atelier.secteur,
+        date_prefill=date_prefill,
     )
 
 

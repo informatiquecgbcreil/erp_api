@@ -163,3 +163,140 @@ def test_lien_vers_la_seance(app):
 
     body = client.get("/mon-agenda/calendrier").get_data(as_text=True)
     assert f"/activite/session/{session_id}/emargement" in body
+
+
+# ---------------------------------------------------------------------------
+# Étape 2 : saisie depuis le calendrier
+# ---------------------------------------------------------------------------
+
+def _atelier(app, *, secteur, nom):
+    from app.extensions import db
+    from app.models import AtelierActivite
+    with app.app_context():
+        at = AtelierActivite(nom=nom, secteur=secteur, type_atelier="COLLECTIF",
+                             capacite_defaut=12, is_active=True)
+        db.session.add(at)
+        db.session.commit()
+        return at.id
+
+
+def test_panneau_de_creation_sur_un_jour(app):
+    tag = uuid.uuid4().hex[:6]
+    client, _ = _user_client(app, email=f"pan-{tag}@ex.org", secteur=f"Num{tag}")
+    jour = dt.date.today().replace(day=15)
+
+    r = client.get(f"/mon-agenda/calendrier?jour={jour.isoformat()}")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert "Nouveau créneau" in body
+    assert jour.isoformat() in body
+
+
+def test_creer_puis_modifier_puis_supprimer_depuis_le_calendrier(app):
+    from app.extensions import db
+    from app.models import AgendaCreneau
+
+    tag = uuid.uuid4().hex[:6]
+    client, uid = _user_client(app, email=f"crud-{tag}@ex.org", secteur=f"Num{tag}")
+    jour = dt.date.today().replace(day=15)
+
+    # Création : retour sur le calendrier, au bon mois
+    r = client.post("/mon-agenda/creneau", data={
+        "titre": f"Reunion{tag}", "date_creneau": jour.isoformat(),
+        "type_creneau": "reunion", "heure_debut": "10:00", "heure_fin": "12:00",
+        "retour_calendrier": jour.isoformat(), "retour_vue": "mois",
+    })
+    assert r.status_code == 302
+    assert "/mon-agenda/calendrier" in r.headers["Location"]
+    with app.app_context():
+        c = AgendaCreneau.query.filter_by(user_id=uid).one()
+        cid = c.id
+
+    # Déplacement : la date change, donc le créneau change de case
+    nouveau_jour = jour + dt.timedelta(days=3)
+    r = client.post(f"/mon-agenda/creneau/{cid}/modifier", data={
+        "titre": f"Deplacee{tag}", "date_creneau": nouveau_jour.isoformat(),
+        "type_creneau": "preparation", "heure_debut": "14:00", "heure_fin": "15:00",
+        "retour_calendrier": nouveau_jour.isoformat(),
+    })
+    assert r.status_code == 302
+    with app.app_context():
+        c = db.session.get(AgendaCreneau, cid)
+        assert c.titre == f"Deplacee{tag}"
+        assert c.date_creneau == nouveau_jour
+        assert c.type_creneau == "preparation"
+
+    # Suppression
+    r = client.post(f"/mon-agenda/creneau/{cid}/supprimer",
+                    data={"retour_calendrier": nouveau_jour.isoformat()})
+    assert r.status_code == 302
+    with app.app_context():
+        assert db.session.get(AgendaCreneau, cid) is None
+
+
+def test_creneau_d_autrui_inaccessible(app):
+    """Le panneau d'édition ne s'ouvre que sur ses propres créneaux, et la
+    modification d'un créneau d'autrui est refusée."""
+    from app.extensions import db
+    from app.models import AgendaCreneau
+
+    tag = uuid.uuid4().hex[:6]
+    _, uid_a = _user_client(app, email=f"a-{tag}@ex.org", secteur=f"Num{tag}")
+    client_b, _ = _user_client(app, email=f"b-{tag}@ex.org", secteur=f"Num{tag}")
+    jour = dt.date.today().replace(day=15)
+    cid = _creneau(app, uid_a, titre=f"Prive{tag}", jour=jour)
+
+    body = client_b.get(f"/mon-agenda/calendrier?creneau={cid}").get_data(as_text=True)
+    assert "Modifier le créneau" not in body
+    assert f"Prive{tag}" not in body
+
+    r = client_b.post(f"/mon-agenda/creneau/{cid}/modifier", data={
+        "titre": "Pirate", "date_creneau": jour.isoformat(), "type_creneau": "reunion",
+    })
+    assert r.status_code == 404
+    with app.app_context():
+        assert db.session.get(AgendaCreneau, cid).titre == f"Prive{tag}"
+
+
+def test_page_mon_agenda_garde_son_comportement(app):
+    """Non-régression : sans champ de retour, on revient sur Mon agenda."""
+    tag = uuid.uuid4().hex[:6]
+    client, _ = _user_client(app, email=f"compat-{tag}@ex.org", secteur=f"Num{tag}")
+    jour = dt.date.today().replace(day=15)
+
+    r = client.post("/mon-agenda/creneau", data={
+        "titre": f"Classique{tag}", "date_creneau": jour.isoformat(), "type_creneau": "reunion",
+    })
+    assert r.status_code == 302
+    assert r.headers["Location"].endswith("/mon-agenda")
+
+
+def test_raccourci_vers_le_formulaire_de_seance(app):
+    tag = uuid.uuid4().hex[:6]
+    secteur = f"Num{tag}"
+    client, _ = _user_client(app, email=f"seance-{tag}@ex.org", secteur=secteur,
+                             role="responsable_secteur")
+    atelier_id = _atelier(app, secteur=secteur, nom=f"Atelier{tag}")
+    jour = dt.date.today().replace(day=15)
+
+    r = client.get(f"/mon-agenda/calendrier/nouvelle-seance?atelier_id={atelier_id}&date={jour.isoformat()}")
+    assert r.status_code == 302
+    cible = r.headers["Location"]
+    assert f"/activite/atelier/{atelier_id}/session/new" in cible
+
+    # La date arrive pré-remplie dans le formulaire habituel
+    body = client.get(cible).get_data(as_text=True)
+    assert f'value="{jour.isoformat()}"' in body
+
+
+def test_raccourci_seance_refuse_un_atelier_hors_portee(app):
+    tag = uuid.uuid4().hex[:6]
+    client, _ = _user_client(app, email=f"hp-{tag}@ex.org", secteur=f"Num{tag}")
+    atelier_id = _atelier(app, secteur=f"Autre{tag}", nom=f"Ailleurs{tag}")
+
+    r = client.get(f"/mon-agenda/calendrier/nouvelle-seance?atelier_id={atelier_id}")
+    assert r.status_code == 302
+    assert "/mon-agenda/calendrier" in r.headers["Location"]
+
+    r = client.get("/mon-agenda/calendrier/nouvelle-seance?atelier_id=999999")
+    assert r.status_code == 302
