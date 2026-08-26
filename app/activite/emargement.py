@@ -70,6 +70,17 @@ from app.activite.helpers import (
 # ------------------ Émargement ------------------
 
 
+#: Échelle commune aux trois ressentis du bilan de séance (pertinence,
+#: difficulté, participation). Volontairement courte : un bilan doit se
+#: remplir en quelques secondes après la séance.
+ECHELLE_BILAN = {"faible", "moyen", "fort"}
+ECHELLE_BILAN_LABELS = [
+    ("faible", "Faible"),
+    ("moyen", "Moyen"),
+    ("fort", "Fort"),
+]
+
+
 @bp.route("/session/<int:session_id>/emargement", methods=["GET", "POST"])
 @login_required
 def emargement(session_id: int):
@@ -452,6 +463,26 @@ def emargement(session_id: int):
             flash(f"Consommations individuelles effacées pour {count} ligne(s).", "success")
             return _redirect_emargement_with_period(session_id)
 
+        if action == "bilan_seance":
+            # Bilan pédagogique porté par la séance. Les colonnes existaient
+            # depuis la migration aa77bb88cc99 mais n'avaient pas d'écran de
+            # saisie ; elles alimentent aussi la description de l'agenda.
+            def _choix(champ: str, valeurs: set[str]) -> str | None:
+                brut = (request.form.get(champ) or "").strip().lower()
+                return brut if brut in valeurs else None
+
+            s.intention_seance = (request.form.get("intention_seance") or "").strip()[:255] or None
+            s.intention_seance_detail = (request.form.get("intention_seance_detail") or "").strip() or None
+            s.bilan_qualitatif = (request.form.get("bilan_qualitatif") or "").strip() or None
+            s.commentaire_pedagogique = (request.form.get("commentaire_pedagogique") or "").strip() or None
+            s.pertinence = _choix("pertinence", ECHELLE_BILAN)
+            s.difficulte = _choix("difficulte", ECHELLE_BILAN)
+            s.participation_groupe = _choix("participation_groupe", ECHELLE_BILAN)
+            s.a_reprendre = request.form.get("a_reprendre") in {"1", "on", "true"}
+            db.session.commit()
+            flash("Bilan de séance enregistré.", "success")
+            return _redirect_emargement_with_period(session_id)
+
         if action == "quick_passport_note":
             participant_id = request.form.get("participant_id", type=int)
             participant = db.session.get(Participant, participant_id) if participant_id else None
@@ -542,6 +573,7 @@ def emargement(session_id: int):
         secteur=secteur,
         atelier=atelier,
         session=s,
+        echelle_bilan=ECHELLE_BILAN_LABELS,
         participants=participants,
         presences=presences,
         motifs=motifs,
