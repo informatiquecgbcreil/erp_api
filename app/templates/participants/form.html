@@ -271,6 +271,58 @@
     </div>
   </form>
 
+  {% if item and is_editable and can('participants:delete') %}
+    <section class="section-card" id="suppression" style="border-color:#f0b4b4;">
+      <h2 class="section-card__title">Supprimer définitivement</h2>
+      <p class="section-card__subtitle">
+        À réserver aux <strong>erreurs de saisie</strong> : doublon créé par mégarde, fiche de test,
+        personne enregistrée par erreur. La fiche et tout ce qui s'y rattache sont effacés
+        <strong>sans retour possible</strong>.
+      </p>
+
+      {% if suppression_resume and suppression_resume.total %}
+        <div class="callout warn" style="margin:10px 0;">
+          <strong>Cette fiche porte déjà un historique</strong> — il sera détruit lui aussi,
+          et vos statistiques passées en seront diminuées :
+          <ul style="margin:6px 0 0 18px;">
+            {% for libelle, nombre in suppression_resume.details %}
+              <li>{{ nombre }} {{ libelle }}</li>
+            {% endfor %}
+          </ul>
+          <div style="margin-top:8px;">
+            Si la personne est réellement venue, préférez <strong>l'anonymisation</strong> ci-dessus :
+            elle efface l'identité et garde les chiffres justes.
+          </div>
+        </div>
+      {% else %}
+        <div class="field-help" style="margin:8px 0;">
+          Aucune présence ni donnée d'activité n'est rattachée à cette fiche : sa suppression
+          n'aura aucun effet sur les statistiques.
+        </div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('participants.delete_participant', participant_id=item.id) }}"
+            onsubmit="return confirm('Dernière vérification : supprimer définitivement cette fiche et tout son historique ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid-2 stretch-input">
+          <div class="field-stack">
+            <label>Pour confirmer, retapez le nom de famille : <strong>{{ item.nom }}</strong></label>
+            <input class="in" type="text" name="confirmation_nom" autocomplete="off" placeholder="{{ item.nom }}">
+          </div>
+          <div class="field-stack">
+            <label>Motif (facultatif, conservé au journal)</label>
+            <input class="in" type="text" name="motif" maxlength="500" placeholder="ex. doublon de la fiche #123">
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-danger-outline" type="submit">Supprimer définitivement cette fiche</button>
+        <div class="field-help" style="margin-top:8px;">
+          L'opération est inscrite au journal d'audit (qui, quand, quoi) — Administration → Journal.
+        </div>
+      </form>
+    </section>
+  {% endif %}
+
   {# Ces actions ont leur propre formulaire : elles doivent rester en dehors
      de celui de la fiche. Imbriquer deux formulaires est interdit en HTML —
      le navigateur referme alors le parent, et le bouton « Enregistrer les
