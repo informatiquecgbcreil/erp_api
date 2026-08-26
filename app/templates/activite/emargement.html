@@ -97,6 +97,21 @@
       .conso-period-form { grid-template-columns: 1fr; }
     }
   </style>
+
+<style>
+  /* Repliage des blocs secondaires (voir static/js/emargement-repli.js) */
+  .repli-entete{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .repli-entete > h2{ flex:0 1 auto; }
+  .repli-bouton{ margin-left:auto; display:inline-flex; align-items:center; gap:8px;
+                 background:transparent; border:0; cursor:pointer; font:inherit;
+                 color:inherit; padding:4px 6px; border-radius:8px; }
+  .repli-bouton:hover{ background:var(--surface-soft,#f1f4fb); }
+  .repli-chevron{ font-size:.85rem; opacity:.65; }
+  .repli-resume{ font-size:.82rem; font-weight:700; opacity:.75; letter-spacing:.01em; }
+  .repli-ferme{ padding-bottom:10px; }
+  .repli-ferme > .repli-entete{ margin-bottom:0; }
+  .repli-ferme h2{ margin-bottom:0 !important; }
+</style>
 {% endblock %}
 
 {% block body %}
@@ -448,6 +463,83 @@
     </div>
   </div>
   {% endif %}
+
+  <section class="section-card" id="bilan-seance">
+    <h2 style="margin-top:0;">📝 Bilan de la séance</h2>
+    <div class="muted">
+      Ce qui était prévu, ce qui s'est passé. Renseigné ici, le bilan remonte dans les exports et,
+      si tu l'as coché dans <em>Mon agenda</em>, dans la description de l'événement de ton agenda.
+    </div>
+
+    <form method="post" class="stack" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+      <input type="hidden" name="action" value="bilan_seance">
+
+      <div class="field-stack">
+        <label>Intention de la séance <span class="muted">(ce que tu voulais faire travailler)</span></label>
+        <input class="in" type="text" name="intention_seance" maxlength="255"
+               placeholder="ex. Prendre en main la messagerie" value="{{ session.intention_seance or '' }}">
+      </div>
+
+      <div class="field-stack">
+        <label>Précisions sur l'intention <span class="muted">(optionnel)</span></label>
+        <textarea class="in" name="intention_seance_detail" rows="2"
+                  placeholder="Déroulé prévu, supports, points de vigilance…">{{ session.intention_seance_detail or '' }}</textarea>
+      </div>
+
+      <div class="field-stack">
+        <label>Observations <span class="muted">(ce qui s'est réellement passé)</span></label>
+        <textarea class="in" name="bilan_qualitatif" rows="3"
+                  placeholder="ex. Groupe très participatif, l'exercice du dialogue a bien fonctionné…">{{ session.bilan_qualitatif or '' }}</textarea>
+      </div>
+
+      <div class="form-grid-3">
+        <div>
+          <label>Pertinence <span class="muted">(l'activité était-elle adaptée ?)</span></label>
+          <select class="in" name="pertinence">
+            <option value="">— Non renseigné —</option>
+            {% for valeur, libelle in echelle_bilan %}
+              <option value="{{ valeur }}" {% if session.pertinence == valeur %}selected{% endif %}>{{ libelle }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Difficulté <span class="muted">(pour les participants)</span></label>
+          <select class="in" name="difficulte">
+            <option value="">— Non renseigné —</option>
+            {% for valeur, libelle in echelle_bilan %}
+              <option value="{{ valeur }}" {% if session.difficulte == valeur %}selected{% endif %}>{{ libelle }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Participation du groupe</label>
+          <select class="in" name="participation_groupe">
+            <option value="">— Non renseigné —</option>
+            {% for valeur, libelle in echelle_bilan %}
+              <option value="{{ valeur }}" {% if session.participation_groupe == valeur %}selected{% endif %}>{{ libelle }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <label class="inline" style="gap:8px; align-items:center; margin-top:6px;">
+        <input type="checkbox" name="a_reprendre" value="1" {% if session.a_reprendre %}checked{% endif %}>
+        <span>🔁 À reprendre lors d'une prochaine séance</span>
+      </label>
+
+      <div class="field-stack">
+        <label>Commentaire pédagogique <span class="muted">(optionnel — pour l'équipe, les bilans)</span></label>
+        <textarea class="in" name="commentaire_pedagogique" rows="2"
+                  placeholder="Ce qu'il faudrait ajuster, ce qui mérite d'être refait…">{{ session.commentaire_pedagogique or '' }}</textarea>
+      </div>
+
+      <div><button class="btn primary" type="submit">💾 Enregistrer le bilan</button></div>
+    </form>
+  </section>
 
   <div class="card">
     <h2 style="margin-top:0;">Modules pédagogiques de la séance</h2>
@@ -1181,4 +1273,6 @@
     syncHidden();
   })();
   </script>
+
+  <script src="{{ url_for('static', filename='js/emargement-repli.js') }}" defer></script>
 {% endblock %}
