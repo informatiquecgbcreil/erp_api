@@ -105,6 +105,7 @@ def mon_agenda():
 
     google_configure = ga.est_configure()
     google_compte = getattr(current_user, "google_agenda", None)
+    google_acces_a_reconnecter = ga.acces_a_reconnecter(google_compte)
     try:
         google_uri_retour = ga.uri_de_retour()
     except Exception:
@@ -114,6 +115,7 @@ def mon_agenda():
         "mon_agenda.html",
         google_configure=google_configure,
         google_compte=google_compte,
+        google_acces_a_reconnecter=google_acces_a_reconnecter,
         google_uri_retour=google_uri_retour,
         subventions=subventions,
         url_https=url_https,

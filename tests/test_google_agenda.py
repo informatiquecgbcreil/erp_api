@@ -487,6 +487,7 @@ def test_page_mon_agenda_sans_configuration(app, admin_client):
 def test_connexion_redirige_vers_google(app, admin_client):
     app.config["GOOGLE_OAUTH_CLIENT_ID"] = "client-test.apps.googleusercontent.com"
     app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = "secret-test"
+    app.config["GOOGLE_OAUTH_REDIRECT_BASE"] = "http://127.0.0.1:5000"
     try:
         r = admin_client.get("/mon-agenda/google/connecter")
         assert r.status_code == 302
@@ -501,6 +502,7 @@ def test_connexion_redirige_vers_google(app, admin_client):
     finally:
         app.config["GOOGLE_OAUTH_CLIENT_ID"] = ""
         app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
+        app.config["GOOGLE_OAUTH_REDIRECT_BASE"] = ""
 
 
 def test_invalid_grant_explique_mode_test_et_propose_reconnexion(app, admin_client, monkeypatch):
@@ -512,6 +514,7 @@ def test_invalid_grant_explique_mode_test_et_propose_reconnexion(app, admin_clie
 
     app.config["GOOGLE_OAUTH_CLIENT_ID"] = "client-test.apps.googleusercontent.com"
     app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = "secret-test"
+    app.config["GOOGLE_OAUTH_REDIRECT_BASE"] = "http://127.0.0.1:5000"
     with app.app_context():
         user = User.query.filter_by(email="admin@example.org").one()
         compte = GoogleAgendaCompte.query.filter_by(user_id=user.id).first()
@@ -545,9 +548,13 @@ def test_invalid_grant_explique_mode_test_et_propose_reconnexion(app, admin_clie
         assert "Google Auth Platform" in body
         assert "Reconnecter Google" in body
         assert '/mon-agenda/google/connecter' in body
+        assert "Adresse de retour utilisée" in body
+        assert "502 Bad Gateway" in body
+        assert "127.0.0.1" in body
     finally:
         app.config["GOOGLE_OAUTH_CLIENT_ID"] = ""
         app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
+        app.config["GOOGLE_OAUTH_REDIRECT_BASE"] = ""
 
 
 def test_redirect_base_dediee_pour_oauth(app, admin_client):

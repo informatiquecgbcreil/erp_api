@@ -78,7 +78,12 @@
         <p style="color:#b3261e; font-size:.88rem;">⚠️ Dernière erreur : {{ google_compte.derniere_erreur }}</p>
       {% endif %}
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        {% if google_compte.derniere_erreur and 'invalid_grant' in google_compte.derniere_erreur %}
+        {% if google_acces_a_reconnecter %}
+          <p class="muted" style="flex-basis:100%; margin:0 0 4px; font-size:.82rem;">
+            Adresse de retour utilisée après la connexion : <code>{{ google_uri_retour }}</code>.
+            Elle doit ouvrir cette application. Si elle affiche « 502 Bad Gateway », démarre le service
+            ou le proxy qui écoute sur ce port, ou corrige <code>GOOGLE_OAUTH_REDIRECT_BASE</code>.
+          </p>
           <a class="btn primary" href="{{ url_for('main.google_agenda_connecter') }}">🔗 Reconnecter Google</a>
         {% endif %}
         <form method="post" action="{{ url_for('main.google_agenda_resynchroniser') }}" style="margin:0;">
