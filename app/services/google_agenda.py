@@ -278,9 +278,21 @@ def _rafraichir_jeton(compte: GoogleAgendaCompte) -> str:
             "grant_type": "refresh_token",
         })
     except GoogleAgendaErreur as exc:
-        # Jeton révoqué côté Google (invalid_grant) : accès à reconnecter.
+        message = str(exc)
+        if "invalid_grant" in message.lower():
+            # En plus d'une révocation manuelle, Google invalide après sept
+            # jours les refresh tokens d'une application OAuth externe qui
+            # est encore en mode « Test ». La reconnexion remet immédiatement
+            # la synchro en route, mais le correctif durable est de publier
+            # l'application dans Google Auth Platform.
+            raise GoogleAgendaErreur(
+                "Accès Google expiré ou révoqué "
+                f"({message}). Reconnecte Google ci-dessous. Si cela revient chaque semaine, "
+                "l'application OAuth est encore en mode Test : l'administrateur doit la "
+                "publier dans Google Auth Platform → Audience."
+            ) from exc
         raise GoogleAgendaErreur(
-            f"Accès Google expiré ou révoqué ({exc}). Reconnecte ton compte depuis Mon agenda."
+            f"Impossible de renouveler l'accès Google ({message}). Réessaie la synchronisation plus tard."
         ) from exc
     compte.access_token = donnees.get("access_token")
     try:

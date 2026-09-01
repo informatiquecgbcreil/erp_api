@@ -78,6 +78,9 @@
         <p style="color:#b3261e; font-size:.88rem;">⚠️ Dernière erreur : {{ google_compte.derniere_erreur }}</p>
       {% endif %}
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if google_compte.derniere_erreur and 'invalid_grant' in google_compte.derniere_erreur %}
+          <a class="btn primary" href="{{ url_for('main.google_agenda_connecter') }}">🔗 Reconnecter Google</a>
+        {% endif %}
         <form method="post" action="{{ url_for('main.google_agenda_resynchroniser') }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn" type="submit">🔄 Resynchroniser maintenant</button>

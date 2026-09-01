@@ -503,6 +503,53 @@ def test_connexion_redirige_vers_google(app, admin_client):
         app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
 
 
+def test_invalid_grant_explique_mode_test_et_propose_reconnexion(app, admin_client, monkeypatch):
+    """Le cas classique après sept jours doit être réparable sans devoir
+    supprimer le calendrier et ses correspondances."""
+    from app.extensions import db
+    from app.models import GoogleAgendaCompte, User
+    from app.services import google_agenda as ga
+
+    app.config["GOOGLE_OAUTH_CLIENT_ID"] = "client-test.apps.googleusercontent.com"
+    app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = "secret-test"
+    with app.app_context():
+        user = User.query.filter_by(email="admin@example.org").one()
+        compte = GoogleAgendaCompte.query.filter_by(user_id=user.id).first()
+        if compte is None:
+            compte = GoogleAgendaCompte(user_id=user.id, refresh_token="expire")
+            db.session.add(compte)
+        compte.access_token = None
+        compte.access_token_expire_at = None
+        monkeypatch.setattr(
+            ga,
+            "_appel_jeton",
+            lambda champs: (_ for _ in ()).throw(
+                ga.GoogleAgendaErreur(
+                    "Google a répondu 400 : invalid_grant — Token has been expired or revoked."
+                )
+            ),
+        )
+        try:
+            ga._rafraichir_jeton(compte)
+        except ga.GoogleAgendaErreur as exc:
+            compte.derniere_erreur = str(exc)
+        else:
+            raise AssertionError("invalid_grant aurait dû produire une erreur")
+        db.session.commit()
+
+    try:
+        r = admin_client.get("/mon-agenda")
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200
+        assert "mode Test" in body
+        assert "Google Auth Platform" in body
+        assert "Reconnecter Google" in body
+        assert '/mon-agenda/google/connecter' in body
+    finally:
+        app.config["GOOGLE_OAUTH_CLIENT_ID"] = ""
+        app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
+
+
 def test_redirect_base_dediee_pour_oauth(app, admin_client):
     """GOOGLE_OAUTH_REDIRECT_BASE découple l'URI de retour OAuth de l'URL
     publique (QR codes en IP LAN vs localhost imposé par Google en http)."""
