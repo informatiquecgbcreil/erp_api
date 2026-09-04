@@ -505,6 +505,10 @@
   </section>
   {% endif %}
 
+  {# Volontairement absent du mode simple : l'orientation y est assurée par le
+     bloc « Ma journée » (poste de travail), qui propose les actions du rôle de
+     la personne plutôt que les portes génériques de l'application.
+     Voir tests/test_poste_travail.py::test_mode_simple_allege_l_accueil. #}
   {% if mode != "admin_tech" and not ui_simplified %}
   <section class="ui-panel section-card">
     <div class="ui-section-head section-head">

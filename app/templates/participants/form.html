@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from "_ui.html" import bloc_avance with context %}
 {% import "_ux_helpers.html" as ux %}
 {% block body %}
 <div class="page-shell long-form-shell stack">
@@ -207,8 +208,9 @@
     </details>
 
     {% if can_view_sensitive_insertion %}
+      {% call bloc_avance("Parcours insertion",
+                          "Section sensible, réservée aux profils habilités.") %}
       <section class="section-card">
-        <h2 class="section-card__title">Parcours insertion</h2>
         <p class="section-card__subtitle">Section sensible réservée aux profils habilités. Elle n’est pas visible pour les autres collègues.</p>
         {% if item %}
           <div class="field-help" style="margin-bottom:12px;">Le module insertion détaillé reste disponible. <a href="{{ url_for('insertion.participant_detail', participant_id=item.id) }}">Ouvrir la fiche insertion séparée</a>.</div>
@@ -254,6 +256,7 @@
           </div>
         </div>
       </section>
+      {% endcall %}
     {% endif %}
 
     <div class="guide-card">
@@ -272,8 +275,9 @@
   </form>
 
   {% if item and is_editable and can('participants:delete') %}
+    {% call bloc_avance("Supprimer définitivement cette fiche",
+                        "Sans retour possible. À réserver aux erreurs de saisie.") %}
     <section class="section-card" id="suppression" style="border-color:#f0b4b4;">
-      <h2 class="section-card__title">Supprimer définitivement</h2>
       <p class="section-card__subtitle">
         À réserver aux <strong>erreurs de saisie</strong> : doublon créé par mégarde, fiche de test,
         personne enregistrée par erreur. La fiche et tout ce qui s'y rattache sont effacés
@@ -321,6 +325,7 @@
         </div>
       </form>
     </section>
+    {% endcall %}
   {% endif %}
 
   {# Ces actions ont leur propre formulaire : elles doivent rester en dehors
@@ -328,8 +333,9 @@
      le navigateur referme alors le parent, et le bouton « Enregistrer les
      modifications » cesse de soumettre quoi que ce soit. #}
     {% if item and is_editable and can('participants:anonymize') %}
+    {% call bloc_avance("Anonymisation (RGPD)",
+                        "Efface ce qui identifie la personne, garde les statistiques.") %}
     <section class="section-card">
-      <h2 class="section-card__title">Anonymisation (RGPD)</h2>
       <p class="section-card__subtitle">
         Efface définitivement ce qui identifie la personne — nom, prénom, adresse, ville,
         e-mail, téléphone, données du parcours insertion et droit à l'image — tout en
@@ -360,6 +366,7 @@
         années (voir Contrôle → Purge RGPD). Ce bouton sert pour un cas individuel immédiat.
       </div>
     </section>
+    {% endcall %}
     {% endif %}
 </div>
 {% endblock %}
