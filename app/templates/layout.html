@@ -1506,6 +1506,71 @@
 
   <script src="{{ url_for('static', filename='js/feedback-kit.js') }}?v=20260701-submit-fix"></script>
 
+  <script>
+  /* Blocs repliés (macro `bloc_avance` de _ui.html) : les trois garde-fous
+     sans lesquels le repli des champs secondaires ferait plus de mal que de
+     bien à quelqu'un qui n'est pas à l'aise avec le numérique. */
+  (function(){
+    var SELECTEUR = 'details[data-bloc-avance]';
+
+    function ouvrirDepuis(element, marquerErreur){
+      var bloc = element && element.closest ? element.closest(SELECTEUR) : null;
+      while (bloc){
+        bloc.open = true;
+        if (marquerErreur) bloc.classList.add('bloc-avance--erreur');
+        bloc = bloc.parentElement ? bloc.parentElement.closest(SELECTEUR) : null;
+      }
+    }
+
+    /* 1. Un champ obligatoire vide dans un bloc replié est invisible : le
+       navigateur ne peut pas le signaler et l'enregistrement échouerait en
+       silence. On rouvre le bloc avant qu'il ne rende la main. */
+    document.addEventListener('invalid', function(ev){
+      ouvrirDepuis(ev.target, true);
+    }, true);
+
+    /* 2. Une erreur renvoyée par le serveur serait invisible elle aussi. */
+    function ouvrirBlocsEnErreur(){
+      var marqueurs = '.field-error, .field-error-text, .invalid-feedback, .is-invalid, [aria-invalid="true"]';
+      document.querySelectorAll(marqueurs).forEach(function(el){ ouvrirDepuis(el, true); });
+    }
+
+    /* 3. Le plus important en modification : un bloc replié qui contient déjà
+       des données donnerait l'impression qu'elles ont disparu. Un bloc déjà
+       rempli s'ouvre donc de lui-même. */
+    function estRempli(champ){
+      if (champ.disabled || champ.type === 'hidden' || champ.name === 'csrf_token') return false;
+      /* `data-bloc-ignore` (sur le champ ou un parent) exclut les champs qui
+         arrivent déjà pré-remplis sur un formulaire vierge : une quantité à 1,
+         une case cochée par défaut. Sans cela le bloc s'ouvrirait toujours. */
+      if (champ.closest('[data-bloc-ignore]')) return false;
+      if (champ.type === 'checkbox' || champ.type === 'radio') return champ.checked;
+      if (champ.tagName === 'SELECT'){
+        return !!champ.value && champ.selectedIndex > 0;
+      }
+      return !!(champ.value && String(champ.value).trim());
+    }
+
+    function ouvrirBlocsRemplis(){
+      document.querySelectorAll(SELECTEUR).forEach(function(bloc){
+        if (bloc.open) return;
+        var champs = bloc.querySelectorAll('input, select, textarea');
+        for (var i = 0; i < champs.length; i++){
+          if (estRempli(champs[i])){ bloc.open = true; return; }
+        }
+      });
+    }
+
+    function initialiser(){ ouvrirBlocsEnErreur(); ouvrirBlocsRemplis(); }
+    if (document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', initialiser);
+    } else {
+      initialiser();
+    }
+  })();
+  </script>
+
+
   {% block scripts_extra %}{% endblock %}
 
 <script>

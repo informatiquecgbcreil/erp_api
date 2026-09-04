@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% import "_ux_helpers.html" as ux %}
+{% from "_ui.html" import bloc_avance with context %}
 {% block body %}
 
 <div class="stack">
@@ -21,8 +22,9 @@
 
 
 
+  {% call bloc_avance("Répartition entre plusieurs financeurs",
+                      "Pour imputer une même dépense sur plusieurs enveloppes.") %}
   <div class="card">
-    <h2>Répartition / imputation multi-financeurs</h2>
     <p class="muted">La dépense reste unique, mais tu peux la répartir entre plusieurs enveloppes : CAF, Politique de la ville, FONJEP, fonds propres, etc.</p>
 
     <div class="kpi">
@@ -110,6 +112,7 @@
       <button class="btn ok" type="submit">Ajouter l’affectation</button>
     </form>
   </div>
+  {% endcall %}
 
   <div class="grid two">
     <div class="card">
@@ -196,8 +199,9 @@
     </div>
   </div>
 
+  {% call bloc_avance("Ajouter aussi au matériel (inventaire)",
+                      "Si la dépense correspond à un matériel à inventorier.") %}
   <div class="card">
-    <h2>Inventaire (optionnel)</h2>
     <p class="muted">Associez cette dépense à une entrée d’inventaire existante ou créez une nouvelle fiche matériel.</p>
 
     {% if inventaire_items %}
@@ -292,6 +296,7 @@
       <button class="btn ok" type="submit">Créer l’entrée d’inventaire</button>
     </form>
   </div>
+  {% endcall %}
 </div>
 
 

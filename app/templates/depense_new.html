@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% import "_ux_helpers.html" as ux %}
+{% from "_ui.html" import bloc_avance with context %}
 {% block body %}
 <style>
   .split-panel{border:1px solid rgba(120,130,160,.25);border-radius:18px;padding:14px;background:rgba(59,130,246,.06)}
@@ -51,49 +52,6 @@
 
       <div class="spacer"></div>
 
-      <div class="card" style="margin:0">
-        <h2 style="margin-top:0">Inventaire (optionnel)</h2>
-        <p class="muted">Ajoutez une entrée d’inventaire si la dépense correspond à un matériel.</p>
-        <label class="inline" style="gap:8px; align-items:center">
-          <input type="checkbox" name="create_inventory" value="1" id="createInv">
-          Créer une entrée dans l’inventaire en même temps que la dépense
-        </label>
-
-        <div id="invBlock" style="display:none; margin-top:12px">
-          <div class="row two">
-            <div><label>Désignation</label><input class="in" name="inv_designation" placeholder="Par défaut : libellé de la dépense"></div>
-            <div><label>Catégorie</label><input class="in" name="inv_categorie" placeholder="Informatique, mobilier…"></div>
-          </div>
-
-          <div class="spacer"></div>
-
-          <div class="row three">
-            <div><label>Quantité</label><input class="in" type="number" name="inv_quantite" min="1" value="1"></div>
-            <div><label>Valeur unitaire (€)</label><input class="in" type="text" inputmode="decimal" autocomplete="off" name="inv_valeur_unitaire" placeholder="Ex. 155 ou 155,50" data-money-input></div>
-            <div>
-              <label>État</label>
-              <select class="in" name="inv_etat">
-                {% for v in ['OK','A réparer','HS','Donné'] %}
-                  <option value="{{ v }}">{{ v }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-
-          <div class="spacer"></div>
-
-          <div class="row two">
-            <div><label>Localisation</label><input class="in" name="inv_localisation" placeholder="Salle, placard, bureau…"></div>
-            <div><label>Numéro de série</label><input class="in" name="inv_numero_serie"></div>
-          </div>
-
-          <div class="spacer"></div>
-          <div><label>Notes</label><textarea class="in" name="inv_notes" rows="3"></textarea></div>
-        </div>
-      </div>
-
-      <div class="spacer"></div>
-
       <div class="row two">
         <div>
           <label>Ligne de départ pour l’imputation</label>
@@ -123,8 +81,9 @@
 
       <div class="spacer"></div>
 
+      {% call bloc_avance("Répartition entre plusieurs financeurs",
+                          "Sinon, tout est imputé sur la ligne de départ choisie ci-dessus.") %}
       <div class="split-panel">
-        <h2 style="margin-top:0">2. Répartition directe entre financeurs</h2>
         <p class="split-help">
           Optionnel mais recommandé : indique directement quelle part de la dépense est imputée à chaque financeur.
           Exemple : CAF 250€, Politique de la ville 100€, fonds propres 50€.
@@ -172,7 +131,7 @@
           <button class="btn" type="button" id="addAffRow">+ Ajouter une ligne</button>
           <button class="btn" type="button" id="addFondsPropres">+ Fonds propres / autofinancement</button>
           <label class="inline" style="gap:8px;">
-            <input type="checkbox" name="auto_complete_initial" value="1" checked>
+            <input type="checkbox" name="auto_complete_initial" value="1" checked data-bloc-ignore>
             Compléter automatiquement le reste sur la ligne de départ
           </label>
         </div>
@@ -183,9 +142,10 @@
           <span class="split-pill" id="splitRestPill">Reste : <span id="splitRest">0.00</span>€</span>
         </div>
       </div>
+      {% endcall %}
 
-      <div class="spacer"></div>
-
+      {% call bloc_avance("Détails de paiement",
+                          "Fournisseur, référence de la facture, mode et date de paiement.") %}
       <div class="row three">
         <div><label>Fournisseur</label><input name="fournisseur"></div>
         <div><label>Référence facture ou reçu</label><input name="reference"></div>
@@ -205,7 +165,54 @@
 
       <div class="row two">
         <div><label>Date de paiement</label><input name="date_paiement" type="date"></div>
-        <div style="display:flex;align-items:end;"><button class="btn ok" type="submit">Enregistrer la dépense</button></div>
+      </div>
+      {% endcall %}
+
+      {% call bloc_avance("Ajouter aussi au matériel (inventaire)",
+                          "Si la dépense correspond à un matériel à inventorier.") %}
+
+        <label class="inline" style="gap:8px; align-items:center">
+          <input type="checkbox" name="create_inventory" value="1" id="createInv">
+          Créer une entrée dans l’inventaire en même temps que la dépense
+        </label>
+
+        <div id="invBlock" data-bloc-ignore style="display:none; margin-top:12px">
+          <div class="row two">
+            <div><label>Désignation</label><input class="in" name="inv_designation" placeholder="Par défaut : libellé de la dépense"></div>
+            <div><label>Catégorie</label><input class="in" name="inv_categorie" placeholder="Informatique, mobilier…"></div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="row three">
+            <div><label>Quantité</label><input class="in" type="number" name="inv_quantite" min="1" value="1"></div>
+            <div><label>Valeur unitaire (€)</label><input class="in" type="text" inputmode="decimal" autocomplete="off" name="inv_valeur_unitaire" placeholder="Ex. 155 ou 155,50" data-money-input></div>
+            <div>
+              <label>État</label>
+              <select class="in" name="inv_etat">
+                {% for v in ['OK','A réparer','HS','Donné'] %}
+                  <option value="{{ v }}">{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="row two">
+            <div><label>Localisation</label><input class="in" name="inv_localisation" placeholder="Salle, placard, bureau…"></div>
+            <div><label>Numéro de série</label><input class="in" name="inv_numero_serie"></div>
+          </div>
+
+          <div class="spacer"></div>
+          <div><label>Notes</label><textarea class="in" name="inv_notes" rows="3"></textarea></div>
+        </div>
+      {% endcall %}
+
+      <div class="spacer"></div>
+
+      <div class="form-actions">
+        <button class="btn ok btn-enregistrer" type="submit">Enregistrer la dépense</button>
       </div>
     </form>
   </div>

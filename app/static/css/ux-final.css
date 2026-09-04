@@ -1670,3 +1670,92 @@ html[data-theme="dark"] main :is(
     border-color: #ddd !important;
   }
 }
+
+/* ==========================================================================
+   Repli progressif des champs secondaires (macro `bloc_avance` de _ui.html).
+
+   Objectif : qu'un écran de saisie montre d'abord cinq champs plutôt que
+   quarante. La barre de dépliage est une vraie cible tactile, son libellé dit
+   ce qu'elle contient, et son état est lisible sans distinguer les couleurs.
+   ========================================================================== */
+.bloc-avance{
+  border: 1px solid var(--border, rgba(127,127,127,.25));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface, #fff) 60%, transparent);
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+.bloc-avance__resume{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--touch-target-min, 44px);
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  user-select: none;
+}
+.bloc-avance__resume::-webkit-details-marker{ display: none; }
+.bloc-avance__resume:hover{
+  background: color-mix(in srgb, var(--accent, #2563eb) 8%, transparent);
+}
+.bloc-avance__resume:focus-visible{
+  outline: 3px solid var(--focus, rgba(37,99,235,.35));
+  outline-offset: -3px;
+}
+
+.bloc-avance__chevron{
+  flex: none;
+  width: 12px; height: 12px;
+  border-right: 2.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform .18s ease;
+}
+.bloc-avance[open] .bloc-avance__chevron{ transform: rotate(45deg); }
+
+.bloc-avance__texte{ display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.bloc-avance__titre{ font-size: 1rem; }
+.bloc-avance__aide{
+  font-weight: 400;
+  font-size: var(--font-size-muted, 14px);
+  color: var(--muted, #475569);
+  line-height: 1.4;
+}
+
+/* L'état est écrit en toutes lettres : ni la couleur ni la seule rotation du
+   chevron ne suffisent à dire si le bloc est ouvert ou fermé. */
+.bloc-avance__etat{
+  flex: none;
+  font-weight: 700;
+  font-size: var(--font-size-muted, 14px);
+  color: var(--accent, #2563eb);
+  white-space: nowrap;
+}
+.bloc-avance__etat::after{ content: "Afficher"; }
+.bloc-avance[open] .bloc-avance__etat::after{ content: "Masquer"; }
+
+.bloc-avance__corps{
+  padding: 4px 14px 16px;
+  border-top: 1px solid var(--border-soft, rgba(127,127,127,.18));
+}
+
+/* Un bloc replié qui contient une erreur de saisie est rouvert par le JS de
+   layout.html ; ce liseré dit pourquoi il s'est rouvert tout seul. */
+.bloc-avance.bloc-avance--erreur{
+  border-color: var(--danger, #dc2626);
+  box-shadow: 0 0 0 1px var(--danger, #dc2626) inset;
+}
+
+@media (max-width: 700px){
+  .bloc-avance__corps{ padding: 4px 12px 14px; }
+  .bloc-avance__resume{ padding: 10px 12px; }
+}
+
+@media print{
+  /* À l'impression, rien ne doit rester caché. */
+  .bloc-avance__corps{ display: block !important; }
+  .bloc-avance__etat{ display: none; }
+}

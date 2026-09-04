@@ -1,0 +1,48 @@
+{#
+  Composants d'interface partagés.
+
+  `bloc_avance` — repli progressif des champs secondaires.
+
+  Un écran de saisie à quarante champs est un mur pour quelqu'un qui n'est pas
+  à l'aise avec le numérique. Ce composant range les champs secondaires dans
+  un bloc replié : en mode simple l'utilisateur ne voit d'abord que l'essentiel
+  et déplie s'il en a besoin ; en mode expert tout est ouvert d'emblée.
+
+  Règles :
+  - on REPLIE, on ne supprime jamais : le champ reste dans le formulaire et
+    part bien à l'enregistrement, quel que soit le mode ;
+  - aucun champ obligatoire d'un formulaire resté visible ne doit être replié :
+    le navigateur ne sait pas signaler un champ requis invisible, et
+    l'enregistrement échouerait sans explication. Replier un bloc qui contient
+    son formulaire entier, bouton compris, est en revanche sans danger — il
+    faut l'ouvrir pour s'en servir. Un garde-fou JS (layout.html) rouvre de
+    toute façon le bloc si un champ y est refusé ;
+  - les droits RBAC restent les seuls à décider ce qu'un utilisateur peut voir ;
+  - un bloc déjà rempli s'ouvre tout seul (sinon on croirait les données
+    perdues en modification). Marquer `data-bloc-ignore` sur les champs qui
+    arrivent pré-remplis sur un formulaire vierge — quantité à 1, case cochée
+    par défaut — sans quoi le bloc s'ouvrirait systématiquement.
+
+  Usage :
+    {% from "_ui.html" import bloc_avance with context %}
+    {% call bloc_avance("Détails de paiement", "Fournisseur, facture, date") %}
+      ...champs...
+    {% endcall %}
+#}
+
+{% macro bloc_avance(titre, aide='', ouvert=false) %}
+  {% set deplie = ouvert or not (UI_SIMPLIFIED if UI_SIMPLIFIED is defined else true) %}
+  <details class="bloc-avance" data-bloc-avance {% if deplie %}open{% endif %}>
+    <summary class="bloc-avance__resume">
+      <span class="bloc-avance__chevron" aria-hidden="true"></span>
+      <span class="bloc-avance__texte">
+        <span class="bloc-avance__titre">{{ titre }}</span>
+        {% if aide %}<span class="bloc-avance__aide">{{ aide }}</span>{% endif %}
+      </span>
+      <span class="bloc-avance__etat" aria-hidden="true"></span>
+    </summary>
+    <div class="bloc-avance__corps">
+      {{ caller() }}
+    </div>
+  </details>
+{% endmacro %}
