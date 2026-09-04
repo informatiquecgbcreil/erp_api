@@ -1511,7 +1511,10 @@
      sans lesquels le repli des champs secondaires ferait plus de mal que de
      bien à quelqu'un qui n'est pas à l'aise avec le numérique. */
   (function(){
-    var SELECTEUR = 'details[data-bloc-avance]';
+    /* Les blocs du composant `bloc_avance`, plus les blocs repliés écrits à la
+       main avant lui (`details-card`) : ils profitent des mêmes garde-fous
+       sans qu'il faille reprendre les gabarits un par un. */
+    var SELECTEUR = 'details[data-bloc-avance], details.details-card';
 
     function ouvrirDepuis(element, marquerErreur){
       var bloc = element && element.closest ? element.closest(SELECTEUR) : null;
@@ -1526,7 +1529,12 @@
        navigateur ne peut pas le signaler et l'enregistrement échouerait en
        silence. On rouvre le bloc avant qu'il ne rende la main. */
     document.addEventListener('invalid', function(ev){
-      ouvrirDepuis(ev.target, true);
+      var bloc = ev.target && ev.target.closest ? ev.target.closest('details') : null;
+      while (bloc){
+        bloc.open = true;
+        bloc.classList.add('bloc-avance--erreur');
+        bloc = bloc.parentElement ? bloc.parentElement.closest('details') : null;
+      }
     }, true);
 
     /* 2. Une erreur renvoyée par le serveur serait invisible elle aussi. */

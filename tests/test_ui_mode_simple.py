@@ -120,3 +120,54 @@ def test_page_appel_detail_accessible(admin_client, app):
     source = (RACINE / "previsionnel" / "appel_detail.html").read_text(encoding="utf-8")
     env.parse(source)  # lève si le gabarit est cassé
     assert source.count("{% endif %}") >= source.count("{% if ") - source.count("{% elif ")
+
+
+# --------------------------------------------------------------------------
+# Accueil : orienter avant d'informer
+# --------------------------------------------------------------------------
+def _accueil(client, app, mode: str) -> str:
+    with app.test_request_context():
+        from flask import url_for
+        url_bascule = url_for("main.set_ui_mode")
+        url_accueil = url_for("main.dashboard")
+    client.post(url_bascule, data={"mode": mode, "next": url_accueil})
+    reponse = client.get(url_accueil)
+    assert reponse.status_code == 200, f"accueil inaccessible en mode {mode}"
+    return reponse.get_data(as_text=True)
+
+
+def test_accueil_oriente_en_mode_simple(admin_client, app):
+    """L'accueil simplifié doit dire quoi faire, pas seulement afficher des chiffres.
+
+    L'orientation y passe par le bloc « Ma journée » (poste de travail), qui
+    propose les actions du **rôle** de la personne — un choix plus utile que
+    les portes génériques de l'application, réservées au mode expert. Ce test
+    garantit qu'un accueil simplifié ne devienne jamais une page muette où
+    l'utilisateur doit deviner par où commencer.
+    """
+    page = _accueil(admin_client, app, "simple")
+    actions = re.findall(r'poste-card__label">([^<]+)', page)
+    assert actions, "l'accueil simplifié doit proposer des actions nommées"
+    assert "Que voulez-vous faire ?" not in page, (
+        "les portes génériques restent au mode expert : en simple, c'est le "
+        "poste de travail qui oriente (voir test_poste_travail.py)"
+    )
+
+
+def test_accueil_reste_complet_en_mode_expert(admin_client, app):
+    """Le mode expert ne perd rien : portes d'entrée ET blocs analytiques."""
+    page = _accueil(admin_client, app, "expert")
+    assert "Que voulez-vous faire ?" in page
+    assert "Éléments récents" in page, "le mode expert garde les blocs analytiques"
+
+
+def test_accueil_simplifie_reste_plus_court_que_l_expert(admin_client, app):
+    """Orienter n'est pas tout afficher : le mode simple doit rester plus court.
+
+    Sans ce garde-fou, ajouter des blocs utiles au mode simple finirait par le
+    ramener au tableau de bord complet, et la simplification s'évaporerait.
+    """
+    titres = re.compile(r"<h2[^>]*>")
+    simple = len(titres.findall(_accueil(admin_client, app, "simple")))
+    expert = len(titres.findall(_accueil(admin_client, app, "expert")))
+    assert simple < expert, f"accueil simple ({simple} blocs) pas plus court qu'expert ({expert})"
