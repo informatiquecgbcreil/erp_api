@@ -84,18 +84,35 @@ def _lignes_impayes(seuil_jours: int | None, today: date) -> list[str]:
 
 
 def _lignes_sauvegarde(seuil_jours: int | None, today: date) -> list[str]:
-    from app.services.sauvegarde import jours_depuis_derniere
+    from app.services.sauvegarde import etat_hors_serveur, jours_depuis_derniere
 
     seuil = seuil_jours if seuil_jours is not None else 2
+    lignes: list[str] = []
     jours = jours_depuis_derniere()
     if jours is None:
-        return ["Aucune sauvegarde n'existe. Créez-en une (Administration → Sauvegardes)."]
-    if jours > seuil:
-        return [
+        lignes.append("Aucune sauvegarde n'existe. Créez-en une (Administration → Sauvegardes).")
+    elif jours > seuil:
+        lignes.append(
             f"Dernière sauvegarde il y a {jours} jour(s) — au-delà du seuil de {seuil} j. "
             "Vérifiez la tâche planifiée ou sauvegardez manuellement."
-        ]
-    return []
+        )
+
+    # Une sauvegarde qui ne quitte pas le serveur ne survit pas à sa perte :
+    # l'absence de copie externe mérite la même alerte qu'une sauvegarde absente.
+    try:
+        etat = etat_hors_serveur()
+    except Exception:  # un digest ne doit jamais échouer sur ce contrôle
+        return lignes
+    if not etat["configure"]:
+        lignes.append(
+            "Aucune copie hors serveur des sauvegardes : elles sont sur la machine "
+            "qu'elles protègent. Renseignez BACKUP_OFFSITE_DIRS dans le fichier .env."
+        )
+        return lignes
+    for dest in etat["destinations"]:
+        if dest["alerte"]:
+            lignes.append(f"Copie hors serveur « {dest['chemin']} » : {dest['detail']}.")
+    return lignes
 
 
 def _lignes_rappels(seuil_jours: int | None, today: date) -> list[str]:

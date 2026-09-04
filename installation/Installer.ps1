@@ -275,6 +275,15 @@ ERP_LOG_DIR=$dossier\logs
 APP_UPLOAD_DIR=$dossier\uploads
 DB_AUTO_UPGRADE_ON_START=1
 PASSWORD_RESET_ALLOW_DEBUG_LINK=0
+
+# --- COPIE HORS SERVEUR DES SAUVEGARDES (a renseigner !) ---
+# Tant que cette ligne est vide, les sauvegardes quotidiennes restent sur CE
+# disque : une panne, un vol ou un rancongiciel emporte l'application ET ses
+# sauvegardes. Indiquez un ou plusieurs dossiers externes, separes par des
+# points-virgules (disque USB, partage reseau, dossier synchronise vers un cloud) :
+#   BACKUP_OFFSITE_DIRS=D:\SauvegardesAppGestion;\\NAS\backups\appgestion
+# Puis redemarrez le service : nssm restart AppGestion
+BACKUP_OFFSITE_DIRS=
 "@ | Set-Content -Path "$dossier\.env" -Encoding UTF8
 New-Item -ItemType Directory -Force -Path "$dossier\logs", "$dossier\uploads" | Out-Null
 Ok "Configuration écrite dans $dossier\.env"
@@ -353,6 +362,11 @@ if ($pret) {
     if (-not $postgresDejaInstalle) {
         Write-Host "  Mot de passe 'postgres'  : $mdpSuper  (NOTEZ-LE)" -ForegroundColor Yellow
     }
+    Write-Host ""
+    Write-Host "  A FAIRE SANS ATTENDRE : copie des sauvegardes hors de ce serveur." -ForegroundColor Yellow
+    Write-Host "  Renseignez BACKUP_OFFSITE_DIRS dans $dossier\.env (disque externe," -ForegroundColor Yellow
+    Write-Host "  partage reseau ou dossier cloud), puis : nssm restart AppGestion" -ForegroundColor Yellow
+    Write-Host "  Sans cela, une panne du serveur emporte aussi toutes les sauvegardes." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  Le navigateur va s'ouvrir : créez votre compte administrateur." -ForegroundColor Cyan
     Start-Process "http://127.0.0.1:$port/setup/"

@@ -12,9 +12,37 @@
 > dans Administration → Sauvegardes). Toutes les procédures ci-dessous
 > supposent que c'est fait.
 
-Les champs `[À COMPLÉTER]` sont des informations que seul le mainteneur
-actuel détient : ils doivent être remplis (ou pointer vers le coffre à
-mots de passe) pour que ce document soit réellement utilisable.
+---
+
+## 0. À renseigner avant tout départ (le reste du document en dépend)
+
+Les champs `[À COMPLÉTER]` du document sont des informations que **seul le
+mainteneur actuel détient**. Tant qu'ils sont vides, ce document explique
+parfaitement comment faire des choses que le repreneur ne pourra pas faire :
+il restera bloqué au portail, faute d'un mot de passe ou d'une adresse.
+
+C'est la seule partie de la continuité qui ne peut pas être codée. Une
+demi-journée suffit à la traiter.
+
+| # | Information | Où la mettre | Section |
+|---|---|---|---|
+| 1 | Nom / IP du serveur Windows, et comment s'y connecter (RDP ? console ?) | ici, §3 | §3 |
+| 2 | Mot de passe PostgreSQL de la base `appgestion` | **coffre**, jamais ici | §3 |
+| 3 | Comment `gestion.cgb` est résolu (fichier `hosts` des postes ? DNS interne ?) | ici, §3 | §3 |
+| 4 | Compte Tailscale (identifiant + où sont les identifiants) | **coffre** | §3, §7.2 |
+| 5 | Destinations de sauvegarde hors serveur réellement en place | ici, §5 | §5 |
+| 6 | Qui a accès au dépôt GitHub `informatiquecgbcreil/erp_api`, et comment en obtenir | ici, §3 | §3 |
+| 7 | Paramètres SMTP (serveur, compte d'envoi) | **coffre** pour le mot de passe | §3, §6 |
+| 8 | **Emplacement du coffre à mots de passe** et qui en détient la clé | ici, §3 | §3, §11 |
+| 9 | Copie du fichier `.env` de production | **coffre** | §3, §6 |
+| 10 | Un contact technique de secours (nom, téléphone, structure) | ici, §11 | §11 |
+
+> **Règle de sécurité :** aucun mot de passe, jeton ou `SECRET_KEY` ne doit
+> être écrit dans ce fichier. Le dépôt est public et sous licence AGPL (§9) :
+> tout ce qui y entre est diffusé. Ce document dit **où** trouver les secrets,
+> jamais **quels** ils sont. Un coffre `KeePass` posé sur un partage réseau,
+> dont la direction détient le mot de passe maître dans une enveloppe scellée,
+> fait très bien l'affaire.
 
 ---
 
@@ -42,8 +70,10 @@ des données financières. Elle est le support des justifications envoyées
 aux financeurs (CAF, État, Ville…). Sa perte sans sauvegarde serait grave ;
 sa fuite le serait davantage.
 
-**Volumétrie du code (repère, juillet 2026) :** ~49 000 lignes de Python,
-201 templates, 377 routes, 105 tables, 61 migrations, ~490 tests.
+**Volumétrie du code (repère, septembre 2026) :** ~77 000 lignes de Python,
+216 templates, 380 routes, 119 tables, 69 migrations, 670 tests.
+(Ces chiffres se recalculent en une commande — voir §10 — et servent surtout
+à mesurer l'écart quand ce document commence à dater.)
 
 ---
 
@@ -83,8 +113,8 @@ Pour la carte détaillée du dépôt : section « Structure du dépôt » du `RE
 | Exposition publique | **Tailscale Funnel**, uniquement pour la façade kiosque (voir §7.2) — compte Tailscale : `[À COMPLÉTER]` |
 | Configuration | fichier `.env` à la racine de `C:\AppGestion` (non versionné — c'est LE fichier à sauvegarder à part, il contient `SECRET_KEY` et `DATABASE_URL`) |
 | Tâche planifiée sauvegarde | `AppGestionBackupDaily` (Planificateur de tâches Windows), quotidienne vers 2h00–2h30 |
-| Copie hors serveur des sauvegardes | disque physique + cloud — `[À COMPLÉTER : quel disque, quel cloud, quel mécanisme de copie, quels identifiants]` |
-| Compte GitHub du dépôt | `informatiquecgbcreil/juin` — accès : `[À COMPLÉTER]` |
+| Copie hors serveur des sauvegardes | **automatique** depuis l'application : variable `BACKUP_OFFSITE_DIRS` du `.env` (voir §5) — destinations réellement en service : `[À COMPLÉTER : quel disque, quel partage, quel dossier cloud, et qui y a accès]` |
+| Compte GitHub du dépôt | `informatiquecgbcreil/erp_api` — dépôt **public**, licence AGPL-3.0 (§9) : le code est lisible par tous, donc **jamais de secret versionné**. Accès en écriture : `[À COMPLÉTER : qui est propriétaire, comment obtenir les droits]` |
 | SMTP (emails) | `[À COMPLÉTER : renseigné dans .env / Administration → Paramètres ?]` |
 
 **Où sont les données ?** Trois choses et trois seulement :
@@ -94,8 +124,11 @@ Pour la carte détaillée du dépôt : section « Structure du dépôt » du `RE
    `APP_UPLOAD_DIR`, par défaut `static/uploads` sous le dossier d'installation ;
 3. le fichier `.env` (secrets et configuration).
 
-Base + uploads sont couverts par la sauvegarde automatique. Le `.env` doit
-avoir une copie au coffre : `[À COMPLÉTER : où ?]`.
+Base + uploads sont couverts par la sauvegarde automatique, **et recopiés
+hors du serveur** à chaque sauvegarde (§5). Le `.env`, lui, n'est dans aucune
+sauvegarde : il doit avoir une copie au coffre — `[À COMPLÉTER : où ?]`.
+C'est le seul des trois qu'une panne de serveur peut faire disparaître
+définitivement par simple négligence.
 
 ---
 
@@ -121,8 +154,12 @@ avec les données de la dernière sauvegarde.
 
 ### 4.2 Restaurer la dernière sauvegarde
 
-1. Récupérer le dernier **lot** de sauvegarde depuis la copie hors serveur
-   (`[À COMPLÉTER : emplacement]`). Un lot = deux fichiers + une empreinte :
+1. Récupérer le dernier **lot** de sauvegarde depuis une destination hors
+   serveur — celles listées dans `BACKUP_OFFSITE_DIRS` de l'ancien `.env`,
+   en pratique `[À COMPLÉTER : emplacement]`. C'est le moment où toute la
+   chaîne se joue : si ces destinations n'ont jamais été renseignées, les
+   sauvegardes étaient sur le serveur perdu et il n'y a rien à restaurer.
+   Un lot = deux fichiers + une empreinte :
    - `<Structure>_<horodatage>.sql` (dump PostgreSQL)
    - `<Structure>_<horodatage>_uploads.zip` (pièces jointes)
    - `<Structure>_<horodatage>.sha256` (intégrité — optionnel mais recommandé)
@@ -145,6 +182,11 @@ avec les données de la dernière sauvegarde.
    `python tools\preflight_deploy.py` puis `python tools\run_reliability_checks.py`.
 5. Refaire pointer le nom LAN (`gestion.cgb`) vers la nouvelle machine
    et reconfigurer Tailscale Funnel (§7.2) si la machine a changé.
+6. **Rebrancher la copie hors serveur** : renseigner `BACKUP_OFFSITE_DIRS`
+   dans le nouveau `.env`, redémarrer le service, puis
+   `python tools\run_reliability_checks.py --require-offsite` doit sortir en
+   succès. Une instance remise en service sans copie externe est une instance
+   qui attend la prochaine panne dans les mêmes conditions.
 
 ---
 
@@ -165,14 +207,53 @@ avec bouton « Sauvegarder maintenant », contrôle d'intégrité et restauratio
 - La restauration depuis l'application **vérifie l'intégrité** et crée
   d'abord une **sauvegarde de sécurité de l'état courant** — elle est donc
   le chemin le plus sûr pour une restauration à chaud.
-- La copie **hors serveur** (disque physique + cloud) n'est pas gérée par
-  l'application : `[À COMPLÉTER : décrire le mécanisme exact — robocopy ?
-  client de synchro cloud ? fréquence ? et comment vérifier qu'il tourne]`.
+### La copie hors serveur — le maillon qui décide de tout
 
-**Rituel recommandé au repreneur (mensuel) :** prendre le dernier lot,
-le restaurer sur un poste de test (SQLite ou PostgreSQL local), vérifier
-que l'application démarre et que les données sont là. Une sauvegarde
-jamais restaurée est une hypothèse, pas une sauvegarde.
+Une sauvegarde rangée sur la machine qu'elle protège disparaît avec elle.
+C'est le scénario §4 en entier : panne de disque, vol, rançongiciel,
+réinstallation « propre » par un prestataire pressé.
+
+La copie externe est donc **faite par l'application elle-même**, à chaque
+sauvegarde, vers les destinations listées dans `BACKUP_OFFSITE_DIRS`
+(fichier `.env` — disque amovible, partage réseau/NAS en chemin UNC,
+dossier synchronisé par un client cloud ; plusieurs destinations séparées
+par des points-virgules) :
+
+- les **empreintes sont revérifiées à l'arrivée** : une copie tronquée par
+  un disque plein ou un lien réseau coupé est vue tout de suite, pas le jour
+  de la panne ;
+- chaque fichier transite par un `.part` renommé en dernier : une copie
+  interrompue **ne laisse jamais un lot d'apparence complète** ;
+- une destination dont le dossier parent est absent (disque débranché,
+  partage non monté) fait **échouer bruyamment** la copie, au lieu de
+  fabriquer un dossier local qui ressemble à une sauvegarde externe sans
+  en être une ;
+- une destination en panne n'empêche pas les autres d'être servies ;
+- la rétention s'applique aussi là-bas (`BACKUP_OFFSITE_RETENTION_LOTS`).
+
+**Trois façons de savoir si l'on est protégé :**
+
+| Où | Ce qu'on y voit |
+|---|---|
+| Administration → Sauvegardes | tableau « Copies hors serveur » : date de la dernière copie, nombre de lots, état par destination |
+| Digest de notifications | une ligne d'alerte si une destination est injoignable, vide ou en retard — **et si aucune n'est configurée** |
+| `python tools\run_reliability_checks.py --require-offsite` | sort en erreur si les sauvegardes ne quittent pas le serveur (utilisable en tâche planifiée) |
+
+La tâche planifiée quotidienne (`tools/backup_instance.py`) sort elle-même
+en **code d'erreur 1** si une copie n'aboutit pas : c'est ce qui fait
+apparaître un échec dans le Planificateur de tâches Windows, seule façon
+d'apprendre qu'on a cessé d'être protégé sans avoir à y penser.
+
+> ⚠️ Si `BACKUP_OFFSITE_DIRS` est vide, tout ce qui précède ne s'applique
+> pas et l'application le dit à chaque écran. C'est le premier réglage à
+> vérifier en prenant la main sur l'instance.
+
+**Rituel recommandé au repreneur (mensuel) :** prendre le dernier lot
+**depuis la destination hors serveur** (pas depuis `backups/` : c'est la
+copie externe qu'on veut éprouver), le restaurer sur un poste de test
+(SQLite ou PostgreSQL local), vérifier que l'application démarre et que les
+données sont là. Une sauvegarde jamais restaurée est une hypothèse, pas une
+sauvegarde.
 
 ---
 
@@ -190,6 +271,7 @@ ERP_PORT=8000
 ERP_PUBLIC_BASE_URL=http://gestion.cgb:8000
 KIOSK_PUBLIC_HOST=<hôte public Tailscale Funnel, sans http:// ni port>
 DB_AUTO_UPGRADE_ON_START=1
+BACKUP_OFFSITE_DIRS=<destinations hors serveur, séparées par des points-virgules>
 ```
 
 Points d'attention :
@@ -202,6 +284,10 @@ Points d'attention :
   (adresse LAN).
 - **`KIOSK_PUBLIC_HOST`** active la **façade publique** (voir §7.2). Vide =
   aucune restriction par hôte (ne convient que si rien n'est exposé).
+- **`BACKUP_OFFSITE_DIRS`** décide si les sauvegardes survivent à la perte du
+  serveur (§5). Vide = elles n'en sortent jamais. Séparateur : le
+  point-virgule — la virgule et le deux-points figurent dans les chemins
+  Windows (`D:\...`).
 - Le tableau complet des variables (SMTP, uploads, logs, FTP programme,
   portail, géocodage…) est dans le `README.md`, section « Configuration ».
 
@@ -310,7 +396,7 @@ et faire tourner `tests/test_agenda_ics.py` après toute modification.
 ### 8.1 Poste de développement
 
 ```bash
-git clone <dépôt> && cd juin
+git clone https://github.com/informatiquecgbcreil/erp_api && cd erp_api
 python -m venv .venv && source .venv/bin/activate   # Windows : .venv\Scripts\activate.bat
 pip install -r requirements-dev.txt
 python run_waitress.py    # SQLite locale créée automatiquement, assistant /setup/
@@ -319,7 +405,7 @@ python run_waitress.py    # SQLite locale créée automatiquement, assistant /se
 ### 8.2 Tests
 
 ```bash
-python -m pytest          # ~490 tests, base SQLite jetable, quelques minutes
+python -m pytest          # 670 tests, base SQLite jetable, ~2 minutes
 ```
 
 - La CI GitHub Actions (`.github/workflows/tests.yml`) exécute la même
@@ -370,8 +456,19 @@ Un repreneur honnête doit savoir où sont les faiblesses :
 - **Performance jamais testée en charge** : dimensionné pour ~10
   utilisateurs simultanés et quelques milliers de participants. Largement
   suffisant aujourd'hui ; à re-vérifier si le périmètre change.
-- **Pas de licence déclarée** sur le dépôt : à régler avant toute
-  diffusion hors de la structure.
+- **Licence AGPL-3.0** (fichier `LICENSE`) : toute personne à qui
+  l'application est fournie, **y compris via le réseau**, peut exiger le code
+  source correspondant. Une autre structure peut donc la reprendre, à
+  condition de rester sous la même licence. Corollaire opérationnel :
+  **aucun secret ne doit être versionné** — ils vivent dans le `.env`, exclu
+  par `.gitignore`.
+- **Mainteneur unique** : c'est la faiblesse structurelle qui reste après
+  toutes les autres. Le code est documenté, testé et redéployable, mais
+  personne d'autre n'a jamais exécuté les procédures de ce document. Une
+  procédure jamais jouée par quelqu'un d'autre n'est pas une procédure,
+  c'est de la littérature — d'où l'exercice du §11.6, à faire faire par
+  **quelqu'un qui n'est pas le mainteneur**, celui-ci regardant sans toucher
+  au clavier.
 
 ---
 
@@ -389,6 +486,19 @@ Un repreneur honnête doit savoir où sont les faiblesses :
 | Diagnostic avant/après déploiement | `tools/preflight_deploy.py`, `tools/run_reliability_checks.py` |
 | Migration SQLite → PostgreSQL | `migrate_sqlite_to_postgres.py` |
 | Aide utilisateur | dans l'application : menu Aide, glossaire, guides |
+| Licence | `LICENSE` (AGPL-3.0) |
+
+**Recalculer les chiffres du §1** (pour mesurer à quel point ce document
+date) :
+
+```bash
+git ls-files '*.py' | xargs wc -l | tail -1          # lignes de Python
+git ls-files '*.html' | wc -l                        # templates
+grep -rn '\.route(' --include='*.py' app/ | wc -l     # routes
+grep -rn '^class .*db\.Model' --include='*.py' app/ | wc -l   # tables
+ls migrations/versions/*.py | wc -l                  # migrations
+python -m pytest -q | tail -1                        # tests
+```
 
 ---
 
@@ -400,20 +510,35 @@ Un repreneur honnête doit savoir où sont les faiblesses :
        tourne et que `/healthz` répond.
 3. [ ] Ouvrir Administration → Sauvegardes : vérifier la date du dernier
        lot (< 2 jours) et l'intégrité.
-4. [ ] Localiser la copie hors serveur des sauvegardes et vérifier
-       qu'elle est à jour.
-5. [ ] Cloner le dépôt sur un poste, `pip install -r requirements-dev.txt`,
+4. [ ] Dans le même écran, section **Copies hors serveur** : chaque
+       destination doit être « à jour ✓ ». Si le tableau annonce qu'aucune
+       destination n'est configurée, **c'est l'urgence n°1** : rien de ce
+       qui suit ne protège de la perte du serveur (§5).
+5. [ ] Ouvrir physiquement la destination externe et constater que les
+       fichiers y sont vraiment. Un écran vert n'a jamais sauvé personne.
+6. [ ] Cloner le dépôt sur un poste, `pip install -r requirements-dev.txt`,
        `python -m pytest` → tout vert.
-6. [ ] **Restaurer la dernière sauvegarde sur ce poste de test** et
-       démarrer l'application dessus : c'est l'exercice qui prouve que la
-       chaîne de survie fonctionne de bout en bout.
-7. [ ] Lire le §7 (invariants) deux fois.
-8. [ ] Se créer un compte `admin_tech` nominatif sur la production et
+7. [ ] **Restaurer sur ce poste de test la dernière sauvegarde prise depuis
+       la destination hors serveur** puis démarrer l'application dessus :
+       c'est l'exercice qui prouve que la chaîne de survie fonctionne de
+       bout en bout. Tout le reste n'en est que la préparation.
+8. [ ] Lire le §7 (invariants) deux fois.
+9. [ ] Se créer un compte `admin_tech` nominatif sur la production et
        désactiver les comptes de la personne partie.
+10. [ ] Noter ici un **contact technique de secours** joignable en cas de
+       blocage : `[À COMPLÉTER : nom, structure, téléphone]`. L'application
+       est un monolithe Flask/Jinja/PostgreSQL sans build front, avec 670
+       tests et une CI verte : n'importe quel développeur Python la reprend
+       en une semaine — encore faut-il qu'un nom soit écrit quelque part.
 
 ---
 
-*Document créé en juillet 2026. À maintenir à chaque changement
-d'infrastructure (serveur, sauvegarde, tunnel) : un document de passation
-périmé est plus dangereux que pas de document du tout, parce qu'on lui
-fait confiance.*
+*Document créé en juillet 2026, révisé en septembre 2026 (copies hors
+serveur automatisées, chiffres et licence remis à jour). À maintenir à chaque
+changement d'infrastructure (serveur, sauvegarde, tunnel) : un document de
+passation périmé est plus dangereux que pas de document du tout, parce qu'on
+lui fait confiance.*
+
+*Les chiffres du §1 et la commande de contrôle du §10 servent à repérer la
+dérive : quand l'écart devient gênant, c'est que le reste du document a
+vieilli aussi.*

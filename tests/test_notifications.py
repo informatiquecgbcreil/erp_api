@@ -134,13 +134,22 @@ def test_collecteur_sauvegarde(app, tmp_path, monkeypatch):
     from app.services import sauvegarde as svc_sauv
     from app.services.notifications import _lignes_sauvegarde
 
-    monkeypatch.setattr(svc_sauv, "dossier_sauvegardes", lambda: tmp_path)
+    local = tmp_path / "backups"
+    local.mkdir()
+    hors_serveur = tmp_path / "nas"
+    hors_serveur.mkdir()
+    monkeypatch.setattr(svc_sauv, "dossier_sauvegardes", lambda: local)
+    monkeypatch.setitem(app.config, "BACKUP_OFFSITE_DIRS", str(hors_serveur))
     with app.app_context():
         # Aucune sauvegarde -> alerte.
         lignes = _lignes_sauvegarde(2, date.today())
         assert lignes and "Aucune sauvegarde" in lignes[0]
-        # Sauvegarde fraîche -> silence.
-        svc_sauv.creer_sauvegarde()
+        # Sauvegarde fraîche mais restée sur le serveur -> toujours une alerte :
+        # une sauvegarde non recopiée ailleurs ne survit pas à la perte du serveur.
+        info = svc_sauv.creer_sauvegarde()
+        assert any("hors serveur" in l for l in _lignes_sauvegarde(2, date.today()))
+        # Sauvegarde fraîche ET copiée hors serveur -> silence.
+        assert svc_sauv.copier_lot_hors_serveur(info["base"])[0]["ok"] is True
         assert _lignes_sauvegarde(2, date.today()) == []
 
 

@@ -213,12 +213,15 @@ def lister_sauvegardes() -> list[dict]:
 # --------------------------------------------------------------------------
 # Lots (base + pièces jointes), intégrité, rétention et restauration.
 # --------------------------------------------------------------------------
-def verifier_integrite(base: str):
+def verifier_integrite(base: str, dossier: Path | None = None):
     """Vérifie une sauvegarde via son empreinte ``.sha256``.
+
+    ``dossier`` permet de contrôler un lot ailleurs que dans ``backups/``
+    (destination hors serveur) ; par défaut, le dossier local.
 
     Retourne True (intègre), False (corrompue / fichier manquant) ou None
     (pas d'empreinte enregistrée — intégrité inconnue)."""
-    out_dir = dossier_sauvegardes()
+    out_dir = dossier if dossier is not None else dossier_sauvegardes()
     sidecar = out_dir / f"{_safe_name(base)}.sha256"
     if not sidecar.exists():
         return None
@@ -236,12 +239,24 @@ def verifier_integrite(base: str):
     return True
 
 
-def lister_lots() -> list[dict]:
-    """Regroupe les fichiers en « lots » restaurables (base + uploads)."""
-    out_dir = dossier_sauvegardes()
+def _lots_du_dossier(dossier: Path) -> list[dict]:
+    """Regroupe les fichiers d'un dossier en « lots » (base + uploads).
+
+    Tolère un dossier absent ou momentanément illisible (destination réseau
+    débranchée) : on retourne alors une liste vide plutôt que de propager
+    l'erreur, l'appelant décidant quoi en dire.
+    """
+    out_dir = dossier
     lots: dict[str, dict] = {}
-    for p in out_dir.iterdir():
-        if not p.is_file():
+    try:
+        entrees = list(out_dir.iterdir())
+    except OSError:
+        return []
+    for p in entrees:
+        try:
+            if not p.is_file():
+                continue
+        except OSError:
             continue
         nom = p.name
         if nom.endswith("_uploads.zip"):
@@ -257,7 +272,10 @@ def lister_lots() -> list[dict]:
             lot["db_nom"] = nom
         else:
             lot["uploads_nom"] = nom
-        st = p.stat()
+        try:
+            st = p.stat()
+        except OSError:
+            continue
         lot["taille"] += st.st_size
         m = dt.datetime.fromtimestamp(st.st_mtime)
         if lot["modifie"] is None or m > lot["modifie"]:
@@ -266,9 +284,14 @@ def lister_lots() -> list[dict]:
     for lot in res:
         lot["taille_lisible"] = humaniser_taille(lot["taille"])
         lot["complet"] = bool(lot["db_nom"] and lot["uploads_nom"])
-        lot["integre"] = verifier_integrite(lot["base"])
+        lot["integre"] = verifier_integrite(lot["base"], out_dir)
     res.sort(key=lambda l: l["modifie"] or dt.datetime.min, reverse=True)
     return res
+
+
+def lister_lots() -> list[dict]:
+    """Lots restaurables présents sur le serveur (dossier ``backups/``)."""
+    return _lots_du_dossier(dossier_sauvegardes())
 
 
 def derniere_sauvegarde() -> dt.datetime | None:
@@ -283,6 +306,26 @@ def jours_depuis_derniere() -> int | None:
     return (dt.datetime.now() - d).days
 
 
+def _nettoyer_dossier(dossier: Path, max_lots: int) -> int:
+    """Conserve les ``max_lots`` lots les plus récents d'un dossier."""
+    lots = _lots_du_dossier(dossier)
+    if len(lots) <= max_lots:
+        return 0
+    supprimes = 0
+    for lot in lots[max_lots:]:
+        for nom in (lot["db_nom"], lot["uploads_nom"], f"{lot['base']}.sha256"):
+            if not nom:
+                continue
+            cible = dossier / nom
+            try:
+                if cible.exists():
+                    cible.unlink()
+                    supprimes += 1
+            except OSError:
+                pass
+    return supprimes
+
+
 def nettoyer_sauvegardes(max_lots: int | None = None) -> int:
     """Conserve les ``max_lots`` lots les plus récents, supprime les plus anciens."""
     if max_lots is None:
@@ -290,23 +333,7 @@ def nettoyer_sauvegardes(max_lots: int | None = None) -> int:
             max_lots = int(current_app.config.get("BACKUP_RETENTION_LOTS") or 30)
         except (TypeError, ValueError):
             max_lots = 30
-    lots = lister_lots()
-    if len(lots) <= max_lots:
-        return 0
-    out_dir = dossier_sauvegardes()
-    supprimes = 0
-    for lot in lots[max_lots:]:
-        for nom in (lot["db_nom"], lot["uploads_nom"], f"{lot['base']}.sha256"):
-            if not nom:
-                continue
-            p = out_dir / nom
-            if p.exists():
-                try:
-                    p.unlink()
-                    supprimes += 1
-                except OSError:
-                    pass
-    return supprimes
+    return _nettoyer_dossier(dossier_sauvegardes(), max_lots)
 
 
 def _trouver_psql() -> str | None:
@@ -594,3 +621,236 @@ def verifier_lot(base: str) -> dict:
 
     tout_ok = all(c["ok"] is not False for c in controles) and bool(db_file) and uploads_file.exists()
     return {"base": base, "ok": tout_ok, "controles": controles}
+
+
+# --------------------------------------------------------------------------
+# Copies hors serveur.
+#
+# Une sauvegarde stockée sur le serveur qu'elle protège n'est pas une
+# sauvegarde : panne de disque, vol, rançongiciel ou réinstallation emportent
+# l'application ET ses sauvegardes d'un seul coup. Les fonctions ci-dessous
+# recopient chaque lot vers une ou plusieurs destinations externes (disque
+# amovible, partage réseau, dossier synchronisé vers un cloud) en
+# **revérifiant les empreintes après copie** : une copie tronquée par un
+# disque plein ou un réseau coupé est détectée ici, pas le jour de la panne.
+# --------------------------------------------------------------------------
+SUFFIXE_COPIE_EN_COURS = ".part"
+
+
+def destinations_hors_serveur() -> list[Path]:
+    """Destinations configurées (``BACKUP_OFFSITE_DIRS``), dans l'ordre.
+
+    Séparateur : point-virgule ou saut de ligne — jamais la virgule ni le
+    deux-points, qui apparaissent dans les chemins Windows (``D:\\...``).
+    """
+    brut = (current_app.config.get("BACKUP_OFFSITE_DIRS") or "").strip()
+    if not brut:
+        return []
+    chemins: list[Path] = []
+    for morceau in brut.replace("\n", ";").split(";"):
+        morceau = morceau.strip().strip('"')
+        if morceau:
+            chemins.append(Path(morceau))
+    return chemins
+
+
+def _fichiers_du_lot(base: str, dossier: Path) -> list[Path]:
+    """Fichiers présents composant un lot : base, pièces jointes, empreinte."""
+    base = _safe_name(base)
+    candidats = [
+        dossier / f"{base}.sql",
+        dossier / f"{base}.db",
+        dossier / f"{base}_uploads.zip",
+        dossier / f"{base}.sha256",
+    ]
+    return [c for c in candidats if c.exists()]
+
+
+def _preparer_destination(dest: Path) -> None:
+    """Crée la destination si son parent existe déjà.
+
+    On ne crée volontairement PAS l'arborescence complète : si le parent est
+    absent, c'est en général que le disque externe est débranché ou le partage
+    réseau non monté. Mieux vaut échouer bruyamment que fabriquer un dossier
+    local qui ressemble à une sauvegarde hors serveur sans en être une.
+    """
+    if dest.is_dir():
+        return
+    if dest.exists():
+        raise RuntimeError(f"{dest} existe mais n'est pas un dossier")
+    if not dest.parent.exists():
+        raise RuntimeError(
+            f"destination injoignable : le dossier parent {dest.parent} est absent "
+            "(disque débranché, partage non monté ?)"
+        )
+    dest.mkdir()
+
+
+def _copier_fichier_verifie(src: Path, dest_dir: Path) -> None:
+    """Copie un fichier et vérifie son empreinte à l'arrivée.
+
+    La copie transite par un fichier ``.part`` renommé en dernier : une copie
+    interrompue ne laisse jamais un lot d'apparence complète à la destination.
+    """
+    empreinte_source = _sha256(src)
+    provisoire = dest_dir / (src.name + SUFFIXE_COPIE_EN_COURS)
+    try:
+        shutil.copy2(src, provisoire)
+        if _sha256(provisoire) != empreinte_source:
+            raise RuntimeError(
+                f"{src.name} : copie altérée à l'arrivée (disque plein ? lien coupé ?)"
+            )
+        provisoire.replace(dest_dir / src.name)
+    except Exception:
+        try:
+            provisoire.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def copier_lot_hors_serveur(
+    base: str | None = None, destinations: list[Path] | None = None
+) -> list[dict]:
+    """Recopie un lot vers chaque destination hors serveur configurée.
+
+    ``base`` vaut par défaut le lot complet le plus récent. Une destination en
+    échec n'interrompt jamais les autres : le rapport dit ce qui a marché.
+
+    Retourne une liste de dicts ``{destination, ok, detail, fichiers, purges}``
+    — vide si aucune destination n'est configurée.
+    """
+    cibles = destinations if destinations is not None else destinations_hors_serveur()
+    if not cibles:
+        return []
+
+    source = dossier_sauvegardes()
+    if base is None:
+        complets = [lot for lot in _lots_du_dossier(source) if lot["complet"]]
+        if not complets:
+            raise RuntimeError("aucun lot complet à copier hors serveur")
+        base = complets[0]["base"]
+    base = _safe_name(base)
+
+    fichiers = _fichiers_du_lot(base, source)
+    if not fichiers:
+        raise RuntimeError(f"lot introuvable dans {source} : {base}")
+
+    try:
+        max_lots = int(current_app.config.get("BACKUP_OFFSITE_RETENTION_LOTS") or 0)
+    except (TypeError, ValueError):
+        max_lots = 0
+    if max_lots <= 0:
+        max_lots = 30
+
+    rapports: list[dict] = []
+    for dest in cibles:
+        rapport = {
+            "destination": str(dest),
+            "ok": False,
+            "detail": "",
+            "fichiers": 0,
+            "purges": 0,
+        }
+        try:
+            _preparer_destination(dest)
+            for f in fichiers:
+                _copier_fichier_verifie(f, dest)
+                rapport["fichiers"] += 1
+            # Contrôle final : le lot arrivé doit valider sa propre empreinte.
+            if verifier_integrite(base, dest) is False:
+                raise RuntimeError("le lot copié ne correspond pas à ses empreintes")
+            rapport["purges"] = _nettoyer_dossier(dest, max_lots)
+            rapport["ok"] = True
+            rapport["detail"] = f"{rapport['fichiers']} fichier(s) copié(s) et vérifié(s)"
+        except Exception as exc:  # une destination fautive n'en condamne pas d'autres
+            rapport["detail"] = str(exc)
+            current_app.logger.error(
+                "Copie hors serveur échouée vers %s (lot %s) : %s", dest, base, exc
+            )
+        rapports.append(rapport)
+
+    if all(r["ok"] for r in rapports):
+        current_app.logger.info(
+            "Lot %s copié hors serveur vers %s destination(s)", base, len(rapports)
+        )
+    return rapports
+
+
+def etat_hors_serveur() -> dict:
+    """État des copies hors serveur, pour la page d'administration et les alertes.
+
+    Retourne ``{configure, seuil_alerte, alerte, destinations: [...]}``. Une
+    destination est en alerte si elle est injoignable, vide, sans lot complet,
+    ou si son lot le plus récent dépasse le seuil d'ancienneté.
+    """
+    try:
+        seuil = int(current_app.config.get("BACKUP_OFFSITE_ALERT_DAYS") or 0)
+    except (TypeError, ValueError):
+        seuil = 0
+    if seuil <= 0:
+        seuil = 2
+
+    cibles = destinations_hors_serveur()
+    etat = {
+        "configure": bool(cibles),
+        "seuil_alerte": seuil,
+        "destinations": [],
+        # Aucune destination configurée = les sauvegardes ne quittent pas le
+        # serveur : c'est l'alerte la plus grave, pas une absence d'alerte.
+        "alerte": not cibles,
+    }
+
+    maintenant = dt.datetime.now()
+    for dest in cibles:
+        info = {
+            "chemin": str(dest),
+            "joignable": False,
+            "nb_lots": 0,
+            "dernier_lot": None,
+            "modifie": None,
+            "jours_depuis": None,
+            "integre": None,
+            "alerte": True,
+            "detail": "",
+        }
+        try:
+            joignable = dest.is_dir()
+        except OSError:
+            joignable = False
+        if not joignable:
+            info["detail"] = "destination injoignable (disque débranché, partage non monté ?)"
+            etat["destinations"].append(info)
+            etat["alerte"] = True
+            continue
+
+        info["joignable"] = True
+        lots = [lot for lot in _lots_du_dossier(dest) if lot["complet"]]
+        info["nb_lots"] = len(lots)
+        if not lots:
+            info["detail"] = "aucun lot complet à cette destination"
+            etat["destinations"].append(info)
+            etat["alerte"] = True
+            continue
+
+        dernier = lots[0]
+        jours = (maintenant - dernier["modifie"]).days if dernier["modifie"] else None
+        info.update(
+            dernier_lot=dernier["base"],
+            modifie=dernier["modifie"],
+            jours_depuis=jours,
+            integre=dernier["integre"],
+            nb_lots=len(lots),
+        )
+        if jours is not None and jours > seuil:
+            info["detail"] = f"copie la plus récente vieille de {jours} jour(s)"
+        elif dernier["integre"] is False:
+            info["detail"] = "la copie la plus récente ne correspond plus à ses empreintes"
+        else:
+            info["alerte"] = False
+            info["detail"] = f"{len(lots)} lot(s) — copie à jour"
+        if info["alerte"]:
+            etat["alerte"] = True
+        etat["destinations"].append(info)
+
+    return etat

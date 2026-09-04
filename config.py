@@ -197,6 +197,24 @@ class Config:
     BACKUP_RETENTION_LOTS = int(os.environ.get("BACKUP_RETENTION_LOTS", "30"))
     BACKUP_ALERT_DAYS = int(os.environ.get("BACKUP_ALERT_DAYS", "2"))
 
+    # Copies HORS SERVEUR des sauvegardes. Sans elles, les sauvegardes vivent
+    # sur le disque qu'elles sont censées protéger : un serveur perdu (panne,
+    # vol, rançongiciel, réinstallation) emporte l'application ET ses
+    # sauvegardes. Chaque destination est un dossier accessible en écriture :
+    # disque externe, partage réseau/NAS (UNC), ou dossier synchronisé par un
+    # client cloud. Séparateur : point-virgule (ou une destination par ligne).
+    #   BACKUP_OFFSITE_DIRS=D:\SauvegardesAppGestion;\\NAS\backups\appgestion
+    BACKUP_OFFSITE_DIRS = os.environ.get("BACKUP_OFFSITE_DIRS", "")
+    # Rétention propre aux destinations (défaut : celle du serveur).
+    BACKUP_OFFSITE_RETENTION_LOTS = int(
+        os.environ.get("BACKUP_OFFSITE_RETENTION_LOTS", "") or BACKUP_RETENTION_LOTS
+    )
+    # Seuil d'alerte « copie hors serveur trop ancienne » (défaut : celui des
+    # sauvegardes locales). Une destination injoignable devient visible ici.
+    BACKUP_OFFSITE_ALERT_DAYS = int(
+        os.environ.get("BACKUP_OFFSITE_ALERT_DAYS", "") or BACKUP_ALERT_DAYS
+    )
+
     # --- Bénévolat -----------------------------------------------------------
     # Taux horaire de valorisation du bénévolat (contributions volontaires,
     # compte 87) — usuellement le SMIC horaire chargé.
