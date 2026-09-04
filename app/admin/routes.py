@@ -617,7 +617,11 @@ def instance_settings():
 @login_required
 @require_perm("admin:rbac")
 def sauvegardes():
-    from app.services.sauvegarde import lister_lots, jours_depuis_derniere
+    from app.services.sauvegarde import (
+        etat_hors_serveur,
+        jours_depuis_derniere,
+        lister_lots,
+    )
 
     db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
     if db_uri.startswith("postgresql"):
@@ -636,6 +640,7 @@ def sauvegardes():
         jours_depuis=jours_depuis_derniere(),
         seuil_alerte=seuil,
         moteur=moteur,
+        hors_serveur=etat_hors_serveur(),
     )
 
 
@@ -643,7 +648,12 @@ def sauvegardes():
 @login_required
 @require_perm("admin:rbac")
 def sauvegarde_creer():
-    from app.services.sauvegarde import creer_sauvegarde, nettoyer_sauvegardes
+    from app.services.sauvegarde import (
+        copier_lot_hors_serveur,
+        creer_sauvegarde,
+        destinations_hors_serveur,
+        nettoyer_sauvegardes,
+    )
 
     try:
         info = creer_sauvegarde()
@@ -658,6 +668,29 @@ def sauvegarde_creer():
     except Exception as exc:  # message lisible remonté à l'utilisateur
         current_app.logger.exception("Échec de la sauvegarde manuelle")
         flash(f"La sauvegarde a échoué : {exc}", "danger")
+        return redirect(url_for("admin.sauvegardes"))
+
+    # Copie hors serveur : une sauvegarde restée sur la machine qu'elle protège
+    # ne protège de rien. L'échec est signalé sans annuler la sauvegarde locale.
+    if not destinations_hors_serveur():
+        flash(
+            "⚠️ Aucune copie hors serveur configurée : cette sauvegarde est sur la "
+            "machine qu'elle protège. Renseignez BACKUP_OFFSITE_DIRS dans le fichier .env.",
+            "warning",
+        )
+        return redirect(url_for("admin.sauvegardes"))
+    try:
+        rapports = copier_lot_hors_serveur(info["base"])
+    except Exception as exc:
+        current_app.logger.exception("Échec de la copie hors serveur")
+        flash(f"Sauvegarde locale faite, mais copie hors serveur impossible : {exc}", "danger")
+        return redirect(url_for("admin.sauvegardes"))
+    echecs = [r for r in rapports if not r["ok"]]
+    if echecs:
+        detail = " ; ".join(f"{r['destination']} ({r['detail']})" for r in echecs)
+        flash(f"Copie hors serveur en échec — {detail}", "danger")
+    else:
+        flash(f"Copiée hors serveur vers {len(rapports)} destination(s) ✅", "success")
     return redirect(url_for("admin.sauvegardes"))
 
 

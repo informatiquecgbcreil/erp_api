@@ -29,10 +29,69 @@
       <button class="btn" type="submit" data-pending-text="Sauvegarde en cours…">💾 Sauvegarder maintenant</button>
     </form>
     <p class="ux-helper">
-      Les sauvegardes restent <strong>sur le serveur</strong> (aucune donnée téléchargée par le
-      navigateur). Pour être vraiment protégé, copiez régulièrement le dossier <code>backups/</code>
-      sur un support externe. Les plus anciennes sont automatiquement purgées.
+      Chaque sauvegarde est écrite dans <code>backups/</code> sur le serveur, puis recopiée
+      automatiquement vers les destinations <strong>hors serveur</strong> configurées (ci-dessous).
+      Les plus anciennes sont automatiquement purgées, ici comme là-bas.
     </p>
+  </div>
+
+  <div class="card">
+    <h2>Copies hors serveur</h2>
+    <p class="muted">
+      Une sauvegarde rangée sur la machine qu'elle protège disparaît avec elle : panne de disque,
+      vol, rançongiciel ou réinstallation emportent l'application <em>et</em> ses sauvegardes.
+      Ces destinations externes (disque amovible, partage réseau, dossier synchronisé vers un
+      cloud) sont ce qui rend une remise en service possible après la perte du serveur.
+    </p>
+
+    {% if not hors_serveur.configure %}
+      <div class="callout danger" style="margin:10px 0;">
+        ⚠️ <strong>Aucune copie hors serveur configurée.</strong> Toutes les sauvegardes sont
+        sur cette machine, et uniquement sur elle. Renseignez <code>BACKUP_OFFSITE_DIRS</code>
+        dans le fichier <code>.env</code> du serveur, puis redémarrez l'application.
+      </div>
+    {% else %}
+      <div class="tablewrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Destination</th>
+            <th>Dernière copie</th>
+            <th>Lots</th>
+            <th>État</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in hors_serveur.destinations %}
+            <tr>
+              <td><code>{{ d.chemin }}</code></td>
+              <td>
+                {% if d.modifie %}{{ d.modifie.strftime('%d/%m/%Y à %H:%M') }}
+                  {% if d.jours_depuis is not none %}
+                    <div class="muted" style="font-size:12px;">il y a {{ d.jours_depuis }} jour(s)</div>
+                  {% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td>{{ d.nb_lots }}</td>
+              <td>
+                {% if d.alerte %}
+                  <span class="status-badge status-danger">à vérifier ✗</span>
+                {% else %}
+                  <span class="status-badge status-info">à jour ✓</span>
+                {% endif %}
+                <div class="muted" style="font-size:12px;">{{ d.detail }}</div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="muted">
+        Seuil d'alerte : {{ hors_serveur.seuil_alerte }} jour(s). Les empreintes sont revérifiées
+        à l'arrivée de chaque copie : une copie tronquée (disque plein, lien réseau coupé) est
+        signalée ici plutôt que découverte le jour de la panne.
+      </p>
+    {% endif %}
   </div>
 
   <div class="card">

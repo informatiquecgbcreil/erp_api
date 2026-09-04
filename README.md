@@ -307,6 +307,20 @@ Si `ERP_LOG_DIR` est absent, les logs applicatifs sont écrits dans `instance/lo
 | `PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS` | `3600` | Durée de validité des liens de reset. |
 | `PASSWORD_RESET_ALLOW_DEBUG_LINK` | `0` | Affiche un lien de reset en debug local si l'email ne part pas. Ne pas activer en production. |
 
+### Sauvegardes
+
+| Variable | Exemple | Description |
+|---|---|---|
+| `BACKUP_RETENTION_LOTS` | `30` | Nombre de lots conservés sur le serveur (rotation automatique). |
+| `BACKUP_ALERT_DAYS` | `2` | Seuil d'alerte « aucune sauvegarde récente », en jours. |
+| `BACKUP_OFFSITE_DIRS` | `D:\Sauvegardes;\\NAS\backups` | **Destinations hors serveur**, séparées par des points-virgules. Vide = les sauvegardes ne quittent pas la machine (déconseillé). |
+| `BACKUP_OFFSITE_RETENTION_LOTS` | `30` | Rétention aux destinations (défaut : `BACKUP_RETENTION_LOTS`). |
+| `BACKUP_OFFSITE_ALERT_DAYS` | `2` | Seuil d'alerte « copie hors serveur trop ancienne » (défaut : `BACKUP_ALERT_DAYS`). |
+
+Le séparateur est le **point-virgule** : la virgule et le deux-points
+apparaissent dans les chemins Windows (`D:\...`). Voir la section
+« Sauvegarde et restauration » pour le détail du mécanisme.
+
 ---
 
 ## Premier démarrage
@@ -514,14 +528,56 @@ Le script vérifie notamment :
 python tools/backup_instance.py
 ```
 
-Le script produit dans `backups/` :
+C'est le script appelé par la tâche planifiée quotidienne. Il enchaîne :
 
-- une sauvegarde de la base ;
-- une archive zip des uploads.
+1. **création du lot** dans `backups/` — copie `.db` (SQLite) ou dump `.sql`
+   via `pg_dump` (PostgreSQL), archive zip des uploads, empreintes `.sha256` ;
+2. **rotation locale** — `BACKUP_RETENTION_LOTS` lots conservés ;
+3. **copie hors serveur** vers chaque destination `BACKUP_OFFSITE_DIRS`, puis
+   rotation à la destination.
 
-Pour SQLite, la base est copiée en `.db`.
+Code de sortie `1` si la sauvegarde échoue **ou** si une copie hors serveur
+n'aboutit pas : la tâche planifiée remonte alors une erreur, seule façon de
+savoir qu'on a cessé d'être protégé.
 
-Pour PostgreSQL, le script utilise `pg_dump` et produit un `.sql`.
+### Copies hors serveur (indispensable)
+
+Une sauvegarde stockée sur la machine qu'elle protège n'en est pas une : une
+panne de disque, un vol, un rançongiciel ou une réinstallation emportent
+l'application **et** ses sauvegardes d'un seul coup. `BACKUP_OFFSITE_DIRS`
+liste les destinations externes — disque amovible, partage réseau/NAS (chemin
+UNC), dossier synchronisé par un client cloud :
+
+```env
+# Windows (points-virgules entre destinations)
+BACKUP_OFFSITE_DIRS=D:\SauvegardesAppGestion;\\NAS\backups\appgestion
+# Linux
+BACKUP_OFFSITE_DIRS=/mnt/disque-externe/appgestion;/mnt/nas/appgestion
+```
+
+Garanties du mécanisme :
+
+- **empreintes revérifiées à l'arrivée** : une copie tronquée par un disque
+  plein ou un lien réseau coupé est détectée tout de suite, pas le jour de la
+  panne ;
+- **copie atomique** : chaque fichier transite par un `.part` renommé en
+  dernier, donc une copie interrompue ne laisse jamais un lot d'apparence
+  complète ;
+- **échec bruyant** : le dossier parent d'une destination doit exister. Si le
+  disque est débranché ou le partage non monté, la copie échoue au lieu de
+  fabriquer un dossier local qui ressemble à une sauvegarde externe sans en
+  être une ;
+- **destinations indépendantes** : un NAS injoignable n'empêche pas la copie
+  vers le disque externe ;
+- **rotation** à la destination (`BACKUP_OFFSITE_RETENTION_LOTS`), pour ne pas
+  la saturer.
+
+L'état des copies est visible dans **Administration → Sauvegardes**, remonté
+dans le digest de notifications, et contrôlable en ligne de commande :
+
+```bash
+python tools/run_reliability_checks.py --require-offsite
+```
 
 ### Restauration
 
@@ -538,8 +594,12 @@ python tools/restore_instance.py --db backups/ma_sauvegarde.sql --uploads backup
 ### Recommandations
 
 - Faire une sauvegarde avant chaque mise à jour.
-- Tester régulièrement une restauration sur une instance de préproduction.
-- Stocker une copie des sauvegardes hors du serveur applicatif.
+- Tester régulièrement une restauration sur une instance de préproduction :
+  une sauvegarde jamais restaurée est une hypothèse, pas une sauvegarde.
+- Renseigner `BACKUP_OFFSITE_DIRS` : sans copie hors serveur, la perte de la
+  machine est définitive.
+- Vérifier de temps en temps que la destination externe est bien alimentée
+  (Administration → Sauvegardes, ou `tools/run_reliability_checks.py --require-offsite`).
 - Ne pas versionner le dossier `backups/`.
 
 ---
@@ -808,7 +868,11 @@ Procédure recommandée :
 
 ## Licence et usage
 
-Aucune licence n'est déclarée dans ce dépôt au moment de la rédaction de ce README. Avant toute diffusion, réutilisation ou publication externe, ajouter une licence explicite adaptée au contexte du projet.
+Ce dépôt est distribué sous **GNU Affero General Public License v3.0** (voir le fichier `LICENSE`).
+
+Conséquence pratique de l'AGPL : toute personne à qui l'application est fournie — y compris **via le réseau**, ce qui est le cas d'une instance accessible par navigateur — peut exiger le code source correspondant, modifications comprises. Une reprise ou une adaptation par une autre structure est donc permise, à condition de rester sous la même licence.
+
+Corollaire : **aucun secret ne doit être versionné** dans ce dépôt (mots de passe, `SECRET_KEY`, jetons). Ils vivent dans le fichier `.env`, exclu par `.gitignore`.
 
 ---
 

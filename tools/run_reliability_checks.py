@@ -64,6 +64,38 @@ def _check_test_users() -> None:
         raise RuntimeError("Utilisateurs de test manquants: " + ", ".join(missing))
 
 
+def _check_offsite_backups(strict: bool) -> None:
+    """Contrôle que les sauvegardes partent bien hors du serveur.
+
+    Une sauvegarde stockée uniquement sur la machine qu'elle protège ne sert à
+    rien le jour où cette machine est perdue : c'est signalé ici, et rendu
+    bloquant avec ``--require-offsite`` (recommandé en production).
+    """
+    from app.services.sauvegarde import etat_hors_serveur
+
+    etat = etat_hors_serveur()
+    if not etat["configure"]:
+        message = (
+            "Aucune copie hors serveur des sauvegardes (BACKUP_OFFSITE_DIRS vide) : "
+            "les sauvegardes sont sur la machine qu'elles protègent."
+        )
+        if strict:
+            raise RuntimeError(message)
+        print(f"[ATTENTION] {message}")
+        return
+
+    problemes = [d for d in etat["destinations"] if d["alerte"]]
+    for d in problemes:
+        print(f"[ATTENTION] Copie hors serveur « {d['chemin']} » : {d['detail']}")
+    if problemes and strict:
+        raise RuntimeError(
+            f"{len(problemes)} destination(s) hors serveur en défaut sur "
+            f"{len(etat['destinations'])}"
+        )
+    if not problemes:
+        print(f"[OK] {len(etat['destinations'])} destination(s) hors serveur à jour")
+
+
 def _check_password_reset_flow(client) -> None:
     if client.get("/password-reset").status_code != 200:
         raise RuntimeError("Route /password-reset indisponible")
@@ -90,6 +122,11 @@ def main() -> int:
         action="store_true",
         help="Vérifie les routes de récupération de mot de passe.",
     )
+    parser.add_argument(
+        "--require-offsite",
+        action="store_true",
+        help="Échoue si les sauvegardes ne sont pas copiées hors du serveur.",
+    )
     args = parser.parse_args()
 
     app = create_app()
@@ -105,6 +142,8 @@ def main() -> int:
         resp = client.get("/healthz")
         if resp.status_code != 200:
             raise RuntimeError(f"/healthz KO (status={resp.status_code})")
+
+        _check_offsite_backups(args.require_offsite)
 
         if args.require_test_users:
             _check_test_users()
