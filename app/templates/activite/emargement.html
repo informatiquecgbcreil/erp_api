@@ -99,6 +99,15 @@
   </style>
 
 <style>
+  /* Adhésion & participation : état de règlement de l'année, lisible d'un
+     coup d'œil pendant l'émargement (même calcul que la fiche participant). */
+  .regl-badge{ display:inline-block; margin-top:3px; padding:1px 7px; border-radius:999px;
+               font-size:.72rem; font-weight:700; white-space:nowrap; border:1px solid transparent; }
+  .regl-ok{ background:rgba(34,197,94,.16); color:#166534; border-color:rgba(34,197,94,.30); }
+  .regl-warn{ background:rgba(245,158,11,.20); color:#78350f; border-color:rgba(245,158,11,.35); }
+  .regl-danger{ background:rgba(239,68,68,.18); color:#7f1d1d; border-color:rgba(239,68,68,.35); }
+  .regl-neutre{ background:rgba(148,163,184,.16); color:#475569; border-color:rgba(148,163,184,.30); }
+
   /* Repliage des blocs secondaires (voir static/js/emargement-ui.js) */
   /* Fenêtres (notes rapides, évaluation) : le gabarit suit le protocole
      Bootstrap, chargé depuis un CDN. En réseau local sans Internet la
@@ -611,8 +620,11 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="participant_id" value="{{ i.participant_id }}">
           <input type="hidden" name="retour" value="emargement">
-          <button class="btn" type="submit" title="Créer la ligne d'émargement pour cette personne">
+          {% set etat = etats_reglement.get(i.participant_id) %}
+          <button class="btn" type="submit"
+                  title="Créer la ligne d'émargement pour cette personne{% if etat and etat.statut != 'aucune' %} · {{ etat.libelle }} ({{ etat.libelle_annee }}){% endif %}">
             ✔ {{ i.participant.nom }} {{ i.participant.prenom }}
+            {% if etat and etat.statut == 'rien' %} 🔴{% elif etat and etat.statut == 'partiel' %} 🟠{% endif %}
           </button>
         </form>
       {% endfor %}
@@ -779,6 +791,17 @@
                 <td>
                   <strong>{{ pr.participant.nom }} {{ pr.participant.prenom }}</strong>
                   {% if pr.participant.ville %}<br><span class="muted">{{ pr.participant.ville }}</span>{% endif %}
+                  {% set etat = etats_reglement.get(pr.participant_id) %}
+                  {% if etat and etat.statut != 'aucune' %}
+                    <br><span class="regl-badge regl-{{ etat.ton }}"
+                              title="Adhésion &amp; participation {{ etat.libelle_annee }} — réglé {{ "%.2f"|format(etat.regle) }} € sur {{ "%.2f"|format(etat.du) }} €">
+                      {{ '✅' if etat.statut == 'complet' else ('🟠' if etat.statut == 'partiel' else '🔴') }}
+                      {{ etat.libelle }}{% if etat.reste > 0 %} — {{ "%.2f"|format(etat.reste) }} €{% endif %}
+                    </span>
+                  {% endif %}
+                  {% if pr.participant.attend_premiere_participation %}
+                    <br><span class="regl-badge regl-neutre" title="Inscrit·e cette année, jamais encore venu·e">🕓 1re venue</span>
+                  {% endif %}
                 </td>
                 <td>
                   {{ pr.motif or '' }}

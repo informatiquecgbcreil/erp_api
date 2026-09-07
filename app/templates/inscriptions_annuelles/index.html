@@ -54,8 +54,11 @@
     <div class="ia-kpi"><span class="n">{{ data.actives }}</span><span class="l">inscriptions actives</span></div>
     <div class="ia-kpi"><span class="n">{{ data.sans_fiche }}</span><span class="l">sans fiche participant</span></div>
     <div class="ia-kpi"><span class="n">{{ data.en_attente }}</span><span class="l">attendent leur 1<sup>re</sup> venue</span></div>
-    <div class="ia-kpi"><span class="n">{{ data.a_regler }}</span><span class="l">restent à régler</span></div>
-    <div class="ia-kpi"><span class="n">{{ "%.2f"|format(data.montant_regle) }} €</span><span class="l">encaissés (bulletins)</span></div>
+    <div class="ia-kpi"><span class="n">{{ data.partiels }}</span><span class="l">partiellement réglées</span></div>
+    <div class="ia-kpi"><span class="n">{{ data.non_regles }}</span><span class="l">non réglées</span></div>
+    <div class="ia-kpi"><span class="n">{{ "%.2f"|format(data.montant_regle) }} €</span><span class="l">encaissés sur {{ "%.2f"|format(data.montant_du) }} €</span></div>
+    <div class="ia-kpi"><span class="n">{{ "%.2f"|format(data.montant_reste) }} €</span><span class="l">restent à encaisser</span></div>
+    <div class="ia-kpi"><span class="n">{{ data.personnes_couvertes }}</span><span class="l">personnes couvertes ({{ data.familiales }} familles)</span></div>
     <div class="ia-kpi"><span class="n">{{ data.benevoles }}</span><span class="l">envies de bénévolat</span></div>
   </div>
 
@@ -80,8 +83,18 @@
       <label class="field-stack slim"><span>Règlement</span>
         <select class="in" name="reglement">
           <option value="">Tous</option>
-          <option value="a_regler" {% if filtres.reglement == 'a_regler' %}selected{% endif %}>À régler</option>
-          <option value="regle" {% if filtres.reglement == 'regle' %}selected{% endif %}>Réglé</option>
+          <option value="a_regler" {% if filtres.reglement == 'a_regler' %}selected{% endif %}>Reste à régler</option>
+          <option value="rien" {% if filtres.reglement == 'rien' %}selected{% endif %}>Rien réglé</option>
+          <option value="partiel" {% if filtres.reglement == 'partiel' %}selected{% endif %}>Partiellement réglé</option>
+          <option value="complet" {% if filtres.reglement == 'complet' %}selected{% endif %}>Intégralement réglé</option>
+        </select>
+      </label>
+      <label class="field-stack slim"><span>Type</span>
+        <select class="in" name="type_inscription">
+          <option value="">Tous</option>
+          {% for t in types_inscription %}
+            <option value="{{ t }}" {% if filtres.type_inscription == t %}selected{% endif %}>{{ types_inscription_labels[t] }}</option>
+          {% endfor %}
         </select>
       </label>
       <label class="field-stack slim" style="flex-direction:row; align-items:center; gap:6px;">
@@ -105,7 +118,7 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Personne</th><th>Contact</th><th>Secteur</th><th>Ateliers</th>
+              <th>Personne</th><th>Contact</th><th>Secteur</th><th>Foyer</th><th>Ateliers</th>
               <th>Bénévolat</th><th>Statut</th><th>Règlement</th><th></th>
             </tr>
           </thead>
@@ -123,6 +136,14 @@
                 </td>
                 <td style="font-size:.85rem;">{{ i.secteur_orienteur or '—' }}</td>
                 <td style="font-size:.85rem;">
+                  {% if i.est_familiale %}
+                    👪 {{ i.nb_personnes }} pers.
+                    {% if i.foyer_id %}<br><span class="muted">foyer n°{{ i.foyer_id }}</span>{% endif %}
+                  {% else %}
+                    <span class="muted">seul·e</span>
+                  {% endif %}
+                </td>
+                <td style="font-size:.85rem;">
                   {% if i.ateliers %}{{ i.ateliers|map(attribute='nom')|join(', ') }}{% else %}<span class="muted">—</span>{% endif %}
                   {% if i.ateliers_libre %}<br><span class="muted">✎ {{ i.ateliers_libre|truncate(60) }}</span>{% endif %}
                 </td>
@@ -130,7 +151,10 @@
                   {% if i.benevolat_souhaite %}🙋 {{ i.creneaux_benevolat_libelle }}{% else %}<span class="muted">—</span>{% endif %}
                 </td>
                 <td><span class="ia-tag {{ i.statut }}">{{ i.statut_label }}</span></td>
-                <td><span class="ia-tag {{ 'paid' if i.reglement_confirme else 'due' }}">{{ i.reglement_label }}</span></td>
+                <td>
+                  <span class="ia-tag {{ {'complet':'paid','partiel':'attente','rien':'due'}.get(i.reglement_statut, 'due') }}">{{ i.reglement_label }}</span>
+                  {% if i.reglement_du %}<br><span class="muted" style="font-size:.78rem;">{{ "%.2f"|format(i.reglement_montant or 0) }} / {{ "%.2f"|format(i.reglement_du) }} €</span>{% endif %}
+                </td>
                 <td style="white-space:nowrap;">
                   <a class="btn" style="padding:2px 8px; font-size:.8rem;" href="{{ url_for('inscriptions_annuelles.fiche', inscription_id=i.id) }}" target="_blank" rel="noopener">🖨️</a>
                 </td>

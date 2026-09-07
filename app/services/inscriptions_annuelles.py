@@ -40,17 +40,23 @@ from app.models import (
     STATUTS_INSCRIPTION_ANNUELLE_LABELS,
     AtelierActivite,
     Cotisation,
+    Foyer,
     InscriptionAnnuelle,
     InscriptionAnnuelleDispo,
-    Paiement,
+    InscriptionAnnuelleMembre,
     Participant,
     PresenceActivite,
     SessionActivite,
 )
 from app.services.cotisations import (
+    ETATS_REGLEMENT_LABELS,
+    ETATS_REGLEMENT_TONS,
     annee_scolaire_courante,
     cotisation_existante,
+    cout_inscription,
     libelle_annee_scolaire,
+    regrouper_en_foyer,
+    repartir_versement,
     tarif_en_vigueur,
 )
 
@@ -117,6 +123,76 @@ def appliquer_ateliers(inscription: InscriptionAnnuelle, atelier_ids) -> None:
     inscription.ateliers = (
         AtelierActivite.query.filter(AtelierActivite.id.in_(ids)).all() if ids else []
     )
+
+
+def appliquer_membres(inscription: InscriptionAnnuelle, lignes) -> None:
+    """Remplace les autres membres du foyer déclarés sur le bulletin.
+
+    ``lignes`` est une suite de dicts ``{prenom, nom, date_naissance,
+    lien_filiation}`` (le formulaire en envoie autant que la famille en
+    compte). Une ligne sans prénom est ignorée : c'est une ligne vide qu'on a
+    ajoutée sans la remplir, pas une erreur à signaler.
+
+    Un membre déjà rattaché à une fiche participant n'est jamais supprimé
+    silencieusement par une modification du bulletin : on met ses champs à
+    jour, sinon la fiche créée se retrouverait orpheline de son bulletin.
+    """
+    existants = {m.id: m for m in list(inscription.membres or [])}
+    gardes: set[int] = set()
+    ordre = 0
+
+    for ligne in lignes or []:
+        prenom = (ligne.get("prenom") or "").strip()
+        if not prenom:
+            continue
+        membre_id = ligne.get("id")
+        membre = existants.get(int(membre_id)) if str(membre_id or "").isdigit() else None
+        if membre is None:
+            membre = InscriptionAnnuelleMembre(prenom=prenom)
+            inscription.membres.append(membre)
+        else:
+            gardes.add(membre.id)
+        membre.prenom = prenom[:120]
+        membre.nom = (ligne.get("nom") or "").strip()[:120] or None
+        membre.date_naissance = ligne.get("date_naissance") or None
+        membre.lien_filiation = (ligne.get("lien_filiation") or "").strip()[:80] or None
+        membre.ordre = ordre
+        ordre += 1
+
+    for membre_id, membre in existants.items():
+        if membre_id in gardes:
+            continue
+        if membre.participant_id:
+            # Une fiche existe déjà pour cette personne : on ne l'efface pas
+            # d'un coup de formulaire, on la garde en fin de liste.
+            membre.ordre = ordre
+            ordre += 1
+            continue
+        inscription.membres.remove(membre)
+
+
+def personnes_couvertes(inscription: InscriptionAnnuelle) -> list[dict]:
+    """Toutes les personnes que le bulletin fait payer, l'inscrit·e en tête.
+
+    Chaque entrée : ``{nom_complet, date_naissance, lien, participant_id,
+    principal}``. C'est la liste qui multiplie la participation et celle qui
+    peuple le foyer."""
+    personnes = [{
+        "nom_complet": inscription.nom_complet,
+        "date_naissance": inscription.date_naissance,
+        "lien": None,
+        "participant_id": inscription.participant_id,
+        "principal": True,
+    }]
+    for membre in inscription.membres or []:
+        personnes.append({
+            "nom_complet": membre.nom_complet,
+            "date_naissance": membre.date_naissance,
+            "lien": membre.lien_filiation,
+            "participant_id": membre.participant_id,
+            "principal": False,
+        })
+    return personnes
 
 
 def ateliers_proposables(secteur: str | None = None) -> list[AtelierActivite]:
@@ -194,6 +270,107 @@ def _inscrire_aux_ateliers(inscription: InscriptionAnnuelle, participant: Partic
     return crees, avertissements
 
 
+def _fiche_existante_pour_membre(membre: InscriptionAnnuelleMembre) -> Participant | None:
+    """Fiche déjà connue pour ce membre, ou None.
+
+    On ne rattache que sur un signal FORT : mêmes nom et prénom **et** même
+    date de naissance. Un homonyme sans date de naissance reste une personne
+    différente — mieux vaut une fiche à fusionner ensuite (l'application sait
+    le faire) qu'un enfant rattaché à la mauvaise famille.
+    """
+    from app.services.doublons import candidats_doublons
+
+    if not membre.date_naissance:
+        return None
+    for candidat in candidats_doublons(membre.nom_effectif(), membre.prenom):
+        if candidat.date_naissance == membre.date_naissance:
+            return candidat
+    return None
+
+
+def _creer_fiches_membres(
+    inscription: InscriptionAnnuelle,
+    *,
+    user_id: int | None,
+    secteur: str | None,
+    quartier_id: int | None,
+) -> list[str]:
+    """Ouvre (ou retrouve) une fiche participant pour chaque membre déclaré.
+
+    Les coordonnées du foyer sont recopiées — adresse, ville, téléphone : à
+    l'accueil, le téléphone d'un enfant est celui de son parent. L'e-mail,
+    lui, reste sur la fiche de l'inscrit·e principal·e : il est personnel et
+    sert aux envois individuels.
+    """
+    avertissements: list[str] = []
+    for membre in inscription.membres or []:
+        if membre.participant_id:
+            continue
+
+        existante = _fiche_existante_pour_membre(membre)
+        if existante is not None:
+            membre.participant_id = existante.id
+            avertissements.append(
+                f"{membre.nom_complet} a été rattaché·e à sa fiche existante (n°{existante.id})."
+            )
+            continue
+
+        fiche = Participant(
+            nom=membre.nom_effectif() or inscription.nom,
+            prenom=(membre.prenom or "").strip(),
+            date_naissance=membre.date_naissance,
+            adresse=(inscription.adresse or "").strip() or None,
+            ville=(inscription.ville or "").strip() or None,
+            telephone=(inscription.telephone or "").strip() or None,
+            statut_inscription=STATUT_PARTICIPANT_ATTENTE,
+            created_by_user_id=user_id,
+            created_secteur=(secteur or inscription.secteur_orienteur or inscription.created_secteur or None),
+        )
+        if quartier_id:
+            from app.services.quartiers import normalize_quartier_for_ville
+
+            fiche.quartier_id = normalize_quartier_for_ville(fiche.ville, quartier_id)
+        db.session.add(fiche)
+        db.session.flush()
+        membre.participant_id = fiche.id
+    return avertissements
+
+
+def _constituer_foyer(inscription: InscriptionAnnuelle) -> list[str]:
+    """Regroupe l'inscrit·e et les membres dans un même foyer.
+
+    Réutilise ``regrouper_en_foyer`` du module Adhésions — celui-là même que
+    l'on déclenche à la main depuis une fiche participant — pour que la
+    famille composée à l'inscription soit strictement la même chose qu'une
+    famille composée après coup. Sa prudence s'applique donc aussi : il
+    refuse de fusionner deux familles déjà constituées, et on remonte alors
+    son message plutôt que de mélanger des adhésions déjà réglées.
+    """
+    fiches = participants_couverts(inscription)
+    if not fiches:
+        return []
+
+    if len(fiches) == 1:
+        # Famille déclarée mais un seul membre a une fiche : on ouvre quand
+        # même le foyer, il accueillera les autres au fur et à mesure.
+        fiche = fiches[0]
+        if not fiche.foyer_id:
+            foyer = Foyer(nom=f"Famille {fiche.nom}")
+            db.session.add(foyer)
+            db.session.flush()
+            fiche.foyer_id = foyer.id
+        inscription.foyer_id = fiche.foyer_id
+        db.session.flush()
+        return []
+
+    ok, message = regrouper_en_foyer(fiches)
+    if not ok:
+        return [message]
+    inscription.foyer_id = fiches[0].foyer_id
+    db.session.flush()
+    return []
+
+
 def creer_participant(
     inscription: InscriptionAnnuelle,
     *,
@@ -202,13 +379,20 @@ def creer_participant(
     quartier_id: int | None = None,
     marquer_benevole: bool = False,
     inscrire_ateliers: bool = True,
+    creer_cotisations: bool = True,
 ) -> tuple[Participant, list[str]]:
     """Crée la fiche participant en attente de 1re participation.
 
     La fiche est immédiatement utilisable partout dans l'application (elle
     apparaît dans l'annuaire, l'émargement, les recherches) mais porte le
     statut ``attente_premiere_participation`` tant que personne ne l'a
-    pointée présente."""
+    pointée présente.
+
+    Pour une inscription **familiale**, la même opération ouvre une fiche par
+    membre déclaré et regroupe tout le monde dans un ``Foyer`` — le même objet
+    que celui composé à la main depuis une fiche participant. Les cotisations
+    (adhésion + une participation par personne) sont générées dans la foulée,
+    sauf demande contraire."""
     if inscription.participant_id:
         raise InscriptionAnnuelleErreur(
             f"{inscription.nom_complet} a déjà une fiche participant rattachée à cette inscription."
@@ -238,8 +422,21 @@ def creer_participant(
     db.session.commit()
 
     avertissements: list[str] = []
+    if inscription.est_familiale:
+        avertissements += _creer_fiches_membres(
+            inscription, user_id=user_id, secteur=secteur, quartier_id=quartier_id
+        )
+        avertissements += _constituer_foyer(inscription)
+        db.session.commit()
+
     if inscrire_ateliers:
-        _, avertissements = _inscrire_aux_ateliers(inscription, participant, user_id)
+        _, messages = _inscrire_aux_ateliers(inscription, participant, user_id)
+        avertissements += messages
+
+    if creer_cotisations:
+        _, messages = generer_cotisations(inscription, user_id=user_id)
+        avertissements += messages
+
     return participant, avertissements
 
 
@@ -249,6 +446,7 @@ def rattacher_participant(
     *,
     user_id: int | None = None,
     inscrire_ateliers: bool = True,
+    creer_cotisations: bool = True,
 ) -> list[str]:
     """Rattache le bulletin à une fiche EXISTANTE (ancien inscrit, homonyme
     déjà connu) plutôt que de créer un doublon.
@@ -279,15 +477,45 @@ def rattacher_participant(
     inscription.participant_id = participant.id
     db.session.commit()
 
+    avertissements: list[str] = []
+    if inscription.est_familiale:
+        avertissements += _creer_fiches_membres(
+            inscription, user_id=user_id,
+            secteur=(inscription.secteur_orienteur or participant.created_secteur),
+            quartier_id=participant.quartier_id,
+        )
+        avertissements += _constituer_foyer(inscription)
+        db.session.commit()
+
     if inscrire_ateliers:
-        _, avertissements = _inscrire_aux_ateliers(inscription, participant, user_id)
-        return avertissements
-    return []
+        _, messages = _inscrire_aux_ateliers(inscription, participant, user_id)
+        avertissements += messages
+
+    if creer_cotisations:
+        _, messages = generer_cotisations(inscription, user_id=user_id)
+        avertissements += messages
+
+    return avertissements
 
 
 # ---------------------------------------------------------------------------
-# Règlement
+# Coût de l'inscription et règlement
 # ---------------------------------------------------------------------------
+
+def calculer_cout(inscription: InscriptionAnnuelle, a_la_date: date | None = None) -> dict:
+    """Ce que doit payer ce bulletin : adhésion + participation par personne.
+
+    Le détail vient du barème du module Adhésions, lu **à la date de
+    référence** (par défaut la date d'inscription) : c'est ainsi qu'un tarif
+    revu en cours d'année s'applique aux nouvelles inscriptions sans toucher
+    à celles déjà enregistrées."""
+    return cout_inscription(
+        inscription.annee_scolaire,
+        familiale=inscription.est_familiale,
+        nb_personnes=inscription.nb_personnes,
+        a_la_date=a_la_date or inscription.date_inscription or date.today(),
+    )
+
 
 def montant_adhesion_suggere(annee_scolaire: int, a_la_date: date | None = None) -> float | None:
     """Tarif d'adhésion individuelle en vigueur (None si aucun barème saisi)."""
@@ -295,95 +523,310 @@ def montant_adhesion_suggere(annee_scolaire: int, a_la_date: date | None = None)
     return float(ligne.montant) if ligne is not None else None
 
 
-def confirmer_reglement(
+def participants_couverts(inscription: InscriptionAnnuelle) -> list[Participant]:
+    """Fiches participant existantes du bulletin : l'inscrit·e et les membres."""
+    ids = [p["participant_id"] for p in personnes_couvertes(inscription) if p["participant_id"]]
+    if not ids:
+        return []
+    fiches = {p.id: p for p in Participant.query.filter(Participant.id.in_(ids)).all()}
+    return [fiches[i] for i in ids if i in fiches]
+
+
+def cotisations_du_bulletin(inscription: InscriptionAnnuelle) -> list[Cotisation]:
+    """Les cotisations de l'année qui matérialisent ce bulletin.
+
+    L'adhésion (portée par la personne ou par le foyer) d'abord, puis les
+    participations dans l'ordre des personnes : c'est l'ordre dans lequel un
+    versement partiel se ventile."""
+    ids = [p["participant_id"] for p in personnes_couvertes(inscription) if p["participant_id"]]
+    if not ids and not inscription.foyer_id:
+        return []
+
+    conditions = []
+    if ids:
+        conditions.append(Cotisation.participant_id.in_(ids))
+    if inscription.foyer_id:
+        conditions.append(Cotisation.foyer_id == inscription.foyer_id)
+
+    lignes = (
+        Cotisation.query
+        .filter(Cotisation.annee_scolaire == inscription.annee_scolaire)
+        .filter(db.or_(*conditions))
+        .all()
+    )
+    rang_personne = {pid: i for i, pid in enumerate(ids)}
+
+    def cle(c: Cotisation):
+        est_adhesion = 0 if c.type_cotisation != "participation" else 1
+        return (est_adhesion, rang_personne.get(c.participant_id or -1, 99), c.id)
+
+    return sorted(lignes, key=cle)
+
+
+def etat_reglement(inscription: InscriptionAnnuelle) -> dict:
+    """Où en est ce bulletin : rien / partiel / complet, avec les montants.
+
+    Deux sources selon l'avancement, jamais les deux à la fois :
+    - **les cotisations** dès qu'elles existent (le module Adhésions fait
+      foi : un versement saisi depuis une fiche participant compte ici) ;
+    - **le bulletin lui-même** avant la transformation, quand l'accueil a
+      encaissé sans qu'aucune fiche n'existe encore.
+    """
+    cotisations = cotisations_du_bulletin(inscription)
+    if cotisations:
+        du = round(sum(float(c.montant_du or 0) for c in cotisations), 2)
+        regle = round(sum(c.montant_regle for c in cotisations), 2)
+        source = "cotisations"
+    else:
+        du = calculer_cout(inscription)["total"]
+        regle = round(float(inscription.reglement_montant or 0), 2)
+        source = "bulletin"
+
+    reste = round(max(0.0, du - regle), 2)
+    if du <= 0.009 and regle <= 0.009:
+        statut = "rien"
+    elif reste <= 0.009:
+        statut = "complet"
+    elif regle > 0.009:
+        statut = "partiel"
+    else:
+        statut = "rien"
+
+    return {
+        "statut": statut,
+        "libelle": ETATS_REGLEMENT_LABELS[statut],
+        "ton": ETATS_REGLEMENT_TONS[statut],
+        "du": du,
+        "regle": regle,
+        "reste": reste,
+        "source": source,
+        "cotisations": cotisations,
+    }
+
+
+def resynchroniser_reglement(inscription: InscriptionAnnuelle) -> dict:
+    """Recopie l'état de règlement sur le bulletin (sans commit).
+
+    Les colonnes ``reglement_statut`` / ``reglement_du`` /
+    ``reglement_montant`` / ``reglement_confirme`` sont un miroir : elles
+    permettent de filtrer et d'exporter sans recalculer, mais la vérité
+    reste dans les cotisations. Ce recalage est rejoué à l'ouverture de la
+    liste, pour qu'un règlement saisi depuis une fiche participant se voie
+    ici aussi."""
+    etat = etat_reglement(inscription)
+    inscription.reglement_statut = etat["statut"]
+    inscription.reglement_du = etat["du"]
+    if etat["source"] == "cotisations":
+        inscription.reglement_montant = etat["regle"]
+    inscription.reglement_confirme = etat["statut"] == "complet"
+    return etat
+
+
+def generer_cotisations(
     inscription: InscriptionAnnuelle,
     *,
-    montant: float | None = None,
-    mode: str | None = None,
-    date_reglement: date | None = None,
-    commentaire: str | None = None,
-    creer_adhesion: bool = False,
     user_id: int | None = None,
-) -> str | None:
-    """Marque le règlement comme confirmé à l'accueil.
+    a_la_date: date | None = None,
+) -> tuple[list[Cotisation], list[str]]:
+    """Crée dans le module Adhésions ce que le bulletin doit générer.
 
-    Si ``creer_adhesion`` et qu'une fiche participant existe, l'adhésion
-    individuelle de l'année et son règlement sont enregistrés dans le module
-    Adhésions & participation (source unique pour les impayés, la caisse et
-    les bilans). Retourne un message d'information, ou None."""
-    inscription.reglement_confirme = True
-    inscription.reglement_date = date_reglement or date.today()
-    inscription.reglement_mode = (mode or "").strip() or None
-    inscription.reglement_montant = float(montant) if montant not in (None, "") else None
-    inscription.reglement_commentaire = (commentaire or "").strip() or None
+    Une adhésion (familiale portée par le foyer, individuelle portée par la
+    personne) et **une participation par personne ayant une fiche**. Les
+    montants sont figés au tarif en vigueur à la date de référence — un
+    changement de barème plus tard ne réécrit jamais une dette déjà posée.
 
-    info = None
-    if creer_adhesion:
-        info = _enregistrer_adhesion(inscription, user_id=user_id)
-    db.session.commit()
-    return info
-
-
-def _enregistrer_adhesion(inscription: InscriptionAnnuelle, *, user_id: int | None) -> str | None:
-    """Crée (si besoin) l'adhésion individuelle de l'année + son versement."""
+    Idempotent : relancer la génération ne crée pas de doublon, elle complète
+    ce qui manque (utile quand un membre reçoit sa fiche après coup).
+    """
     if not inscription.participant_id:
-        return (
-            "Règlement confirmé sur le bulletin. L'adhésion n'a pas été créée : "
-            "il faut d'abord transformer l'inscription en fiche participant."
+        raise InscriptionAnnuelleErreur(
+            "Crée d'abord la fiche participant : sans elle, il n'y a personne à qui rattacher l'adhésion."
         )
 
-    montant = inscription.reglement_montant
-    if montant is None:
-        montant = montant_adhesion_suggere(inscription.annee_scolaire, inscription.reglement_date)
-    if montant is None:
-        return (
-            "Règlement confirmé sur le bulletin. L'adhésion n'a pas été créée : "
-            f"aucun tarif d'adhésion n'est saisi pour {inscription.libelle_annee} "
-            "(barème des tarifs) et aucun montant n'a été indiqué."
+    a_la_date = a_la_date or inscription.date_inscription or date.today()
+    cout = calculer_cout(inscription, a_la_date)
+    avertissements: list[str] = []
+    if cout["manquants"]:
+        libelles = ", ".join(cout["manquants"])
+        avertissements.append(
+            f"Aucun tarif {libelles} au barème {inscription.libelle_annee} : "
+            "le montant correspondant est à 0 €, à corriger depuis la fiche participant "
+            "ou en complétant le barème des tarifs."
         )
 
-    cotisation = cotisation_existante(
-        annee_scolaire=inscription.annee_scolaire,
-        type_cotisation="adhesion_individuelle",
-        participant_id=inscription.participant_id,
-    )
-    if cotisation is None:
-        cotisation = Cotisation(
+    creees: list[Cotisation] = []
+
+    # --- Adhésion ---------------------------------------------------------
+    if inscription.est_familiale and inscription.foyer_id:
+        adhesion = cotisation_existante(
+            annee_scolaire=inscription.annee_scolaire,
+            type_cotisation="adhesion_familiale",
+            foyer_id=inscription.foyer_id,
+        )
+        if adhesion is None:
+            adhesion = Cotisation(
+                annee_scolaire=inscription.annee_scolaire,
+                type_cotisation="adhesion_familiale",
+                foyer_id=inscription.foyer_id,
+                montant_du=cout["montant_adhesion"],
+                date_reference=a_la_date,
+                created_by_user_id=user_id,
+            )
+            db.session.add(adhesion)
+            creees.append(adhesion)
+    else:
+        montant_adhesion = cout["montant_adhesion"]
+        if inscription.est_familiale:
+            # Repli : le bulletin dit « familiale » mais aucun foyer n'a été
+            # constitué (aucun autre membre n'a de fiche). On facture au tarif
+            # individuel plutôt que d'appliquer un tarif famille à une personne
+            # seule — et on le dit.
+            avertissements.append(
+                "Inscription familiale sans foyer constitué : l'adhésion a été enregistrée "
+                "au tarif individuel. Regroupe les membres depuis la fiche participant pour "
+                "basculer sur le tarif familial."
+            )
+            ligne = tarif_en_vigueur(inscription.annee_scolaire, "adhesion_individuelle", a_la_date)
+            montant_adhesion = round(float(ligne.montant), 2) if ligne else 0.0
+
+        adhesion = cotisation_existante(
             annee_scolaire=inscription.annee_scolaire,
             type_cotisation="adhesion_individuelle",
             participant_id=inscription.participant_id,
-            montant_du=float(montant),
-            date_reference=inscription.reglement_date or date.today(),
+        )
+        if adhesion is None:
+            adhesion = Cotisation(
+                annee_scolaire=inscription.annee_scolaire,
+                type_cotisation="adhesion_individuelle",
+                participant_id=inscription.participant_id,
+                montant_du=montant_adhesion,
+                date_reference=a_la_date,
+                created_by_user_id=user_id,
+            )
+            db.session.add(adhesion)
+            creees.append(adhesion)
+
+    db.session.flush()
+    inscription.cotisation_id = adhesion.id
+
+    # --- Une participation par personne ayant une fiche -------------------
+    for fiche in participants_couverts(inscription):
+        existante = cotisation_existante(
+            annee_scolaire=inscription.annee_scolaire,
+            type_cotisation="participation",
+            participant_id=fiche.id,
+        )
+        if existante is not None:
+            continue
+        participation = Cotisation(
+            annee_scolaire=inscription.annee_scolaire,
+            type_cotisation="participation",
+            participant_id=fiche.id,
+            montant_du=cout["montant_participation_unitaire"],
+            date_reference=a_la_date,
             created_by_user_id=user_id,
         )
-        db.session.add(cotisation)
-        db.session.flush()
+        db.session.add(participation)
+        creees.append(participation)
 
-    inscription.cotisation_id = cotisation.id
+    db.session.flush()
 
-    if float(montant) > 0 and cotisation.reste_du > 0:
-        db.session.add(Paiement(
-            cotisation_id=cotisation.id,
-            montant=min(float(montant), cotisation.reste_du),
-            date_paiement=inscription.reglement_date or date.today(),
-            mode=(inscription.reglement_mode or "especes"),
+    # --- Report d'un encaissement fait avant la transformation ------------
+    deja_verse = round(float(inscription.reglement_montant or 0), 2)
+    if deja_verse > 0 and not any(c.paiements for c in cotisations_du_bulletin(inscription)):
+        repartir_versement(
+            cotisations_du_bulletin(inscription),
+            deja_verse,
+            date_paiement=inscription.reglement_date or a_la_date,
+            mode=inscription.reglement_mode or "especes",
             commentaire=f"Inscription annuelle {inscription.libelle_annee}",
-            created_by_user_id=user_id,
-        ))
-        return f"Adhésion {libelle_annee_scolaire(inscription.annee_scolaire)} et règlement enregistrés."
-    return f"Adhésion {libelle_annee_scolaire(inscription.annee_scolaire)} enregistrée."
+            user_id=user_id,
+        )
+
+    resynchroniser_reglement(inscription)
+    db.session.commit()
+    return creees, avertissements
+
+
+def encaisser(
+    inscription: InscriptionAnnuelle,
+    montant: float,
+    *,
+    mode: str | None = None,
+    date_paiement: date | None = None,
+    commentaire: str | None = None,
+    user_id: int | None = None,
+) -> tuple[float, str]:
+    """Enregistre une somme reçue à l'accueil — totale ou partielle.
+
+    Quand les cotisations existent, la somme se ventile dessus (adhésion
+    d'abord, puis les participations) : le règlement remonte dans les
+    impayés, la caisse et les bilans sans double saisie. Sinon elle
+    s'accumule sur le bulletin en attendant la fiche participant, et sera
+    reportée telle quelle à la génération des cotisations.
+
+    Retourne (montant réellement encaissé, message).
+    """
+    montant = round(float(montant or 0), 2)
+    if montant <= 0:
+        raise InscriptionAnnuelleErreur("Le montant encaissé doit être supérieur à 0 €.")
+
+    mode = (mode or "especes").strip() or "especes"
+    date_paiement = date_paiement or date.today()
+    inscription.reglement_mode = mode
+    inscription.reglement_date = date_paiement
+    if commentaire:
+        inscription.reglement_commentaire = commentaire[:255]
+
+    cotisations = cotisations_du_bulletin(inscription)
+    if cotisations:
+        versements = repartir_versement(
+            cotisations, montant,
+            date_paiement=date_paiement, mode=mode,
+            commentaire=commentaire or f"Inscription annuelle {inscription.libelle_annee}",
+            user_id=user_id,
+        )
+        encaisse = round(sum(float(v.montant) for v in versements), 2)
+        message = f"{encaisse:.2f} € encaissés et ventilés sur {len(versements)} cotisation(s)."
+        if encaisse < montant:
+            message += (
+                f" {montant - encaisse:.2f} € n'ont pas été affectés : il ne restait plus rien à devoir. "
+                "Vérifie le montant saisi."
+            )
+    else:
+        inscription.reglement_montant = round(float(inscription.reglement_montant or 0) + montant, 2)
+        encaisse = montant
+        message = (
+            f"{montant:.2f} € enregistrés sur le bulletin. "
+            "Ils seront reportés dans le module Adhésions à la création de la fiche participant."
+        )
+
+    etat = resynchroniser_reglement(inscription)
+    db.session.commit()
+    if etat["statut"] == "complet":
+        message += " L'inscription est intégralement réglée."
+    elif etat["statut"] == "partiel":
+        message += f" Reste dû : {etat['reste']:.2f} €."
+    return encaisse, message
 
 
 def annuler_reglement(inscription: InscriptionAnnuelle) -> None:
-    """Repasse le bulletin en « à régler ».
+    """Repasse le bulletin en « rien réglé ».
 
-    L'adhésion et les versements déjà enregistrés dans le module Adhésions ne
-    sont PAS touchés : un mouvement de caisse ne se réécrit pas depuis ici
-    (il s'annule dans le module Adhésions, qui en tient le journal)."""
-    inscription.reglement_confirme = False
+    Ne touche PAS aux versements déjà enregistrés dans le module Adhésions :
+    un mouvement de caisse s'annule là où il est journalisé, pas d'ici. Ce
+    bouton ne sert donc qu'aux encaissements notés sur le bulletin avant
+    qu'une fiche participant existe."""
+    if cotisations_du_bulletin(inscription):
+        raise InscriptionAnnuelleErreur(
+            "Les règlements de cette inscription sont enregistrés dans le module "
+            "Adhésions & participation : annule le versement depuis la fiche "
+            "participant, pour que la caisse et les bilans restent justes."
+        )
+    inscription.reglement_montant = None
     inscription.reglement_date = None
+    resynchroniser_reglement(inscription)
     db.session.commit()
-
 
 # ---------------------------------------------------------------------------
 # Première participation : bascule automatique du statut d'attente
@@ -444,6 +887,27 @@ def rafraichir_statuts(annee_scolaire: int | None = None) -> int:
         if premiere is None:
             continue
         if constater_premiere_participation(inscription.participant_id, premiere[0] or date.today()):
+            recales += 1
+    if recales:
+        db.session.commit()
+    return recales
+
+
+def rafraichir_reglements(annee_scolaire: int | None = None) -> int:
+    """Recale l'état de règlement des bulletins de l'année (sans rien créer).
+
+    Un versement saisi depuis une fiche participant ne passe pas par ce
+    module : ce balayage, joué à l'ouverture de la liste, garantit que la
+    colonne « Règlement » y dit la même chose que la fiche."""
+    q = InscriptionAnnuelle.query.filter(InscriptionAnnuelle.statut != "annulee")
+    if annee_scolaire is not None:
+        q = q.filter(InscriptionAnnuelle.annee_scolaire == annee_scolaire)
+
+    recales = 0
+    for inscription in q.all():
+        avant = (inscription.reglement_statut, inscription.reglement_du, inscription.reglement_montant)
+        resynchroniser_reglement(inscription)
+        if (inscription.reglement_statut, inscription.reglement_du, inscription.reglement_montant) != avant:
             recales += 1
     if recales:
         db.session.commit()
@@ -541,8 +1005,14 @@ def synthese(annee_scolaire: int, inscriptions: list[InscriptionAnnuelle] | None
         "sans_fiche": sum(1 for i in actives if not i.participant_id),
         "en_attente": sum(1 for i in actives if i.statut == "en_attente"),
         "a_regler": sum(1 for i in actives if not i.reglement_confirme),
-        "regles": sum(1 for i in actives if i.reglement_confirme),
-        "montant_regle": round(sum(float(i.reglement_montant or 0) for i in actives if i.reglement_confirme), 2),
+        "regles": sum(1 for i in actives if i.reglement_statut == "complet"),
+        "partiels": sum(1 for i in actives if i.reglement_statut == "partiel"),
+        "non_regles": sum(1 for i in actives if i.reglement_statut not in ("complet", "partiel")),
+        "montant_du": round(sum(float(i.reglement_du or 0) for i in actives), 2),
+        "montant_regle": round(sum(float(i.reglement_montant or 0) for i in actives), 2),
+        "montant_reste": round(sum(i.reglement_reste for i in actives), 2),
+        "familiales": sum(1 for i in actives if i.est_familiale),
+        "personnes_couvertes": sum(i.nb_personnes for i in actives),
         "benevoles": sum(1 for i in actives if i.benevolat_souhaite),
         "benevoles_sans_dispo": sum(
             1 for i in actives if i.benevolat_souhaite and (i.benevolat_dispo_inconnue or not i.disponibilites)
@@ -575,17 +1045,34 @@ COLONNES_EXPORT = [
     "Année scolaire", "Date d'inscription", "Statut", "Nom", "Prénom",
     "Date de naissance", "Genre", "Adresse", "Code postal", "Ville",
     "E-mail", "Téléphone", "Secteur qui fait venir",
+    "Type d'inscription", "Personnes couvertes", "Membres du foyer", "N° de foyer",
     "Ateliers choisis", "Autres souhaits (champ libre)",
     "Bénévolat souhaité", "Bénévolat — pour quoi faire",
     "Bénévolat — disponibilités", "Bénévolat — ne sait pas encore",
-    "Règlement confirmé", "Montant réglé", "Mode de règlement", "Date de règlement",
-    "Note sur le règlement", "Fiche participant", "N° de fiche",
+    "Adhésion (€)", "Participation unitaire (€)", "Participation totale (€)",
+    "Total dû (€)", "Montant réglé (€)", "Reste dû (€)", "État du règlement",
+    "Mode de règlement", "Date de règlement", "Note sur le règlement",
+    "Fiche participant", "N° de fiche",
     "1re participation", "Commentaire", "Saisi par", "Saisi le",
 ]
 
 
+def _libelle_membre(membre: InscriptionAnnuelleMembre) -> str:
+    """« Léa Martin (12/03/2015, fille) » — tout ce qu'on sait, sans les vides."""
+    details = []
+    if membre.date_naissance:
+        details.append(membre.date_naissance.strftime("%d/%m/%Y"))
+    if membre.lien_filiation:
+        details.append(membre.lien_filiation)
+    suffixe = f" ({', '.join(details)})" if details else ""
+    return f"{membre.nom_complet}{suffixe}"
+
+
 def _ligne_export(inscription: InscriptionAnnuelle, utilisateurs: dict[int, str]) -> list:
     from app.models import MODES_PAIEMENT_LABELS
+
+    cout = calculer_cout(inscription)
+    etat = etat_reglement(inscription)
 
     return [
         inscription.libelle_annee,
@@ -601,14 +1088,23 @@ def _ligne_export(inscription: InscriptionAnnuelle, utilisateurs: dict[int, str]
         inscription.email or "",
         inscription.telephone or "",
         inscription.secteur_orienteur or "",
+        inscription.type_inscription_label,
+        inscription.nb_personnes,
+        " ; ".join(_libelle_membre(m) for m in inscription.membres or []),
+        inscription.foyer_id or "",
         " ; ".join(a.nom for a in sorted(inscription.ateliers or [], key=lambda a: a.nom)),
         inscription.ateliers_libre or "",
         "Oui" if inscription.benevolat_souhaite else "Non",
         inscription.benevolat_mission or "",
         inscription.creneaux_benevolat_libelle if inscription.benevolat_souhaite else "",
         "Oui" if inscription.benevolat_dispo_inconnue else "",
-        "Oui" if inscription.reglement_confirme else "Non",
-        inscription.reglement_montant if inscription.reglement_montant is not None else "",
+        cout["montant_adhesion"],
+        cout["montant_participation_unitaire"],
+        cout["montant_participation_total"],
+        etat["du"],
+        etat["regle"],
+        etat["reste"],
+        etat["libelle"],
         MODES_PAIEMENT_LABELS.get(inscription.reglement_mode or "", inscription.reglement_mode or ""),
         inscription.reglement_date.isoformat() if inscription.reglement_date else "",
         inscription.reglement_commentaire or "",
@@ -657,11 +1153,16 @@ def export_xlsx(annee_scolaire: int, inscriptions: list[InscriptionAnnuelle]) ->
     for label, valeur in (
         ("Bulletins saisis", data["total"]),
         ("Inscriptions actives (hors annulées)", data["actives"]),
+        ("dont inscriptions familiales", data["familiales"]),
+        ("Personnes couvertes (participation)", data["personnes_couvertes"]),
         ("Sans fiche participant", data["sans_fiche"]),
         ("En attente de 1re participation", data["en_attente"]),
-        ("Règlements confirmés", data["regles"]),
-        ("Restant à régler", data["a_regler"]),
-        ("Montant réglé (€)", data["montant_regle"]),
+        ("Intégralement réglées", data["regles"]),
+        ("Partiellement réglées", data["partiels"]),
+        ("Non réglées", data["non_regles"]),
+        ("Total dû (€)", data["montant_du"]),
+        ("Total encaissé (€)", data["montant_regle"]),
+        ("Reste à encaisser (€)", data["montant_reste"]),
         ("Envies de bénévolat", data["benevoles"]),
         ("Bénévoles sans créneau précisé", data["benevoles_sans_dispo"]),
     ):
@@ -676,6 +1177,32 @@ def export_xlsx(annee_scolaire: int, inscriptions: list[InscriptionAnnuelle]) ->
     resume.append(["Atelier souhaité", "Inscriptions"])
     for label, nb in data["par_atelier"].items():
         resume.append([label, nb])
+
+    foyers = wb.create_sheet("Foyers")
+    foyers.append([f"Composition des foyers — {data['libelle_annee']}"])
+    foyers.append([])
+    foyers.append([
+        "Inscription", "Type", "N° de foyer", "Personne", "Rôle", "Lien de filiation",
+        "Date de naissance", "Âge", "N° de fiche",
+    ])
+    for inscription in inscriptions:
+        if inscription.statut == "annulee":
+            continue
+        foyers.append([
+            inscription.nom_complet, inscription.type_inscription_label,
+            inscription.foyer_id or "", inscription.nom_complet, "Inscrit·e principal·e", "",
+            inscription.date_naissance.isoformat() if inscription.date_naissance else "",
+            "", inscription.participant_id or "",
+        ])
+        for membre in inscription.membres or []:
+            foyers.append([
+                inscription.nom_complet, inscription.type_inscription_label,
+                inscription.foyer_id or "", membre.nom_complet, "Membre du foyer",
+                membre.lien_filiation or "",
+                membre.date_naissance.isoformat() if membre.date_naissance else "",
+                membre.age if membre.age is not None else "",
+                membre.participant_id or "",
+            ])
 
     benevolat = wb.create_sheet("Bénévolat")
     benevolat.append([f"Disponibilités bénévolat — {data['libelle_annee']}"])
@@ -704,7 +1231,7 @@ def export_xlsx(annee_scolaire: int, inscriptions: list[InscriptionAnnuelle]) ->
                 valeur = cellule.value
                 if isinstance(valeur, str) and valeur in (
                     "Indicateur", "Jour", "Personne", "Secteur qui fait venir",
-                    "Atelier souhaité", "Année scolaire",
+                    "Atelier souhaité", "Année scolaire", "Inscription",
                 ):
                     for suivante in feuille[cellule.row]:
                         suivante.font = Font(bold=True)

@@ -3460,6 +3460,15 @@ STATUTS_PARTICIPANT_LABELS = {
     STATUT_PARTICIPANT_ATTENTE: "Inscrit·e — en attente de 1re participation",
 }
 
+#: Une inscription est individuelle (une personne seule) ou familiale (un
+#: foyer). Le type décide du tarif d'adhésion appliqué — la participation,
+#: elle, se compte par personne dans les deux cas.
+TYPES_INSCRIPTION_ANNUELLE = ["individuelle", "familiale"]
+TYPES_INSCRIPTION_ANNUELLE_LABELS = {
+    "individuelle": "Inscription individuelle",
+    "familiale": "Inscription familiale",
+}
+
 JOURS_SEMAINE = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 JOURS_SEMAINE_LABELS = {j: j.capitalize() for j in JOURS_SEMAINE}
 
@@ -3515,6 +3524,15 @@ class InscriptionAnnuelle(db.Model):
     #: Secteur qui fait venir la personne (référentiel Secteur, par libellé).
     secteur_orienteur = db.Column(db.String(80), nullable=True, index=True)
 
+    # --- Foyer --------------------------------------------------------------
+    #: « individuelle » ou « familiale ». Une inscription familiale déclare les
+    #: autres membres du foyer (voir ``membres``) : ils deviennent des fiches
+    #: participant regroupées dans un ``Foyer``, exactement comme un
+    #: rapprochement fait à la main depuis une fiche.
+    type_inscription = db.Column(db.String(20), nullable=False, default="individuelle", index=True)
+    #: Foyer créé ou rejoint à la transformation (NULL tant qu'elle n'a pas eu lieu).
+    foyer_id = db.Column(db.Integer, db.ForeignKey("foyer.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # --- Ateliers souhaités -------------------------------------------------
     #: Champ libre en complément des cases cochées (atelier pas encore créé,
     #: demande floue, précision d'horaire…).
@@ -3535,7 +3553,16 @@ class InscriptionAnnuelle(db.Model):
     premiere_participation_le = db.Column(db.Date, nullable=True)
 
     # --- Règlement ----------------------------------------------------------
+    #: « rien » / « partiel » / « complet ». Recalculé depuis les cotisations
+    #: dès qu'elles existent (module Adhésions), pour que l'état affiché ici
+    #: et celui de la fiche participant ne divergent jamais.
+    reglement_statut = db.Column(db.String(20), nullable=False, default="rien", index=True)
+    #: Montant dû (adhésion + participations), figé pour lister et exporter.
+    reglement_du = db.Column(db.Float, nullable=True)
+    #: Vrai quand tout est réglé — miroir de ``reglement_statut``, conservé
+    #: pour les filtres et exports qui raisonnent en oui/non.
     reglement_confirme = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    #: Montant encaissé constaté.
     reglement_montant = db.Column(db.Float, nullable=True)
     reglement_mode = db.Column(db.String(20), nullable=True)
     reglement_date = db.Column(db.Date, nullable=True)
@@ -3554,6 +3581,7 @@ class InscriptionAnnuelle(db.Model):
         backref=db.backref("inscriptions_annuelles", lazy="selectin"),
     )
     cotisation = db.relationship("Cotisation")
+    foyer = db.relationship("Foyer", backref=db.backref("inscriptions_annuelles", lazy="selectin"))
     ateliers = db.relationship(
         "AtelierActivite",
         secondary=inscription_annuelle_atelier,
@@ -3568,6 +3596,12 @@ class InscriptionAnnuelle(db.Model):
         back_populates="inscription",
         cascade="all, delete-orphan",
         order_by="InscriptionAnnuelleDispo.id",
+    )
+    membres = db.relationship(
+        "InscriptionAnnuelleMembre",
+        back_populates="inscription",
+        cascade="all, delete-orphan",
+        order_by="InscriptionAnnuelleMembre.ordre, InscriptionAnnuelleMembre.id",
     )
 
     __table_args__ = (
@@ -3594,11 +3628,44 @@ class InscriptionAnnuelle(db.Model):
         return ", ".join(x for x in [(self.adresse or "").strip(), bloc] if x)
 
     @property
+    def est_familiale(self) -> bool:
+        return (self.type_inscription or "individuelle") == "familiale"
+
+    @property
+    def type_inscription_label(self) -> str:
+        return TYPES_INSCRIPTION_ANNUELLE_LABELS.get(
+            self.type_inscription or "individuelle", self.type_inscription
+        )
+
+    @property
+    def type_adhesion(self) -> str:
+        """Type de tarif d'adhésion applicable (clé de ``TarifBareme``)."""
+        return "adhesion_familiale" if self.est_familiale else "adhesion_individuelle"
+
+    @property
+    def nb_personnes(self) -> int:
+        """Nombre de personnes couvertes : l'inscrit·e principal·e + les membres.
+
+        C'est le multiplicateur de la participation : chaque personne du foyer
+        en paye une."""
+        return 1 + len(self.membres or [])
+
+    @property
     def reglement_label(self) -> str:
-        if self.reglement_confirme:
+        from app.services.cotisations import ETATS_REGLEMENT_LABELS
+
+        statut = self.reglement_statut or ("complet" if self.reglement_confirme else "rien")
+        if statut == "complet":
             mode = MODES_PAIEMENT_LABELS.get(self.reglement_mode or "", self.reglement_mode or "")
             return f"Réglé{f' ({mode})' if mode else ''}"
-        return "En attente de règlement"
+        if statut == "partiel":
+            reste = round(float(self.reglement_du or 0) - float(self.reglement_montant or 0), 2)
+            return f"Partiellement réglé (reste {max(0.0, reste):.2f} €)"
+        return ETATS_REGLEMENT_LABELS.get(statut, "Non réglé")
+
+    @property
+    def reglement_reste(self) -> float:
+        return round(max(0.0, float(self.reglement_du or 0) - float(self.reglement_montant or 0)), 2)
 
     @property
     def creneaux_benevolat(self) -> list[tuple[str, str]]:
@@ -3628,6 +3695,71 @@ class InscriptionAnnuelle(db.Model):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<InscriptionAnnuelle {self.nom_complet!r} {self.libelle_annee} ({self.statut})>"
+
+
+class InscriptionAnnuelleMembre(db.Model):
+    """Un autre membre du foyer déclaré sur le bulletin d'inscription familiale.
+
+    On récolte le strict nécessaire pour ouvrir une fiche : nom (repris de
+    l'inscrit·e principal·e s'il n'est pas précisé — cas courant de la
+    fratrie), prénom, date de naissance et, si la famille veut bien le dire,
+    le lien de filiation. Ce dernier reste FACULTATIF : beaucoup de
+    configurations familiales ne rentrent pas dans une case, et l'accueil n'a
+    pas à en faire une condition d'inscription.
+
+    À la transformation, chaque membre devient un ``Participant`` rattaché au
+    même ``Foyer`` que l'inscrit·e principal·e — le même foyer que celui qu'on
+    compose à la main depuis une fiche participant.
+    """
+
+    __tablename__ = "inscription_annuelle_membre"
+
+    id = db.Column(db.Integer, primary_key=True)
+    inscription_id = db.Column(
+        db.Integer, db.ForeignKey("inscription_annuelle.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nom = db.Column(db.String(120), nullable=True)
+    prenom = db.Column(db.String(120), nullable=False)
+    date_naissance = db.Column(db.Date, nullable=True)
+    #: « Fille », « conjoint », « neveu »… ou rien du tout.
+    lien_filiation = db.Column(db.String(80), nullable=True)
+
+    participant_id = db.Column(
+        db.Integer, db.ForeignKey("participant.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    ordre = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    inscription = db.relationship("InscriptionAnnuelle", back_populates="membres")
+    participant = db.relationship(
+        "Participant",
+        backref=db.backref("inscriptions_annuelles_membre", lazy="selectin"),
+    )
+
+    def nom_effectif(self) -> str:
+        """Nom du membre, à défaut celui de l'inscrit·e principal·e."""
+        propre = (self.nom or "").strip()
+        if propre:
+            return propre
+        return (getattr(self.inscription, "nom", "") or "").strip()
+
+    @property
+    def nom_complet(self) -> str:
+        return f"{(self.prenom or '').strip()} {self.nom_effectif()}".strip()
+
+    @property
+    def age(self):
+        """Âge révolu aujourd'hui (None si la date de naissance manque)."""
+        if not self.date_naissance:
+            return None
+        today = date.today()
+        annees = today.year - self.date_naissance.year
+        if (today.month, today.day) < (self.date_naissance.month, self.date_naissance.day):
+            annees -= 1
+        return annees
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<InscriptionAnnuelleMembre {self.nom_complet!r}>"
 
 
 class InscriptionAnnuelleDispo(db.Model):

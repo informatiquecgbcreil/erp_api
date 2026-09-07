@@ -18,6 +18,17 @@
   .ia-mini-form label > span{ font-size:.78rem; font-weight:600; display:block; margin-bottom:3px; }
   .ia-inline{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .ia-doublon{ border:1px solid #e8c887; background:#fff9ec; border-radius:10px; padding:10px 12px; margin-top:10px; }
+  .ia-tag.ton-ok{ background:#e6f6ea; border-color:#95cfa6; color:#175c2c; }
+  .ia-tag.ton-warn{ background:#fff5e0; border-color:#e8c887; color:#7a5200; }
+  .ia-tag.ton-danger{ background:#fdeaea; border-color:#e6a5a5; color:#8a1f1f; }
+  .ia-tag.ton-neutre{ background:#f3f4f6; border-color:#d3d6dd; color:#5b6070; }
+  .ia-cout-table{ width:100%; border-collapse:collapse; font-size:.9rem; margin-top:6px; }
+  .ia-cout-table th, .ia-cout-table td{ padding:5px 4px; text-align:left; border-bottom:1px solid var(--border, #e3e6ef); }
+  .ia-cout-table td.num{ text-align:right; white-space:nowrap; }
+  .ia-cout-table tr.total td{ font-weight:800; border-bottom:0; font-size:1rem; }
+  .ia-jauge{ height:9px; border-radius:999px; background:rgba(15,23,42,.10); overflow:hidden; margin:8px 0 4px; }
+  .ia-jauge span{ display:block; height:100%; border-radius:999px; background:#16a34a; }
+  .ia-membres-liste{ margin:0; padding-left:18px; font-size:.9rem; }
 </style>
 
 <div class="ui-page">
@@ -27,7 +38,8 @@
       <p class="ui-subtitle page-subtitle">
         Inscription {{ inscription.libelle_annee }} ·
         <span class="ia-tag {{ inscription.statut }}">{{ inscription.statut_label }}</span>
-        <span class="ia-tag {{ 'paid' if inscription.reglement_confirme else 'due' }}">{{ inscription.reglement_label }}</span>
+        <span class="ia-tag {{ 'saisie' if inscription.est_familiale else 'saisie' }}">{{ inscription.type_inscription_label }}{% if inscription.est_familiale %} · {{ inscription.nb_personnes }} personnes{% endif %}</span>
+        <span class="ia-tag ton-{{ etat.ton }}">{{ etat.libelle }}{% if etat.statut == 'partiel' %} — reste {{ "%.2f"|format(etat.reste) }} €{% endif %}</span>
       </p>
     </div>
     <div class="ui-actions inline-actions">
@@ -67,6 +79,37 @@
       {% endif %}
       {% if inscription.ateliers_libre %}
         <p style="margin-top:10px; white-space:pre-line;"><strong>Autres souhaits :</strong><br>{{ inscription.ateliers_libre }}</p>
+      {% endif %}
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Foyer</h2>
+      {% if inscription.est_familiale %}
+        <p style="margin:0 0 8px;">
+          <strong>{{ inscription.nb_personnes }}</strong> personne(s) couverte(s)
+          {% if inscription.foyer_id %}
+            · foyer n°{{ inscription.foyer_id }}
+          {% else %}
+            <span class="muted">· foyer pas encore constitué</span>
+          {% endif %}
+        </p>
+        <ul class="ia-membres-liste">
+          {% for personne in personnes %}
+            <li>
+              <strong>{{ personne.nom_complet }}</strong>
+              {% if personne.principal %}<span class="muted"> — inscrit·e principal·e</span>{% endif %}
+              {% if personne.lien %}<span class="muted"> — {{ personne.lien }}</span>{% endif %}
+              {% if personne.date_naissance %}<span class="muted"> — né·e le {{ personne.date_naissance.strftime('%d/%m/%Y') }}</span>{% endif %}
+              {% if personne.participant_id %}
+                <span class="muted"> — fiche n°{{ personne.participant_id }}</span>
+              {% elif inscription.participant_id %}
+                <span class="muted"> — pas encore de fiche</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted" style="margin:0;">Inscription individuelle : une seule personne couverte.</p>
       {% endif %}
     </div>
 
@@ -164,59 +207,136 @@
     </div>
 
     <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Ce que ça coûte</h2>
+      <p class="muted" style="font-size:.82rem; margin:0;">
+        Tarifs du barème {{ inscription.libelle_annee }} en vigueur au
+        {{ cout.date_reference.strftime('%d/%m/%Y') }}.
+      </p>
+      <table class="ia-cout-table">
+        <thead><tr><th>Ligne</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          {% for ligne in cout.lignes %}
+            <tr>
+              <td>
+                {{ ligne.libelle }}
+                {% if ligne.depuis %}<br><span class="muted" style="font-size:.78rem;">tarif du {{ ligne.depuis.strftime('%d/%m/%Y') }}</span>{% endif %}
+              </td>
+              <td class="num">{{ "%.2f"|format(ligne.prix_unitaire) }} €</td>
+              <td class="num">× {{ ligne.quantite }}</td>
+              <td class="num">{{ "%.2f"|format(ligne.total) }} €</td>
+            </tr>
+          {% endfor %}
+          <tr class="total"><td colspan="3">Total dû</td><td class="num">{{ "%.2f"|format(cout.total) }} €</td></tr>
+        </tbody>
+      </table>
+      {% if cout.manquants %}
+        <p class="muted" style="margin-top:8px; color:#8a1f1f;">
+          ⚠️ Aucun tarif au barème pour : {{ cout.manquants|join(', ') }}. Le montant compte pour 0 €.
+          {% if can('cotisations:tarifs') %}
+            <a href="{{ url_for('main.tarifs_cotisations', annee=inscription.annee_scolaire) }}">Compléter le barème</a>.
+          {% endif %}
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="ui-card">
       <h2 style="margin-top:0; font-size:1.05rem;">Règlement</h2>
-      {% if inscription.reglement_confirme %}
-        <dl class="ia-def">
-          <dt>Confirmé le</dt><dd>{{ inscription.reglement_date.strftime('%d/%m/%Y') if inscription.reglement_date else '—' }}</dd>
-          <dt>Montant</dt><dd>{% if inscription.reglement_montant is not none %}{{ "%.2f"|format(inscription.reglement_montant) }} €{% else %}—{% endif %}</dd>
-          <dt>Mode</dt><dd>{{ modes_paiement_labels.get(inscription.reglement_mode, inscription.reglement_mode or '—') }}</dd>
-          {% if inscription.reglement_commentaire %}<dt>Note</dt><dd>{{ inscription.reglement_commentaire }}</dd>{% endif %}
-        </dl>
-        {% if inscription.cotisation_id %}
-          <p class="muted" style="margin-top:8px;">Adhésion enregistrée dans le module Adhésions &amp; participation (n°{{ inscription.cotisation_id }}).</p>
+      <p style="margin:0 0 4px;">
+        <span class="ia-tag ton-{{ etat.ton }}">{{ etat.libelle }}</span>
+      </p>
+      <div class="ia-jauge" aria-hidden="true">
+        <span style="width:{{ ([100, ((etat.regle / etat.du * 100) if etat.du > 0 else 0)]|min)|round|int }}%;"></span>
+      </div>
+      <dl class="ia-def">
+        <dt>Dû</dt><dd>{{ "%.2f"|format(etat.du) }} €</dd>
+        <dt>Réglé</dt><dd>{{ "%.2f"|format(etat.regle) }} €</dd>
+        <dt>Reste</dt><dd><strong>{{ "%.2f"|format(etat.reste) }} €</strong></dd>
+      </dl>
+
+      {% if etat.source == 'cotisations' %}
+        <p class="muted" style="font-size:.82rem; margin:8px 0 0;">
+          Suivi dans <strong>Adhésions &amp; participation</strong> — les versements comptent
+          dans les impayés, la caisse et les bilans.
+        </p>
+        <table class="ia-cout-table">
+          <tbody>
+            {% for c in etat.cotisations %}
+              <tr>
+                <td>
+                  {{ c.type_label }}
+                  {% if c.participant %}<br><span class="muted" style="font-size:.78rem;">{{ c.participant.prenom }} {{ c.participant.nom }}</span>
+                  {% elif c.foyer %}<br><span class="muted" style="font-size:.78rem;">foyer</span>{% endif %}
+                </td>
+                <td class="num">{{ "%.2f"|format(c.montant_regle) }} / {{ "%.2f"|format(c.montant_du) }} €</td>
+                <td class="num">
+                  <span class="ia-tag ton-{{ 'ok' if c.solde else ('warn' if c.montant_regle > 0 else 'danger') }}">
+                    {{ 'Soldée' if c.solde else ('Partielle' if c.montant_regle > 0 else 'Impayée') }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% elif inscription.participant_id %}
+        <p class="muted" style="font-size:.82rem; margin:8px 0 0;">
+          Aucune cotisation générée pour l'instant.
+        </p>
+      {% else %}
+        <p class="muted" style="font-size:.82rem; margin:8px 0 0;">
+          Encaissement noté sur le bulletin : il sera reporté dans Adhésions &amp; participation
+          dès la création de la fiche participant.
+        </p>
+      {% endif %}
+
+      {% if peut_regler %}
+        {% if etat.reste > 0 %}
+          <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" class="ia-mini-form" style="margin-top:12px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="encaisser">
+            <label><span>Montant encaissé (€)</span>
+              <input class="in" type="text" inputmode="decimal" name="montant"
+                     value="{{ "%.2f"|format(etat.reste) }}"
+                     title="Laisse le total pour solder, ou saisis un acompte.">
+            </label>
+            <label><span>Mode de règlement</span>
+              <select class="in" name="mode">
+                {% for m in modes_paiement %}<option value="{{ m }}" {% if m == 'especes' %}selected{% endif %}>{{ modes_paiement_labels[m] }}</option>{% endfor %}
+              </select>
+            </label>
+            <label><span>Date</span>
+              <input class="in" type="date" name="date_reglement" value="{{ aujourdhui.isoformat() }}">
+            </label>
+            <label><span>Note (facultatif)</span>
+              <input class="in" type="text" name="reglement_commentaire" maxlength="255" placeholder="n° de chèque, acompte, tarif réduit…">
+            </label>
+            <div class="ia-inline">
+              <button class="btn primary" type="submit">💶 Encaisser</button>
+              <button class="btn" type="submit" name="solder" value="1"
+                      title="Encaisse exactement ce qu'il reste ({{ "%.2f"|format(etat.reste) }} €)">✅ Solder</button>
+            </div>
+          </form>
+        {% else %}
+          <p style="margin-top:10px;"><strong>Tout est réglé.</strong></p>
         {% endif %}
-        {% if peut_regler %}
+
+        {% if etat.source == 'bulletin' and etat.regle > 0 %}
           <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" style="margin-top:10px;"
-                onsubmit="return confirm('Repasser ce règlement en attente ?');">
+                onsubmit="return confirm('Remettre le règlement de ce bulletin à zéro ?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="annuler">
-            <button class="btn" type="submit">↩ Repasser en « à régler »</button>
+            <button class="btn" type="submit">↩ Remettre à zéro</button>
           </form>
         {% endif %}
-      {% elif peut_regler %}
-        <p class="muted" style="margin:0 0 8px;">À confirmer à l'accueil au moment du paiement.</p>
-        <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" class="ia-mini-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="action" value="confirmer">
-          <label><span>Montant (€)</span>
-            <input class="in" type="text" inputmode="decimal" name="montant"
-                   value="{{ "%.2f"|format(montant_suggere) if montant_suggere is not none else '' }}"
-                   placeholder="{{ 'aucun tarif saisi pour cette année' if montant_suggere is none else '' }}">
-          </label>
-          <label><span>Mode de règlement</span>
-            <select class="in" name="mode">
-              {% for m in modes_paiement %}<option value="{{ m }}" {% if m == 'especes' %}selected{% endif %}>{{ modes_paiement_labels[m] }}</option>{% endfor %}
-            </select>
-          </label>
-          <label><span>Date</span>
-            <input class="in" type="date" name="date_reglement" value="{{ aujourdhui.isoformat() }}">
-          </label>
-          <label><span>Note (facultatif)</span>
-            <input class="in" type="text" name="reglement_commentaire" maxlength="255" placeholder="n° de chèque, tarif réduit, paiement en deux fois…">
-          </label>
-          <label class="ia-inline" style="font-size:.9rem;">
-            <input type="checkbox" name="creer_adhesion" value="1" {% if inscription.participant_id %}checked{% endif %}>
-            <span>Créer aussi l'adhésion dans le module Adhésions &amp; participation</span>
-          </label>
-          {% if not inscription.participant_id %}
-            <p class="muted" style="font-size:.8rem; margin:0;">
-              L'adhésion ne peut être créée qu'une fois la fiche participant faite.
-            </p>
-          {% endif %}
-          <button class="btn primary" type="submit">💶 Confirmer le règlement</button>
-        </form>
-      {% else %}
-        <p class="muted" style="margin:0;">En attente de règlement.</p>
+
+        {% if inscription.participant_id %}
+          <form method="post" action="{{ url_for('inscriptions_annuelles.cotisations', inscription_id=inscription.id) }}" style="margin-top:10px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn" type="submit"
+                    title="Complète ce qui manque dans Adhésions & participation (nouveau membre, barème saisi après coup)">
+              🔄 Mettre les cotisations à jour
+            </button>
+          </form>
+        {% endif %}
       {% endif %}
     </div>
 

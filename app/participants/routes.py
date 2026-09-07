@@ -1041,15 +1041,23 @@ def synthese_participant(participant_id: int):
 
     show_cotisations = can("cotisations:view")
     cotisations_ctx = {}
+    etat_reglement = None
     if show_cotisations:
         from app.participants.cotisations import cotisations_contexte
+        from app.services.cotisations import etat_reglement_participant
+
         cotisations_ctx = cotisations_contexte(participant)
+        # Où en est la personne de son règlement pour l'année scolaire : un
+        # seul calcul partagé avec l'émargement et les inscriptions annuelles,
+        # pour qu'elle ne soit jamais « à jour » ici et « impayée » ailleurs.
+        etat_reglement = etat_reglement_participant(participant)
 
     return render_template(
         "participants/synthese.html",
         participant=participant,
         quality_flags=_quality_flags_for_participant(participant),
         show_cotisations=show_cotisations,
+        etat_reglement=etat_reglement,
         can_edit_cotisations=can("cotisations:edit"),
         **cotisations_ctx,
         latest_presences=latest_presences,
