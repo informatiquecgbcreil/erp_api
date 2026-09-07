@@ -622,6 +622,31 @@ def resynchroniser_reglement(inscription: InscriptionAnnuelle) -> dict:
     return etat
 
 
+def _rattraper_montant_placeholder(cotisation: Cotisation, nouveau_montant: float) -> bool:
+    """Corrige une cotisation créée à 0 € faute de tarif, une fois le tarif connu.
+
+    À la génération, un tarif manquant au barème donne une cotisation à 0 € —
+    c'est un PLACEHOLDER, pas un montant décidé. Sans ce rattrapage, le bouton
+    « Mettre les cotisations à jour » resterait sans effet sur elle pour
+    toujours, même après avoir complété le barème : ``cotisation_existante``
+    la retrouve et la génération s'arrête là, croyant qu'il n'y a rien à faire.
+
+    On ne touche JAMAIS une cotisation qui a déjà reçu un versement (même
+    partiel) : passé ce point, son montant est une dette réelle, à corriger
+    à la main si besoin (fiche participant) plutôt que par un recalcul
+    automatique qui pourrait surprendre. Un montant à 0 € volontaire (tarif
+    réduit négocié) reste également protégé par cette règle dès qu'un premier
+    euro a été réglé dessus."""
+    if cotisation.paiements:
+        return False
+    if float(cotisation.montant_du or 0) > 0.009:
+        return False
+    if nouveau_montant <= 0.009:
+        return False
+    cotisation.montant_du = round(nouveau_montant, 2)
+    return True
+
+
 def generer_cotisations(
     inscription: InscriptionAnnuelle,
     *,
@@ -635,8 +660,11 @@ def generer_cotisations(
     montants sont figés au tarif en vigueur à la date de référence — un
     changement de barème plus tard ne réécrit jamais une dette déjà posée.
 
-    Idempotent : relancer la génération ne crée pas de doublon, elle complète
-    ce qui manque (utile quand un membre reçoit sa fiche après coup).
+    Idempotent : relancer la génération (bouton « Mettre les cotisations à
+    jour ») ne crée pas de doublon, elle complète ce qui manque (un membre
+    reçoit sa fiche après coup) ET rattrape les montants restés à 0 € faute
+    de tarif au moment de la première génération (voir
+    ``_rattraper_montant_placeholder``).
     """
     if not inscription.participant_id:
         raise InscriptionAnnuelleErreur(
@@ -650,11 +678,12 @@ def generer_cotisations(
         libelles = ", ".join(cout["manquants"])
         avertissements.append(
             f"Aucun tarif {libelles} au barème {inscription.libelle_annee} : "
-            "le montant correspondant est à 0 €, à corriger depuis la fiche participant "
-            "ou en complétant le barème des tarifs."
+            "le montant correspondant est à 0 €. Complète le barème des tarifs puis "
+            "reviens cliquer sur « Mettre les cotisations à jour » pour rattraper le montant."
         )
 
     creees: list[Cotisation] = []
+    corrigees: list[str] = []
 
     # --- Adhésion ---------------------------------------------------------
     if inscription.est_familiale and inscription.foyer_id:
@@ -674,6 +703,8 @@ def generer_cotisations(
             )
             db.session.add(adhesion)
             creees.append(adhesion)
+        elif _rattraper_montant_placeholder(adhesion, cout["montant_adhesion"]):
+            corrigees.append(f"Adhésion familiale : {adhesion.montant_du:.2f} €")
     else:
         montant_adhesion = cout["montant_adhesion"]
         if inscription.est_familiale:
@@ -705,6 +736,8 @@ def generer_cotisations(
             )
             db.session.add(adhesion)
             creees.append(adhesion)
+        elif _rattraper_montant_placeholder(adhesion, montant_adhesion):
+            corrigees.append(f"Adhésion individuelle : {adhesion.montant_du:.2f} €")
 
     db.session.flush()
     inscription.cotisation_id = adhesion.id
@@ -717,6 +750,8 @@ def generer_cotisations(
             participant_id=fiche.id,
         )
         if existante is not None:
+            if _rattraper_montant_placeholder(existante, cout["montant_participation_unitaire"]):
+                corrigees.append(f"Participation {fiche.prenom} {fiche.nom} : {existante.montant_du:.2f} €")
             continue
         participation = Cotisation(
             annee_scolaire=inscription.annee_scolaire,
@@ -730,6 +765,9 @@ def generer_cotisations(
         creees.append(participation)
 
     db.session.flush()
+
+    if corrigees:
+        avertissements.append("Montant(s) rattrapé(s) depuis le barème : " + " ; ".join(corrigees) + ".")
 
     # --- Report d'un encaissement fait avant la transformation ------------
     deja_verse = round(float(inscription.reglement_montant or 0), 2)

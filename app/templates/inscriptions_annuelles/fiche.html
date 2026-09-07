@@ -130,6 +130,13 @@
     <div class="reglement">
       <div style="font-weight:800; margin-bottom:6px;">Règlement — partie réservée à l'accueil</div>
 
+      {% if cout.manquants %}
+        <p style="margin:0 0 8px; font-weight:700;">
+          ⚠️ Barème incomplet pour {{ inscription.libelle_annee }} : les montants ci-dessous ne sont
+          pas fiables. Vérifier auprès de la direction avant d'encaisser.
+        </p>
+      {% endif %}
+
       <table class="cout">
         <thead><tr><th>Ligne</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th></tr></thead>
         <tbody>
