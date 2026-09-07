@@ -1,0 +1,208 @@
+{% extends "layout.html" %}
+{% block title %}{{ "Modifier l'inscription" if inscription and inscription.id else "Nouvelle inscription" }}{% endblock %}
+{% block body %}
+<style>
+  .ia-form .ui-card{ margin-top:14px; }
+  .ia-row{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+  .ia-row .field-stack{ display:flex; flex-direction:column; gap:4px; }
+  .ia-row .field-stack > span{ font-size:.78rem; font-weight:600; }
+  .ia-form input.in, .ia-form select.in, .ia-form textarea.in{
+    width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border, #e3e6ef);
+    background:var(--panel, #fff); color:inherit; font:inherit;
+  }
+  .ia-check-list{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:4px 14px; margin-top:6px; }
+  .ia-check{ display:flex; align-items:flex-start; gap:7px; padding:3px 0; font-size:.9rem; }
+  .ia-secteur-group{ font-size:.74rem; font-weight:700; opacity:.6; text-transform:uppercase; margin:10px 0 2px; }
+  .ia-dispo{ border-collapse:collapse; margin-top:8px; }
+  .ia-dispo th, .ia-dispo td{ border:1px solid var(--border, #e3e6ef); padding:6px 14px; text-align:center; }
+  .ia-dispo th[scope="row"]{ text-align:left; font-weight:600; }
+  .ia-sticky{ position:sticky; bottom:0; background:var(--panel, #fff); border-top:1px solid var(--border, #e3e6ef);
+              padding:10px 0; margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+</style>
+
+{% set p = pending or {} %}
+{#- Le macro lit `pending` (variable de contexte) et non `p` : les variables
+    posées par {% set %} dans le corps du template ne sont pas visibles
+    depuis un macro. -#}
+{% macro val(champ, fallback) -%}
+  {%- set brut = pending.get(champ) if pending else none -%}
+  {{- brut if brut is not none else (fallback if fallback else '') -}}
+{%- endmacro %}
+
+<div class="ui-page ia-form">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">
+        {% if inscription and inscription.id %}✏️ Modifier l'inscription{% else %}📝 Nouvelle inscription · {{ libelle_annee }}{% endif %}
+      </h1>
+      <p class="ui-subtitle page-subtitle">
+        Un bulletin par personne et par année scolaire. Seuls le nom et le prénom sont obligatoires :
+        on enregistre ce qu'on a, on complète plus tard.
+      </p>
+    </div>
+  </section>
+
+  <form method="post" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="annee" value="{{ annee }}">
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Qui s'inscrit ?</h2>
+      <div class="ia-row">
+        <label class="field-stack"><span>Nom *</span>
+          <input class="in" name="nom" required value="{{ val('nom', inscription.nom if inscription else '') }}">
+        </label>
+        <label class="field-stack"><span>Prénom *</span>
+          <input class="in" name="prenom" required value="{{ val('prenom', inscription.prenom if inscription else '') }}">
+        </label>
+        <label class="field-stack"><span>Téléphone</span>
+          <input class="in" name="telephone" inputmode="tel" value="{{ val('telephone', inscription.telephone if inscription else '') }}">
+        </label>
+        <label class="field-stack"><span>E-mail</span>
+          <input class="in" name="email" type="email" value="{{ val('email', inscription.email if inscription else '') }}">
+        </label>
+      </div>
+      <div class="ia-row" style="margin-top:12px;">
+        <label class="field-stack" style="grid-column:1 / -1;"><span>Adresse</span>
+          <input class="in" name="adresse" placeholder="n° et rue" value="{{ val('adresse', inscription.adresse if inscription else '') }}">
+        </label>
+      </div>
+      <div class="ia-row" style="margin-top:12px;">
+        <label class="field-stack"><span>Code postal</span>
+          <input class="in" name="code_postal" inputmode="numeric" value="{{ val('code_postal', inscription.code_postal if inscription else '') }}">
+        </label>
+        <label class="field-stack"><span>Ville</span>
+          <input class="in" name="ville" value="{{ val('ville', inscription.ville if inscription else '') }}">
+        </label>
+        <label class="field-stack"><span>Date d'inscription</span>
+          <input class="in" type="date" name="date_inscription"
+                 value="{{ val('date_inscription', (inscription.date_inscription.isoformat() if inscription and inscription.date_inscription else '')) }}">
+        </label>
+      </div>
+
+      <details style="margin-top:12px;">
+        <summary style="cursor:pointer; font-size:.85rem; font-weight:600;">Compléments facultatifs (utiles pour les bilans)</summary>
+        <p class="muted" style="font-size:.8rem; margin:6px 0;">
+          Ces deux champs ne sont pas demandés sur le bulletin. S'ils sont renseignés, ils sont
+          recopiés dans la fiche participant : l'âge et le genre alimentent les bilans SENACS et financeurs.
+        </p>
+        <div class="ia-row">
+          <label class="field-stack"><span>Date de naissance</span>
+            <input class="in" type="date" name="date_naissance"
+                   value="{{ val('date_naissance', (inscription.date_naissance.isoformat() if inscription and inscription.date_naissance else '')) }}">
+          </label>
+          <label class="field-stack"><span>Genre</span>
+            {% set genre_actuel = p.get('genre') if p.get('genre') is not none else (inscription.genre if inscription else '') %}
+            <select class="in" name="genre">
+              <option value="">Non précisé</option>
+              {% for g in ['F', 'H', 'Autre'] %}
+                <option value="{{ g }}" {% if genre_actuel == g %}selected{% endif %}>{{ g }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Qui fait venir la personne ?</h2>
+      {% set secteur_actuel = p.get('secteur_orienteur') if p.get('secteur_orienteur') is not none
+                              else (inscription.secteur_orienteur if inscription else secteur_defaut) %}
+      <label class="field-stack" style="max-width:360px;"><span>Secteur</span>
+        <select class="in" name="secteur_orienteur">
+          <option value="">Non précisé</option>
+          {% for s in secteurs %}<option value="{{ s }}" {% if secteur_actuel == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Ateliers choisis</h2>
+      {% if ateliers %}
+        {% set coches = p.getlist('ateliers')|map('int')|list if p else (inscription.ateliers|map(attribute='id')|list if inscription else []) %}
+        {% set groupes = ateliers|groupby('secteur') %}
+        {% for secteur, liste in groupes %}
+          <div class="ia-secteur-group">{{ secteur }}</div>
+          <div class="ia-check-list">
+            {% for a in liste %}
+              <label class="ia-check">
+                <input type="checkbox" name="ateliers" value="{{ a.id }}" {% if a.id in coches %}checked{% endif %}>
+                <span>{{ a.nom }}{% if a.est_intersecteur %} <span class="muted">(intersecteur)</span>{% endif %}</span>
+              </label>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted">Aucun atelier actif n'est enregistré. Le champ libre ci-dessous prend le relais.</p>
+      {% endif %}
+
+      <label class="field-stack" style="margin-top:14px;"><span>Autres souhaits (champ libre)</span>
+        <textarea class="in" name="ateliers_libre" rows="3"
+                  placeholder="Atelier pas encore programmé, préférence d'horaire, demande à préciser…">{{ val('ateliers_libre', inscription.ateliers_libre if inscription else '') }}</textarea>
+      </label>
+    </div>
+
+    {% set benev = (p.get('benevolat_souhaite') == '1') if p else (inscription.benevolat_souhaite if inscription else false) %}
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Envie de donner un coup de main ?</h2>
+      <label class="ia-check" style="font-size:1rem;">
+        <input type="checkbox" name="benevolat_souhaite" value="1" id="ia-benev" {% if benev %}checked{% endif %}
+               onchange="document.getElementById('ia-benev-bloc').hidden = !this.checked;">
+        <span><strong>Oui, la personne souhaite faire du bénévolat</strong></span>
+      </label>
+
+      <div id="ia-benev-bloc" {% if not benev %}hidden{% endif %} style="margin-top:12px;">
+        <label class="field-stack"><span>Pour quoi faire ?</span>
+          <textarea class="in" name="benevolat_mission" rows="3"
+                    placeholder="Accompagnement scolaire, sorties, accueil café, bricolage, cuisine…">{{ val('benevolat_mission', inscription.benevolat_mission if inscription else '') }}</textarea>
+        </label>
+
+        <p style="margin:14px 0 0; font-size:.85rem; font-weight:600;">Quand serait-elle disponible ?</p>
+        {% set dispo_inconnue = (p.get('benevolat_dispo_inconnue') == '1') if p else (inscription.benevolat_dispo_inconnue if inscription else false) %}
+        {% set creneaux_coches = p.getlist('creneaux') if p else [] %}
+        <table class="ia-dispo">
+          <thead>
+            <tr><th></th>{% for d in demi_journees %}<th>{{ demi_journees_labels[d] }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for j in jours %}
+              <tr>
+                <th scope="row">{{ jours_labels[j] }}</th>
+                {% for d in demi_journees %}
+                  {% set cle = j ~ '|' ~ d %}
+                  {% set actif = (cle in creneaux_coches) if p else (inscription.a_creneau(j, d) if inscription else false) %}
+                  <td>
+                    <input type="checkbox" name="creneaux" value="{{ cle }}" {% if actif %}checked{% endif %}
+                           aria-label="{{ jours_labels[j] }} {{ demi_journees_labels[d] }}">
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <label class="ia-check" style="margin-top:10px;">
+          <input type="checkbox" name="benevolat_dispo_inconnue" value="1" {% if dispo_inconnue %}checked{% endif %}>
+          <span>Je ne sais pas encore</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="ui-card">
+      <label class="field-stack"><span>Remarques (facultatif)</span>
+        <textarea class="in" name="commentaire" rows="2"
+                  placeholder="Ce qu'il faut savoir : mobilité, horaires, accompagnement, rappel à faire…">{{ val('commentaire', inscription.commentaire if inscription else '') }}</textarea>
+      </label>
+    </div>
+
+    <div class="ia-sticky">
+      <button class="btn primary" type="submit">💾 Enregistrer l'inscription</button>
+      {% if inscription and inscription.id %}
+        <a class="btn" href="{{ url_for('inscriptions_annuelles.detail', inscription_id=inscription.id) }}">Annuler</a>
+      {% else %}
+        <a class="btn" href="{{ url_for('inscriptions_annuelles.index', annee=annee) }}">Retour à la liste</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

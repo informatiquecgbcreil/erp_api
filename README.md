@@ -49,6 +49,23 @@ L'objectif principal est de relier le travail de terrain aux obligations de pilo
 - Anonymisation et suppression contrôlée.
 - Suivi insertion et parcours selon les modules activés.
 
+### Inscriptions annuelles (campagne de rentrée)
+
+- Saisie du bulletin d'inscription de l'année scolaire : coordonnées, secteur
+  qui fait venir la personne, ateliers choisis (cases + champ libre), envie de
+  bénévolat (mission libre, créneaux jour × demi-journée, « je ne sais pas »).
+- Transformation en fiche participant portant le statut spécial
+  « en attente de 1re participation », qui tombe automatiquement au premier
+  émargement. Rattachement à une fiche existante plutôt que création d'un doublon.
+- Inscription automatique aux ateliers choisis (jauge et liste d'attente du
+  module Activité).
+- Confirmation du règlement à l'accueil, avec création facultative de l'adhésion
+  dans le module Adhésions & participation.
+- Fiche imprimable à remettre à l'accueil au moment du paiement.
+- Export XLSX complet de la campagne (détail nominatif, synthèse, bénévolat).
+
+Voir [`docs/inscriptions-annuelles.md`](docs/inscriptions-annuelles.md).
+
 ### Activités, ateliers et présences
 
 - Gestion des ateliers et sessions.
@@ -718,6 +735,7 @@ app/
   admin/                      # administration utilisateurs, RBAC, instance
   activite/                   # ateliers, sessions, émargement, attestations, kiosk
   participants/               # fiches participants, recherche, doublons
+  inscriptions_annuelles/     # campagne de rentrée : bulletins, règlements, export
   projets/                    # projets, actions, budgets, finance
   budget/                     # dépenses et justificatifs
   bilans/                     # bilans, exports, narratifs

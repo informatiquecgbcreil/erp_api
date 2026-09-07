@@ -52,6 +52,25 @@ def hub_publics():
             "tag": "Publics",
         })
 
+    if can("inscriptions_annuelles:view"):
+        cards.append({
+            "title": "Inscriptions annuelles",
+            "subtitle": (
+                "La campagne de rentrée : bulletins d'inscription, ateliers souhaités, envies de "
+                "bénévolat, règlements. Chaque bulletin devient une fiche participant en attente "
+                "de première participation."
+            ),
+            "primary_label": "Ouvrir les inscriptions",
+            "primary_url": url_for("inscriptions_annuelles.index"),
+            "secondary": [
+                {"label": "Nouvelle inscription", "url": url_for("inscriptions_annuelles.nouvelle")}
+                if can("inscriptions_annuelles:edit") else None,
+                {"label": "Export XLSX", "url": url_for("inscriptions_annuelles.export")}
+                if can("inscriptions_annuelles:export") else None,
+            ],
+            "tag": "Rentrée",
+        })
+
     if can("insertion:view"):
         cards.append({
             "title": "Insertion",

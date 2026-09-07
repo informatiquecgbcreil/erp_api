@@ -230,6 +230,52 @@ AIDE_PAGES: dict[str, dict] = {
     },
 
     # ------------------------------------------------------------------
+    # Inscriptions annuelles (campagne de rentrée)
+    # ------------------------------------------------------------------
+    "inscriptions_annuelles.index": {
+        "titre": "Les inscriptions de la rentrée",
+        "resume": "Toutes les inscriptions de l'année scolaire en cours : qui s'est inscrit, à quels ateliers, qui veut donner un coup de main, et qui a réglé.",
+        "etapes": [
+            "Choisissez l'année scolaire en haut de la page (elle court de septembre à août).",
+            "Cliquez sur « Nouvelle inscription » pour saisir un bulletin rempli à l'accueil.",
+            "Utilisez les filtres pour retrouver ce que vous cherchez : reste à régler, envies de bénévolat, secteur.",
+            "Le bouton « Exporter en XLSX » télécharge le fichier complet de la campagne, avec toutes les données récoltées.",
+        ],
+        "astuce": "Les compteurs du haut ne bougent pas avec les filtres : ils montrent toujours où en est la campagne entière.",
+    },
+    "inscriptions_annuelles.nouvelle": {
+        "titre": "Saisir un bulletin d'inscription",
+        "resume": "Le formulaire reprend le bulletin papier : coordonnées, secteur qui fait venir la personne, ateliers choisis, envie de bénévolat.",
+        "etapes": [
+            "Seuls le nom et le prénom sont obligatoires : enregistrez ce que vous avez, complétez plus tard.",
+            "Cochez les ateliers demandés. Si l'atelier n'existe pas encore, écrivez-le dans « Autres souhaits ».",
+            "Si la personne veut faire du bénévolat, cochez la case : le formulaire déplie la mission et la grille des disponibilités.",
+            "Enregistrez : vous arrivez sur la fiche de l'inscription, d'où vous créerez la fiche participant.",
+        ],
+        "astuce": "Une personne qui veut aider sans savoir quand ? Cochez « Je ne sais pas encore » : elle apparaîtra quand même dans la liste des bénévoles.",
+    },
+    "inscriptions_annuelles.detail": {
+        "titre": "Une inscription en détail",
+        "resume": "Tout ce qui concerne un bulletin : ce qui a été demandé, la fiche participant, le règlement.",
+        "etapes": [
+            "« Créer la fiche participant » enregistre la personne dans l'annuaire avec le statut « en attente de 1re participation », et l'inscrit aux ateliers cochés.",
+            "Si des fiches ressemblantes existent, rattachez l'inscription à la bonne plutôt que de créer un doublon.",
+            "« Confirmer le règlement » enregistre le paiement encaissé à l'accueil, et peut créer l'adhésion dans le module Adhésions.",
+            "« Fiche à imprimer » sort la feuille à donner à l'accueil au moment du paiement.",
+        ],
+        "astuce": "Le statut d'attente tombe tout seul dès le premier émargement : rien à faire à la main.",
+    },
+    "inscriptions_annuelles.fiche": {
+        "titre": "La fiche d'inscription à imprimer",
+        "resume": "La feuille récapitulative à remettre à l'accueil : coordonnées, ateliers, bénévolat et cadre pour le règlement.",
+        "etapes": [
+            "Cliquez sur « Imprimer la fiche ». Les menus de l'application n'apparaissent pas sur le papier.",
+            "Le cadre du bas sert à noter le règlement : montant, mode de paiement, date, signatures.",
+        ],
+        "astuce": "Si le tarif d'adhésion de l'année est saisi dans le barème, le montant est déjà pré-rempli sur la fiche.",
+    },
+
+    # ------------------------------------------------------------------
     # Participants
     # ------------------------------------------------------------------
     "participants.list_participants": {
@@ -1028,6 +1074,37 @@ NOTICE: list[dict] = [
             ]),
             ("Les doublons", [
                 "Si une personne a été créée deux fois, la page Doublons propose la fusion : l'historique des deux fiches est réuni sur celle que vous conservez.",
+            ]),
+        ],
+    },
+    {
+        "id": "inscriptions_annuelles",
+        "icone": "📝",
+        "titre": "Les inscriptions de la rentrée",
+        "intro": "De la feuille remplie à l'accueil jusqu'à la première venue de la personne.",
+        "sections": [
+            ("L'année scolaire", [
+                "Les inscriptions sont annuelles : l'année court de septembre à août et porte le nom de son année de rentrée. « 2026-2027 » désigne l'année qui commence en septembre 2026.",
+                "Chaque campagne est indépendante : les bulletins de l'an dernier restent consultables, ils ne se mélangent pas avec ceux de cette année.",
+            ]),
+            ("Saisir un bulletin", [
+                "Espace Publics → Inscriptions annuelles → Nouvelle inscription. On y retrouve le bulletin papier : coordonnées, secteur qui fait venir la personne, ateliers choisis (avec un champ libre pour ce qui n'est pas dans la liste), envie de bénévolat.",
+                "Pour le bénévolat, cochez ce que la personne veut faire et quand : la grille jour × demi-journée, ou « Je ne sais pas encore » si elle ne peut pas se prononcer.",
+                "Seuls le nom et le prénom sont obligatoires. À l'accueil, on enregistre ce qu'on a et on complète ensuite.",
+            ]),
+            ("De l'inscription à la fiche participant", [
+                "Depuis la fiche de l'inscription, « Créer la fiche participant » enregistre la personne dans l'annuaire avec un statut spécial : « en attente de 1re participation ». Elle est inscrite dans la foulée aux ateliers cochés.",
+                "Si des fiches ressemblantes existent déjà (ancien inscrit, homonyme), l'application les propose : rattachez le bulletin à la bonne fiche plutôt que de créer un doublon.",
+                "Le statut d'attente tombe TOUT SEUL dès que la personne est pointée présente une première fois, quelle que soit la manière d'émarger. Vous n'avez rien à faire.",
+            ]),
+            ("Le règlement", [
+                "« Confirmer le règlement » enregistre le montant encaissé, le mode de paiement et la date. Tant que ce n'est pas fait, l'inscription reste dans la liste « à régler ».",
+                "En cochant « Créer aussi l'adhésion », le règlement remonte dans le module Adhésions & participation : il compte alors dans les impayés, la caisse et les bilans, sans double saisie.",
+                "Le montant est pré-rempli si le tarif d'adhésion de l'année est saisi dans le barème (Espace Ressources → Tarifs).",
+            ]),
+            ("Imprimer et exporter", [
+                "« Fiche à imprimer » sort la feuille récapitulative à donner à l'accueil au moment du paiement, avec un cadre pour le règlement et les signatures.",
+                "« Exporter en XLSX » télécharge le fichier complet de la campagne : une feuille détaillée avec toutes les données récoltées, une feuille de synthèse, et une feuille bénévolat prête pour la réunion d'équipe.",
             ]),
         ],
     },

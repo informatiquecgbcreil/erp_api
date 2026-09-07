@@ -26,6 +26,7 @@ from app.models import (
     Evaluation,
     HartEvaluation,
     InscriptionActivite,
+    InscriptionAnnuelle,
     ObjectifSuivi,
     OrientationAccesDroit,
     Paiement,
@@ -61,6 +62,7 @@ INVENTAIRE = [
     ("insertion_parcours", "parcours d'insertion", ParticipantInsertionParcours),
     ("insertion_positionnements", "positionnements d'insertion", ParticipantInsertionPositionnement),
     ("insertion_certifications", "certifications d'insertion", ParticipantInsertionCertification),
+    ("inscriptions_annuelles", "bulletins d'inscription annuelle", InscriptionAnnuelle),
 ]
 
 
@@ -152,6 +154,14 @@ def supprimer_definitivement(participant: Participant) -> dict:
         db.session.query(Paiement).filter(
             Paiement.cotisation_id.in_(cotisations)
         ).delete(synchronize_session=False)
+
+    # Bulletins d'inscription annuelle : supprimés PAR L'ORM et non en masse,
+    # pour que les créneaux de bénévolat et les ateliers souhaités partent avec
+    # eux (une suppression en masse ne déclenche aucune cascade, et SQLite
+    # n'applique pas celles de la base).
+    for bulletin in InscriptionAnnuelle.query.filter_by(participant_id=pid).all():
+        db.session.delete(bulletin)
+    db.session.flush()
 
     _supprimer(PresenceMaterielConsommation, participant_id=pid)
     for modele in (

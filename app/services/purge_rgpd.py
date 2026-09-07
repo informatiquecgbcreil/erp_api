@@ -25,6 +25,7 @@ from app.extensions import db
 from app.models import (
     BenevoleHeures,
     Cotisation,
+    InscriptionAnnuelle,
     Evaluation,
     OrientationAccesDroit,
     Paiement,
@@ -136,6 +137,11 @@ def derniere_activite_par_participant() -> dict[int, datetime]:
             jointure=(Cotisation, Cotisation.foyer_id == Participant.foyer_id),
         ),
         _max_par_participant(ParticipantInsertionParcours.participant_id, ParticipantInsertionParcours.updated_at),
+        # Une inscription annuelle vaut activité : quelqu'un qui vient de
+        # s'inscrire à la rentrée n'a encore aucune présence, la purge ne doit
+        # surtout pas l'anonymiser avant sa première venue.
+        _max_par_participant(InscriptionAnnuelle.participant_id, InscriptionAnnuelle.updated_at),
+        _max_par_participant(InscriptionAnnuelle.participant_id, InscriptionAnnuelle.date_inscription),
     ]
     fusion: dict[int, datetime] = {}
     for source in sources:
@@ -189,6 +195,24 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
     p.droit_image_statut = "non_renseigne"
     p.droit_image_date = None
     p.droit_image_recueilli_par = None
+
+    # Les bulletins d'inscription annuelle recopient l'identité et les
+    # coordonnées : les laisser intacts reviendrait à ne rien anonymiser du
+    # tout. Ce qui décrit la DEMANDE (ateliers souhaités, mission de
+    # bénévolat, créneaux) reste : ces données ne désignent personne et
+    # servent aux bilans de campagne.
+    for bulletin in InscriptionAnnuelle.query.filter_by(participant_id=p.id).all():
+        bulletin.nom = NOM_ANONYME
+        bulletin.prenom = f"P{p.id}"
+        bulletin.adresse = None
+        bulletin.code_postal = None
+        bulletin.ville = None
+        bulletin.email = None
+        bulletin.telephone = None
+        bulletin.date_naissance = None
+        bulletin.commentaire = None
+        bulletin.reglement_commentaire = None
+
     sync_legacy_insertion_fields(p, actor_id=actor_id)
 
 

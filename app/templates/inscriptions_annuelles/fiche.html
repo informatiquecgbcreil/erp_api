@@ -1,0 +1,155 @@
+{% extends "layout.html" %}
+{% block title %}Fiche d'inscription — {{ inscription.nom_complet }}{% endblock %}
+{% block body %}
+<style>
+  .fiche{ background:#fff; color:#000; border:1px solid var(--border, #e3e6ef); border-radius:12px;
+          padding:26px 28px; max-width:760px; margin:14px auto; }
+  .fiche h1{ margin:0 0 2px; font-size:1.35rem; }
+  .fiche .sous{ opacity:.75; font-size:.9rem; margin-bottom:18px; }
+  .fiche h2{ font-size:.82rem; text-transform:uppercase; letter-spacing:.06em; margin:20px 0 6px;
+             border-bottom:1px solid #999; padding-bottom:3px; }
+  .fiche dl{ display:grid; grid-template-columns:170px 1fr; gap:3px 12px; margin:0; font-size:.93rem; }
+  .fiche dt{ font-weight:600; }
+  .fiche dd{ margin:0; }
+  .fiche .libre{ white-space:pre-line; border:1px solid #ccc; border-radius:6px; padding:7px 9px;
+                 margin-top:5px; min-height:34px; font-size:.9rem; }
+  .fiche table.dispo{ border-collapse:collapse; margin-top:6px; }
+  .fiche table.dispo th, .fiche table.dispo td{ border:1px solid #666; padding:4px 12px; text-align:center; font-size:.85rem; }
+  .fiche table.dispo th[scope="row"]{ text-align:left; }
+  .fiche .coche{ font-weight:800; }
+  .fiche .reglement{ border:2px solid #000; border-radius:8px; padding:12px 14px; margin-top:14px; }
+  .fiche .reglement table{ width:100%; border-collapse:collapse; font-size:.9rem; }
+  .fiche .reglement td{ padding:4px 0; }
+  .fiche .cases{ display:flex; gap:18px; flex-wrap:wrap; margin-top:6px; font-size:.9rem; }
+  .fiche .signatures{ display:flex; gap:26px; margin-top:26px; }
+  .fiche .signatures div{ flex:1; border-top:1px solid #666; padding-top:5px; font-size:.82rem; }
+  @media print{
+    .no-print, .topbar, .aide-page, .context-banner, .guide-bandeau, .flash-stack{ display:none !important; }
+    .fiche{ border:none; margin:0; padding:0; max-width:none; }
+    body{ background:#fff; }
+    @page{ margin:14mm; }
+  }
+</style>
+
+<div class="ui-page">
+  <div class="ui-actions inline-actions no-print" style="margin:10px 0;">
+    <button type="button" class="btn primary" onclick="window.print()">🖨️ Imprimer la fiche</button>
+    <a class="btn" href="{{ url_for('inscriptions_annuelles.detail', inscription_id=inscription.id) }}">← Retour à l'inscription</a>
+  </div>
+
+  <div class="fiche">
+    <h1>Fiche d'inscription {{ inscription.libelle_annee }}</h1>
+    <div class="sous">
+      {{ ORGANIZATION_NAME }}
+      {% if inscription.date_inscription %} · inscription du {{ inscription.date_inscription.strftime('%d/%m/%Y') }}{% endif %}
+      · à remettre à l'accueil au moment du paiement
+    </div>
+
+    <h2>Participant·e</h2>
+    <dl>
+      <dt>Nom</dt><dd>{{ inscription.nom }}</dd>
+      <dt>Prénom</dt><dd>{{ inscription.prenom }}</dd>
+      <dt>Adresse</dt><dd>{{ inscription.adresse_complete or '—' }}</dd>
+      <dt>Téléphone</dt><dd>{{ inscription.telephone or '—' }}</dd>
+      <dt>E-mail</dt><dd>{{ inscription.email or '—' }}</dd>
+      {% if inscription.date_naissance %}<dt>Date de naissance</dt><dd>{{ inscription.date_naissance.strftime('%d/%m/%Y') }}</dd>{% endif %}
+      <dt>Secteur qui fait venir</dt><dd>{{ inscription.secteur_orienteur or '—' }}</dd>
+    </dl>
+
+    <h2>Ateliers choisis</h2>
+    {% if inscription.ateliers %}
+      <ul style="margin:4px 0 0; padding-left:20px; font-size:.93rem;">
+        {% for a in inscription.ateliers|sort(attribute='nom') %}
+          <li>{{ a.nom }} <span style="opacity:.7;">({{ a.secteur }})</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p style="font-size:.93rem; margin:4px 0 0;">Aucun atelier coché.</p>
+    {% endif %}
+    {% if inscription.ateliers_libre %}
+      <div style="margin-top:8px; font-size:.85rem; font-weight:600;">Autres souhaits</div>
+      <div class="libre">{{ inscription.ateliers_libre }}</div>
+    {% endif %}
+
+    <h2>Bénévolat</h2>
+    {% if inscription.benevolat_souhaite %}
+      <p style="margin:4px 0; font-size:.93rem;"><strong>Souhaite donner un coup de main.</strong></p>
+      <div style="font-size:.85rem; font-weight:600;">Pour quoi faire</div>
+      <div class="libre">{{ inscription.benevolat_mission or '' }}</div>
+
+      <div style="margin-top:10px; font-size:.85rem; font-weight:600;">Disponibilités</div>
+      <table class="dispo">
+        <thead>
+          <tr><th></th>{% for d in demi_journees %}<th>{{ demi_journees_labels[d] }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for j in jours %}
+            <tr>
+              <th scope="row">{{ jours_labels[j] }}</th>
+              {% for d in demi_journees %}
+                <td class="{{ 'coche' if inscription.a_creneau(j, d) }}">{{ '✗' if inscription.a_creneau(j, d) else '' }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if inscription.benevolat_dispo_inconnue %}
+        <p style="margin:6px 0 0; font-size:.9rem;">☒ Ne sait pas encore quand.</p>
+      {% endif %}
+    {% else %}
+      <p style="margin:4px 0 0; font-size:.93rem;">Pas de souhait de bénévolat exprimé.</p>
+    {% endif %}
+
+    {% if inscription.commentaire %}
+      <h2>Remarques</h2>
+      <div class="libre">{{ inscription.commentaire }}</div>
+    {% endif %}
+
+    <div class="reglement">
+      <div style="font-weight:800; margin-bottom:6px;">Règlement — partie réservée à l'accueil</div>
+      {% if inscription.reglement_confirme %}
+        <table>
+          <tr>
+            <td>Montant réglé</td>
+            <td style="text-align:right; font-weight:700;">
+              {% if inscription.reglement_montant is not none %}{{ "%.2f"|format(inscription.reglement_montant) }} €{% else %}—{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>Mode</td>
+            <td style="text-align:right;">{{ modes_paiement_labels.get(inscription.reglement_mode, inscription.reglement_mode or '—') }}</td>
+          </tr>
+          <tr>
+            <td>Date</td>
+            <td style="text-align:right;">{{ inscription.reglement_date.strftime('%d/%m/%Y') if inscription.reglement_date else '—' }}</td>
+          </tr>
+          {% if inscription.reglement_commentaire %}
+            <tr><td colspan="2" style="opacity:.8;">{{ inscription.reglement_commentaire }}</td></tr>
+          {% endif %}
+        </table>
+        <p style="margin:8px 0 0; font-weight:700;">☒ Règlement confirmé</p>
+      {% else %}
+        <table>
+          <tr>
+            <td>Montant à régler</td>
+            <td style="text-align:right; font-weight:700;">
+              {% if montant_suggere is not none %}{{ "%.2f"|format(montant_suggere) }} €{% else %}. . . . . . . . . €{% endif %}
+            </td>
+          </tr>
+          <tr><td>Date du règlement</td><td style="text-align:right;">. . . . / . . . . / . . . . . .</td></tr>
+        </table>
+        <div class="cases">
+          <span>☐ Espèces</span><span>☐ Chèque</span><span>☐ Carte bancaire</span>
+          <span>☐ Virement</span><span>☐ Autre</span>
+        </div>
+        <p style="margin:8px 0 0;">☐ Règlement confirmé &nbsp;&nbsp; ☐ Reste à régler</p>
+      {% endif %}
+    </div>
+
+    <div class="signatures">
+      <div>Signature du participant<br><br></div>
+      <div>Reçu par (accueil)<br><br></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
