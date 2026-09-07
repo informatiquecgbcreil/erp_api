@@ -180,6 +180,9 @@ def participants_inactifs(annees: int | None = None) -> list[dict]:
 def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
     """Efface les données identifiantes en conservant l'exploitabilité statistique."""
     from app.services.insertion import sync_legacy_insertion_fields
+    from app.ateliers.historical_privacy import redact_sources
+
+    redact_sources(p.id)
 
     p.nom = NOM_ANONYME
     p.prenom = f"P{p.id}"

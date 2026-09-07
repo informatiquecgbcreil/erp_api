@@ -726,7 +726,7 @@ def search_participants():
                 "id": p.id,
                 "nom": p.nom,
                 "prenom": p.prenom,
-                "annee_naissance": _year(getattr(p, "date_naissance", None)),
+                "annee_naissance": _year(getattr(p, "date_naissance", None)) or p.annee_naissance,
                 "ville": getattr(p, "ville", None),
                 "created_secteur": getattr(p, "created_secteur", None),
             }
@@ -1347,6 +1347,7 @@ def anonymize_participant(participant_id: int):
     if strict and _is_global_role():
         p.genre = None
         p.date_naissance = None
+        p.annee_naissance = None
         p.quartier_id = None
         p.type_public = "H"
 

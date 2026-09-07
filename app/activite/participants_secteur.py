@@ -255,6 +255,8 @@ def participant_anonymize(participant_id: int):
             flash("Accès refusé.", "danger")
             return redirect(url_for("activite.participants"))
 
+    from app.ateliers.historical_privacy import redact_sources
+    redact_sources(p.id)
     p.nom = "Anonyme"
     p.prenom = "Anonyme"
     p.adresse = None
@@ -266,6 +268,7 @@ def participant_anonymize(participant_id: int):
     if strict:
         p.genre = None
         p.date_naissance = None
+        p.annee_naissance = None
         p.type_public = "H"
         p.quartier_id = None
 

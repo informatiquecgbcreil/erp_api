@@ -128,7 +128,7 @@ def publics_annee(annee: int) -> dict:
     genres: dict[str, int] = {}
     quartiers: dict[str, int] = {}
     for p in participants.values():
-        ages[_tranche_age(_age_au_31_decembre(p.date_naissance, annee))] += 1
+        ages[_tranche_age(p.age_au(date(annee, 12, 31)))] += 1
         genre = (p.genre or NON_RENSEIGNE).strip() or NON_RENSEIGNE
         genres[genre] = genres.get(genre, 0) + 1
         bucket = _bucket_quartier(p)
