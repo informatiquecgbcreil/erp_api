@@ -236,6 +236,73 @@ def test_existing_activity_typography_reused_in_its_sector(migration_db, tmp_pat
     assert all(s.secteur == "Familles" for s in SessionActivite.query)
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_sector_assignment_does_not_confirm_similar_source_activities(migration_db, tmp_path, reverse):
+    sheets = [{"name": "A", "activity": "Atelier numerique collectif", "rows": [("Dupont", "Jean", 1985, "0612345678", None, [1, 1, 1])]},
+              {"name": "B", "activity": "Atelier numerique collectifs", "rows": [("Durand", "Alice", 1990, "0698765432", None, [1, 1, 1])]}]
+    path = workbook(tmp_path, list(reversed(sheets)) if reverse else sheets)
+    d = decisions_for(analyze_import(path))
+    plan = analyze_import(path, d)
+    assert not plan["ready"]
+    assert {a["key"] for a in plan["activities"] if a["status"] == "REVIEW"} == {"A", "B"}
+    assert {b["key"] for b in plan["blockers"] if b["kind"] == "activity"} == {"A", "B"}
+    before = counts()
+    with pytest.raises(ImportBlocked):
+        apply_plan(path, plan)
+    assert counts() == before
+    # A human can explicitly confirm a shared business name after reviewing both sheets.
+    d["activities"]["B"]["name"] = sheets[0]["activity"]
+    result = apply_plan(path, plan_ready(path, d))
+    assert result["created"]["activities"] == 1
+    assert result["created"]["sessions"] == 6
+    assert result["created"]["presences"] == 6
+
+
+@pytest.mark.parametrize("resolution,expected_activities", [("different_sector", 2), ("confirmed_distinct", 2), ("ignore", 1)])
+def test_similar_activity_choices_remain_available(migration_db, tmp_path, resolution, expected_activities):
+    path = workbook(tmp_path, [
+        {"name": "A", "activity": "Atelier numerique collectif", "rows": [("Dupont", "Jean", 1985, "0612345678", None, [1, 1, 1])]},
+        {"name": "B", "activity": "Atelier numerique collectifs", "rows": [("Durand", "Alice", 1990, "0698765432", None, [1, 1, 1])]}])
+    d = decisions_for(analyze_import(path))
+    if resolution == "different_sector":
+        d["activities"]["B"]["secteur"] = "Familles"
+    elif resolution == "ignore":
+        d["activities"]["B"]["action"] = "ignore"
+    else:
+        for choice in d["activities"].values():
+            choice["action"] = "new"
+    result = apply_plan(path, plan_ready(path, d))
+    assert result["created"]["activities"] == expected_activities
+
+
+@pytest.mark.parametrize("target_kind", ["missing_date", "monthly", "boolean_id"])
+def test_incompatible_existing_session_is_rejected(migration_db, tmp_path, target_kind):
+    a = AtelierActivite(nom="Atelier", secteur="Numérique")
+    db.session.add(a)
+    db.session.flush()
+    s = SessionActivite(atelier_id=a.id, secteur="Numérique",
+                        session_type="INDIVIDUEL_MENSUEL" if target_kind == "monthly" else "COLLECTIF",
+                        date_session=None if target_kind == "missing_date" else date(2026, 1, 12))
+    db.session.add(s)
+    db.session.commit()
+    path = workbook(tmp_path)
+    plan = analyze_import(path)
+    d = decisions_for(plan)
+    d["sessions"] = {plan["sessions"][0]["key"]: {"action": "existing", "session_id": True if target_kind == "boolean_id" else s.id}}
+    before = counts()
+    with pytest.raises(ValueError, match="Séance cible"):
+        analyze_import(path, d)
+    assert counts() == before
+
+
+def test_activity_target_requires_an_integer_identifier(migration_db, tmp_path):
+    db.session.add(AtelierActivite(nom="Atelier", secteur="Numérique"))
+    db.session.commit()
+    path = workbook(tmp_path)
+    with pytest.raises(ValueError, match="Activité cible"):
+        analyze_import(path, {"activities": {"Atelier": {"action": "existing", "atelier_id": True}}})
+
+
 def test_existing_session_and_presence_reused_only_after_review(migration_db, tmp_path):
     p = Participant(nom="Dupont", prenom="Jean", date_naissance=date(1985, 4, 3), telephone="0612345678", ville="Creil")
     a = AtelierActivite(nom="Atelier", secteur="Numérique")

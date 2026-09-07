@@ -192,7 +192,7 @@ def _plan(parsed, decisions, data):
             row["status"] = "IGNORE"
         elif action == "existing":
             aid = decision.get("atelier_id")
-            if aid not in atelier_by_id:
+            if type(aid) is not int or aid not in atelier_by_id:
                 raise ValueError("Activité cible absente ou supprimée.")
             target_sector = atelier_by_id[aid].secteur
             if secteur and secteur != target_sector:
@@ -221,14 +221,15 @@ def _plan(parsed, decisions, data):
             block("activity", key, "Correspondance activité à valider.")
         activities.append(row)
     # Variantes proches entre feuilles : elles sont proposées, pas créées en double silencieusement.
-    for i, row in enumerate(activities):
-        if row["status"] != "NEW" or row["key"] in effective["activities"]:
+    for row in activities:
+        if row["status"] != "NEW" or effective["activities"].get(row["key"], {}).get("action") == "new":
             continue
-        similar = [r for r in activities[:i] if r["secteur"] == row["secteur"] and r["group_key"] != row["group_key"] and
+        similar = [r for r in activities if r["status"] != "IGNORE" and r["secteur"] == row["secteur"] and r["group_key"] != row["group_key"] and
                    SequenceMatcher(None, _norm(r["name"]), _norm(row["name"])).ratio() >= .9]
         if similar:
-            row["status"] = "REVIEW"
-            block("activity", row["key"], "Noms proches dans le classeur : confirmer la création distincte ou corriger la source.")
+            row.update(status="REVIEW", match_status="REVIEW")
+            names = ", ".join(r["name"] for r in similar)
+            block("activity", row["key"], f"Noms proches dans le classeur ({names}) : confirmer la création distincte ou valider un nom métier commun.")
 
     amap = {a["key"]: a for a in activities}
     session_by_id = {s.id: s for s in data[SessionActivite] if not s.is_deleted}
@@ -247,8 +248,10 @@ def _plan(parsed, decisions, data):
         if a["status"] == "IGNORE" or action == "ignore":
             row["status"] = "IGNORE"
         elif action == "existing":
-            target = session_by_id.get(decision.get("session_id"))
-            if not target or target.atelier_id != a["atelier_id"] or target.secteur != a["secteur"]:
+            sid = decision.get("session_id")
+            target = session_by_id.get(sid) if type(sid) is int else None
+            if (not target or target.atelier_id != a["atelier_id"] or target.secteur != a["secteur"]
+                    or target.session_type != "COLLECTIF" or target.date_session is None):
                 raise ValueError("Séance cible absente ou incompatible avec l'activité et le secteur.")
             if target.id in used_existing:
                 raise ValueError("Deux colonnes source distinctes ne peuvent pas partager une séance cible.")
@@ -263,7 +266,8 @@ def _plan(parsed, decisions, data):
                 row.update(date_session=corrected.isoformat(), status="READY")
             elif action == "date":
                 raise ValueError("Une correction doit préciser la date.")
-            candidates = [s for s in by_activity_date[(a["atelier_id"], row.get("date_session"))] if s.secteur == a["secteur"]]
+            candidates = [s for s in by_activity_date[(a["atelier_id"], row.get("date_session"))]
+                          if s.secteur == a["secteur"] and s.session_type == "COLLECTIF" and s.date_session is not None]
             row["candidates"] = [{"id": s.id, "date_session": str(s.date_session),
                                    "source_slot": s.creneau_source, "heure_debut": s.heure_debut,
                                    "heure_fin": s.heure_fin} for s in candidates]

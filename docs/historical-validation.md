@@ -55,10 +55,12 @@ Les secteurs n'ont pas été attribués arbitrairement : les **66 affectations r
 
 ## Vérifications réalisées
 
-- **121 tests historiques** couvrent parseur, matching, transaction, interface et migration. Le fichier privé active trois intégrations : lecture complète, dry-run sur base isolée et dépôt/prévisualisation/formulaire réel dans l'interface. Il n'est pas remplacé par les petites fixtures de tests aux limites.
+- **130 tests historiques** couvrent parseur, matching, transaction, interface et migration. Le fichier privé active trois intégrations : lecture complète, dry-run sur base isolée et dépôt/prévisualisation/formulaire réel dans l'interface. Il n'est pas remplacé par les petites fixtures de tests aux limites.
 - Une exécution élargie a validé **164 tests**, incluant l'historique, SENACS, les indicateurs, l'anonymisation et les suppressions. Le test supplémentaire de non-déclenchement des tâches automatiques pendant la prévisualisation a passé séparément.
+- Après la dernière correction des correspondances d'activités et de séances, les **31 tests du service et 17 tests d'interface** ont été réexécutés avec succès, intégrations du fichier réel activées.
 - L'import d'essai avec décisions sur des fixtures isolées, puis le réimport identique, ne double ni participants, ni activités, ni séances, ni présences. Les présences complémentaires et leur provenance sont vérifiées.
 - Les deux séances d'un même jour restent distinctes, y compris si leur créneau source est identique. Deux colonnes ne peuvent pas être affectées à la même séance cible.
+- La sélection d'un secteur ne valide pas les noms d'activité proches entre feuilles. Le contrôle est testé dans les deux ordres de lecture, avec confirmation d'un nom commun, création distincte, autre secteur ou exclusion. Une séance cible sans date ou de type mensuel est refusée, de même qu'un identifiant booléen transmis dans les décisions.
 - Le dry-run est contrôlé pour absence d'INSERT/UPDATE/DELETE. Une erreur injectée après création de lignes annule toute la transaction. Un changement de base ou d'affectation invalide l'aperçu précédent.
 - La migration Alembic a été exécutée en aller-retour sur SQLite et préserve les données métier préexistantes.
 - Suite générale : **836 réussites, 4 tests ignorés, 1 échec préexistant** dans `tests/test_sauvegarde_hors_serveur.py::test_destinations_separees_par_points_virgules_et_lignes`. Cet échec de représentation de chemins Windows/UNC a été reproduit sur le commit initial `d67da0b` dans un checkout isolé. Les fichiers concernés n'ont pas été modifiés par ce chantier.

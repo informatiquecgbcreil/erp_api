@@ -48,9 +48,13 @@ La migration avancée est séparée de l'import standard pour réutiliser les mo
 
 Une valeur ACTIVITE unique après normalisation fournit le nom métier. Le nom de feuille, les valeurs originales et les références des cellules restent dans le plan. Les noms normalisés identiques retrouvent les activités existantes du secteur choisi. Une troncature ou une ressemblance proche fournit des candidats à valider. Aucun rapprochement flou ne crée ou ne fusionne automatiquement une activité.
 
+Choisir un secteur ne confirme pas la création distincte de deux activités proches du même classeur. Les deux propositions restent à valider, quel que soit l'ordre des feuilles. Il est possible de confirmer leur distinction, de leur donner explicitement le même nom métier, ou d'ignorer une feuille. Des secteurs différents restent des affectations distinctes.
+
 Les dates combinent mois/année explicites, jour, jour de semaine et ordre des colonnes. Une baisse du numéro de jour sans nouvel en-tête explicite avance le mois. Les impossibilités du calendrier, contradictions du jour de semaine et valeurs illisibles restent REVIEW ; les mois voisins compatibles sont seulement des suggestions. Une erreur comme 31 avril n'entraîne pas la translation de toutes les colonnes suivantes.
 
 Une colonne = une séance source. Les créneaux M, AM et ME restent textuels dans `creneau_source`. Les heures restent NULL. Même deux colonnes du même jour et du même créneau restent distinctes. Pour une autre version du classeur, une séance existante du même jour est proposée à validation, pas fusionnée automatiquement. Deux colonnes d'un lot ne peuvent pas cibler la même séance existante.
+
+Une séance existante doit être datée, de type COLLECTIF dans le modèle et appartenir à l'activité et au secteur retenus. Un conteneur de rendez-vous mensuel ne peut pas recevoir directement les présences d'une colonne datée.
 
 Présence : booléen vrai, nombre **1**, ou texte normalisé `1`, `x`, `p`, `présent`, `present`, `oui`, `o`, `true`. Absence : vide, booléen faux, nombre **0**, ou `0`, `absent`, `a`, `non`, `n`, `false`. Les autres nombres et textes sont des anomalies, pas des présences devinées. Les présences redondantes restent plusieurs preuves source d'une seule relation unique.
 
