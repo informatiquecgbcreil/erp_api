@@ -1,0 +1,215 @@
+{% extends "layout.html" %}
+{% macro details(value, title='Données et provenance') %}
+<details class="details-card"><summary>{{ title }}</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:32rem;overflow:auto">{{ value|tojson(indent=2) }}</pre></details>
+{% endmacro %}
+{% block body %}
+<div class="page-shell long-form-shell content-shell">
+  <section class="hero-card">
+    <div class="page-header"><div class="page-title-wrap">
+      <h1>Migration historique des présences</h1>
+      <p class="muted">Analysez le classeur entier, affectez ensuite chaque activité à son secteur, puis validez les rapprochements avant l'enregistrement.</p>
+    </div></div>
+    <div class="hero-actions"><a class="btn" href="{{ url_for('admin.import_excel') }}">Import standard</a>{% if plan %}<a class="btn" href="{{ url_for('admin.historical_import') }}">Analyser un autre classeur</a>{% endif %}</div>
+  </section>
+
+  {% if error %}<div class="callout-soft warnish" role="alert">{{ error }}</div>{% endif %}
+
+  {% if not plan %}
+  <section class="section-card">
+    <h2>Préparer un import</h2>
+    <p>L'analyse seule n'enregistre aucun participant, activité, séance ou présence. Le fichier et les décisions restent dans un espace temporaire privé, accessible à votre compte, pendant 7 jours par défaut.</p>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-3">
+        <label class="field-stack"><span>Classeur source (.xlsx)</span><input class="in" type="file" name="xlsx_file" accept=".xlsx" required></label>
+        <label class="field-stack"><span>Année de référence, si absente du fichier</span><input class="in" type="number" name="year" min="1900" max="2100" placeholder="Détection automatique"></label>
+      </div>
+      <div class="hero-actions"><button class="btn ok" type="submit">Analyser sans enregistrer</button></div>
+    </form>
+  </section>
+  {% else %}
+  <section class="section-card">
+    <h2>{{ metadata.source_filename }}</h2>
+    <p>Chaque activité possède sa propre affectation. Choisissez les secteurs dans la liste des activités ci-dessous, après lecture du classeur.</p>
+    {% if metadata.applied %}
+      <div class="callout-soft"><strong>Lot enregistré.</strong> Cet aperçu est conservé pour consultation.</div>
+      {{ details(metadata.result, "Résultat de l'import") }}
+    {% elif plan.ready %}
+      <div class="callout-soft"><strong>L'aperçu est prêt.</strong> Examinez les contrôles ci-dessous avant de confirmer l'import en bas de page.</div>
+    {% else %}
+      <div class="callout-soft warnish"><strong>L'import est bloqué.</strong> Résolvez les cas à valider et relancez la prévisualisation.</div>
+    {% endif %}
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('admin.historical_report', stage_id=stage_id) }}">Télécharger le rapport complet</a>
+      <a class="btn" href="{{ url_for('admin.historical_decisions_export', stage_id=stage_id) }}">Télécharger les décisions</a>
+    </div>
+    <p class="muted">Ces fichiers contiennent des données personnelles. Conservez-les dans un emplacement réservé aux personnes habilitées.</p>
+    {% set labels = {'sheets': 'Feuilles', 'sheets_total':'Feuilles', 'sheets_ignored':'Feuilles ignorées', 'activities':'Activités', 'activities_existing':'Activités existantes', 'activities_new':'Activités à créer', 'sessions':'Séances', 'sessions_detected':'Séances détectées', 'source_participants':'Lignes de participants', 'participants_source':'Lignes de participants', 'participants_exact':'Correspondances exactes', 'participants_high_confidence':'Correspondances très probables', 'participants_review':'Participants à valider', 'participants_new':'Participants à créer', 'presences':'Présences', 'presences_detected':'Présences détectées', 'presences_existing':'Présences existantes', 'internal_duplicates':'Doublons internes', 'errors':'Erreurs', 'date_anomalies':'Anomalies de dates', 'territory_anomalies':'Anomalies territoriales', 'ignored_rows':'Lignes ignorées'} %}
+    <dl style="display:grid;grid-template-columns:minmax(12rem,2fr) 1fr;gap:.4rem 1rem">
+      {% for name, value in plan.get('summary', {}).items() %}<dt>{{ labels.get(name, name|replace('_', ' ')) }}</dt><dd>{% if value is mapping or value is sequence and value is not string %}{{ value|tojson }}{% else %}{{ value }}{% endif %}</dd>{% endfor %}
+    </dl>
+    {% if plan.blockers %}<details class="details-card" open><summary>Points bloquants ({{ plan.blockers|length }})</summary><ul>{% for blocker in plan.blockers %}<li>{{ blocker.message or blocker }}{% if blocker.key %} <small class="muted">{{ blocker.key }}</small>{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+  </section>
+
+  <section class="section-card">
+    <h2>Cartographie des feuilles et contrôle des totaux</h2>
+    <p>Le rapport expose les présences lues, les totaux du classeur et les écarts. Une anomalie ne doit être acceptée qu'après contrôle de sa provenance.</p>
+    {% for sheet in plan.get('parser', {}).get('sheets', []) %}
+      <article class="soft-panel" style="margin-bottom:1rem">
+        <h3>{{ sheet.name or sheet.sheet or sheet.source_sheet }}</h3>
+        <p>{{ {'activity':'Activité exploitable', 'technical':'Feuille technique', 'summary':'Synthèse', 'unrecognized':'Feuille non reconnue'}.get(sheet.classification, sheet.classification) }}{% if sheet.reason %} · {{ sheet.reason }}{% endif %}</p>
+        {% if sheet.totals %}
+        <p><strong>{{ {'coherent':'✅ Cohérent', 'difference':'⚠️ Écart', 'uninterpretable':'❌ Impossible à interpréter', 'unavailable':'Total Excel non disponible'}.get(sheet.totals.status, sheet.totals.status) }}</strong> — Présences calculées : {{ sheet.totals.calculated }} ; total Excel : {{ sheet.totals.excel_total if sheet.totals.excel_total is not none else 'indisponible' }}.</p>
+        <p>{{ sheet.rows }} lignes de participants · {{ sheet.sessions }} séances détectées.</p>
+        {% endif %}
+        {{ details(sheet, 'Contrôles, totaux et anomalies de cette feuille') }}
+      </article>
+    {% endfor %}
+  </section>
+
+  {% if not metadata.applied %}
+  <form method="post" action="{{ url_for('admin.historical_decisions', stage_id=stage_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="digest" value="{{ plan.digest }}">
+
+    <section class="section-card">
+      <h2>Participants à valider</h2>
+      <p><strong>EXACT</strong> : correspondance certaine. <strong>HIGH_CONFIDENCE</strong> : plusieurs indices concordants. <strong>REVIEW</strong> : décision humaine nécessaire. <strong>NEW</strong> : nouvelle personne proposée.</p>
+      <p>Pour confirmer qu'au moins deux lignes source représentent la même nouvelle personne, choisissez « Créer / regrouper » sur chacune et renseignez exactement le même identifiant de regroupement. Laissez cet identifiant vide pour déclarer une personne distincte. « Ignorer » exclut la ligne et ses présences du lot.</p>
+      {% set ns = namespace(review_count=0) %}
+      {% for row in match_rows %}
+        {% set key = row_key(row) %}
+        {% set saved = decisions.get('participants', {}).get(key, {}) %}
+        {% if row.classification == 'REVIEW' or row.status == 'REVIEW' or saved %}
+        {% set ns.review_count = ns.review_count + 1 %}
+        <article class="soft-panel" style="margin-bottom:1rem">
+          <h3>{{ row.nom or row.get('raw', {}).get('nom', '') }} {{ row.prenom or row.get('raw', {}).get('prenom', '') }}</h3>
+          <p><strong>{{ row.classification or row.status }}</strong> · Source : <code>{{ key }}</code></p>
+          {{ details(row, 'Identité source, candidats et motifs du rapprochement') }}
+          <div class="form-grid-3">
+            <label class="field-stack"><span>Décision pour cette ligne</span><select class="in" name="participants.{{ loop.index0 }}">
+              <option value="">Laisser la proposition automatique / à valider</option>
+              {% for candidate in row.get('candidates', []) %}
+                {% set participant_id = candidate.participant_id or (candidate.id if candidate.kind != 'source' else none) %}
+                {% if participant_id %}<option value="existing:{{ participant_id }}" {% if saved.action == 'participant' and saved.participant_id == participant_id %}selected{% endif %}>Même personne : #{{ participant_id }} {{ candidate.nom or candidate.get('raw', {}).get('nom', '') }} {{ candidate.prenom or candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+                {% if candidate.kind == 'source' %}<option value="source:{{ candidate.key }}" {% if saved.action == 'source' and saved.source_id == candidate.key %}selected{% endif %}>Même personne que la ligne {{ candidate.key }} · {{ candidate.get('raw', {}).get('nom', '') }} {{ candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+              {% endfor %}
+              {% if saved.action == 'participant' %}<option value="existing:{{ saved.participant_id }}" selected>Même personne : participant #{{ saved.participant_id }} (décision enregistrée)</option>{% endif %}
+              {% if saved.action == 'source' %}<option value="source:{{ saved.source_id }}" selected>Même personne que la ligne {{ saved.source_id }} (décision enregistrée)</option>{% endif %}
+              <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer / regrouper une nouvelle personne</option>
+              <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer cette ligne et ses présences</option>
+            </select></label>
+            <label class="field-stack"><span>Identifiant commun si même personne</span><input class="in" name="participants.{{ loop.index0 }}.group" value="{{ saved.get('group', '') }}" placeholder="Vide = personne distincte"></label>
+            {% if not row.get('normalized', {}).get('nom') or not row.get('normalized', {}).get('prenom') or saved.get('values') %}
+            <label class="field-stack"><span>Nom vérifié pour une nouvelle personne</span><input class="in" name="participants.{{ loop.index0 }}.nom" value="{{ saved.get('values', {}).get('nom', '') }}"></label>
+            <label class="field-stack"><span>Prénom vérifié pour une nouvelle personne</span><input class="in" name="participants.{{ loop.index0 }}.prenom" value="{{ saved.get('values', {}).get('prenom', '') }}"></label>
+            {% endif %}
+          </div>
+        </article>
+        {% endif %}
+      {% endfor %}
+      {% if ns.review_count == 0 %}<p>Aucun rapprochement de participant à valider.</p>{% endif %}
+      {{ details(plan.get('matching', {}), 'Toutes les classifications et groupes de participants') }}
+    </section>
+
+    <section class="section-card">
+      <h2>Activités</h2>
+      <p>Affectez chaque activité à un secteur. Les séances et leurs présences seront comptées dans ce secteur. Choisir une activité existante conserve son affectation actuelle.</p>
+      {% for activity in plan.get('activities', []) %}
+        {% set key = row_key(activity) %}{% set saved = decisions.get('activities', {}).get(key, {}) %}
+        <article class="soft-panel" style="margin-bottom:1rem">
+          <h3>{{ activity.name or activity.nom }}</h3><p>{{ activity.status }}{% if activity.atelier_id %} · Activité existante #{{ activity.atelier_id }}{% endif %}</p>
+          <label class="field-stack"><span>Secteur de cette activité</span><select class="in" name="activities.{{ loop.index0 }}.secteur">
+            <option value="">À affecter après analyse</option>
+            {% for secteur in secteurs %}<option value="{{ secteur }}" {% if activity.secteur == secteur %}selected{% endif %}>{{ secteur }}</option>{% endfor %}
+          </select></label>
+          <label class="field-stack"><span>Correspondance métier</span><select class="in" name="activities.{{ loop.index0 }}">
+            <option value="">Laisser la proposition automatique / à valider</option>
+            {% for candidate in activity.get('candidates', []) %}{% set target = candidate.atelier_id or candidate.id %}
+              <option value="existing:{{ target }}" {% if saved.action == 'existing' and saved.atelier_id == target %}selected{% endif %}>Utiliser #{{ target }} · {{ candidate.name or candidate.nom }}</option>
+            {% endfor %}
+            {% if saved.action == 'existing' %}<option value="existing:{{ saved.atelier_id }}" selected>Utiliser l'activité #{{ saved.atelier_id }} (décision enregistrée)</option>{% endif %}
+            <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer une activité distincte dans le secteur choisi</option>
+            <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer l'activité et toutes ses présences</option>
+          </select></label>
+          <label class="field-stack"><span>Nom métier corrigé, si nécessaire (avec décision de création)</span><input class="in" name="activities.{{ loop.index0 }}.name" value="{{ saved.get('name', '') }}" maxlength="200"></label>
+          {{ details(activity, 'Provenance et candidats pour cette activité') }}
+        </article>
+      {% endfor %}
+    </section>
+
+    <section class="section-card">
+      <h2>Séances à valider</h2>
+      <p>Les créneaux source sont conservés sans inventer d'horaires. Corrigez une date uniquement à partir d'une information vérifiée. Une séance ignorée exclut ses présences du lot.</p>
+      {% set ns = namespace(review_count=0) %}
+      {% for session in plan.get('sessions', []) %}
+        {% set key = row_key(session) %}{% set saved = decisions.get('sessions', {}).get(key, {}) %}
+        {% if session.status == 'REVIEW' or saved %}
+          {% set ns.review_count = ns.review_count + 1 %}
+          <article class="soft-panel" style="margin-bottom:1rem">
+            <h3>{{ session.sheet or session.source_sheet }} · {{ session.date_session or 'Date à vérifier' }} · {{ session.slot or session.source_slot or '' }}</h3>
+            <p>Source : <code>{{ key }}</code></p>
+            {{ details(session, 'Date, créneau, colonne source et candidats') }}
+            <div class="form-grid-3">
+              <label class="field-stack"><span>Décision pour cette séance</span><select class="in" name="sessions.{{ loop.index0 }}">
+                <option value="">Laisser la proposition automatique / à valider</option>
+                {% for candidate in session.get('candidates', []) %}{% set target = candidate.session_id or candidate.id %}<option value="existing:{{ target }}" {% if saved.action == 'existing' and saved.session_id == target %}selected{% endif %}>Même séance : #{{ target }} · {{ candidate.date_session }} {{ candidate.heure_debut or '' }}</option>{% endfor %}
+                {% if saved.action == 'existing' %}<option value="existing:{{ saved.session_id }}" selected>Même séance : #{{ saved.session_id }} (décision enregistrée)</option>{% endif %}
+                <option value="date" {% if saved.action == 'date' %}selected{% endif %}>Confirmer / corriger la date ci-contre</option>
+                <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer une séance distincte</option>
+                <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer cette séance et ses présences</option>
+              </select></label>
+              <label class="field-stack"><span>Date vérifiée</span><input class="in" type="date" name="sessions.{{ loop.index0 }}.date" value="{{ saved.get('date_session', session.get('date_session', '')) or '' }}"></label>
+            </div>
+          </article>
+        {% endif %}
+      {% endfor %}
+      {% if ns.review_count == 0 %}<p>Aucune séance à valider.</p>{% endif %}
+      {{ details(plan.get('sessions', []), 'Toutes les séances reconnues') }}
+    </section>
+
+    <section class="section-card">
+      <h2>Anomalies et contrôles</h2>
+      <p>Cocher une anomalie signifie que vous avez contrôlé les données source et accepté cet écart. Cela ne corrige pas les dates ni les identités : utilisez les décisions correspondantes ci-dessus.</p>
+      {% for anomaly in plan.get('anomalies', []) %}
+      <article class="soft-panel" style="margin-bottom:.8rem">
+        <p>{{ anomaly.message or anomaly }}</p>
+        {{ details(anomaly, 'Cellules source et détail du contrôle') }}
+        {% if anomaly.id and anomaly.get('blocking', true) %}<label><input type="checkbox" name="acknowledged_anomalies" value="{{ anomaly.id }}" {% if anomaly.id in decisions.get('acknowledged_anomalies', []) %}checked{% endif %}> J'ai vérifié et j'accepte cette anomalie</label>{% endif %}
+      </article>
+      {% endfor %}
+      {{ details(plan.get('parser', {}).get('errors', []), 'Erreurs de lecture') }}
+    </section>
+
+    <section class="section-card">
+      <h2>Mettre à jour l'aperçu</h2>
+      <div class="hero-actions"><button class="btn ok" type="submit">Enregistrer les décisions et refaire le dry-run</button></div>
+    </section>
+  </form>
+
+  <section class="section-card">
+    <details class="details-card"><summary>Importer un fichier de décisions pour traiter plusieurs cas</summary>
+      <p>Le fichier remplace les décisions du formulaire. Utilisez le format du fichier de décisions téléchargé. Le classeur sera réanalysé.</p>
+      <form method="post" action="{{ url_for('admin.historical_decisions', stage_id=stage_id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="digest" value="{{ plan.digest }}">
+        <input class="in" type="file" name="decisions_file" accept=".json,application/json" required>
+        <button class="btn" type="submit">Charger les décisions et refaire le dry-run</button>
+      </form>
+    </details>
+  </section>
+
+  <section class="section-card">
+    <h2>Enregistrer le lot</h2>
+    <p>L'import utilise le fichier et les décisions du dernier aperçu enregistré. Les modifications du formulaire ci-dessus doivent d'abord être validées avec « Enregistrer les décisions et refaire le dry-run ».</p>
+    <form method="post" action="{{ url_for('admin.historical_apply', stage_id=stage_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="digest" value="{{ plan.digest }}">
+      <label><input type="checkbox" name="confirm" value="yes" required {% if not plan.ready %}disabled{% endif %}> Je confirme ce lot et les secteurs affectés à ses activités.</label>
+      <div class="hero-actions"><button class="btn ok" type="submit" {% if not plan.ready %}disabled{% endif %}>Importer le lot validé</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

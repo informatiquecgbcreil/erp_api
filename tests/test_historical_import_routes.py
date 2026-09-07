@@ -1,0 +1,286 @@
+"""HTTP staging contract; the real workbook/service have separate integration tests."""
+from copy import deepcopy
+import hashlib
+from io import BytesIO
+import json
+import os
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+
+import pytest
+
+
+@pytest.fixture
+def historical_ui(app, admin_client, monkeypatch, tmp_path):
+    monkeypatch.setattr(app, "instance_path", str(tmp_path))
+    calls = {"analyze": [], "apply": [], "ready": False}
+
+    def analyze(path, decisions=None, year=None):
+        decisions = decisions or {}
+        calls["analyze"].append({"path": path, "decisions": deepcopy(decisions), "year": year})
+        digest = hashlib.sha256(json.dumps(decisions, sort_keys=True).encode()).hexdigest()
+        return {
+            "source": {"filename": Path(path).name}, "digest": digest,
+            "summary": {"sheets": 1, "participants_source": 2, "sessions": 1},
+            "parser": {"sheets": [{"name": "Atelier", "classification": "ACTIVITY"}], "anomalies": [{"id": "a1", "message": "Total à contrôler"}], "errors": []},
+            "matching": {"rows": [
+                {"key": "sheet:5", "classification": "REVIEW", "raw": {"nom": "TEST", "prenom": "Luc"}, "candidates": [{"kind": "participant", "id": 99, "raw": {"nom": "TEST", "prenom": "Luc"}}, {"kind": "source", "key": "sheet:6", "raw": {"nom": "TEST", "prenom": "Luc"}}]},
+                {"key": "sheet:6", "classification": "REVIEW", "raw": {"nom": "TEST", "prenom": "Luc"}, "candidates": []},
+            ]},
+            "activities": [{"key": "act:1", "name": "Atelier", "secteur": decisions.get('activities', {}).get('act:1', {}).get('secteur'), "status": "REVIEW", "candidates": [{"id": 1, "name": "Atelier existant"}]}],
+            "sessions": [{"key": "session:1", "sheet": "Atelier", "date_session": "2026-01-12", "status": "REVIEW", "candidates": [{"id": 7, "date_session": "2026-01-12"}]}],
+            "blockers": [] if calls["ready"] else [{"kind": "participant", "key": "sheet:5", "message": "Homonyme à valider"}],
+            "ready": calls["ready"], "decisions": decisions,
+        }
+
+    def apply(path, **kwargs):
+        calls["apply"].append({"path": path, **kwargs})
+        if calls.get("apply_error"):
+            raise ValueError("Les données ont changé depuis l'aperçu")
+        return {"batch_id": 1, "presences_created": 2}
+
+    monkeypatch.setitem(sys.modules, "app.ateliers.historical_import", SimpleNamespace(analyze_import=analyze, apply_import=apply))
+    return SimpleNamespace(app=app, client=admin_client, calls=calls, root=tmp_path / "historical_imports")
+
+
+def _upload(ui, **fields):
+    from app.secteurs import get_secteur_labels
+    with ui.app.app_context():
+        secteur = get_secteur_labels()[0]
+    data = {"secteur": secteur, "xlsx_file": (BytesIO(b"route-test-workbook"), "STATS_2026_par_activite.xlsx"), **fields}
+    response = ui.client.post("/admin/import-historical", data=data, content_type="multipart/form-data")
+    return response
+
+
+def _stage(ui):
+    response = _upload(ui)
+    assert response.status_code == 302
+    url = response.headers["Location"]
+    stage = ui.root / url.rsplit("/", 1)[1]
+    plan = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
+    return url, stage, plan
+
+
+def test_historical_requires_authentication(client):
+    assert client.get("/admin/import-historical").status_code == 302
+
+
+def test_preview_does_not_trigger_background_housekeeping(app, monkeypatch):
+    from app.services import purge_rgpd, notifications
+    def forbidden():
+        raise AssertionError("Le dry-run ne doit pas déclencher cette tâche")
+    monkeypatch.setattr(purge_rgpd, "purge_auto_active", forbidden)
+    monkeypatch.setattr(notifications, "notifications_actives", forbidden)
+    with app.test_request_context("/admin/import-historical"):
+        hooks = {f.__name__: f for f in app.before_request_funcs[None]}
+        assert hooks["_purge_rgpd_quotidienne"]() is None
+        assert hooks["_digest_notifications_quotidien"]() is None
+
+
+def test_standard_sector_is_required_and_dry_run_is_default(historical_ui):
+    response = historical_ui.client.get("/admin/import-excel")
+    assert response.status_code == 200
+    assert b'name="secteur" required' in response.data
+    assert b'value="1" selected' in response.data
+    assert historical_ui.client.post("/admin/import-excel", data={"secteur": "INVALID"}).status_code == 400
+
+
+def test_upload_needs_no_global_sector(historical_ui):
+    response = _upload(historical_ui, secteur="")
+    assert response.status_code == 302
+    assert "secteur" not in historical_ui.calls["analyze"][0]
+    assert not historical_ui.calls["apply"]
+
+
+def test_upload_previews_without_applying_and_retains_filename(historical_ui):
+    url, stage, _ = _stage(historical_ui)
+    assert len(historical_ui.calls["analyze"]) == 1
+    assert not historical_ui.calls["apply"]
+    assert (stage / "STATS_2026_par_activite.xlsx").exists()
+    response = historical_ui.client.get(url)
+    assert response.status_code == 200
+    assert "no-store" in response.headers["Cache-Control"]
+    assert b"sheet:5" in response.data
+    assert b"source:sheet:6" in response.data
+    assert b"existing:99" in response.data
+    assert b"TEST Luc" in response.data
+    assert historical_ui.client.get(url + "/report.json").json["summary"]["sheets"] == 1
+
+
+def test_owner_scope_and_expiry(historical_ui):
+    url, stage, _ = _stage(historical_ui)
+    path = stage / "metadata.json"
+    original = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**original, "owner_id": 999999}), encoding="utf-8")
+    assert historical_ui.client.get(url).status_code == 404
+    assert historical_ui.client.get(url + "/report.json").status_code == 404
+    path.write_text(json.dumps(original), encoding="utf-8")
+    plan_path = stage / "plan.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan["activities"][0]["secteur"] = "INVALID"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    assert historical_ui.client.get(url).status_code == 403
+    plan["activities"][0]["secteur"] = None
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    path.write_text(json.dumps({**original, "expires_at": 1}), encoding="utf-8")
+    assert historical_ui.client.get(url).status_code == 410
+
+
+def test_source_tampering_is_rejected(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    (stage / "STATS_2026_par_activite.xlsx").write_bytes(b"different workbook")
+    assert historical_ui.client.get(url).status_code == 409
+    response = historical_ui.client.post(url + "/apply", data={"digest": plan["digest"], "confirm": "yes"})
+    assert response.status_code == 409
+    assert not historical_ui.calls["apply"]
+
+
+def test_decisions_assign_sector_after_analysis(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    response = historical_ui.client.post(url + "/decisions", data={
+        "digest": plan["digest"], "secteur": "FORGED",
+        "participants.0": "source:sheet:6", "participants.1": "new",
+        "participants.1.group": "famille-test", "activities.0": "existing:1", "activities.0.secteur": "Familles",
+        "sessions.0": "date", "sessions.0.date": "2026-02-12",
+        "acknowledged_anomalies": "a1",
+    })
+    assert response.status_code == 302
+    last = historical_ui.calls["analyze"][-1]
+    assert "secteur" not in last
+    assert last["decisions"] == {
+        "participants": {"sheet:5": {"action": "source", "source_id": "sheet:6"}, "sheet:6": {"action": "new", "group": "famille-test"}},
+        "activities": {"act:1": {"action": "existing", "atelier_id": 1, "secteur": "Familles"}},
+        "sessions": {"session:1": {"action": "date", "date_session": "2026-02-12"}},
+        "acknowledged_anomalies": ["a1"],
+    }
+    refreshed = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
+    assert refreshed["digest"] != plan["digest"]
+    assert historical_ui.client.get(url).status_code == 200
+    assert not historical_ui.calls["apply"]
+
+
+def test_decisions_upload_and_export(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    decisions = {"participants": {"sheet:5": {"action": "ignore"}}}
+    response = historical_ui.client.post(url + "/decisions", data={
+        "digest": plan["digest"], "decisions_file": (BytesIO(json.dumps(decisions).encode()), "decisions.json"),
+    }, content_type="multipart/form-data")
+    assert response.status_code == 302
+    assert historical_ui.client.get(url + "/decisions.json").json == decisions
+
+
+def test_decisions_reject_stale_digest_and_invalid_json(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    assert historical_ui.client.post(url + "/decisions", data={"digest": "stale"}).status_code == 409
+    response = historical_ui.client.post(url + "/decisions", data={
+        "digest": plan["digest"], "decisions_file": (BytesIO(b"[]"), "decisions.json"),
+    }, content_type="multipart/form-data")
+    assert response.status_code == 400
+    assert len(historical_ui.calls["analyze"]) == 1
+
+
+def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"]}).status_code == 400
+    assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"], "confirm": "yes"}).status_code == 409
+    assert historical_ui.client.post(url + "/apply", data={"digest": "stale", "confirm": "yes"}).status_code == 409
+    assert not historical_ui.calls["apply"]
+
+
+def test_apply_uses_only_staged_values_and_blocks_second_submission(historical_ui):
+    historical_ui.calls["ready"] = True
+    url, _, plan = _stage(historical_ui)
+    response = historical_ui.client.post(url + "/apply", data={
+        "digest": plan["digest"], "confirm": "yes", "secteur": "FORGED", "source": "untrusted.xlsx", "decisions": '{"bad":true}',
+    })
+    assert response.status_code == 302
+    assert len(historical_ui.calls["apply"]) == 1
+    call = historical_ui.calls["apply"][0]
+    assert "secteur" not in call
+    assert call["decisions"] == {}
+    assert call["actor_id"]
+    assert call["expected_digest"] == plan["digest"]
+    assert historical_ui.client.get(url).status_code == 200
+    assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"], "confirm": "yes"}).status_code == 409
+    assert len(historical_ui.calls["apply"]) == 1
+
+
+def test_service_error_does_not_mark_stage_applied(historical_ui):
+    historical_ui.calls.update(ready=True, apply_error=True)
+    url, stage, plan = _stage(historical_ui)
+    response = historical_ui.client.post(url + "/apply", data={"digest": plan["digest"], "confirm": "yes"})
+    assert response.status_code == 409
+    assert not json.loads((stage / "metadata.json").read_text(encoding="utf-8"))["applied"]
+    assert not (stage / ".lock").exists()
+
+
+def test_concurrent_stage_operations_are_blocked(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    (stage / ".lock").write_text("busy")
+    assert historical_ui.client.post(url + "/decisions", data={"digest": plan["digest"]}).status_code == 409
+    assert len(historical_ui.calls["analyze"]) == 1
+
+
+def test_historical_post_requires_csrf(historical_ui, monkeypatch):
+    monkeypatch.setitem(historical_ui.app.config, "WTF_CSRF_ENABLED", True)
+    response = _upload(historical_ui)
+    assert response.status_code == 400
+    assert not historical_ui.calls["analyze"]
+
+
+def test_historical_requires_import_permission(app):
+    from app.extensions import db
+    from app.models import User
+    with app.app_context():
+        user = User(email="no-import-permission@example.org", nom="Sans droit")
+        user.set_password("not-used-in-test")
+        db.session.add(user)
+        db.session.commit()
+        uid = user.id
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session["_user_id"] = str(uid)
+        session["_fresh"] = True
+    try:
+        assert client.get("/admin/import-historical").status_code == 403
+    finally:
+        with app.app_context():
+            db.session.delete(db.session.get(User, uid))
+            db.session.commit()
+
+
+def test_real_workbook_preview_and_large_decision_form(app, admin_client, monkeypatch, tmp_path):
+    path = os.environ.get("HISTORICAL_XLSX_PATH")
+    if not path:
+        pytest.skip("Set HISTORICAL_XLSX_PATH for the real UI integration")
+    monkeypatch.setattr(app, "instance_path", str(tmp_path))
+    from app.models import Participant, PresenceActivite, HistoricalImportBatch
+    with app.app_context():
+        before = (Participant.query.count(), PresenceActivite.query.count(), HistoricalImportBatch.query.count())
+    with open(path, "rb") as stream:
+        response = admin_client.post("/admin/import-historical", data={"xlsx_file": (stream, Path(path).name)}, content_type="multipart/form-data")
+    assert response.status_code == 302
+    url = response.headers["Location"]
+    preview = admin_client.get(url)
+    assert preview.status_code == 200
+    assert b'activities.65.secteur' in preview.data
+    assert b'name="secteur"' not in preview.data
+    report = admin_client.get(url + "/report.json").json
+    assert report["summary"]["presences_detected"] == 7031
+    fields = {"digest": report["digest"]}
+    for index, activity in enumerate(report["activities"]):
+        fields[f"activities.{index}"] = ""
+        fields[f"activities.{index}.secteur"] = "Numérique"  # disposable preview only
+    for index, row in enumerate(report["matching"]["rows"]):
+        if row["classification"] == "REVIEW":
+            fields[f"participants.{index}"] = ""
+            fields[f"participants.{index}.group"] = ""
+    assert len(fields) > 1000
+    response = admin_client.post(url + "/decisions", data=fields)
+    assert response.status_code == 302
+    report = admin_client.get(url + "/report.json").json
+    assert report["summary"]["activities_unassigned"] == 0
+    assert report["summary"]["presences_detected"] == 7031
+    with app.app_context():
+        assert (Participant.query.count(), PresenceActivite.query.count(), HistoricalImportBatch.query.count()) == before

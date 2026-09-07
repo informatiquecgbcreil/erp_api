@@ -212,6 +212,8 @@ def create_app():
         from datetime import date as _date
 
         endpoint = (request.endpoint or "")
+        if endpoint.startswith("admin.historical_"):
+            return None  # Une prévisualisation de migration ne déclenche aucune purge.
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
             return None
 
@@ -238,6 +240,8 @@ def create_app():
         from datetime import date as _date
 
         endpoint = (request.endpoint or "")
+        if endpoint.startswith("admin.historical_"):
+            return None
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
             return None
 
@@ -267,6 +271,8 @@ def create_app():
         from datetime import date as _date
 
         endpoint = (request.endpoint or "")
+        if endpoint.startswith("admin.historical_"):
+            return None
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
             return None
 
@@ -304,6 +310,8 @@ def create_app():
         from datetime import datetime as _datetime
 
         endpoint = (request.endpoint or "")
+        if endpoint.startswith("admin.historical_"):
+            return None
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
             return None
         if app.config.get("TESTING") or not app.config.get("GOOGLE_AGENDA_AUTO", True):
