@@ -1361,6 +1361,12 @@ class Participant(db.Model):
     # Bénévole du centre (SENACS « vitalité démocratique », valorisation compte 87).
     est_benevole = db.Column(db.Boolean, nullable=False, default=False, index=True)
 
+    # Statut « inscription annuelle » : une fiche créée depuis un bulletin de
+    # rentrée reste « attente_premiere_participation » tant que la personne
+    # n'a pas été pointée présente une première fois. La bascule vers
+    # « actif » est automatique (voir app.services.inscriptions_annuelles).
+    statut_inscription = db.Column(db.String(40), nullable=False, default="actif", index=True)
+
     quartier_id = db.Column(db.Integer, db.ForeignKey("quartier.id"), nullable=True)
     quartier = db.relationship("Quartier")
 
@@ -1399,6 +1405,17 @@ class Participant(db.Model):
     @property
     def is_creil(self):
         return (self.ville or "").strip().lower() == "creil"
+
+    @property
+    def attend_premiere_participation(self) -> bool:
+        """Fiche créée par une inscription annuelle, jamais encore pointée."""
+        return (self.statut_inscription or "actif") == STATUT_PARTICIPANT_ATTENTE
+
+    @property
+    def statut_inscription_label(self) -> str:
+        return STATUTS_PARTICIPANT_LABELS.get(
+            self.statut_inscription or STATUT_PARTICIPANT_ACTIF, self.statut_inscription
+        )
 
     @property
     def is_qpv(self):
@@ -3414,3 +3431,223 @@ class VeilleOpportunite(db.Model):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<VeilleOpportunite {self.titre[:40]!r} ({self.statut})>"
+
+
+# ---------------------------------------------------------------------------
+# INSCRIPTIONS ANNUELLES (campagne de rentrée, année scolaire)
+# ---------------------------------------------------------------------------
+
+#: Cycle de vie d'une inscription annuelle :
+#: ``saisie``     : le bulletin est enregistré, aucune fiche participant créée ;
+#: ``en_attente`` : la fiche participant existe et attend la 1re participation ;
+#: ``active``     : la personne a été pointée présente au moins une fois ;
+#: ``annulee``    : désistement (on garde la trace, on ne supprime pas).
+STATUTS_INSCRIPTION_ANNUELLE = ["saisie", "en_attente", "active", "annulee"]
+STATUTS_INSCRIPTION_ANNUELLE_LABELS = {
+    "saisie": "Saisie (pas encore de fiche)",
+    "en_attente": "En attente de 1re participation",
+    "active": "Active (a participé)",
+    "annulee": "Annulée",
+}
+
+#: Statut d'une fiche participant vis-à-vis de son inscription annuelle.
+#: Le statut « spécial » demandé à l'accueil : la fiche existe, elle compte
+#: dans l'annuaire, mais la personne n'est encore jamais venue.
+STATUT_PARTICIPANT_ACTIF = "actif"
+STATUT_PARTICIPANT_ATTENTE = "attente_premiere_participation"
+STATUTS_PARTICIPANT_LABELS = {
+    STATUT_PARTICIPANT_ACTIF: "Actif",
+    STATUT_PARTICIPANT_ATTENTE: "Inscrit·e — en attente de 1re participation",
+}
+
+JOURS_SEMAINE = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+JOURS_SEMAINE_LABELS = {j: j.capitalize() for j in JOURS_SEMAINE}
+
+DEMI_JOURNEES = ["matin", "apres_midi"]
+DEMI_JOURNEES_LABELS = {"matin": "Matin", "apres_midi": "Après-midi"}
+
+
+#: Ateliers souhaités à l'inscription (choix multiple sur le bulletin).
+inscription_annuelle_atelier = db.Table(
+    "inscription_annuelle_atelier",
+    db.Column("inscription_id", db.Integer, db.ForeignKey("inscription_annuelle.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("atelier_id", db.Integer, db.ForeignKey("atelier_activite.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class InscriptionAnnuelle(db.Model):
+    """Bulletin d'inscription annuelle (année scolaire), saisi à l'accueil.
+
+    C'est l'étage AVANT la fiche participant : on récolte les coordonnées,
+    le secteur qui a fait venir la personne, les ateliers souhaités et
+    l'éventuelle envie de bénévolat. Le bulletin vit sa vie même si la fiche
+    participant n'est pas créée tout de suite (file d'attente de la rentrée).
+
+    Il est ensuite « transformé » en fiche participant portant le statut
+    spécial « en attente de 1re participation » (voir
+    ``app.services.inscriptions_annuelles``), et le règlement est confirmé
+    ou non — avec, en option, création de l'adhésion dans le module
+    Adhésions & participation.
+    """
+
+    __tablename__ = "inscription_annuelle"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    #: Année de rentrée (2026 -> « 2026-2027 »), même convention que les cotisations.
+    annee_scolaire = db.Column(db.Integer, nullable=False, index=True)
+    date_inscription = db.Column(db.Date, nullable=False, default=date.today)
+
+    # --- Identité et coordonnées -------------------------------------------
+    nom = db.Column(db.String(120), nullable=False)
+    prenom = db.Column(db.String(120), nullable=False)
+    adresse = db.Column(db.String(255), nullable=True)
+    code_postal = db.Column(db.String(10), nullable=True)
+    ville = db.Column(db.String(120), nullable=True)
+    email = db.Column(db.String(180), nullable=True)
+    telephone = db.Column(db.String(60), nullable=True)
+    #: Compléments FACULTATIFS : ils ne sont pas demandés sur le bulletin,
+    #: mais recopiés dans la fiche participant s'ils sont renseignés (l'âge
+    #: et le genre alimentent les bilans SENACS et financeurs).
+    date_naissance = db.Column(db.Date, nullable=True)
+    genre = db.Column(db.String(20), nullable=True)
+
+    #: Secteur qui fait venir la personne (référentiel Secteur, par libellé).
+    secteur_orienteur = db.Column(db.String(80), nullable=True, index=True)
+
+    # --- Ateliers souhaités -------------------------------------------------
+    #: Champ libre en complément des cases cochées (atelier pas encore créé,
+    #: demande floue, précision d'horaire…).
+    ateliers_libre = db.Column(db.Text, nullable=True)
+
+    commentaire = db.Column(db.Text, nullable=True)
+
+    # --- Bénévolat ----------------------------------------------------------
+    benevolat_souhaite = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    #: « Pour quoi faire » : champ libre rempli seulement si l'envie est là.
+    benevolat_mission = db.Column(db.Text, nullable=True)
+    #: « Je ne sais pas » : la personne veut aider mais ne sait pas encore quand.
+    benevolat_dispo_inconnue = db.Column(db.Boolean, nullable=False, default=False)
+
+    # --- Cycle de vie -------------------------------------------------------
+    statut = db.Column(db.String(20), nullable=False, default="saisie", index=True)
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id", ondelete="SET NULL"), nullable=True, index=True)
+    premiere_participation_le = db.Column(db.Date, nullable=True)
+
+    # --- Règlement ----------------------------------------------------------
+    reglement_confirme = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    reglement_montant = db.Column(db.Float, nullable=True)
+    reglement_mode = db.Column(db.String(20), nullable=True)
+    reglement_date = db.Column(db.Date, nullable=True)
+    reglement_commentaire = db.Column(db.String(255), nullable=True)
+    #: Adhésion créée le cas échéant dans le module Adhésions & participation.
+    cotisation_id = db.Column(db.Integer, db.ForeignKey("cotisation.id", ondelete="SET NULL"), nullable=True)
+
+    # --- Traçabilité --------------------------------------------------------
+    created_secteur = db.Column(db.String(80), nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    participant = db.relationship(
+        "Participant",
+        backref=db.backref("inscriptions_annuelles", lazy="selectin"),
+    )
+    cotisation = db.relationship("Cotisation")
+    ateliers = db.relationship(
+        "AtelierActivite",
+        secondary=inscription_annuelle_atelier,
+        backref=db.backref("inscriptions_annuelles", lazy="dynamic"),
+    )
+    # Pas de ``passive_deletes`` ici : SQLite (base par défaut) n'applique pas
+    # les ON DELETE CASCADE sans PRAGMA foreign_keys, et des créneaux orphelins
+    # feraient sauter la contrainte d'unicité au prochain id réutilisé. L'ORM
+    # supprime donc les lignes lui-même ; le CASCADE reste le filet PostgreSQL.
+    disponibilites = db.relationship(
+        "InscriptionAnnuelleDispo",
+        back_populates="inscription",
+        cascade="all, delete-orphan",
+        order_by="InscriptionAnnuelleDispo.id",
+    )
+
+    __table_args__ = (
+        db.Index("ix_inscription_annuelle_recherche", "annee_scolaire", "nom", "prenom"),
+        db.Index("ix_inscription_annuelle_suivi", "annee_scolaire", "statut", "reglement_confirme"),
+    )
+
+    # --- Confort d'affichage ------------------------------------------------
+    @property
+    def libelle_annee(self) -> str:
+        return f"{self.annee_scolaire}-{self.annee_scolaire + 1}"
+
+    @property
+    def statut_label(self) -> str:
+        return STATUTS_INSCRIPTION_ANNUELLE_LABELS.get(self.statut, self.statut)
+
+    @property
+    def nom_complet(self) -> str:
+        return f"{(self.prenom or '').strip()} {(self.nom or '').strip()}".strip()
+
+    @property
+    def adresse_complete(self) -> str:
+        bloc = " ".join(x for x in [(self.code_postal or "").strip(), (self.ville or "").strip()] if x)
+        return ", ".join(x for x in [(self.adresse or "").strip(), bloc] if x)
+
+    @property
+    def reglement_label(self) -> str:
+        if self.reglement_confirme:
+            mode = MODES_PAIEMENT_LABELS.get(self.reglement_mode or "", self.reglement_mode or "")
+            return f"Réglé{f' ({mode})' if mode else ''}"
+        return "En attente de règlement"
+
+    @property
+    def creneaux_benevolat(self) -> list[tuple[str, str]]:
+        """Créneaux cochés, ordonnés lundi→dimanche puis matin→après-midi."""
+        ordre_j = {j: i for i, j in enumerate(JOURS_SEMAINE)}
+        ordre_d = {d: i for i, d in enumerate(DEMI_JOURNEES)}
+        rows = sorted(
+            self.disponibilites or [],
+            key=lambda d: (ordre_j.get(d.jour, 99), ordre_d.get(d.demi_journee, 99)),
+        )
+        return [(d.jour, d.demi_journee) for d in rows]
+
+    @property
+    def creneaux_benevolat_libelle(self) -> str:
+        if self.benevolat_dispo_inconnue and not self.disponibilites:
+            return "Ne sait pas encore"
+        libelles = [
+            f"{JOURS_SEMAINE_LABELS.get(j, j)} {DEMI_JOURNEES_LABELS.get(d, d).lower()}"
+            for j, d in self.creneaux_benevolat
+        ]
+        if self.benevolat_dispo_inconnue:
+            libelles.append("(reste à préciser)")
+        return " · ".join(libelles) or "—"
+
+    def a_creneau(self, jour: str, demi_journee: str) -> bool:
+        return any(d.jour == jour and d.demi_journee == demi_journee for d in (self.disponibilites or []))
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<InscriptionAnnuelle {self.nom_complet!r} {self.libelle_annee} ({self.statut})>"
+
+
+class InscriptionAnnuelleDispo(db.Model):
+    """Un créneau de disponibilité coché pour le bénévolat (jour × demi-journée)."""
+
+    __tablename__ = "inscription_annuelle_dispo"
+
+    id = db.Column(db.Integer, primary_key=True)
+    inscription_id = db.Column(
+        db.Integer, db.ForeignKey("inscription_annuelle.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jour = db.Column(db.String(12), nullable=False)
+    demi_journee = db.Column(db.String(12), nullable=False)
+
+    inscription = db.relationship("InscriptionAnnuelle", back_populates="disponibilites")
+
+    __table_args__ = (
+        db.UniqueConstraint("inscription_id", "jour", "demi_journee", name="uq_inscription_annuelle_dispo"),
+    )
+
+    @property
+    def libelle(self) -> str:
+        return f"{JOURS_SEMAINE_LABELS.get(self.jour, self.jour)} {DEMI_JOURNEES_LABELS.get(self.demi_journee, self.demi_journee).lower()}"

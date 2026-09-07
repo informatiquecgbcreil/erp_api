@@ -2,8 +2,8 @@
 
 Construit un classeur Excel rassemblant toutes les données qu'une
 personne est en droit de réclamer : identité, droit à l'image,
-orientations, présences aux activités, parcours d'insertion, notes
-pédagogiques, pièces jointes et questionnaires.
+orientations, inscriptions annuelles, présences aux activités, parcours
+d'insertion, notes pédagogiques, pièces jointes et questionnaires.
 
 La CNIL impose de fournir cette copie sous un mois : ce module permet
 de répondre en un clic, sans compétence technique.
@@ -13,6 +13,7 @@ from openpyxl.styles import Font
 
 from app.models import (
     Evaluation,
+    InscriptionAnnuelle,
     ObjectifSuivi,
     OrientationAccesDroit,
     Participant,
@@ -84,6 +85,38 @@ def construire_export_rgpd(participant: Participant) -> Workbook:
             participant.droit_image_date,
             participant.droit_image_recueilli_par,
         ]],
+    )
+
+    # --- Inscriptions annuelles (bulletins de rentrée) ---
+    bulletins = (
+        InscriptionAnnuelle.query.filter_by(participant_id=participant.id)
+        .order_by(InscriptionAnnuelle.annee_scolaire.desc())
+        .all()
+    )
+    _ecrire_feuille(
+        wb,
+        "Inscriptions annuelles",
+        ["Année scolaire", "Date d'inscription", "Statut", "Adresse", "E-mail", "Téléphone",
+         "Secteur qui fait venir", "Ateliers souhaités", "Autres souhaits",
+         "Bénévolat", "Bénévolat — pour quoi faire", "Bénévolat — disponibilités",
+         "Règlement", "Montant réglé", "Remarques"],
+        [[
+            b.libelle_annee,
+            b.date_inscription,
+            b.statut_label,
+            b.adresse_complete,
+            b.email,
+            b.telephone,
+            b.secteur_orienteur,
+            " ; ".join(a.nom for a in b.ateliers or []),
+            b.ateliers_libre,
+            "Oui" if b.benevolat_souhaite else "Non",
+            b.benevolat_mission,
+            b.creneaux_benevolat_libelle if b.benevolat_souhaite else "",
+            b.reglement_label,
+            b.reglement_montant,
+            b.commentaire,
+        ] for b in bulletins],
     )
 
     # --- Orientations / accès aux droits ---

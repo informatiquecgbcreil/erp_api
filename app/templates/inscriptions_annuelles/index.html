@@ -1,0 +1,196 @@
+{% extends "layout.html" %}
+{% block title %}Inscriptions annuelles{% endblock %}
+{% block body %}
+<style>
+  .ia-kpis{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:14px; }
+  .ia-kpi{ border:1px solid var(--border, #e3e6ef); border-radius:12px; padding:10px 12px; background:var(--panel, #fff); }
+  .ia-kpi .n{ font-size:1.5rem; font-weight:800; line-height:1.1; display:block; }
+  .ia-kpi .l{ font-size:.78rem; opacity:.75; }
+  .ia-filters{ display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:12px; }
+  .ia-tag{ display:inline-block; padding:1px 7px; border-radius:999px; font-size:.72rem; font-weight:700; border:1px solid var(--border, #e3e6ef); white-space:nowrap; }
+  .ia-tag.attente{ background:#fff5e0; border-color:#e8c887; color:#7a5200; }
+  .ia-tag.active{ background:#e6f6ea; border-color:#95cfa6; color:#175c2c; }
+  .ia-tag.saisie{ background:#eef2fb; border-color:#b9c6e6; color:#2b3f70; }
+  .ia-tag.annulee{ background:#f3f4f6; border-color:#d3d6dd; color:#5b6070; text-decoration:line-through; }
+  .ia-tag.due{ background:#fdeaea; border-color:#e6a5a5; color:#8a1f1f; }
+  .ia-tag.paid{ background:#e6f6ea; border-color:#95cfa6; color:#175c2c; }
+  .ia-grid-benevolat{ border-collapse:collapse; margin-top:8px; }
+  .ia-grid-benevolat th, .ia-grid-benevolat td{ border:1px solid var(--border, #e3e6ef); padding:5px 12px; text-align:center; font-size:.85rem; }
+  .ia-grid-benevolat td.zero{ opacity:.35; }
+  .ia-two{ display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px; }
+</style>
+
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">📝 Inscriptions annuelles · {{ libelle_annee }}</h1>
+      <p class="ui-subtitle page-subtitle">
+        Les bulletins de la rentrée : coordonnées, ateliers souhaités, envie de bénévolat.
+        Chaque inscription se transforme en fiche participant portant le statut
+        <strong>« en attente de 1<sup>re</sup> participation »</strong> — qui tombe tout seul
+        dès le premier émargement.
+      </p>
+    </div>
+    <form method="get" class="ui-actions inline-actions">
+      <label class="field-stack slim"><span>Année scolaire</span>
+        <select class="in" name="annee" onchange="this.form.submit()">
+          {% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}-{{ a + 1 }}</option>{% endfor %}
+        </select>
+      </label>
+      <noscript><button class="btn" type="submit">Afficher</button></noscript>
+    </form>
+  </section>
+
+  <div class="ui-actions inline-actions" style="margin-top:10px;">
+    {% if peut_editer %}
+      <a class="btn primary" href="{{ url_for('inscriptions_annuelles.nouvelle', annee=annee) }}">➕ Nouvelle inscription</a>
+    {% endif %}
+    {% if peut_exporter %}
+      <a class="btn" href="{{ url_for('inscriptions_annuelles.export', annee=annee) }}">⬇ Exporter en XLSX</a>
+    {% endif %}
+  </div>
+
+  <div class="ia-kpis">
+    <div class="ia-kpi"><span class="n">{{ data.actives }}</span><span class="l">inscriptions actives</span></div>
+    <div class="ia-kpi"><span class="n">{{ data.sans_fiche }}</span><span class="l">sans fiche participant</span></div>
+    <div class="ia-kpi"><span class="n">{{ data.en_attente }}</span><span class="l">attendent leur 1<sup>re</sup> venue</span></div>
+    <div class="ia-kpi"><span class="n">{{ data.a_regler }}</span><span class="l">restent à régler</span></div>
+    <div class="ia-kpi"><span class="n">{{ "%.2f"|format(data.montant_regle) }} €</span><span class="l">encaissés (bulletins)</span></div>
+    <div class="ia-kpi"><span class="n">{{ data.benevoles }}</span><span class="l">envies de bénévolat</span></div>
+  </div>
+
+  <div class="ui-card" style="margin-top:14px;">
+    <form method="get" class="ia-filters">
+      <input type="hidden" name="annee" value="{{ annee }}">
+      <label class="field-stack slim"><span>Rechercher</span>
+        <input class="in" type="search" name="q" value="{{ filtres.q }}" placeholder="nom, e-mail, téléphone…">
+      </label>
+      <label class="field-stack slim"><span>Statut</span>
+        <select class="in" name="statut">
+          <option value="">Tous</option>
+          {% for s in statuts %}<option value="{{ s }}" {% if filtres.statut == s %}selected{% endif %}>{{ statuts_labels[s] }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack slim"><span>Secteur qui fait venir</span>
+        <select class="in" name="secteur">
+          <option value="">Tous</option>
+          {% for s in secteurs %}<option value="{{ s }}" {% if filtres.secteur == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack slim"><span>Règlement</span>
+        <select class="in" name="reglement">
+          <option value="">Tous</option>
+          <option value="a_regler" {% if filtres.reglement == 'a_regler' %}selected{% endif %}>À régler</option>
+          <option value="regle" {% if filtres.reglement == 'regle' %}selected{% endif %}>Réglé</option>
+        </select>
+      </label>
+      <label class="field-stack slim" style="flex-direction:row; align-items:center; gap:6px;">
+        <input type="checkbox" name="benevolat" value="1" {% if filtres.benevolat == '1' %}checked{% endif %}>
+        <span>Bénévolat seulement</span>
+      </label>
+      <button class="btn" type="submit">Filtrer</button>
+      <a class="btn" href="{{ url_for('inscriptions_annuelles.index', annee=annee) }}">Réinitialiser</a>
+    </form>
+  </div>
+
+  <div class="ui-card" style="margin-top:14px;">
+    <h2 style="margin-top:0; font-size:1.05rem;">{{ inscriptions|length }} inscription(s)</h2>
+    {% if not inscriptions %}
+      <p class="muted">
+        Aucune inscription pour ce filtre.
+        {% if peut_editer %}<a href="{{ url_for('inscriptions_annuelles.nouvelle', annee=annee) }}">Saisir le premier bulletin</a>.{% endif %}
+      </p>
+    {% else %}
+      <div class="tablewrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Personne</th><th>Contact</th><th>Secteur</th><th>Ateliers</th>
+              <th>Bénévolat</th><th>Statut</th><th>Règlement</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i in inscriptions %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('inscriptions_annuelles.detail', inscription_id=i.id) }}"><strong>{{ i.nom }}</strong> {{ i.prenom }}</a>
+                  {% if i.participant_id %}
+                    <br><span class="muted" style="font-size:.78rem;">fiche n°{{ i.participant_id }}</span>
+                  {% endif %}
+                </td>
+                <td style="font-size:.85rem;">
+                  {{ i.telephone or '—' }}{% if i.email %}<br><span class="muted">{{ i.email }}</span>{% endif %}
+                </td>
+                <td style="font-size:.85rem;">{{ i.secteur_orienteur or '—' }}</td>
+                <td style="font-size:.85rem;">
+                  {% if i.ateliers %}{{ i.ateliers|map(attribute='nom')|join(', ') }}{% else %}<span class="muted">—</span>{% endif %}
+                  {% if i.ateliers_libre %}<br><span class="muted">✎ {{ i.ateliers_libre|truncate(60) }}</span>{% endif %}
+                </td>
+                <td style="font-size:.85rem;">
+                  {% if i.benevolat_souhaite %}🙋 {{ i.creneaux_benevolat_libelle }}{% else %}<span class="muted">—</span>{% endif %}
+                </td>
+                <td><span class="ia-tag {{ i.statut }}">{{ i.statut_label }}</span></td>
+                <td><span class="ia-tag {{ 'paid' if i.reglement_confirme else 'due' }}">{{ i.reglement_label }}</span></td>
+                <td style="white-space:nowrap;">
+                  <a class="btn" style="padding:2px 8px; font-size:.8rem;" href="{{ url_for('inscriptions_annuelles.fiche', inscription_id=i.id) }}" target="_blank" rel="noopener">🖨️</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="ia-two" style="margin-top:14px;">
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Qui fait venir ?</h2>
+      {% if data.par_secteur %}
+        <table class="table">
+          <tbody>
+            {% for label, nb in data.par_secteur.items() %}
+              <tr><td>{{ label }}</td><td style="text-align:right; font-weight:700;">{{ nb }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<p class="muted">Rien à afficher pour l'instant.</p>{% endif %}
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Ateliers les plus demandés</h2>
+      {% if data.par_atelier %}
+        <table class="table">
+          <tbody>
+            {% for label, nb in data.par_atelier.items() %}
+              <tr><td>{{ label }}</td><td style="text-align:right; font-weight:700;">{{ nb }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<p class="muted">Aucun atelier coché pour l'instant.</p>{% endif %}
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Disponibilités bénévolat</h2>
+      <p class="muted" style="font-size:.82rem;">
+        Nombre de personnes disponibles par créneau.
+        {% if data.benevoles_sans_dispo %}
+          <br><strong>{{ data.benevoles_sans_dispo }}</strong> personne(s) veulent aider sans savoir encore quand.
+        {% endif %}
+      </p>
+      <table class="ia-grid-benevolat">
+        <thead>
+          <tr><th></th>{% for c in data.grille_benevolat[0].cellules %}<th>{{ c.demi_journee_label }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for ligne in data.grille_benevolat %}
+            <tr>
+              <th style="text-align:left;">{{ ligne.jour_label }}</th>
+              {% for c in ligne.cellules %}<td class="{{ 'zero' if not c.nb }}">{{ c.nb or '·' }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

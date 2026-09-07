@@ -67,6 +67,12 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     ("emargement:edit", "Saisir / modifier l’émargement"),
     ("inscriptions:view", "Voir les inscriptions et listes d’attente"),
     ("inscriptions:edit", "Inscrire / annuler / pointer les inscrits"),
+
+    # Inscriptions annuelles (campagne de rentrée)
+    ("inscriptions_annuelles:view", "Voir les inscriptions annuelles et imprimer les fiches"),
+    ("inscriptions_annuelles:edit", "Saisir / modifier une inscription annuelle, créer la fiche participant"),
+    ("inscriptions_annuelles:reglement", "Confirmer ou annuler le règlement d’une inscription annuelle"),
+    ("inscriptions_annuelles:export", "Exporter les inscriptions annuelles (XLSX)"),
     ("transitions:view", "Voir le tableau de bord transitions"),
     ("transitions:edit", "Étiqueter les ateliers, gérer défis et mesures transitions"),
 
@@ -196,6 +202,7 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
             "questionnaires:respond",
             "questionnaires:export",
             "veille:view",
+            "inscriptions_annuelles:view",
 
         ],
     },
@@ -246,6 +253,8 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
             "ateliers:view", "ateliers:edit", "ateliers:delete", "ateliers:sync",
             "emargement:view", "emargement:edit",
             "inscriptions:view", "inscriptions:edit",
+            "inscriptions_annuelles:view", "inscriptions_annuelles:edit",
+            "inscriptions_annuelles:reglement", "inscriptions_annuelles:export",
             "transitions:view", "transitions:edit",
 
             # Participants: vue globale, mais edit/delete bornés au secteur via _can_edit_participant
@@ -300,6 +309,10 @@ PERMS_AUTO_GRANT = {
     "transitions:edit": ("direction", "directrice", "finance", "responsable_secteur"),
     "veille:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
     "veille:edit": ("direction", "directrice", "finance"),
+    "inscriptions_annuelles:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
+    "inscriptions_annuelles:edit": ("direction", "directrice", "finance", "responsable_secteur"),
+    "inscriptions_annuelles:reglement": ("direction", "directrice", "finance", "responsable_secteur"),
+    "inscriptions_annuelles:export": ("direction", "directrice", "finance", "responsable_secteur"),
 }
 
 
@@ -316,6 +329,7 @@ def _category_from_code(code: str) -> str:
         "ateliers": "Ateliers",
         "emargement": "Émargement",
         "inscriptions": "Inscriptions",
+        "inscriptions_annuelles": "Inscriptions annuelles",
         "transitions": "Transitions",
         "participants": "Participants",
         "benevolat": "Bénévolat",

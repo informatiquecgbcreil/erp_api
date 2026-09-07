@@ -1,0 +1,257 @@
+{% extends "layout.html" %}
+{% block title %}{{ inscription.nom_complet }} — inscription {{ inscription.libelle_annee }}{% endblock %}
+{% block body %}
+<style>
+  .ia-detail-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:14px; margin-top:14px; }
+  .ia-def{ display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:.9rem; }
+  .ia-def dt{ font-weight:600; opacity:.7; }
+  .ia-def dd{ margin:0; }
+  .ia-tag{ display:inline-block; padding:2px 9px; border-radius:999px; font-size:.78rem; font-weight:700; border:1px solid var(--border, #e3e6ef); }
+  .ia-tag.attente{ background:#fff5e0; border-color:#e8c887; color:#7a5200; }
+  .ia-tag.active{ background:#e6f6ea; border-color:#95cfa6; color:#175c2c; }
+  .ia-tag.saisie{ background:#eef2fb; border-color:#b9c6e6; color:#2b3f70; }
+  .ia-tag.annulee{ background:#f3f4f6; border-color:#d3d6dd; color:#5b6070; }
+  .ia-tag.due{ background:#fdeaea; border-color:#e6a5a5; color:#8a1f1f; }
+  .ia-tag.paid{ background:#e6f6ea; border-color:#95cfa6; color:#175c2c; }
+  .ia-mini-form{ display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+  .ia-mini-form .in{ padding:7px 9px; border-radius:8px; border:1px solid var(--border, #e3e6ef); background:var(--panel, #fff); color:inherit; font:inherit; }
+  .ia-mini-form label > span{ font-size:.78rem; font-weight:600; display:block; margin-bottom:3px; }
+  .ia-inline{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .ia-doublon{ border:1px solid #e8c887; background:#fff9ec; border-radius:10px; padding:10px 12px; margin-top:10px; }
+</style>
+
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">{{ inscription.nom_complet }}</h1>
+      <p class="ui-subtitle page-subtitle">
+        Inscription {{ inscription.libelle_annee }} ·
+        <span class="ia-tag {{ inscription.statut }}">{{ inscription.statut_label }}</span>
+        <span class="ia-tag {{ 'paid' if inscription.reglement_confirme else 'due' }}">{{ inscription.reglement_label }}</span>
+      </p>
+    </div>
+    <div class="ui-actions inline-actions">
+      <a class="btn primary" href="{{ url_for('inscriptions_annuelles.fiche', inscription_id=inscription.id) }}" target="_blank" rel="noopener">🖨️ Fiche à imprimer</a>
+      {% if peut_editer %}<a class="btn" href="{{ url_for('inscriptions_annuelles.modifier', inscription_id=inscription.id) }}">✏️ Modifier</a>{% endif %}
+      <a class="btn" href="{{ url_for('inscriptions_annuelles.index', annee=inscription.annee_scolaire) }}">← Liste</a>
+    </div>
+  </section>
+
+  <div class="ia-detail-grid">
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Coordonnées</h2>
+      <dl class="ia-def">
+        <dt>Téléphone</dt><dd>{{ inscription.telephone or '—' }}</dd>
+        <dt>E-mail</dt><dd>{{ inscription.email or '—' }}</dd>
+        <dt>Adresse</dt><dd>{{ inscription.adresse_complete or '—' }}</dd>
+        {% if inscription.date_naissance %}<dt>Naissance</dt><dd>{{ inscription.date_naissance.strftime('%d/%m/%Y') }}</dd>{% endif %}
+        {% if inscription.genre %}<dt>Genre</dt><dd>{{ inscription.genre }}</dd>{% endif %}
+        <dt>Fait venir par</dt><dd>{{ inscription.secteur_orienteur or '—' }}</dd>
+        <dt>Inscrit·e le</dt><dd>{{ inscription.date_inscription.strftime('%d/%m/%Y') if inscription.date_inscription else '—' }}</dd>
+      </dl>
+      {% if inscription.commentaire %}
+        <p class="muted" style="margin-top:10px; white-space:pre-line;">{{ inscription.commentaire }}</p>
+      {% endif %}
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Ateliers souhaités</h2>
+      {% if inscription.ateliers %}
+        <ul style="margin:0; padding-left:18px;">
+          {% for a in inscription.ateliers|sort(attribute='nom') %}
+            <li>{{ a.nom }} <span class="muted">({{ a.secteur }})</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Aucun atelier coché.</p>
+      {% endif %}
+      {% if inscription.ateliers_libre %}
+        <p style="margin-top:10px; white-space:pre-line;"><strong>Autres souhaits :</strong><br>{{ inscription.ateliers_libre }}</p>
+      {% endif %}
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Bénévolat</h2>
+      {% if inscription.benevolat_souhaite %}
+        <p style="margin:0;">🙋 <strong>Oui</strong>, envie de donner un coup de main.</p>
+        {% if inscription.benevolat_mission %}
+          <p style="margin-top:8px; white-space:pre-line;"><strong>Pour quoi faire :</strong><br>{{ inscription.benevolat_mission }}</p>
+        {% endif %}
+        <p style="margin-top:8px;"><strong>Disponibilités :</strong> {{ inscription.creneaux_benevolat_libelle }}</p>
+      {% else %}
+        <p class="muted" style="margin:0;">Pas de souhait de bénévolat exprimé.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="ia-detail-grid">
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Fiche participant</h2>
+      {% if inscription.participant %}
+        {% set part = inscription.participant %}
+        <p style="margin:0 0 8px;">
+          {% if can('participants:view') or can('participants:view_all') %}
+            <a href="{{ url_for('participants.synthese_participant', participant_id=part.id) }}"><strong>{{ part.prenom }} {{ part.nom }}</strong></a>
+          {% else %}
+            <strong>{{ part.prenom }} {{ part.nom }}</strong>
+          {% endif %}
+          — fiche n°{{ part.id }}
+        </p>
+        <p style="margin:0;">
+          <span class="ia-tag {{ 'attente' if part.attend_premiere_participation else 'active' }}">{{ part.statut_inscription_label }}</span>
+        </p>
+        {% if inscription.premiere_participation_le %}
+          <p class="muted" style="margin-top:8px;">Première participation le {{ inscription.premiere_participation_le.strftime('%d/%m/%Y') }}.</p>
+        {% elif part.attend_premiere_participation %}
+          <p class="muted" style="margin-top:8px;">
+            Le statut d'attente tombera automatiquement dès le premier émargement — rien à faire à la main.
+          </p>
+        {% endif %}
+      {% elif peut_editer %}
+        <p class="muted" style="margin:0 0 8px;">
+          Aucune fiche participant. La création pose le statut « en attente de 1<sup>re</sup> participation »
+          et inscrit la personne aux ateliers cochés (avec la jauge et la liste d'attente du module Activité).
+        </p>
+
+        {% if doublons %}
+          <div class="ia-doublon">
+            <strong>⚠️ Des fiches ressemblantes existent déjà.</strong>
+            <p class="muted" style="margin:4px 0 8px; font-size:.85rem;">
+              Rattache l'inscription à la bonne fiche plutôt que de créer un doublon
+              (un doublon fausse toutes les statistiques).
+            </p>
+            {% for d in doublons %}
+              <form method="post" action="{{ url_for('inscriptions_annuelles.rattacher_fiche', inscription_id=inscription.id) }}" class="ia-inline" style="margin-bottom:5px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="participant_id" value="{{ d.id }}">
+                <input type="hidden" name="inscrire_ateliers" value="1">
+                <span style="flex:1;">
+                  {{ d.prenom }} {{ d.nom }}
+                  <span class="muted">{% if d.date_naissance %}né·e le {{ d.date_naissance.strftime('%d/%m/%Y') }}{% endif %}
+                  {% if d.ville %}· {{ d.ville }}{% endif %} · fiche n°{{ d.id }}</span>
+                </span>
+                <button class="btn" type="submit" style="padding:3px 9px; font-size:.82rem;">Rattacher</button>
+              </form>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('inscriptions_annuelles.creer_fiche', inscription_id=inscription.id) }}" class="ia-mini-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if quartiers %}
+            <label><span>Quartier (facultatif)</span>
+              <select class="in" name="quartier_id">
+                <option value="">Non renseigné</option>
+                {% for q in quartiers %}<option value="{{ q.id }}">{{ q.nom }} — {{ q.ville }}</option>{% endfor %}
+              </select>
+            </label>
+          {% endif %}
+          <label class="ia-inline" style="font-size:.9rem;">
+            <input type="checkbox" name="inscrire_ateliers" value="1" checked>
+            <span>Inscrire aux ateliers cochés</span>
+          </label>
+          {% if inscription.benevolat_souhaite %}
+            <label class="ia-inline" style="font-size:.9rem;">
+              <input type="checkbox" name="marquer_benevole" value="1">
+              <span>Marquer la fiche comme bénévole du centre</span>
+            </label>
+          {% endif %}
+          <button class="btn primary" type="submit">👤 Créer la fiche participant</button>
+        </form>
+      {% else %}
+        <p class="muted" style="margin:0;">Aucune fiche participant.</p>
+      {% endif %}
+    </div>
+
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Règlement</h2>
+      {% if inscription.reglement_confirme %}
+        <dl class="ia-def">
+          <dt>Confirmé le</dt><dd>{{ inscription.reglement_date.strftime('%d/%m/%Y') if inscription.reglement_date else '—' }}</dd>
+          <dt>Montant</dt><dd>{% if inscription.reglement_montant is not none %}{{ "%.2f"|format(inscription.reglement_montant) }} €{% else %}—{% endif %}</dd>
+          <dt>Mode</dt><dd>{{ modes_paiement_labels.get(inscription.reglement_mode, inscription.reglement_mode or '—') }}</dd>
+          {% if inscription.reglement_commentaire %}<dt>Note</dt><dd>{{ inscription.reglement_commentaire }}</dd>{% endif %}
+        </dl>
+        {% if inscription.cotisation_id %}
+          <p class="muted" style="margin-top:8px;">Adhésion enregistrée dans le module Adhésions &amp; participation (n°{{ inscription.cotisation_id }}).</p>
+        {% endif %}
+        {% if peut_regler %}
+          <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" style="margin-top:10px;"
+                onsubmit="return confirm('Repasser ce règlement en attente ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="annuler">
+            <button class="btn" type="submit">↩ Repasser en « à régler »</button>
+          </form>
+        {% endif %}
+      {% elif peut_regler %}
+        <p class="muted" style="margin:0 0 8px;">À confirmer à l'accueil au moment du paiement.</p>
+        <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" class="ia-mini-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="confirmer">
+          <label><span>Montant (€)</span>
+            <input class="in" type="text" inputmode="decimal" name="montant"
+                   value="{{ "%.2f"|format(montant_suggere) if montant_suggere is not none else '' }}"
+                   placeholder="{{ 'aucun tarif saisi pour cette année' if montant_suggere is none else '' }}">
+          </label>
+          <label><span>Mode de règlement</span>
+            <select class="in" name="mode">
+              {% for m in modes_paiement %}<option value="{{ m }}" {% if m == 'especes' %}selected{% endif %}>{{ modes_paiement_labels[m] }}</option>{% endfor %}
+            </select>
+          </label>
+          <label><span>Date</span>
+            <input class="in" type="date" name="date_reglement" value="{{ aujourdhui.isoformat() }}">
+          </label>
+          <label><span>Note (facultatif)</span>
+            <input class="in" type="text" name="reglement_commentaire" maxlength="255" placeholder="n° de chèque, tarif réduit, paiement en deux fois…">
+          </label>
+          <label class="ia-inline" style="font-size:.9rem;">
+            <input type="checkbox" name="creer_adhesion" value="1" {% if inscription.participant_id %}checked{% endif %}>
+            <span>Créer aussi l'adhésion dans le module Adhésions &amp; participation</span>
+          </label>
+          {% if not inscription.participant_id %}
+            <p class="muted" style="font-size:.8rem; margin:0;">
+              L'adhésion ne peut être créée qu'une fois la fiche participant faite.
+            </p>
+          {% endif %}
+          <button class="btn primary" type="submit">💶 Confirmer le règlement</button>
+        </form>
+      {% else %}
+        <p class="muted" style="margin:0;">En attente de règlement.</p>
+      {% endif %}
+    </div>
+
+    {% if peut_editer %}
+      <div class="ui-card">
+        <h2 style="margin-top:0; font-size:1.05rem;">Cycle de vie</h2>
+        {% if inscription.statut == 'annulee' %}
+          <p class="muted" style="margin:0 0 10px;">Cette inscription est annulée. Elle reste comptée dans le bilan de la campagne.</p>
+          <form method="post" action="{{ url_for('inscriptions_annuelles.changer_statut', inscription_id=inscription.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="reactiver">
+            <button class="btn" type="submit">↩ Réactiver l'inscription</button>
+          </form>
+        {% else %}
+          <p class="muted" style="margin:0 0 10px;">
+            Un désistement s'annule (on garde la trace) plutôt qu'il ne se supprime.
+          </p>
+          <div class="ia-inline">
+            <form method="post" action="{{ url_for('inscriptions_annuelles.changer_statut', inscription_id=inscription.id) }}"
+                  onsubmit="return confirm('Annuler cette inscription ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="annuler">
+              <button class="btn" type="submit">✕ Annuler l'inscription</button>
+            </form>
+            {% if not inscription.participant_id %}
+              <form method="post" action="{{ url_for('inscriptions_annuelles.supprimer', inscription_id=inscription.id) }}"
+                    onsubmit="return confirm('Supprimer définitivement ce bulletin ? Cette action est irréversible.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn" type="submit">🗑 Supprimer (saisie en double)</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -121,6 +121,7 @@ def create_app():
     from app.setup import bp as setup_bp
     from app.aide import bp as aide_bp
     from app.veille_financements import bp as veille_bp
+    from app.inscriptions_annuelles import bp as inscriptions_annuelles_bp
 
     app.register_blueprint(setup_bp)
     app.register_blueprint(aide_bp)
@@ -145,6 +146,7 @@ def create_app():
     app.register_blueprint(insertion_bp)
     app.register_blueprint(transitions_bp)
     app.register_blueprint(veille_bp)
+    app.register_blueprint(inscriptions_annuelles_bp)
 
     @app.before_request
     def _facade_kiosque_publique():
