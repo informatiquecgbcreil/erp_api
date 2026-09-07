@@ -19,7 +19,8 @@ from io import BytesIO
 import pytest
 
 ANNEE = 2031        # campagne « bac à sable », loin des autres jeux de tests
-ANNEE_TARIFS = 2032  # campagne AVEC barème : isolée pour ne pas tarifer les autres tests
+ANNEE_TARIFS = 2032       # campagne AVEC barème dès le départ
+ANNEE_BAREME_TARDIF = 2033  # campagne SANS barème au début, complété après coup
 
 
 def _suffixe():
@@ -983,6 +984,154 @@ def test_export_xlsx_contient_toutes_les_donnees(admin_client, app, atelier):
     # La feuille bénévolat sert la réunion d'équipe : grille + liste nominative.
     benevolat = [[c.value for c in ligne] for ligne in wb["Bénévolat"].iter_rows()]
     assert any(f"Soline Rentree{suf}" == (l[0] or "") for l in benevolat)
+
+
+# ---------------------------------------------------------------------------
+# Barème complété APRÈS la transformation : le cas remonté par Antoine.
+#
+# Transformer une inscription avant d'avoir rempli le barème des tarifs crée
+# des cotisations à 0 €. Ce n'est pas une erreur bloquante (l'accueil ne doit
+# jamais rester coincé), mais il faut que « Mettre les cotisations à jour »
+# rattrape vraiment ces montants une fois le barème complété — et que la
+# fiche ne prétende jamais que « rien à devoir » veut dire « déjà réglé ».
+# ---------------------------------------------------------------------------
+
+def test_transformation_sans_bareme_ne_pretend_pas_que_cest_regle(admin_client, app, atelier):
+    """Sans barème, les cotisations naissent à 0 € : la fiche doit le dire
+    clairement, pas afficher un « Tout est réglé » trompeur."""
+    inscription_id, _ = _creer_bulletin(admin_client, app, atelier["id"], annee=ANNEE_BAREME_TARDIF)
+    admin_client.post(f"/inscriptions-annuelles/{inscription_id}/creer-participant", data={})
+
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Cotisation, InscriptionAnnuelle
+
+        i = db.session.get(InscriptionAnnuelle, inscription_id)
+        cotisations = Cotisation.query.filter_by(
+            participant_id=i.participant_id, annee_scolaire=ANNEE_BAREME_TARDIF
+        ).all()
+        assert len(cotisations) == 2
+        assert {c.montant_du for c in cotisations} == {0.0}
+        assert i.reglement_du == 0.0
+        # « rien réglé », jamais « complet » : sans quoi le formulaire de
+        # paiement se cache derrière un badge vert mensonger.
+        assert i.reglement_statut == "rien"
+
+    page = admin_client.get(f"/inscriptions-annuelles/{inscription_id}").data.decode("utf-8")
+    assert "Rien n'est encore dû" in page
+    assert "à chiffrer" in page
+    assert "Tout est réglé" not in page
+    assert 'name="montant"' not in page          # pas de formulaire pour un montant inconnu
+    assert "Mettre les cotisations à jour" in page
+
+    # La fiche imprimable ne doit jamais prétendre que c'est réglé non plus.
+    fiche = admin_client.get(f"/inscriptions-annuelles/{inscription_id}/fiche").data.decode("utf-8")
+    assert "Barème incomplet" in fiche
+    assert "Intégralement réglé" not in fiche or "☒ Intégralement réglé" not in fiche
+
+
+def test_completer_le_bareme_apres_coup_corrige_les_cotisations_a_zero(admin_client, app, atelier):
+    """Le cœur du bug : « Mettre à jour » doit rattraper les montants nés à
+    0 €, pas les laisser figés pour toujours."""
+    inscription_id, _ = _creer_bulletin(admin_client, app, atelier["id"], annee=ANNEE_BAREME_TARDIF)
+    admin_client.post(f"/inscriptions-annuelles/{inscription_id}/creer-participant", data={})
+
+    # Le barème est complété seulement maintenant.
+    with app.app_context():
+        from app.extensions import db
+        from app.models import TarifBareme
+
+        for type_tarif, montant in (
+            ("adhesion_individuelle", 7.0), ("adhesion_familiale", 10.0), ("participation", 30.0),
+        ):
+            db.session.add(TarifBareme(
+                annee_scolaire=ANNEE_BAREME_TARDIF, type_tarif=type_tarif,
+                montant=montant, date_debut=date(2000, 1, 1),
+            ))
+        db.session.commit()
+
+    r = admin_client.post(
+        f"/inscriptions-annuelles/{inscription_id}/cotisations", follow_redirects=True
+    )
+    assert "rattrapé" in r.data.decode("utf-8")
+
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Cotisation, InscriptionAnnuelle
+
+        i = db.session.get(InscriptionAnnuelle, inscription_id)
+        cotisations = {
+            c.type_cotisation: c.montant_du
+            for c in Cotisation.query.filter_by(
+                participant_id=i.participant_id, annee_scolaire=ANNEE_BAREME_TARDIF
+            ).all()
+        }
+        # Les DEUX lignes existantes sont corrigées — aucun doublon créé.
+        assert cotisations == {"adhesion_individuelle": 7.0, "participation": 30.0}
+        assert i.reglement_du == 37.0
+        assert i.reglement_statut == "rien"       # chiffré maintenant, mais toujours pas payé
+        assert i.reglement_reste == 37.0
+
+    # Le formulaire d'encaissement est enfin là.
+    page = admin_client.get(f"/inscriptions-annuelles/{inscription_id}").data.decode("utf-8")
+    assert 'name="montant"' in page
+    assert "37.00" in page
+    assert "Rien n&#39;est encore dû" not in page
+
+
+def test_rattrapage_epargne_un_montant_deja_verse(app):
+    """Une fois qu'un euro a été versé sur une cotisation, son montant devient
+    une dette réelle : le rattrapage automatique ne doit plus jamais y toucher,
+    même si une saisie manuelle l'avait laissée à 0 €."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Cotisation, Paiement, Participant
+        from app.services.inscriptions_annuelles import _rattraper_montant_placeholder
+
+        p = Participant(nom=f"Garde{_suffixe()}", prenom="Fou")
+        db.session.add(p)
+        db.session.flush()
+
+        c = Cotisation(
+            annee_scolaire=1998, type_cotisation="participation",
+            participant_id=p.id, montant_du=0.0, date_reference=date.today(),
+        )
+        db.session.add(c)
+        db.session.flush()
+
+        # Jamais versée : le rattrapage joue son rôle normalement.
+        assert _rattraper_montant_placeholder(c, 30.0) is True
+        assert c.montant_du == 30.0
+
+        # Un versement existe désormais : plus aucun rattrapage, quel que
+        # soit le montant_du (même remis manuellement à 0).
+        c.montant_du = 0.0
+        c.paiements.append(Paiement(montant=5.0, date_paiement=date.today(), mode="especes"))
+        db.session.commit()
+        assert _rattraper_montant_placeholder(c, 30.0) is False
+        assert c.montant_du == 0.0
+
+
+def test_rattrapage_epargne_un_montant_reduit_manuellement(app):
+    """Un montant non nul (même un tarif réduit négocié à la main) n'est
+    jamais considéré comme un placeholder : on ne l'écrase pas."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Cotisation, Participant
+        from app.services.inscriptions_annuelles import _rattraper_montant_placeholder
+
+        p = Participant(nom=f"Reduit{_suffixe()}", prenom="Precaire")
+        db.session.add(p)
+        db.session.flush()
+        c = Cotisation(
+            annee_scolaire=1998, type_cotisation="participation",
+            participant_id=p.id, montant_du=3.0, date_reference=date.today(),
+        )
+        db.session.add(c)
+        db.session.commit()
+
+        assert _rattraper_montant_placeholder(c, 30.0) is False
+        assert c.montant_du == 3.0
 
 
 # ---------------------------------------------------------------------------

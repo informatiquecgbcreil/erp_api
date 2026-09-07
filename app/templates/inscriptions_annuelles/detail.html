@@ -39,7 +39,11 @@
         Inscription {{ inscription.libelle_annee }} ·
         <span class="ia-tag {{ inscription.statut }}">{{ inscription.statut_label }}</span>
         <span class="ia-tag {{ 'saisie' if inscription.est_familiale else 'saisie' }}">{{ inscription.type_inscription_label }}{% if inscription.est_familiale %} · {{ inscription.nb_personnes }} personnes{% endif %}</span>
-        <span class="ia-tag ton-{{ etat.ton }}">{{ etat.libelle }}{% if etat.statut == 'partiel' %} — reste {{ "%.2f"|format(etat.reste) }} €{% endif %}</span>
+        {% if etat.statut == 'complet' and etat.du <= 0.009 %}
+          <span class="ia-tag ton-warn" title="Barème incomplet : rien n'a encore été chiffré">⚠️ à chiffrer</span>
+        {% else %}
+          <span class="ia-tag ton-{{ etat.ton }}">{{ etat.libelle }}{% if etat.statut == 'partiel' %} — reste {{ "%.2f"|format(etat.reste) }} €{% endif %}</span>
+        {% endif %}
       </p>
     </div>
     <div class="ui-actions inline-actions">
@@ -269,9 +273,13 @@
                 </td>
                 <td class="num">{{ "%.2f"|format(c.montant_regle) }} / {{ "%.2f"|format(c.montant_du) }} €</td>
                 <td class="num">
-                  <span class="ia-tag ton-{{ 'ok' if c.solde else ('warn' if c.montant_regle > 0 else 'danger') }}">
-                    {{ 'Soldée' if c.solde else ('Partielle' if c.montant_regle > 0 else 'Impayée') }}
-                  </span>
+                  {% if c.montant_du <= 0.009 %}
+                    <span class="ia-tag ton-warn" title="Tarif manquant au barème au moment de la génération">⚠️ à chiffrer</span>
+                  {% else %}
+                    <span class="ia-tag ton-{{ 'ok' if c.solde else ('warn' if c.montant_regle > 0 else 'danger') }}">
+                      {{ 'Soldée' if c.solde else ('Partielle' if c.montant_regle > 0 else 'Impayée') }}
+                    </span>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -315,6 +323,16 @@
                       title="Encaisse exactement ce qu'il reste ({{ "%.2f"|format(etat.reste) }} €)">✅ Solder</button>
             </div>
           </form>
+        {% elif etat.du <= 0.009 %}
+          {# Rien à payer n'est pas la même chose que « déjà payé » : dire
+             « réglé » ici induirait en erreur tant que le barème n'a pas
+             donné de vrai montant. #}
+          <p style="margin-top:10px; color:#8a1f1f;">
+            <strong>⚠️ Rien n'est encore dû</strong> — aucun montant n'a pu être calculé
+            {% if cout.manquants %}(barème incomplet, voir ci-dessus){% endif %}.
+            Complète le barème puis clique sur « 🔄 Mettre les cotisations à jour »
+            ci-dessous : les montants seront rattrapés automatiquement.
+          </p>
         {% else %}
           <p style="margin-top:10px;"><strong>Tout est réglé.</strong></p>
         {% endif %}
@@ -331,11 +349,16 @@
         {% if inscription.participant_id %}
           <form method="post" action="{{ url_for('inscriptions_annuelles.cotisations', inscription_id=inscription.id) }}" style="margin-top:10px;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn" type="submit"
+            <button class="btn {{ 'primary' if cout.manquants else '' }}" type="submit"
                     title="Complète ce qui manque dans Adhésions & participation (nouveau membre, barème saisi après coup)">
               🔄 Mettre les cotisations à jour
             </button>
           </form>
+          {% if cout.manquants %}
+            <p class="muted" style="font-size:.78rem; margin:4px 0 0;">
+              Rattrape le(s) montant(s) à 0 € une fois le barème complété — inutile de tout ressaisir.
+            </p>
+          {% endif %}
         {% endif %}
       {% endif %}
     </div>
