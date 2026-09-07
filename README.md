@@ -51,18 +51,28 @@ L'objectif principal est de relier le travail de terrain aux obligations de pilo
 
 ### Inscriptions annuelles (campagne de rentrée)
 
-- Saisie du bulletin d'inscription de l'année scolaire : coordonnées, secteur
-  qui fait venir la personne, ateliers choisis (cases + champ libre), envie de
-  bénévolat (mission libre, créneaux jour × demi-journée, « je ne sais pas »).
+- Saisie du bulletin d'inscription de l'année scolaire : coordonnées, date de
+  naissance, secteur qui fait venir la personne, ateliers choisis (cases +
+  champ libre), envie de bénévolat (mission libre, créneaux jour ×
+  demi-journée, « je ne sais pas »).
+- Inscription **individuelle ou familiale** : autant de membres du foyer qu'il
+  en faut (prénom, nom, date de naissance, filiation facultative). Chacun
+  reçoit sa fiche participant, tous rattachés au même foyer que celui composé
+  à la main depuis une fiche.
 - Transformation en fiche participant portant le statut spécial
   « en attente de 1re participation », qui tombe automatiquement au premier
   émargement. Rattachement à une fiche existante plutôt que création d'un doublon.
 - Inscription automatique aux ateliers choisis (jauge et liste d'attente du
   module Activité).
-- Confirmation du règlement à l'accueil, avec création facultative de l'adhésion
-  dans le module Adhésions & participation.
-- Fiche imprimable à remettre à l'accueil au moment du paiement.
-- Export XLSX complet de la campagne (détail nominatif, synthèse, bénévolat).
+- **Calcul du coût** : adhésion (individuelle ou familiale) + participation par
+  personne du foyer, au tarif en vigueur à la date d'inscription — la
+  proratisation en cours d'année s'appuie sur le barème existant.
+- **Règlement total, partiel ou nul**, ventilé sur les cotisations du module
+  Adhésions & participation, et affiché sur la fiche participant comme à
+  l'émargement.
+- Fiche imprimable à remettre à l'accueil au moment du paiement, détail chiffré
+  et cases de règlement comprises.
+- Export XLSX complet de la campagne (détail nominatif, synthèse, foyers, bénévolat).
 
 Voir [`docs/inscriptions-annuelles.md`](docs/inscriptions-annuelles.md).
 

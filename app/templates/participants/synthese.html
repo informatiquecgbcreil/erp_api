@@ -25,6 +25,11 @@
   .person-status--active, .person-status--strong, .person-status--new { background:rgba(34,197,94,.14); color:#166534; }
   .person-status--warning { background:rgba(245,158,11,.16); color:#92400e; }
   .person-status--watch { background:rgba(59,130,246,.13); color:#1d4ed8; }
+  .person-status--reglement { text-decoration:none; }
+  .person-status--reglement-ok { background:rgba(34,197,94,.16); color:#166534; }
+  .person-status--reglement-warn { background:rgba(245,158,11,.20); color:#78350f; }
+  .person-status--reglement-danger { background:rgba(239,68,68,.18); color:#7f1d1d; }
+  .person-status--reglement-neutre { background:rgba(148,163,184,.16); color:#475569; }
   .person-signal-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
   .person-signal { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:13px; background:#fff; min-height:128px; }
   .person-signal h3 { margin:0 0 8px; font-size:13px; color:#64748b; }
@@ -58,6 +63,18 @@
         <h1>{{ participant.nom }} {{ participant.prenom }}</h1>
         <p>Fiche personne consolidée : identité, présences, orientations, insertion et traces utiles.</p>
         <span class="person-status person-status--{{ link_status.tone }}">{{ link_status.label }}</span>
+        {% if participant.attend_premiere_participation %}
+          <span class="person-status person-status--watch" title="Fiche créée par une inscription annuelle : la personne n'est encore jamais venue.">🕓 {{ participant.statut_inscription_label }}</span>
+        {% endif %}
+        {% if etat_reglement and etat_reglement.statut != 'aucune' %}
+          <a class="person-status person-status--reglement person-status--reglement-{{ etat_reglement.ton }}"
+             href="#adhesion-participation"
+             title="Adhésion et participation {{ etat_reglement.libelle_annee }}">
+            {{ '✅' if etat_reglement.statut == 'complet' else ('🟠' if etat_reglement.statut == 'partiel' else '🔴') }}
+            {{ etat_reglement.libelle }} · {{ etat_reglement.libelle_annee }}
+            {%- if etat_reglement.reste > 0 %} — reste {{ "%.2f"|format(etat_reglement.reste) }} €{% endif %}
+          </a>
+        {% endif %}
       </div>
       <div class="person-actions">
         <a class="btn" href="{{ url_for('participants.list_participants') }}">Liste participants</a>

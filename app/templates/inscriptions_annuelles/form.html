@@ -18,6 +18,15 @@
   .ia-dispo th[scope="row"]{ text-align:left; font-weight:600; }
   .ia-sticky{ position:sticky; bottom:0; background:var(--panel, #fff); border-top:1px solid var(--border, #e3e6ef);
               padding:10px 0; margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+  .ia-membre{ display:grid; grid-template-columns:1.1fr 1.1fr .9fr .9fr auto; gap:8px; align-items:end;
+              padding:8px; border:1px solid var(--border, #e3e6ef); border-radius:10px; margin-bottom:6px; }
+  .ia-membre .btn{ padding:6px 10px; }
+  .ia-membre-fige{ background:rgba(15,23,42,.03); }
+  .ia-membre-fige .muted{ grid-column:1 / -1; font-size:.78rem; }
+  @media(max-width:760px){ .ia-membre{ grid-template-columns:1fr 1fr; } }
+  .ia-cout{ margin-top:12px; padding:10px 12px; border:1px solid var(--border, #e3e6ef);
+            border-radius:10px; background:rgba(15,23,42,.03); font-size:.9rem; }
+  .ia-cout span{ display:block; margin-top:3px; }
 </style>
 
 {% set p = pending or {} %}
@@ -74,34 +83,127 @@
         <label class="field-stack"><span>Ville</span>
           <input class="in" name="ville" value="{{ val('ville', inscription.ville if inscription else '') }}">
         </label>
+        <label class="field-stack"><span>Date de naissance</span>
+          <input class="in" type="date" name="date_naissance"
+                 value="{{ val('date_naissance', (inscription.date_naissance.isoformat() if inscription and inscription.date_naissance else '')) }}">
+        </label>
+      </div>
+      <div class="ia-row" style="margin-top:12px;">
+        <label class="field-stack"><span>Genre</span>
+          {% set genre_actuel = p.get('genre') if p.get('genre') is not none else (inscription.genre if inscription else '') %}
+          <select class="in" name="genre">
+            <option value="">Non précisé</option>
+            {% for g in ['F', 'H', 'Autre'] %}
+              <option value="{{ g }}" {% if genre_actuel == g %}selected{% endif %}>{{ g }}</option>
+            {% endfor %}
+          </select>
+        </label>
         <label class="field-stack"><span>Date d'inscription</span>
           <input class="in" type="date" name="date_inscription"
                  value="{{ val('date_inscription', (inscription.date_inscription.isoformat() if inscription and inscription.date_inscription else '')) }}">
         </label>
       </div>
+    </div>
 
-      <details style="margin-top:12px;">
-        <summary style="cursor:pointer; font-size:.85rem; font-weight:600;">Compléments facultatifs (utiles pour les bilans)</summary>
-        <p class="muted" style="font-size:.8rem; margin:6px 0;">
-          Ces deux champs ne sont pas demandés sur le bulletin. S'ils sont renseignés, ils sont
-          recopiés dans la fiche participant : l'âge et le genre alimentent les bilans SENACS et financeurs.
+    {% set familiale = (p.get('type_inscription') == 'familiale') if p else (inscription.est_familiale if inscription else false) %}
+    <div class="ui-card">
+      <h2 style="margin-top:0; font-size:1.05rem;">Inscription individuelle ou familiale ?</h2>
+      <p class="muted" style="font-size:.85rem; margin:0 0 10px;">
+        Une inscription familiale ouvre un <strong>foyer</strong> : chaque membre déclaré aura sa propre
+        fiche participant, toutes rattachées à la même famille. L'adhésion est alors au tarif familial,
+        et la participation reste due <strong>par personne</strong>.
+      </p>
+      <div class="ia-check-list" style="grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));">
+        <label class="ia-check">
+          <input type="radio" name="type_inscription" value="individuelle" {% if not familiale %}checked{% endif %}
+                 onchange="document.getElementById('ia-foyer-bloc').hidden = true; iaRecalculerCout();">
+          <span><strong>Individuelle</strong><br><span class="muted">une seule personne</span></span>
+        </label>
+        <label class="ia-check">
+          <input type="radio" name="type_inscription" value="familiale" {% if familiale %}checked{% endif %}
+                 onchange="document.getElementById('ia-foyer-bloc').hidden = false; iaRecalculerCout();">
+          <span><strong>Familiale</strong><br><span class="muted">plusieurs personnes d'un même foyer</span></span>
+        </label>
+      </div>
+
+      <div id="ia-foyer-bloc" {% if not familiale %}hidden{% endif %} style="margin-top:14px;">
+        <h3 style="font-size:.92rem; margin:0 0 4px;">Autres membres du foyer</h3>
+        <p class="muted" style="font-size:.82rem; margin:0 0 8px;">
+          Une ligne par personne, autant que nécessaire. Le nom se reprend automatiquement de
+          l'inscription si tu le laisses vide. Le lien de filiation est <strong>facultatif</strong> :
+          on ne fait pas d'une case une condition d'inscription.
         </p>
-        <div class="ia-row">
-          <label class="field-stack"><span>Date de naissance</span>
-            <input class="in" type="date" name="date_naissance"
-                   value="{{ val('date_naissance', (inscription.date_naissance.isoformat() if inscription and inscription.date_naissance else '')) }}">
-          </label>
-          <label class="field-stack"><span>Genre</span>
-            {% set genre_actuel = p.get('genre') if p.get('genre') is not none else (inscription.genre if inscription else '') %}
-            <select class="in" name="genre">
-              <option value="">Non précisé</option>
-              {% for g in ['F', 'H', 'Autre'] %}
-                <option value="{{ g }}" {% if genre_actuel == g %}selected{% endif %}>{{ g }}</option>
-              {% endfor %}
-            </select>
-          </label>
+
+        <div id="ia-membres">
+          {%- if p -%}
+            {%- set prenoms = p.getlist('membre_prenom') -%}
+            {%- set noms = p.getlist('membre_nom') -%}
+            {%- set naissances = p.getlist('membre_date_naissance') -%}
+            {%- set liens = p.getlist('membre_lien') -%}
+            {%- set mids = p.getlist('membre_id') -%}
+            {% for i in range(prenoms|length) %}
+              <div class="ia-membre">
+                <input type="hidden" name="membre_id" value="{{ mids[i] if i < mids|length else '' }}">
+                <label class="field-stack"><span>Prénom</span>
+                  <input class="in" name="membre_prenom" value="{{ prenoms[i] }}" placeholder="obligatoire"></label>
+                <label class="field-stack"><span>Nom</span>
+                  <input class="in" name="membre_nom" value="{{ noms[i] if i < noms|length else '' }}" placeholder="idem inscription"></label>
+                <label class="field-stack"><span>Date de naissance</span>
+                  <input class="in" type="date" name="membre_date_naissance" value="{{ naissances[i] if i < naissances|length else '' }}"></label>
+                <label class="field-stack"><span>Lien (facultatif)</span>
+                  <input class="in" name="membre_lien" value="{{ liens[i] if i < liens|length else '' }}" placeholder="fille, conjoint…"></label>
+                <button type="button" class="btn ia-membre-retirer" title="Retirer cette personne">✕</button>
+              </div>
+            {% endfor %}
+          {%- elif inscription -%}
+            {% for m in inscription.membres %}
+              <div class="ia-membre {% if m.participant_id %}ia-membre-fige{% endif %}">
+                <input type="hidden" name="membre_id" value="{{ m.id }}">
+                <label class="field-stack"><span>Prénom</span>
+                  <input class="in" name="membre_prenom" value="{{ m.prenom or '' }}" placeholder="obligatoire"></label>
+                <label class="field-stack"><span>Nom</span>
+                  <input class="in" name="membre_nom" value="{{ m.nom or '' }}" placeholder="idem inscription"></label>
+                <label class="field-stack"><span>Date de naissance</span>
+                  <input class="in" type="date" name="membre_date_naissance" value="{{ m.date_naissance.isoformat() if m.date_naissance else '' }}"></label>
+                <label class="field-stack"><span>Lien (facultatif)</span>
+                  <input class="in" name="membre_lien" value="{{ m.lien_filiation or '' }}" placeholder="fille, conjoint…"></label>
+                {% if m.participant_id %}
+                  <span class="muted" title="Cette personne a déjà une fiche participant">🔒 fiche n°{{ m.participant_id }}</span>
+                  <span class="muted">Fiche participant déjà créée : cette personne ne peut plus être retirée du bulletin (retire-la du foyer depuis sa fiche si besoin).</span>
+                {% else %}
+                  <button type="button" class="btn ia-membre-retirer" title="Retirer cette personne">✕</button>
+                {% endif %}
+              </div>
+            {% endfor %}
+          {%- endif -%}
         </div>
-      </details>
+
+        <template id="ia-membre-modele">
+          <div class="ia-membre">
+            <input type="hidden" name="membre_id" value="">
+            <label class="field-stack"><span>Prénom</span>
+              <input class="in" name="membre_prenom" value="" placeholder="obligatoire">
+            </label>
+            <label class="field-stack"><span>Nom</span>
+              <input class="in" name="membre_nom" value="" placeholder="idem inscription">
+            </label>
+            <label class="field-stack"><span>Date de naissance</span>
+              <input class="in" type="date" name="membre_date_naissance" value="">
+            </label>
+            <label class="field-stack"><span>Lien (facultatif)</span>
+              <input class="in" name="membre_lien" value="" placeholder="fille, conjoint…">
+            </label>
+            <button type="button" class="btn ia-membre-retirer" title="Retirer cette personne">✕</button>
+          </div>
+        </template>
+
+        <button type="button" class="btn" id="ia-ajouter-membre" style="margin-top:6px;">➕ Ajouter une personne</button>
+
+        <div class="ia-cout" id="ia-cout" hidden>
+          <strong>Coût estimé</strong>
+          <span class="muted" id="ia-cout-detail"></span>
+        </div>
+      </div>
     </div>
 
     <div class="ui-card">
@@ -205,4 +307,84 @@
     </div>
   </form>
 </div>
+
+<script>
+(function () {
+  // Barème de l'année, pour estimer le coût pendant la saisie. Le montant qui
+  // fera foi reste celui calculé au serveur à l'enregistrement.
+  var TARIFS = {{ tarifs_json | tojson }};
+
+  var liste = document.getElementById('ia-membres');
+  var modele = document.getElementById('ia-membre-modele');
+  var bouton = document.getElementById('ia-ajouter-membre');
+  var bloc = document.getElementById('ia-cout');
+  var detail = document.getElementById('ia-cout-detail');
+
+  function euro(n) { return (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' €'; }
+
+  function estFamiliale() {
+    var choix = document.querySelector('input[name="type_inscription"]:checked');
+    return choix && choix.value === 'familiale';
+  }
+
+  function nbPersonnes() {
+    if (!estFamiliale()) { return 1; }
+    var remplis = 0;
+    liste.querySelectorAll('input[name="membre_prenom"]').forEach(function (champ) {
+      if (champ.value.trim()) { remplis += 1; }
+    });
+    return 1 + remplis;
+  }
+
+  window.iaRecalculerCout = function () {
+    if (!bloc) { return; }
+    var familiale = estFamiliale();
+    var adhesion = familiale ? TARIFS.adhesion_familiale : TARIFS.adhesion_individuelle;
+    var participation = TARIFS.participation;
+    if (adhesion === null && participation === null) {
+      bloc.hidden = true;
+      return;
+    }
+    var n = nbPersonnes();
+    var a = adhesion || 0;
+    var pu = participation || 0;
+    bloc.hidden = false;
+    detail.textContent =
+      'Adhésion ' + (familiale ? 'familiale' : 'individuelle') + ' ' + euro(a) +
+      ' + participation ' + euro(pu) + ' × ' + n + ' personne(s) = ' + euro(a + pu * n) + '.' +
+      ((adhesion === null || participation === null)
+        ? ' Attention : un tarif manque au barème de l\'année, il compte pour 0 €.' : '');
+  };
+
+  function brancherRetrait(ligne) {
+    var retirer = ligne.querySelector('.ia-membre-retirer');
+    if (retirer) {
+      retirer.addEventListener('click', function () {
+        ligne.remove();
+        window.iaRecalculerCout();
+      });
+    }
+    ligne.querySelectorAll('input[name="membre_prenom"]').forEach(function (champ) {
+      champ.addEventListener('input', window.iaRecalculerCout);
+    });
+  }
+
+  if (liste) {
+    liste.querySelectorAll('.ia-membre').forEach(brancherRetrait);
+  }
+
+  if (bouton && modele && liste) {
+    bouton.addEventListener('click', function () {
+      var ligne = modele.content.firstElementChild.cloneNode(true);
+      liste.appendChild(ligne);
+      brancherRetrait(ligne);
+      var premier = ligne.querySelector('input[name="membre_prenom"]');
+      if (premier) { premier.focus(); }
+      window.iaRecalculerCout();
+    });
+  }
+
+  window.iaRecalculerCout();
+})();
+</script>
 {% endblock %}

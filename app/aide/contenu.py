@@ -245,34 +245,36 @@ AIDE_PAGES: dict[str, dict] = {
     },
     "inscriptions_annuelles.nouvelle": {
         "titre": "Saisir un bulletin d'inscription",
-        "resume": "Le formulaire reprend le bulletin papier : coordonnées, secteur qui fait venir la personne, ateliers choisis, envie de bénévolat.",
+        "resume": "Le formulaire reprend le bulletin papier : coordonnées, secteur qui fait venir la personne, composition du foyer, ateliers choisis, envie de bénévolat.",
         "etapes": [
             "Seuls le nom et le prénom sont obligatoires : enregistrez ce que vous avez, complétez plus tard.",
+            "Choisissez « individuelle » ou « familiale ». En familiale, cliquez sur « Ajouter une personne » pour chaque membre du foyer : le coût se met à jour à l'écran.",
+            "Le nom d'un membre peut rester vide : celui de l'inscription est repris. Le lien de filiation est facultatif.",
             "Cochez les ateliers demandés. Si l'atelier n'existe pas encore, écrivez-le dans « Autres souhaits ».",
             "Si la personne veut faire du bénévolat, cochez la case : le formulaire déplie la mission et la grille des disponibilités.",
-            "Enregistrez : vous arrivez sur la fiche de l'inscription, d'où vous créerez la fiche participant.",
         ],
         "astuce": "Une personne qui veut aider sans savoir quand ? Cochez « Je ne sais pas encore » : elle apparaîtra quand même dans la liste des bénévoles.",
     },
     "inscriptions_annuelles.detail": {
         "titre": "Une inscription en détail",
-        "resume": "Tout ce qui concerne un bulletin : ce qui a été demandé, la fiche participant, le règlement.",
+        "resume": "Tout ce qui concerne un bulletin : la famille, ce qui a été demandé, la fiche participant, le coût et le règlement.",
         "etapes": [
-            "« Créer la fiche participant » enregistre la personne dans l'annuaire avec le statut « en attente de 1re participation », et l'inscrit aux ateliers cochés.",
+            "« Créer la fiche participant » enregistre la personne dans l'annuaire avec le statut « en attente de 1re participation », ouvre une fiche pour chaque membre du foyer et les regroupe en famille.",
             "Si des fiches ressemblantes existent, rattachez l'inscription à la bonne plutôt que de créer un doublon.",
-            "« Confirmer le règlement » enregistre le paiement encaissé à l'accueil, et peut créer l'adhésion dans le module Adhésions.",
+            "Le bloc « Ce que ça coûte » détaille l'adhésion et la participation de chaque personne, au tarif du jour de l'inscription.",
+            "« Encaisser » enregistre la somme reçue, même partielle : elle se répartit toute seule sur les adhésions et participations. « Solder » encaisse exactement ce qu'il reste.",
             "« Fiche à imprimer » sort la feuille à donner à l'accueil au moment du paiement.",
         ],
         "astuce": "Le statut d'attente tombe tout seul dès le premier émargement : rien à faire à la main.",
     },
     "inscriptions_annuelles.fiche": {
         "titre": "La fiche d'inscription à imprimer",
-        "resume": "La feuille récapitulative à remettre à l'accueil : coordonnées, ateliers, bénévolat et cadre pour le règlement.",
+        "resume": "La feuille récapitulative à remettre à l'accueil : coordonnées, foyer, ateliers, bénévolat et le décompte à payer.",
         "etapes": [
             "Cliquez sur « Imprimer la fiche ». Les menus de l'application n'apparaissent pas sur le papier.",
-            "Le cadre du bas sert à noter le règlement : montant, mode de paiement, date, signatures.",
+            "Le cadre du bas détaille l'adhésion, la participation par personne et le total dû, puis les cases à cocher : intégralement réglé, acompte ou rien réglé.",
         ],
-        "astuce": "Si le tarif d'adhésion de l'année est saisi dans le barème, le montant est déjà pré-rempli sur la fiche.",
+        "astuce": "Le décompte utilise le barème des tarifs de l'année. S'il est vide, les montants s'affichent à 0 € : complétez-le dans Ressources → Tarifs.",
     },
 
     # ------------------------------------------------------------------
@@ -1097,10 +1099,21 @@ NOTICE: list[dict] = [
                 "Si des fiches ressemblantes existent déjà (ancien inscrit, homonyme), l'application les propose : rattachez le bulletin à la bonne fiche plutôt que de créer un doublon.",
                 "Le statut d'attente tombe TOUT SEUL dès que la personne est pointée présente une première fois, quelle que soit la manière d'émarger. Vous n'avez rien à faire.",
             ]),
+            ("La famille", [
+                "Une inscription familiale déclare les autres membres du foyer : une ligne par personne, autant qu'il en faut. Le nom se reprend de l'inscription s'il est laissé vide, et le lien de filiation reste facultatif.",
+                "À la création de la fiche participant, chaque membre reçoit la sienne et tout le monde est regroupé dans une même famille — exactement la famille que vous composeriez à la main depuis une fiche.",
+                "Un enfant déjà connu de l'application (mêmes nom, prénom et date de naissance) rejoint sa fiche au lieu d'être créé une seconde fois.",
+            ]),
+            ("Ce que ça coûte", [
+                "Deux étages : l'adhésion, une fois (au tarif individuel ou familial), et la participation, une fois PAR PERSONNE du foyer.",
+                "Exemple avec un barème à 7 € / 10 € / 30 € : une personne seule paye 7 + 30 = 37 € ; une mère et son enfant payent 10 + 30 × 2 = 70 €.",
+                "Les montants viennent du barème (Espace Ressources → Tarifs adhésions & participation), lus à la date de l'inscription. Une ligne de barème qui démarre en janvier s'applique donc aux inscriptions suivantes, sans toucher aux précédentes : c'est ainsi qu'on prorate en cours d'année, et chaque tarif se prorate séparément.",
+            ]),
             ("Le règlement", [
-                "« Confirmer le règlement » enregistre le montant encaissé, le mode de paiement et la date. Tant que ce n'est pas fait, l'inscription reste dans la liste « à régler ».",
-                "En cochant « Créer aussi l'adhésion », le règlement remonte dans le module Adhésions & participation : il compte alors dans les impayés, la caisse et les bilans, sans double saisie.",
-                "Le montant est pré-rempli si le tarif d'adhésion de l'année est saisi dans le barème (Espace Ressources → Tarifs).",
+                "À la création de la fiche participant, l'adhésion et les participations sont enregistrées dans le module Adhésions & participation : elles comptent dans les impayés, la caisse et les bilans, sans double saisie.",
+                "Saisissez la somme reçue, même partielle : elle se répartit toute seule sur les lignes impayées, l'adhésion d'abord. Le bouton « Solder » encaisse exactement ce qu'il reste.",
+                "Trois états seulement : non réglé, partiellement réglé, à jour. Ils s'affichent sur la fiche de la personne ET sur la feuille d'émargement, pour que vous voyiez qui doit encore payer au moment de cocher les présents.",
+                "Si vous encaissez avant d'avoir créé la fiche, la somme est notée sur le bulletin et reportée automatiquement ensuite.",
             ]),
             ("Imprimer et exporter", [
                 "« Fiche à imprimer » sort la feuille récapitulative à donner à l'accueil au moment du paiement, avec un cadre pour le règlement et les signatures.",

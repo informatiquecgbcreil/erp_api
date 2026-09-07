@@ -23,6 +23,8 @@ from app.models import (
     MODES_PAIEMENT_LABELS,
     STATUTS_INSCRIPTION_ANNUELLE,
     STATUTS_INSCRIPTION_ANNUELLE_LABELS,
+    TYPES_INSCRIPTION_ANNUELLE,
+    TYPES_INSCRIPTION_ANNUELLE_LABELS,
     InscriptionAnnuelle,
     Participant,
     Quartier,
@@ -37,12 +39,17 @@ from app.services.inscriptions_annuelles import (
     annuler_reglement,
     appliquer_ateliers,
     appliquer_disponibilites,
+    appliquer_membres,
     ateliers_proposables,
-    confirmer_reglement,
+    calculer_cout,
     creer_participant,
     doublons_possibles,
+    encaisser,
+    etat_reglement,
     export_xlsx,
-    montant_adhesion_suggere,
+    generer_cotisations,
+    personnes_couvertes,
+    rafraichir_reglements,
     rafraichir_statuts,
     rattacher_participant,
     synthese,
@@ -141,6 +148,36 @@ def _email_invalide(email: str | None) -> bool:
     return "@" not in email or "." not in email.rsplit("@", 1)[-1]
 
 
+def _lignes_membres() -> list[dict]:
+    """Lit les lignes « membre du foyer » du formulaire.
+
+    Les champs arrivent en tableaux parallèles (``membre_prenom[]``…), un
+    index par ligne : la famille en ajoute autant qu'elle veut, le navigateur
+    les envoie dans l'ordre. Une ligne sans prénom est une ligne vide, elle
+    sera ignorée en aval."""
+    ids = request.form.getlist("membre_id")
+    prenoms = request.form.getlist("membre_prenom")
+    noms = request.form.getlist("membre_nom")
+    naissances = request.form.getlist("membre_date_naissance")
+    liens = request.form.getlist("membre_lien")
+
+    lignes = []
+    for i, prenom in enumerate(prenoms):
+        brut_date = (naissances[i] if i < len(naissances) else "").strip()
+        try:
+            naissance = datetime.strptime(brut_date, "%Y-%m-%d").date() if brut_date else None
+        except ValueError:
+            naissance = None
+        lignes.append({
+            "id": ids[i] if i < len(ids) else None,
+            "prenom": prenom,
+            "nom": noms[i] if i < len(noms) else "",
+            "date_naissance": naissance,
+            "lien_filiation": liens[i] if i < len(liens) else "",
+        })
+    return lignes
+
+
 def _appliquer_formulaire(inscription: InscriptionAnnuelle) -> list[str]:
     """Recopie le formulaire sur le bulletin. Retourne les erreurs bloquantes."""
     erreurs: list[str] = []
@@ -162,6 +199,19 @@ def _appliquer_formulaire(inscription: InscriptionAnnuelle) -> list[str]:
     inscription.genre = _texte("genre", 20)
     inscription.date_naissance = _date_form("date_naissance", None)
     inscription.secteur_orienteur = _texte("secteur_orienteur", 80)
+
+    type_inscription = (request.form.get("type_inscription") or "individuelle").strip()
+    inscription.type_inscription = (
+        type_inscription if type_inscription in TYPES_INSCRIPTION_ANNUELLE else "individuelle"
+    )
+    if inscription.est_familiale:
+        appliquer_membres(inscription, _lignes_membres())
+    else:
+        # Repasser en individuelle vide la composition du foyer — sauf les
+        # membres qui ont déjà une fiche : on ne fait pas disparaître une
+        # personne de l'application d'un coup de case à cocher.
+        appliquer_membres(inscription, [])
+
     inscription.ateliers_libre = _texte("ateliers_libre")
     inscription.commentaire = _texte("commentaire")
     inscription.date_inscription = _date_form("date_inscription", inscription.date_inscription or date.today())
@@ -182,6 +232,17 @@ def _appliquer_formulaire(inscription: InscriptionAnnuelle) -> list[str]:
     return erreurs
 
 
+def _tarifs_annee(annee: int, a_la_date: date | None = None) -> dict:
+    """Les trois tarifs en vigueur, en euros ou None si absents du barème."""
+    from app.services.cotisations import tarif_en_vigueur
+
+    tarifs = {}
+    for code in ("adhesion_individuelle", "adhesion_familiale", "participation"):
+        ligne = tarif_en_vigueur(annee, code, a_la_date or date.today())
+        tarifs[code] = round(float(ligne.montant), 2) if ligne else None
+    return tarifs
+
+
 def _contexte_formulaire(inscription: InscriptionAnnuelle | None, annee: int) -> dict:
     secteur = None if _portee_globale() else (_secteur_utilisateur() or None)
     return {
@@ -197,6 +258,11 @@ def _contexte_formulaire(inscription: InscriptionAnnuelle | None, annee: int) ->
         "demi_journees": DEMI_JOURNEES,
         "demi_journees_labels": DEMI_JOURNEES_LABELS,
         "secteur_defaut": _secteur_utilisateur(),
+        "types_inscription": TYPES_INSCRIPTION_ANNUELLE,
+        "types_inscription_labels": TYPES_INSCRIPTION_ANNUELLE_LABELS,
+        # Barème de l'année, pour l'estimation du coût pendant la saisie.
+        # Le montant qui fait foi reste celui calculé au serveur.
+        "tarifs_json": _tarifs_annee(annee),
     }
 
 
@@ -210,10 +276,12 @@ def _contexte_formulaire(inscription: InscriptionAnnuelle | None, annee: int) ->
 def index():
     annee = _annee_demandee()
 
-    # Filet de sécurité : recale les bulletins dont la personne est déjà
-    # venue (reprise de données, import massif) avant d'afficher les compteurs.
+    # Filets de sécurité avant d'afficher les compteurs : les bulletins dont
+    # la personne est déjà venue, et les règlements saisis ailleurs (une fiche
+    # participant peut encaisser sans passer par ce module).
     try:
         rafraichir_statuts(annee)
+        rafraichir_reglements(annee)
     except Exception:  # noqa: BLE001 — l'affichage ne dépend pas du rattrapage
         db.session.rollback()
 
@@ -230,10 +298,14 @@ def index():
         q = q.filter(InscriptionAnnuelle.secteur_orienteur == secteur)
 
     reglement = (request.args.get("reglement") or "").strip()
-    if reglement == "regle":
-        q = q.filter(InscriptionAnnuelle.reglement_confirme.is_(True))
+    if reglement in ("complet", "partiel", "rien"):
+        q = q.filter(InscriptionAnnuelle.reglement_statut == reglement)
     elif reglement == "a_regler":
-        q = q.filter(InscriptionAnnuelle.reglement_confirme.is_(False))
+        q = q.filter(InscriptionAnnuelle.reglement_statut != "complet")
+
+    type_inscription = (request.args.get("type_inscription") or "").strip()
+    if type_inscription in TYPES_INSCRIPTION_ANNUELLE:
+        q = q.filter(InscriptionAnnuelle.type_inscription == type_inscription)
 
     if (request.args.get("benevolat") or "") == "1":
         q = q.filter(InscriptionAnnuelle.benevolat_souhaite.is_(True))
@@ -268,9 +340,12 @@ def index():
         secteurs=get_secteur_labels(active_only=True),
         statuts=STATUTS_INSCRIPTION_ANNUELLE,
         statuts_labels=STATUTS_INSCRIPTION_ANNUELLE_LABELS,
+        types_inscription=TYPES_INSCRIPTION_ANNUELLE,
+        types_inscription_labels=TYPES_INSCRIPTION_ANNUELLE_LABELS,
         filtres={
             "statut": statut, "secteur": secteur, "reglement": reglement,
             "q": recherche, "benevolat": (request.args.get("benevolat") or ""),
+            "type_inscription": type_inscription,
         },
         peut_editer=can("inscriptions_annuelles:edit"),
         peut_regler=can("inscriptions_annuelles:reglement"),
@@ -366,7 +441,9 @@ def detail(inscription_id: int):
         quartiers=quartiers,
         modes_paiement=MODES_PAIEMENT,
         modes_paiement_labels=MODES_PAIEMENT_LABELS,
-        montant_suggere=montant_adhesion_suggere(inscription.annee_scolaire),
+        cout=calculer_cout(inscription),
+        etat=etat_reglement(inscription),
+        personnes=personnes_couvertes(inscription),
         aujourdhui=date.today(),
         peut_editer=can("inscriptions_annuelles:edit"),
         peut_regler=can("inscriptions_annuelles:reglement"),
@@ -499,30 +576,69 @@ def rattacher_fiche(inscription_id: int):
 @login_required
 @require_perm("inscriptions_annuelles:reglement")
 def reglement(inscription_id: int):
+    """Encaisse une somme — totale ou partielle — ou remet le compteur à zéro."""
     inscription = _charger(inscription_id)
-    action = (request.form.get("action") or "confirmer").strip()
+    action = (request.form.get("action") or "encaisser").strip()
 
     if action == "annuler":
-        annuler_reglement(inscription)
-        flash("Règlement repassé en attente.", "ok")
+        try:
+            annuler_reglement(inscription)
+        except InscriptionAnnuelleErreur as exc:
+            flash(str(exc), "err")
+            return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
+        flash("Règlement remis à zéro sur le bulletin.", "ok")
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
     mode = (request.form.get("mode") or "").strip()
-    if mode and mode not in MODES_PAIEMENT:
-        mode = None
+    if mode not in MODES_PAIEMENT:
+        mode = "especes"
 
-    info = confirmer_reglement(
-        inscription,
-        montant=_montant_form("montant"),
-        mode=mode,
-        date_reglement=_date_form("date_reglement", date.today()),
-        commentaire=_texte("reglement_commentaire", 255),
-        creer_adhesion=(request.form.get("creer_adhesion") or "") == "1",
-        user_id=getattr(current_user, "id", None),
+    montant = _montant_form("montant")
+    if (request.form.get("solder") or "") == "1":
+        # Bouton « solder » : encaisse exactement ce qu'il reste.
+        montant = etat_reglement(inscription)["reste"]
+
+    try:
+        _, message = encaisser(
+            inscription,
+            montant or 0,
+            mode=mode,
+            date_paiement=_date_form("date_reglement", date.today()),
+            commentaire=_texte("reglement_commentaire", 255),
+            user_id=getattr(current_user, "id", None),
+        )
+    except InscriptionAnnuelleErreur as exc:
+        flash(str(exc), "err")
+        return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
+
+    flash(message, "ok")
+    return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
+
+
+@bp.route("/<int:inscription_id>/cotisations", methods=["POST"])
+@login_required
+@require_perm("inscriptions_annuelles:reglement")
+def cotisations(inscription_id: int):
+    """(Re)génère l'adhésion et les participations dans le module Adhésions.
+
+    Utile quand un membre du foyer reçoit sa fiche après coup, ou quand le
+    barème n'était pas encore saisi au moment de l'inscription."""
+    inscription = _charger(inscription_id)
+    try:
+        creees, avertissements = generer_cotisations(
+            inscription, user_id=getattr(current_user, "id", None)
+        )
+    except InscriptionAnnuelleErreur as exc:
+        flash(str(exc), "err")
+        return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
+
+    flash(
+        f"{len(creees)} cotisation(s) créée(s) dans Adhésions & participation."
+        if creees else "Les cotisations de cette inscription étaient déjà à jour.",
+        "ok",
     )
-    flash(f"Règlement confirmé pour {inscription.nom_complet}.", "ok")
-    if info:
-        flash(info, "ok" if "enregistré" in info else "warn")
+    for message in avertissements:
+        flash(message, "warn")
     return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
 
@@ -539,7 +655,9 @@ def fiche(inscription_id: int):
         "inscriptions_annuelles/fiche.html",
         inscription=inscription,
         modes_paiement_labels=MODES_PAIEMENT_LABELS,
-        montant_suggere=montant_adhesion_suggere(inscription.annee_scolaire),
+        cout=calculer_cout(inscription),
+        etat=etat_reglement(inscription),
+        personnes=personnes_couvertes(inscription),
         jours=JOURS_SEMAINE,
         jours_labels=JOURS_SEMAINE_LABELS,
         demi_journees=DEMI_JOURNEES,

@@ -26,6 +26,7 @@ from app.models import (
     BenevoleHeures,
     Cotisation,
     InscriptionAnnuelle,
+    InscriptionAnnuelleMembre,
     Evaluation,
     OrientationAccesDroit,
     Paiement,
@@ -201,7 +202,8 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
     # tout. Ce qui décrit la DEMANDE (ateliers souhaités, mission de
     # bénévolat, créneaux) reste : ces données ne désignent personne et
     # servent aux bilans de campagne.
-    for bulletin in InscriptionAnnuelle.query.filter_by(participant_id=p.id).all():
+    bulletins = InscriptionAnnuelle.query.filter_by(participant_id=p.id).all()
+    for bulletin in bulletins:
         bulletin.nom = NOM_ANONYME
         bulletin.prenom = f"P{p.id}"
         bulletin.adresse = None
@@ -212,6 +214,22 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
         bulletin.date_naissance = None
         bulletin.commentaire = None
         bulletin.reglement_commentaire = None
+
+    # Les membres du foyer déclarés sur un bulletin portent eux aussi une
+    # identité. Deux cas, et deux seulement :
+    # - le membre a SA fiche : on anonymise sa ligne quand c'est SA fiche
+    #   qu'on anonymise (il est une personne à part entière, pas une annexe
+    #   de son parent) ;
+    # - le membre n'a aucune fiche : il n'est connu que par ce bulletin, sa
+    #   ligne part donc avec l'anonymisation de l'inscrit·e principal·e.
+    lignes_membres = list(InscriptionAnnuelleMembre.query.filter_by(participant_id=p.id).all())
+    for bulletin in bulletins:
+        lignes_membres += [m for m in bulletin.membres if m.participant_id is None]
+    for membre in lignes_membres:
+        membre.nom = NOM_ANONYME
+        membre.prenom = f"P{membre.participant_id or membre.id}"
+        membre.date_naissance = None
+        membre.lien_filiation = None
 
     sync_legacy_insertion_fields(p, actor_id=actor_id)
 

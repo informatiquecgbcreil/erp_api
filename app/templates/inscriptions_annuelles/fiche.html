@@ -13,6 +13,12 @@
   .fiche dd{ margin:0; }
   .fiche .libre{ white-space:pre-line; border:1px solid #ccc; border-radius:6px; padding:7px 9px;
                  margin-top:5px; min-height:34px; font-size:.9rem; }
+  .fiche table.foyer{ border-collapse:collapse; margin-top:6px; width:100%; }
+  .fiche table.foyer th, .fiche table.foyer td{ border:1px solid #666; padding:4px 8px; font-size:.88rem; text-align:left; }
+  .fiche table.cout{ border-collapse:collapse; width:100%; font-size:.9rem; margin-top:4px; }
+  .fiche table.cout td, .fiche table.cout th{ padding:3px 0; text-align:left; }
+  .fiche table.cout td.num, .fiche table.cout th.num{ text-align:right; white-space:nowrap; }
+  .fiche table.cout tr.total td{ font-weight:800; border-top:1px solid #666; padding-top:5px; }
   .fiche table.dispo{ border-collapse:collapse; margin-top:6px; }
   .fiche table.dispo th, .fiche table.dispo td{ border:1px solid #666; padding:4px 12px; text-align:center; font-size:.85rem; }
   .fiche table.dispo th[scope="row"]{ text-align:left; }
@@ -55,6 +61,22 @@
       {% if inscription.date_naissance %}<dt>Date de naissance</dt><dd>{{ inscription.date_naissance.strftime('%d/%m/%Y') }}</dd>{% endif %}
       <dt>Secteur qui fait venir</dt><dd>{{ inscription.secteur_orienteur or '—' }}</dd>
     </dl>
+
+    {% if inscription.est_familiale %}
+      <h2>Foyer — {{ inscription.nb_personnes }} personne(s)</h2>
+      <table class="foyer">
+        <thead><tr><th>Personne</th><th>Lien</th><th>Date de naissance</th></tr></thead>
+        <tbody>
+          {% for personne in personnes %}
+            <tr>
+              <td>{{ personne.nom_complet }}{% if personne.principal %} <span style="opacity:.7;">(inscrit·e principal·e)</span>{% endif %}</td>
+              <td>{{ personne.lien or '—' }}</td>
+              <td>{{ personne.date_naissance.strftime('%d/%m/%Y') if personne.date_naissance else '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
 
     <h2>Ateliers choisis</h2>
     {% if inscription.ateliers %}
@@ -107,43 +129,49 @@
 
     <div class="reglement">
       <div style="font-weight:800; margin-bottom:6px;">Règlement — partie réservée à l'accueil</div>
-      {% if inscription.reglement_confirme %}
-        <table>
-          <tr>
-            <td>Montant réglé</td>
-            <td style="text-align:right; font-weight:700;">
-              {% if inscription.reglement_montant is not none %}{{ "%.2f"|format(inscription.reglement_montant) }} €{% else %}—{% endif %}
-            </td>
-          </tr>
-          <tr>
-            <td>Mode</td>
-            <td style="text-align:right;">{{ modes_paiement_labels.get(inscription.reglement_mode, inscription.reglement_mode or '—') }}</td>
-          </tr>
-          <tr>
-            <td>Date</td>
-            <td style="text-align:right;">{{ inscription.reglement_date.strftime('%d/%m/%Y') if inscription.reglement_date else '—' }}</td>
-          </tr>
-          {% if inscription.reglement_commentaire %}
-            <tr><td colspan="2" style="opacity:.8;">{{ inscription.reglement_commentaire }}</td></tr>
+
+      <table class="cout">
+        <thead><tr><th>Ligne</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          {% for ligne in cout.lignes %}
+            <tr>
+              <td>{{ ligne.libelle }}</td>
+              <td class="num">{{ "%.2f"|format(ligne.prix_unitaire) }} €</td>
+              <td class="num">× {{ ligne.quantite }}</td>
+              <td class="num">{{ "%.2f"|format(ligne.total) }} €</td>
+            </tr>
+          {% endfor %}
+          <tr class="total"><td colspan="3">Total dû</td><td class="num">{{ "%.2f"|format(cout.total) }} €</td></tr>
+          {% if etat.regle > 0 %}
+            <tr><td colspan="3">Déjà réglé</td><td class="num">− {{ "%.2f"|format(etat.regle) }} €</td></tr>
+            <tr class="total"><td colspan="3">Reste à régler</td><td class="num">{{ "%.2f"|format(etat.reste) }} €</td></tr>
           {% endif %}
-        </table>
-        <p style="margin:8px 0 0; font-weight:700;">☒ Règlement confirmé</p>
-      {% else %}
-        <table>
-          <tr>
-            <td>Montant à régler</td>
-            <td style="text-align:right; font-weight:700;">
-              {% if montant_suggere is not none %}{{ "%.2f"|format(montant_suggere) }} €{% else %}. . . . . . . . . €{% endif %}
-            </td>
-          </tr>
-          <tr><td>Date du règlement</td><td style="text-align:right;">. . . . / . . . . / . . . . . .</td></tr>
-        </table>
-        <div class="cases">
-          <span>☐ Espèces</span><span>☐ Chèque</span><span>☐ Carte bancaire</span>
-          <span>☐ Virement</span><span>☐ Autre</span>
-        </div>
-        <p style="margin:8px 0 0;">☐ Règlement confirmé &nbsp;&nbsp; ☐ Reste à régler</p>
-      {% endif %}
+        </tbody>
+      </table>
+
+      <div style="margin-top:8px;">
+        {% if etat.statut == 'complet' %}
+          <p style="margin:0; font-weight:700;">☒ Intégralement réglé
+            {% if inscription.reglement_date %} le {{ inscription.reglement_date.strftime('%d/%m/%Y') }}{% endif %}
+            {% if inscription.reglement_mode %} · {{ modes_paiement_labels.get(inscription.reglement_mode, inscription.reglement_mode) }}{% endif %}
+          </p>
+        {% else %}
+          <table class="cout">
+            <tr><td>Montant reçu ce jour</td><td class="num">. . . . . . . . . €</td></tr>
+            <tr><td>Date du règlement</td><td class="num">. . . . / . . . . / . . . . . .</td></tr>
+          </table>
+          <div class="cases">
+            <span>☐ Espèces</span><span>☐ Chèque</span><span>☐ Carte bancaire</span>
+            <span>☐ Virement</span><span>☐ Autre</span>
+          </div>
+          <p style="margin:8px 0 0;">
+            ☐ Intégralement réglé &nbsp;&nbsp; ☐ Acompte (reste à régler : . . . . . . . €) &nbsp;&nbsp; ☐ Rien réglé
+          </p>
+        {% endif %}
+        {% if inscription.reglement_commentaire %}
+          <p style="margin:6px 0 0; opacity:.8; font-size:.88rem;">{{ inscription.reglement_commentaire }}</p>
+        {% endif %}
+      </div>
     </div>
 
     <div class="signatures">
