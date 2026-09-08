@@ -38,8 +38,8 @@ ceux où le classeur laisse une vraie ambiguïté.
 | Participants | 1 014 lignes | 834 dossiers | **182 dossiers** (407 lignes) |
 | Secteurs d'activité | 66 | 66 | **2** |
 | Séances | 46 | 46 | **5** |
-| Anomalies bloquantes | 58 | — | comprises dans les lignes ci-dessus |
-| **Total** | **1 184** | | **189** |
+| Anomalies bloquantes | 58 | 58 | **58 acquittements** |
+| **Total** | **1 184** | | **247** |
 
 ## Qualité de la source, telle qu'elle est
 
@@ -113,6 +113,27 @@ contradictions entre quantième et jour de semaine (`CTAI LUCIA!CH`,
 `LAB EXPRESSION!U` et `!W`, deux dates possibles chacune). Aucune n'est tranchée
 automatiquement : deux lectures possibles ne valent pas une décision.
 
+### Anomalies bloquantes — 58 acquittements, jamais automatiques
+
+Les 57 anomalies du parseur et l'anomalie territoriale forment une famille de
+blocages **distincte** des décisions ci-dessus : une séance datée reste bloquée
+par l'anomalie qui a signalé sa cellule tant que celle-ci n'est pas acquittée.
+Acquitter n'est pas corriger, c'est déclarer avoir vérifié la cellule d'origine.
+Le triage ne le fait donc jamais tout seul, même quand il propose une lecture.
+
+Il fait en revanche le travail de préparation : chaque anomalie est exportée avec
+sa feuille, sa cellule, la valeur réellement saisie et, pour 41 d'entre elles, la
+date que le triage propose pour cette colonne. On acquitte en connaissance de
+cause au lieu de cocher 58 cases dans une page web.
+
+| Code | Anomalies | Lecture proposée en regard |
+|---|---:|---|
+| `weekday_mismatch` | 25 | oui, quand la colonne est datée |
+| `invalid_day` | 13 | idem |
+| `missing_identity` | 11 | non, elles renvoient à un dossier de personne |
+| `invalid_calendar_date` | 8 | oui |
+| `unknown_territory` | 1 | non, c'est `MOULIN` |
+
 ### Activités — 64 secteurs sur 66
 
 Le secteur est déduit du nom métier par mots-clés, avec une confiance affichée.
@@ -155,6 +176,7 @@ python -m tools.historical_triage trier `
    | `personne` | `nouvelle`, `fiche:<id ERP>`, `groupe:<clé d'un autre dossier>`, `ignorer` |
    | `seance` | `AAAA-MM-JJ`, `ignorer` |
    | `activite` | un libellé de secteur, `atelier:<id ERP>`, `nouvelle`, `ignorer` |
+   | `anomalie` | `acquitter` — et rien d'autre : refuser une anomalie, c'est la laisser vide |
 
    `groupe:` accepte une cible située n'importe où dans le fichier, y compris plus
    bas ; les renvois sont résolus après coup. Les lignes vides restent bloquantes,
@@ -189,6 +211,8 @@ du rapport, sinon `config.SECTEURS`.
 
 - Le triage **propose** ; il ne remplace pas la relecture. Un dossier « rattacher »
   reste une affirmation d'identité fondée sur nom, prénom et année seuls.
+- Les anomalies ne sont jamais acquittées par l'outil, quelle que soit la
+  confiance de la lecture qu'il propose pour la colonne concernée.
 - Les propositions de secteur sont lexicales. Elles n'ont aucune connaissance du
   projet social ni de l'organigramme réel.
 - Les dates déduites reposent sur l'ordre chronologique des colonnes et sur les

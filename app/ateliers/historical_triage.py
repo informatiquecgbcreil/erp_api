@@ -366,6 +366,50 @@ def _dossier_seance(seance, datees, annee, passe, ancre=None):
     return dossier
 
 
+def trier_anomalies(rapport, seances=()):
+    """Anomalies bloquantes restant à acquitter, avec la lecture proposée en regard.
+
+    Acquitter, c'est affirmer « j'ai vérifié la cellule d'origine et je
+    l'accepte ». Cet outil ne le fait donc jamais à la place de personne : il
+    se contente de rassembler les cellules et de rappeler ce que le triage
+    propose pour la séance ou la ligne concernée.
+    """
+    propositions = {d["cle"]: d for d in seances}
+    par_cellule = {}
+    for seance in rapport.get("sessions", []):
+        par_cellule[(seance["source_sheet"], seance["source_cell"])] = seance["key"]
+
+    dossiers = []
+    for anomalie in rapport.get("anomalies", []):
+        if not anomalie.get("blocking", True) or anomalie.get("acknowledged"):
+            continue
+        feuille = anomalie.get("source_sheet") or str(anomalie.get("source_id") or "").rsplit("!", 1)[0]
+        cellule = anomalie.get("source_cell")
+        cible = par_cellule.get((feuille, cellule))
+        if not cible and anomalie.get("source_id"):
+            cible = anomalie["source_id"]
+        elif not cible and anomalie.get("source_row"):
+            cible = f"{feuille}!{anomalie['source_row']}"
+        proposee = propositions.get(cible, {}).get("decision") or {}
+        valeur = next((anomalie[champ] for champ in ("raw_value", "value", "raw_weekday")
+                       if anomalie.get(champ) is not None), None)
+        dossiers.append({
+            "cle": anomalie["id"],
+            "code": anomalie["code"],
+            "libelle": f"{feuille or '?'} {cellule or ''}".strip(),
+            "message": anomalie.get("message") or "Anomalie source à examiner.",
+            "valeur": valeur,
+            "cible": cible,
+            "lecture_proposee": proposee.get("date_session"),
+            "statut": "arbitrer",
+            "categorie": anomalie["code"],
+            "motif": "à vérifier dans le classeur puis acquitter explicitement",
+            "decision": None,
+        })
+    dossiers.sort(key=lambda d: (d["libelle"], d["cle"]))
+    return dossiers
+
+
 def trier_activites(rapport, *, proposer_secteurs=True, secteurs_connus=()):
     """Propose un secteur par activité et signale les feuilles au nom voisin."""
     labels = list(secteurs_connus) or [label for label, _ in REGLES_SECTEUR]
@@ -437,6 +481,7 @@ def trier(rapport, *, proposer_secteurs=True, secteurs_connus=()):
     seances = trier_seances(rapport)
     activites = trier_activites(rapport, proposer_secteurs=proposer_secteurs,
                                 secteurs_connus=secteurs_connus)
+    anomalies = trier_anomalies(rapport, seances)
     decisions = {"participants": {}, "activities": {}, "sessions": {}, "acknowledged_anomalies": []}
     for dossier in personnes:
         if dossier["decision"]:
@@ -456,12 +501,13 @@ def trier(rapport, *, proposer_secteurs=True, secteurs_connus=()):
         "personnes": personnes,
         "seances": seances,
         "activites": activites,
+        "anomalies": anomalies,
         "decisions": decisions,
-        "resume": _resume(rapport, personnes, seances, activites, decisions),
+        "resume": _resume(rapport, personnes, seances, activites, anomalies, decisions),
     }
 
 
-def _resume(rapport, personnes, seances, activites, decisions):
+def _resume(rapport, personnes, seances, activites, anomalies, decisions):
     compte = lambda dossiers, statut: sum(d["statut"] == statut for d in dossiers)
     lignes = lambda statut: sum(len(d["lignes"]) for d in personnes if d["statut"] == statut)
     return {
@@ -481,11 +527,12 @@ def _resume(rapport, personnes, seances, activites, decisions):
         "activites": len(activites),
         "activites_avec_secteur": compte(activites, "secteur"),
         "activites_a_arbitrer": compte(activites, "arbitrer"),
+        "anomalies_a_acquitter": len(anomalies),
         "decisions_participants": len(decisions["participants"]),
         "decisions_seances": len(decisions["sessions"]),
         "decisions_activites": len(decisions["activities"]),
         "blocages_restants": (compte(personnes, "arbitrer") + compte(seances, "arbitrer")
-                              + compte(activites, "arbitrer")),
+                              + compte(activites, "arbitrer") + len(anomalies)),
     }
 
 
@@ -497,6 +544,7 @@ AIDE_DECISION = {
     "personne": "nouvelle | fiche:<id ERP> | groupe:<clé d'un autre dossier> | ignorer",
     "seance": "AAAA-MM-JJ | ignorer",
     "activite": "<libellé de secteur> | atelier:<id ERP> | nouvelle | ignorer",
+    "anomalie": "acquitter",
 }
 
 
@@ -535,6 +583,13 @@ def exporter_arbitrages(triage):
                        "details": "candidats ERP : " + (", ".join(
                            f"{c['id']} {c['nom']} ({c['secteur']})" for c in dossier["candidats_erp"]) or "aucun"),
                        "proposition": dossier["motif"], "decision": "", "commentaire": ""})
+    for dossier in triage.get("anomalies", []):
+        lecture = (f"le triage lit cette colonne comme le {dossier['lecture_proposee']}"
+                   if dossier["lecture_proposee"] else dossier["motif"])
+        lignes.append({"type": "anomalie", "cle": dossier["cle"], "libelle": dossier["libelle"],
+                       "details": (f"{dossier['message']} valeur saisie : {dossier['valeur']!r}"
+                                   + (f", concerne {dossier['cible']}" if dossier["cible"] else "")),
+                       "proposition": lecture, "decision": "", "commentaire": ""})
     return lignes
 
 
@@ -543,6 +598,7 @@ def fusionner_arbitrages(triage, lignes):
     personnes = {d["cle"]: d for d in triage["personnes"]}
     seances = {d["cle"]: d for d in triage["seances"]}
     activites = {d["cle"]: d for d in triage["activites"]}
+    anomalies = {d["cle"]: d for d in triage.get("anomalies", [])}
     decisions = {section: dict(valeurs) if isinstance(valeurs, dict) else list(valeurs)
                  for section, valeurs in triage["decisions"].items()}
     groupes = {d["decision"]["group"] for d in triage["personnes"]
@@ -557,6 +613,8 @@ def fusionner_arbitrages(triage, lignes):
                 _arbitrer_seance(decisions, seances, cle, choix)
             elif type_ == "activite":
                 _arbitrer_activite(decisions, activites, cle, choix)
+            elif type_ == "anomalie":
+                _acquitter_anomalie(decisions, anomalies, cle, choix)
             else:
                 raise ValueError(f"type inconnu « {type_} »")
         except ValueError as erreur:
@@ -632,6 +690,14 @@ def _arbitrer_seance(decisions, seances, cle, choix):
     except ValueError:
         raise ValueError("décision séance non reconnue : " + AIDE_DECISION["seance"])
     decisions["sessions"][cle] = {"action": "date", "date_session": choix}
+
+
+def _acquitter_anomalie(decisions, anomalies, cle, choix):
+    _dossier(anomalies, cle, "anomalie")
+    if choix != "acquitter":
+        raise ValueError("décision anomalie non reconnue : " + AIDE_DECISION["anomalie"])
+    if cle not in decisions["acknowledged_anomalies"]:
+        decisions["acknowledged_anomalies"].append(cle)
 
 
 def _arbitrer_activite(decisions, activites, cle, choix):
@@ -719,6 +785,15 @@ def rapport_markdown(triage):
         remarque = dossier["motif"] if dossier["statut"] == "arbitrer" else voisines
         lignes.append(f"| {dossier['nom']} | {dossier['secteur_propose'] or '—'} | "
                       f"{dossier['confiance']} | {remarque} |")
+    lignes += ["", "## Anomalies bloquantes à acquitter", "",
+               "Acquitter n'est pas corriger : c'est déclarer avoir vérifié la cellule d'origine. "
+               "Le triage ne le fait jamais tout seul, même quand il propose une lecture.", "",
+               "| Cellule | Anomalie | Saisie | Lecture proposée |", "|---|---|---|---|"]
+    for dossier in triage.get("anomalies", []):
+        lignes.append(f"| {dossier['libelle']} | {dossier['message']} | `{dossier['valeur']}` | "
+                      f"{dossier['lecture_proposee'] or '—'} |")
     lignes += ["", f"Décisions écrites : {resume['decisions_participants']} lignes de personnes, "
-               f"{resume['decisions_seances']} séances, {resume['decisions_activites']} activités.", ""]
+               f"{resume['decisions_seances']} séances, {resume['decisions_activites']} activités. "
+               f"Restent {resume['blocages_restants']} points à trancher, dont "
+               f"{resume['anomalies_a_acquitter']} anomalies à acquitter.", ""]
     return "\n".join(lignes) + "\n"
