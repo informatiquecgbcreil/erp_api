@@ -162,7 +162,9 @@ dry-run »** applique tout ce qui précède sans quitter le navigateur : il
 recalcule le triage à partir de l'aperçu en cours, complète les décisions et
 relance l'analyse. Une décision déjà enregistrée n'est jamais remplacée, et
 aucune anomalie n'est acquittée. Les points restants se traitent ensuite dans le
-formulaire habituel de l'écran.
+formulaire habituel de l'écran, qui les présente par dossier et n'affiche par
+défaut que ceux qui bloquent encore l'import : après le triage, l'écran ne
+montre plus que les arbitrages réels.
 
 C'est la voie normale. Les commandes ci-dessous servent au travail hors ligne,
 sur une copie, ou quand on préfère trancher les arbitrages au tableur.

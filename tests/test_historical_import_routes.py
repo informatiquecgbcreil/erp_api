@@ -18,6 +18,7 @@ def historical_ui(app, admin_client, monkeypatch, tmp_path):
 
     def analyze(path, decisions=None, year=None):
         decisions = decisions or {}
+        tranchee = lambda key: key in decisions.get("participants", {})
         calls["analyze"].append({"path": path, "decisions": deepcopy(decisions), "year": year})
         digest = hashlib.sha256(json.dumps(decisions, sort_keys=True).encode()).hexdigest()
         return {
@@ -29,10 +30,10 @@ def historical_ui(app, admin_client, monkeypatch, tmp_path):
                            "acknowledged": "a1" in decisions.get("acknowledged_anomalies", []),
                            "source_sheet": "Atelier", "source_cell": "J6", "raw_value": 6}],
             "matching": {"rows": [
-                {"key": "sheet:5", "classification": "REVIEW", "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980},
+                {"key": "sheet:5", "classification": "REVIEW", "resolved": tranchee("sheet:5"), "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980},
                  "normalized": {"nom": "test", "prenom": "luc", "birth_year": 1980, "birth_date": None, "genre": "Femme", "telephone": None, "email": None, "ville": None, "quartier": None, "adresse": None},
                  "candidates": [{"kind": "participant", "id": 99, "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "date_naissance": "1980-03-02"}}, {"kind": "source", "key": "sheet:6", "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980}}]},
-                {"key": "sheet:6", "classification": "REVIEW", "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980},
+                {"key": "sheet:6", "classification": "REVIEW", "resolved": tranchee("sheet:6"), "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980},
                  "normalized": {"nom": "test", "prenom": "luc", "birth_year": 1980, "birth_date": None, "genre": "Femme", "telephone": None, "email": None, "ville": None, "quartier": None, "adresse": None},
                  "candidates": []},
             ]},
@@ -248,6 +249,75 @@ def test_triage_button_is_hidden_once_the_batch_is_applied(historical_ui):
     assert "/triage" in historical_ui.client.get(url).get_data(as_text=True)
     historical_ui.client.post(url + "/apply", data={"digest": courant["digest"], "confirm": "yes"})
     assert "/triage" not in historical_ui.client.get(url).get_data(as_text=True)
+
+
+def test_preview_groups_lines_into_dossiers_without_embedding_the_plan(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    # Les deux lignes homonymes forment un seul dossier, présenté une fois.
+    assert page.count("Provenance, candidats et motifs") == 0
+    assert "sheet:5" in page and "sheet:6" in page
+    assert "2 lignes source" in page
+    # Le plan complet n'est plus recopié dans la page : il reste dans le rapport.
+    assert "Toutes les classifications et groupes de participants" not in page
+    assert "Toutes les séances reconnues" not in page
+    assert "Erreurs de lecture" not in page
+
+
+def test_preview_filters_and_searches_dossiers(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    get = lambda suffixe: historical_ui.client.get(url + suffixe).get_data(as_text=True)
+    assert "TEST" in get("?q=test")
+    assert "Aucun dossier ne correspond" in get("?q=personne-inconnue")
+    # Rien n'est réglé tant qu'aucune décision n'est prise.
+    assert "Aucun dossier ne correspond" in get("?vue=regles")
+    assert "TEST" in get("?vue=tous")
+    # Une vue ou une page invalide retombe sur l'affichage utile.
+    assert "TEST" in get("?vue=n-importe-quoi&page=nawak")
+
+
+def test_preview_hides_a_settled_dossier_and_keeps_its_decision(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    decisions = {"digest": plan["digest"], "participants.0": "ignore", "participants.1": "ignore"}
+    assert historical_ui.client.post(url + "/decisions", data=decisions).status_code == 302
+    enregistrees = json.loads((stage / "decisions.json").read_text(encoding="utf-8"))
+    assert enregistrees["participants"] == {"sheet:5": {"action": "ignore"}, "sheet:6": {"action": "ignore"}}
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "Plus aucun rapprochement de participant ne bloque l'import" in page
+    assert 'name="participants.0"' not in page
+    # Un envoi du formulaire sans les champs masqués ne doit rien effacer.
+    courant = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
+    assert historical_ui.client.post(url + "/decisions", data={"digest": courant["digest"]}).status_code == 302
+    apres = json.loads((stage / "decisions.json").read_text(encoding="utf-8"))
+    assert apres["participants"] == enregistrees["participants"]
+    assert "TEST" in historical_ui.client.get(url + "?vue=regles").get_data(as_text=True)
+
+
+def test_dossier_selection_is_paginated_and_bounded(app):
+    from app.admin.historical_routes import DOSSIERS_PAR_PAGE, _selection_dossiers
+    dossiers = [{"a_traiter": index % 2 == 0, "lignes": [{}],
+                 "recherche": f"dossier {index} fin"} for index in range(500)]
+    with app.test_request_context("/"):
+        selection = _selection_dossiers(dossiers, "a-traiter", "", 1)
+    assert len(selection["dossiers"]) == DOSSIERS_PAR_PAGE
+    assert selection["retenus"] == 250 and selection["a_traiter"] == 250
+    assert selection["pages"] == -(-250 // DOSSIERS_PAR_PAGE)
+    # Une page hors bornes est ramenée dans l'intervalle, jamais vide par accident.
+    assert _selection_dossiers(dossiers, "a-traiter", "", 999)["page"] == selection["pages"]
+    assert _selection_dossiers(dossiers, "a-traiter", "", -3)["page"] == 1
+    assert _selection_dossiers(dossiers, "regles", "", 1)["retenus"] == 250
+    assert _selection_dossiers(dossiers, "tous", "", 1)["retenus"] == 500
+    assert _selection_dossiers(dossiers, "tous", "dossier 42 fin", 1)["retenus"] == 1
+
+
+def test_dossiers_survive_a_report_the_triage_cannot_read(app, caplog):
+    from app.admin.historical_routes import _dossiers
+    infirme = {"matching": {"rows": [{"key": "sheet:1", "classification": "REVIEW",
+                                      "raw": {"nom": "TEST", "prenom": "Luc"}}]}}
+    with app.test_request_context("/"):
+        dossiers = _dossiers(infirme, {})
+    assert [d["libelle"] for d in dossiers] == ["TEST Luc"]
+    assert dossiers[0]["a_traiter"] is True
 
 
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):

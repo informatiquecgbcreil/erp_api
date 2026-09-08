@@ -2,6 +2,55 @@
 {% macro details(value, title='Données et provenance') %}
 <details class="details-card"><summary>{{ title }}</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:32rem;overflow:auto">{{ value|tojson(indent=2) }}</pre></details>
 {% endmacro %}
+{% macro controle_ligne(ligne, detaille) %}
+  {% set row = ligne.row %}{% set saved = ligne.saved %}
+  <div class="form-grid-3">
+    <label class="field-stack"><span>Décision{% if detaille %} pour la ligne <code>{{ ligne.key }}</code>{% endif %}</span><select class="in" name="participants.{{ ligne.index }}">
+      <option value="">Laisser la proposition automatique / à valider</option>
+      {% for candidate in row.get('candidates', []) %}
+        {% set participant_id = candidate.participant_id or (candidate.id if candidate.kind != 'source' else none) %}
+        {% if participant_id %}<option value="existing:{{ participant_id }}" {% if saved.action == 'participant' and saved.participant_id == participant_id %}selected{% endif %}>Même personne : #{{ participant_id }} {{ candidate.nom or candidate.get('raw', {}).get('nom', '') }} {{ candidate.prenom or candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+        {% if candidate.kind == 'source' %}<option value="source:{{ candidate.key }}" {% if saved.action == 'source' and saved.source_id == candidate.key %}selected{% endif %}>Même personne que la ligne {{ candidate.key }} · {{ candidate.get('raw', {}).get('nom', '') }} {{ candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+      {% endfor %}
+      {% if saved.action == 'participant' %}<option value="existing:{{ saved.participant_id }}" selected>Même personne : participant #{{ saved.participant_id }} (décision enregistrée)</option>{% endif %}
+      {% if saved.action == 'source' %}<option value="source:{{ saved.source_id }}" selected>Même personne que la ligne {{ saved.source_id }} (décision enregistrée)</option>{% endif %}
+      <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer / regrouper une nouvelle personne</option>
+      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer cette ligne et ses présences</option>
+    </select></label>
+    <label class="field-stack"><span>Identifiant commun si même personne</span><input class="in" name="participants.{{ ligne.index }}.group" value="{{ saved.get('group', '') }}" placeholder="Vide = personne distincte"></label>
+    {% if not row.get('normalized', {}).get('nom') or not row.get('normalized', {}).get('prenom') or saved.get('values') %}
+    <label class="field-stack"><span>Nom vérifié pour une nouvelle personne</span><input class="in" name="participants.{{ ligne.index }}.nom" value="{{ saved.get('values', {}).get('nom', '') }}"></label>
+    <label class="field-stack"><span>Prénom vérifié pour une nouvelle personne</span><input class="in" name="participants.{{ ligne.index }}.prenom" value="{{ saved.get('values', {}).get('prenom', '') }}"></label>
+    {% endif %}
+  </div>
+{% endmacro %}
+{% macro carte_activite(index, activity) %}
+  {% set key = row_key(activity) %}{% set saved = decisions.get('activities', {}).get(key, {}) %}
+  <article class="soft-panel" style="margin-bottom:1rem">
+    <h3>{{ activity.name or activity.nom }}</h3><p>{{ activity.status }}{% if activity.atelier_id %} · Activité existante #{{ activity.atelier_id }}{% endif %}{% if activity.source_sheet %} · feuille {{ activity.source_sheet }}{% endif %}</p>
+    <label class="field-stack"><span>Secteur de cette activité</span><select class="in" name="activities.{{ index }}.secteur">
+      <option value="">À affecter après analyse</option>
+      {% for secteur in secteurs %}<option value="{{ secteur }}" {% if activity.secteur == secteur %}selected{% endif %}>{{ secteur }}</option>{% endfor %}
+    </select></label>
+    <label class="field-stack"><span>Correspondance métier</span><select class="in" name="activities.{{ index }}">
+      <option value="">Laisser la proposition automatique / à valider</option>
+      {% for candidate in activity.get('candidates', []) %}{% set target = candidate.atelier_id or candidate.id %}
+        <option value="existing:{{ target }}" {% if saved.action == 'existing' and saved.atelier_id == target %}selected{% endif %}>Utiliser #{{ target }} · {{ candidate.name or candidate.nom }}</option>
+      {% endfor %}
+      {% if saved.action == 'existing' %}<option value="existing:{{ saved.atelier_id }}" selected>Utiliser l'activité #{{ saved.atelier_id }} (décision enregistrée)</option>{% endif %}
+      <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer une activité distincte dans le secteur choisi</option>
+      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer l'activité et toutes ses présences</option>
+    </select></label>
+    <label class="field-stack"><span>Nom métier corrigé, si nécessaire (avec décision de création)</span><input class="in" name="activities.{{ index }}.name" value="{{ saved.get('name', '') }}" maxlength="200"></label>
+  </article>
+{% endmacro %}
+{% macro carte_anomalie(anomaly, acquittees) %}
+  <article class="soft-panel" style="margin-bottom:.8rem">
+    <p>{{ anomaly.message or anomaly }}</p>
+    <p class="muted">{% if anomaly.code %}{{ anomaly.code }}{% endif %}{% if anomaly.source_sheet %} · feuille {{ anomaly.source_sheet }}{% endif %}{% if anomaly.source_cell %} · cellule <code>{{ anomaly.source_cell }}</code>{% endif %}{% if anomaly.raw_value is not none %} · valeur lue <code>{{ anomaly.raw_value }}</code>{% endif %}</p>
+    {% if anomaly.id and anomaly.get('blocking', true) %}<label><input type="checkbox" name="acknowledged_anomalies" value="{{ anomaly.id }}" {% if anomaly.id in acquittees %}checked{% endif %}> J'ai vérifié et j'accepte cette anomalie</label>{% endif %}
+  </article>
+{% endmacro %}
 {% block body %}
 <div class="page-shell long-form-shell content-shell">
   <section class="hero-card">
@@ -43,18 +92,42 @@
       <a class="btn" href="{{ url_for('admin.historical_report', stage_id=stage_id) }}">Télécharger le rapport complet</a>
       <a class="btn" href="{{ url_for('admin.historical_decisions_export', stage_id=stage_id) }}">Télécharger les décisions</a>
     </div>
-    <p class="muted">Ces fichiers contiennent des données personnelles. Conservez-les dans un emplacement réservé aux personnes habilitées.</p>
+    {% if not metadata.applied %}
+    <nav class="hero-actions" aria-label="Sections de l'aperçu">
+      <a class="btn" href="#participants">Personnes</a>
+      <a class="btn" href="#activites">Activités</a>
+      <a class="btn" href="#seances">Séances</a>
+      <a class="btn" href="#anomalies">Anomalies</a>
+      <a class="btn" href="#feuilles">Feuilles</a>
+      <a class="btn" href="#enregistrer">Enregistrer</a>
+    </nav>
+    {% endif %}
+    <p class="muted">Le détail intégral du plan n'est plus recopié dans cette page : il est dans le rapport téléchargeable. Ces fichiers contiennent des données personnelles, conservez-les dans un emplacement réservé aux personnes habilitées.</p>
     {% set labels = {'sheets': 'Feuilles', 'sheets_total':'Feuilles', 'sheets_ignored':'Feuilles ignorées', 'activities':'Activités', 'activities_existing':'Activités existantes', 'activities_new':'Activités à créer', 'sessions':'Séances', 'sessions_detected':'Séances détectées', 'source_participants':'Lignes de participants', 'participants_source':'Lignes de participants', 'participants_exact':'Correspondances exactes', 'participants_high_confidence':'Correspondances très probables', 'participants_review':'Participants à valider', 'participants_new':'Participants à créer', 'presences':'Présences', 'presences_detected':'Présences détectées', 'presences_existing':'Présences existantes', 'internal_duplicates':'Doublons internes', 'errors':'Erreurs', 'date_anomalies':'Anomalies de dates', 'territory_anomalies':'Anomalies territoriales', 'ignored_rows':'Lignes ignorées'} %}
     <dl style="display:grid;grid-template-columns:minmax(12rem,2fr) 1fr;gap:.4rem 1rem">
       {% for name, value in plan.get('summary', {}).items() %}<dt>{{ labels.get(name, name|replace('_', ' ')) }}</dt><dd>{% if value is mapping or value is sequence and value is not string %}{{ value|tojson }}{% else %}{{ value }}{% endif %}</dd>{% endfor %}
     </dl>
-    {% if plan.blockers %}<details class="details-card" open><summary>Points bloquants ({{ plan.blockers|length }})</summary><ul>{% for blocker in plan.blockers %}<li>{{ blocker.message or blocker }}{% if blocker.key %} <small class="muted">{{ blocker.key }}</small>{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+    {% if plan.blockers %}
+    {% set familles = {'participant':'Personnes', 'activity':'Activités', 'session':'Séances', 'anomaly':'Anomalies', 'sector':'Secteurs', 'presence':'Présences'} %}
+    <details class="details-card"><summary>Points bloquants ({{ plan.blockers|length }})</summary>
+      <div class="details-body">
+        <p class="muted">Un point bloquant compte une <strong>ligne source</strong>, pas une personne : les décisions ci-dessous en résolvent plusieurs à la fois. Cette liste sert au contrôle final.</p>
+        {% if plan.blockers[0] is mapping %}<p>{% for famille, lot in plan.blockers|groupby('kind') %}<span class="chip">{{ familles.get(famille, famille) }} : {{ lot|length }}</span> {% endfor %}</p>{% endif %}
+        <ul>{% for blocker in plan.blockers[:40] %}<li>{{ blocker.message or blocker }}{% if blocker.key %} <small class="muted">{{ blocker.key }}</small>{% endif %}</li>{% endfor %}</ul>
+        {% if plan.blockers|length > 40 %}<p class="muted">… et {{ plan.blockers|length - 40 }} autres. La liste complète figure dans le rapport téléchargeable.</p>{% endif %}
+      </div>
+    </details>
+    {% endif %}
   </section>
 
-  <section class="section-card">
+  <section class="section-card" id="feuilles">
     <h2>Cartographie des feuilles et contrôle des totaux</h2>
     <p>Le rapport expose les présences lues, les totaux du classeur et les écarts. Une anomalie ne doit être acceptée qu'après contrôle de sa provenance.</p>
-    {% for sheet in plan.get('parser', {}).get('sheets', []) %}
+    {% set feuilles = plan.get('parser', {}).get('sheets', []) %}
+    {% set ecarts = feuilles|selectattr('totals')|rejectattr('totals.status', 'equalto', 'coherent')|list %}
+    <p>{{ feuilles|length }} feuille{{ 's' if feuilles|length > 1 }} lue{{ 's' if feuilles|length > 1 }}{% if ecarts %}, dont <strong>{{ ecarts|length }}</strong> avec un écart de total à contrôler{% endif %}.</p>
+    <details class="details-card"><summary>Détail feuille par feuille</summary><div class="details-body">
+    {% for sheet in feuilles %}
       <article class="soft-panel" style="margin-bottom:1rem">
         <h3>{{ sheet.name or sheet.sheet or sheet.source_sheet }}</h3>
         <p>{{ {'activity':'Activité exploitable', 'technical':'Feuille technique', 'summary':'Synthèse', 'unrecognized':'Feuille non reconnue'}.get(sheet.classification, sheet.classification) }}{% if sheet.reason %} · {{ sheet.reason }}{% endif %}</p>
@@ -65,6 +138,7 @@
         {{ details(sheet, 'Contrôles, totaux et anomalies de cette feuille') }}
       </article>
     {% endfor %}
+    </div></details>
   </section>
 
   {% if not metadata.applied %}
@@ -79,77 +153,92 @@
     </form>
   </section>
 
+  <form id="filtre-personnes" method="get" action="{{ url_for('admin.historical_preview', stage_id=stage_id) }}"></form>
+
   <form method="post" action="{{ url_for('admin.historical_decisions', stage_id=stage_id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="digest" value="{{ plan.digest }}">
 
-    <section class="section-card">
-      <h2>Participants à valider</h2>
-      <p><strong>EXACT</strong> : correspondance certaine. <strong>HIGH_CONFIDENCE</strong> : plusieurs indices concordants. <strong>REVIEW</strong> : décision humaine nécessaire. <strong>NEW</strong> : nouvelle personne proposée.</p>
-      <p>Pour confirmer qu'au moins deux lignes source représentent la même nouvelle personne, choisissez « Créer / regrouper » sur chacune et renseignez exactement le même identifiant de regroupement. Laissez cet identifiant vide pour déclarer une personne distincte. « Ignorer » exclut la ligne et ses présences du lot.</p>
-      {% set ns = namespace(review_count=0) %}
-      {% for row in match_rows %}
-        {% set key = row_key(row) %}
-        {% set saved = decisions.get('participants', {}).get(key, {}) %}
-        {% if row.classification == 'REVIEW' or row.status == 'REVIEW' or saved %}
-        {% set ns.review_count = ns.review_count + 1 %}
+    <section class="section-card" id="participants">
+      <h2>Personnes à valider</h2>
+      <p>Les {{ participants.lignes }} lignes de participants du classeur forment <strong>{{ participants.total }} dossiers</strong> : un dossier = une identité, ses orthographes et toutes ses lignes. <strong>{{ participants.a_traiter }}</strong> bloquent encore l'import et sont affichés par défaut ; les autres sont réglés, par un rapprochement automatique ou par une décision déjà enregistrée.</p>
+      <p><strong>EXACT</strong> : correspondance certaine. <strong>HIGH_CONFIDENCE</strong> : plusieurs indices concordants. <strong>REVIEW</strong> : décision humaine nécessaire. <strong>NEW</strong> : nouvelle personne proposée. Pour déclarer que plusieurs lignes sont la même nouvelle personne, choisissez « Créer / regrouper » sur chacune et renseignez le même identifiant de regroupement ; laissez-le vide pour une personne distincte. « Ignorer » exclut la ligne et ses présences du lot.</p>
+      <p class="muted">Seuls les dossiers affichés ci-dessous sont renvoyés par le formulaire. Les décisions des dossiers non affichés sont conservées telles quelles.</p>
+
+      <div class="form-grid-3">
+        <label class="field-stack"><span>Chercher un nom, une feuille ou une ligne source</span><input class="in" type="search" name="q" form="filtre-personnes" value="{{ recherche }}" placeholder="Ex. : DUPONT, Numérique, atelier!12"></label>
+        <label class="field-stack"><span>Dossiers affichés</span><select class="in" name="vue" form="filtre-personnes">
+          <option value="a-traiter" {% if vue == 'a-traiter' %}selected{% endif %}>Ceux qui bloquent l'import</option>
+          <option value="regles" {% if vue == 'regles' %}selected{% endif %}>Ceux qui sont réglés</option>
+          <option value="tous" {% if vue == 'tous' %}selected{% endif %}>Tous les dossiers</option>
+        </select></label>
+        <div class="field-stack"><span>&nbsp;</span><button class="btn" type="submit" form="filtre-personnes">Filtrer</button></div>
+      </div>
+
+      {% if participants.retenus %}
+      <p class="muted">{{ participants.retenus }} dossier{{ 's' if participants.retenus > 1 }} correspond{{ 'ent' if participants.retenus > 1 }} à ce filtre · page {{ participants.page }} sur {{ participants.pages }}.</p>
+      {% else %}
+      <p>Aucun dossier ne correspond à ce filtre.{% if vue == 'a-traiter' and not recherche %} Plus aucun rapprochement de participant ne bloque l'import.{% endif %}</p>
+      {% endif %}
+
+      {% set etiquettes = {'arbitrer':'À trancher', 'rattacher':'Rattachement proposé', 'regrouper':'Regroupement proposé', 'creer':'Création proposée'} %}
+      {% set motifs = {'names_without_sufficient_identity_evidence':'mêmes noms, aucune autre preuve d\'identité', 'shared_contact_without_matching_names':'contact commun mais noms différents', 'non_transitive_identity_chain':'chaîne de rapprochements incomplète', 'incomplete_identity':'identité incomplète', 'invalid_birth_year':'année de naissance illisible', 'new_identity_group':'nouveau groupe d\'identité', 'no_credible_candidate':'aucun candidat crédible', 'minor_name_typo':'écart d\'orthographe mineur', 'same_normalized_names':'mêmes noms', 'same_birth_year':'même année de naissance', 'same_full_birth_date':'même date de naissance complète', 'same_telephone':'même téléphone', 'same_email':'même adresse e-mail', 'city_district_conflict':'ville ou quartier contradictoires', 'conflict:birth_year':'années de naissance contradictoires', 'conflict:birth_date':'dates de naissance contradictoires', 'conflict:telephone':'téléphones contradictoires', 'conflict:email':'adresses e-mail contradictoires', 'conflict:genre':'genres contradictoires'} %}
+      {% for dossier in participants.dossiers %}
         <article class="soft-panel" style="margin-bottom:1rem">
-          <h3>{{ row.nom or row.get('raw', {}).get('nom', '') }} {{ row.prenom or row.get('raw', {}).get('prenom', '') }}</h3>
-          <p><strong>{{ row.classification or row.status }}</strong> · Source : <code>{{ key }}</code></p>
-          {{ details(row, 'Identité source, candidats et motifs du rapprochement') }}
-          <div class="form-grid-3">
-            <label class="field-stack"><span>Décision pour cette ligne</span><select class="in" name="participants.{{ loop.index0 }}">
-              <option value="">Laisser la proposition automatique / à valider</option>
-              {% for candidate in row.get('candidates', []) %}
-                {% set participant_id = candidate.participant_id or (candidate.id if candidate.kind != 'source' else none) %}
-                {% if participant_id %}<option value="existing:{{ participant_id }}" {% if saved.action == 'participant' and saved.participant_id == participant_id %}selected{% endif %}>Même personne : #{{ participant_id }} {{ candidate.nom or candidate.get('raw', {}).get('nom', '') }} {{ candidate.prenom or candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
-                {% if candidate.kind == 'source' %}<option value="source:{{ candidate.key }}" {% if saved.action == 'source' and saved.source_id == candidate.key %}selected{% endif %}>Même personne que la ligne {{ candidate.key }} · {{ candidate.get('raw', {}).get('nom', '') }} {{ candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
-              {% endfor %}
-              {% if saved.action == 'participant' %}<option value="existing:{{ saved.participant_id }}" selected>Même personne : participant #{{ saved.participant_id }} (décision enregistrée)</option>{% endif %}
-              {% if saved.action == 'source' %}<option value="source:{{ saved.source_id }}" selected>Même personne que la ligne {{ saved.source_id }} (décision enregistrée)</option>{% endif %}
-              <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer / regrouper une nouvelle personne</option>
-              <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer cette ligne et ses présences</option>
-            </select></label>
-            <label class="field-stack"><span>Identifiant commun si même personne</span><input class="in" name="participants.{{ loop.index0 }}.group" value="{{ saved.get('group', '') }}" placeholder="Vide = personne distincte"></label>
-            {% if not row.get('normalized', {}).get('nom') or not row.get('normalized', {}).get('prenom') or saved.get('values') %}
-            <label class="field-stack"><span>Nom vérifié pour une nouvelle personne</span><input class="in" name="participants.{{ loop.index0 }}.nom" value="{{ saved.get('values', {}).get('nom', '') }}"></label>
-            <label class="field-stack"><span>Prénom vérifié pour une nouvelle personne</span><input class="in" name="participants.{{ loop.index0 }}.prenom" value="{{ saved.get('values', {}).get('prenom', '') }}"></label>
-            {% endif %}
-          </div>
+          <h3>{% if dossier.nom or dossier.prenom %}{{ dossier.nom }} {{ dossier.prenom }}{% else %}{{ dossier.libelle }}{% endif %}{% if dossier.annee %} <small class="muted">naissance {{ dossier.annee }}</small>{% endif %}</h3>
+          <p>
+            {% if dossier.statut %}<strong>{{ etiquettes.get(dossier.statut, dossier.statut) }}</strong>{% if dossier.categorie %} · {{ dossier.categorie }}{% endif %} — {{ dossier.motif }}{% endif %}
+            {% if not dossier.a_traiter %}<span class="chip">Réglé</span>{% endif %}
+          </p>
+          <p class="muted">
+            {{ dossier.lignes|length }} ligne{{ 's' if dossier.lignes|length > 1 }} source · {{ dossier.presences }} présence{{ 's' if dossier.presences and dossier.presences > 1 }}
+            {%- if dossier.genre %} · {{ dossier.genre }}{% endif %}
+            {%- if not dossier.annee %} · aucune année exploitable{% endif %}
+            {%- if dossier.feuilles %} · {{ dossier.feuilles|join(', ') }}{% endif %}
+          </p>
+          {% if dossier.orthographes and dossier.orthographes|length > 1 %}<p>Écrit dans le classeur : {{ dossier.orthographes|join(' / ') }}</p>{% endif %}
+          {% if dossier.fiches_erp %}<p>Fiche{{ 's' if dossier.fiches_erp|length > 1 }} ERP au même nom : {% for fiche in dossier.fiches_erp %}<span class="chip">#{{ fiche.id }} {{ fiche.nom }} {{ fiche.prenom }}{% if fiche.naissance %} · {{ fiche.naissance }}{% endif %}{% if fiche.genre %} · {{ fiche.genre }}{% endif %}</span> {% endfor %}</p>{% endif %}
+          {% if dossier.voisins %}<p>Orthographes proches dans le classeur : {% for voisin in dossier.voisins %}<span class="chip">{{ voisin.libelle }} ({{ voisin.lignes }})</span> {% endfor %}</p>{% endif %}
+          {% if dossier.alertes %}<p class="muted">Lignes incomplètes : {{ dossier.alertes|join(', ') }}</p>{% endif %}
+          {% for ligne in dossier.lignes %}
+            {% set brut = ligne.row.get('raw', {}) %}
+            <p class="muted">
+              <code>{{ ligne.key }}</code> · {{ ligne.row.classification or ligne.row.status }}
+              · saisi « {{ brut.get('nom', '') }} {{ brut.get('prenom', '') }}{% if brut.get('annee_naissance') %} {{ brut.annee_naissance }}{% elif brut.get('date_naissance') %} {{ brut.date_naissance }}{% endif %} »
+              {%- if ligne.row.get('candidates') %} · {{ ligne.row.candidates|length }} candidat{{ 's' if ligne.row.candidates|length > 1 }}{% endif %}
+              {%- if ligne.saved %} · décision enregistrée : {{ ligne.saved.action }}{% elif not ligne.en_attente %} · rapprochement automatique, rien à décider{% endif %}
+              {%- for raison in ligne.row.get('reasons', []) %} · {{ motifs.get(raison, raison) }}{% endfor %}
+            </p>
+            {{ controle_ligne(ligne, dossier.lignes|length > 1) }}
+          {% endfor %}
         </article>
-        {% endif %}
       {% endfor %}
-      {% if ns.review_count == 0 %}<p>Aucun rapprochement de participant à valider.</p>{% endif %}
-      {{ details(plan.get('matching', {}), 'Toutes les classifications et groupes de participants') }}
+
+      {% if participants.pages > 1 %}
+      <nav class="hero-actions" aria-label="Pagination des dossiers">
+        {% if participants.page > 1 %}<a class="btn" href="{{ url_for('admin.historical_preview', stage_id=stage_id, vue=vue, q=recherche or none, page=participants.page - 1, _anchor='participants') }}">Page précédente</a>{% endif %}
+        {% if participants.page < participants.pages %}<a class="btn" href="{{ url_for('admin.historical_preview', stage_id=stage_id, vue=vue, q=recherche or none, page=participants.page + 1, _anchor='participants') }}">Page suivante</a>{% endif %}
+      </nav>
+      <p class="muted">Enregistrez vos décisions avant de changer de page : le formulaire ne renvoie que les dossiers affichés.</p>
+      {% endif %}
     </section>
 
-    <section class="section-card">
+    <section class="section-card" id="activites">
       <h2>Activités</h2>
       <p>Affectez chaque activité à un secteur. Les séances et leurs présences seront comptées dans ce secteur. Choisir une activité existante conserve son affectation actuelle.</p>
-      {% for activity in plan.get('activities', []) %}
-        {% set key = row_key(activity) %}{% set saved = decisions.get('activities', {}).get(key, {}) %}
-        <article class="soft-panel" style="margin-bottom:1rem">
-          <h3>{{ activity.name or activity.nom }}</h3><p>{{ activity.status }}{% if activity.atelier_id %} · Activité existante #{{ activity.atelier_id }}{% endif %}</p>
-          <label class="field-stack"><span>Secteur de cette activité</span><select class="in" name="activities.{{ loop.index0 }}.secteur">
-            <option value="">À affecter après analyse</option>
-            {% for secteur in secteurs %}<option value="{{ secteur }}" {% if activity.secteur == secteur %}selected{% endif %}>{{ secteur }}</option>{% endfor %}
-          </select></label>
-          <label class="field-stack"><span>Correspondance métier</span><select class="in" name="activities.{{ loop.index0 }}">
-            <option value="">Laisser la proposition automatique / à valider</option>
-            {% for candidate in activity.get('candidates', []) %}{% set target = candidate.atelier_id or candidate.id %}
-              <option value="existing:{{ target }}" {% if saved.action == 'existing' and saved.atelier_id == target %}selected{% endif %}>Utiliser #{{ target }} · {{ candidate.name or candidate.nom }}</option>
-            {% endfor %}
-            {% if saved.action == 'existing' %}<option value="existing:{{ saved.atelier_id }}" selected>Utiliser l'activité #{{ saved.atelier_id }} (décision enregistrée)</option>{% endif %}
-            <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer une activité distincte dans le secteur choisi</option>
-            <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer l'activité et toutes ses présences</option>
-          </select></label>
-          <label class="field-stack"><span>Nom métier corrigé, si nécessaire (avec décision de création)</span><input class="in" name="activities.{{ loop.index0 }}.name" value="{{ saved.get('name', '') }}" maxlength="200"></label>
-          {{ details(activity, 'Provenance et candidats pour cette activité') }}
-        </article>
-      {% endfor %}
+      {% set activites = plan.get('activities', []) %}
+      {% set a_affecter = [] %}{% set affectees = [] %}
+      {% for activity in activites %}{% if activity.secteur %}{{ affectees.append((loop.index0, activity)) or '' }}{% else %}{{ a_affecter.append((loop.index0, activity)) or '' }}{% endif %}{% endfor %}
+      <p><strong>{{ a_affecter|length }}</strong> activité{{ 's' if a_affecter|length > 1 }} sans secteur sur {{ activites|length }}.</p>
+      {% for index, activity in a_affecter %}{{ carte_activite(index, activity) }}{% endfor %}
+      {% if affectees %}
+      <details class="details-card"><summary>Activités déjà affectées à un secteur ({{ affectees|length }})</summary><div class="details-body">
+        {% for index, activity in affectees %}{{ carte_activite(index, activity) }}{% endfor %}
+      </div></details>
+      {% endif %}
     </section>
 
-    <section class="section-card">
+    <section class="section-card" id="seances">
       <h2>Séances à valider</h2>
       <p>Les créneaux source sont conservés sans inventer d'horaires. Corrigez une date uniquement à partir d'une information vérifiée. Une séance ignorée exclut ses présences du lot.</p>
       {% set ns = namespace(review_count=0) %}
@@ -159,8 +248,8 @@
           {% set ns.review_count = ns.review_count + 1 %}
           <article class="soft-panel" style="margin-bottom:1rem">
             <h3>{{ session.sheet or session.source_sheet }} · {{ session.date_session or 'Date à vérifier' }} · {{ session.slot or session.source_slot or '' }}</h3>
-            <p>Source : <code>{{ key }}</code></p>
-            {{ details(session, 'Date, créneau, colonne source et candidats') }}
+            <p class="muted">Cellule source <code>{{ session.source_cell }}</code> · ligne <code>{{ key }}</code>{% if session.raw_headers %} · en-têtes lus {{ session.raw_headers|tojson }}{% endif %}</p>
+            {% if session.anomalies %}<p>{% for anomaly in session.anomalies %}<span class="chip">{{ anomaly.message or anomaly }}</span> {% endfor %}</p>{% endif %}
             <div class="form-grid-3">
               <label class="field-stack"><span>Décision pour cette séance</span><select class="in" name="sessions.{{ loop.index0 }}">
                 <option value="">Laisser la proposition automatique / à valider</option>
@@ -176,20 +265,24 @@
         {% endif %}
       {% endfor %}
       {% if ns.review_count == 0 %}<p>Aucune séance à valider.</p>{% endif %}
-      {{ details(plan.get('sessions', []), 'Toutes les séances reconnues') }}
     </section>
 
-    <section class="section-card">
+    <section class="section-card" id="anomalies">
       <h2>Anomalies et contrôles</h2>
       <p>Cocher une anomalie signifie que vous avez contrôlé les données source et accepté cet écart. Cela ne corrige pas les dates ni les identités : utilisez les décisions correspondantes ci-dessus.</p>
-      {% for anomaly in plan.get('anomalies', []) %}
-      <article class="soft-panel" style="margin-bottom:.8rem">
-        <p>{{ anomaly.message or anomaly }}</p>
-        {{ details(anomaly, 'Cellules source et détail du contrôle') }}
-        {% if anomaly.id and anomaly.get('blocking', true) %}<label><input type="checkbox" name="acknowledged_anomalies" value="{{ anomaly.id }}" {% if anomaly.id in decisions.get('acknowledged_anomalies', []) %}checked{% endif %}> J'ai vérifié et j'accepte cette anomalie</label>{% endif %}
-      </article>
-      {% endfor %}
-      {{ details(plan.get('parser', {}).get('errors', []), 'Erreurs de lecture') }}
+      {% set acquittees = decisions.get('acknowledged_anomalies', []) %}
+      {% set anomalies = plan.get('anomalies', []) %}
+      {% set restantes = anomalies|rejectattr('id', 'in', acquittees)|list %}
+      <p><strong>{{ restantes|length }}</strong> anomalie{{ 's' if restantes|length > 1 }} non acceptée{{ 's' if restantes|length > 1 }} sur {{ anomalies|length }}.</p>
+      {% for anomaly in restantes %}{{ carte_anomalie(anomaly, acquittees) }}{% endfor %}
+      {% if acquittees %}
+      <details class="details-card"><summary>Anomalies déjà acceptées ({{ anomalies|length - restantes|length }})</summary><div class="details-body">
+        <p class="muted">Décocher une case ici retire l'acceptation lors du prochain enregistrement.</p>
+        {% for anomaly in anomalies if anomaly.id in acquittees %}{{ carte_anomalie(anomaly, acquittees) }}{% endfor %}
+      </div></details>
+      {% endif %}
+      {% set erreurs = plan.get('parser', {}).get('errors', []) %}
+      {% if erreurs %}<p class="muted">{{ erreurs|length }} erreur{{ 's' if erreurs|length > 1 }} de lecture ; le détail est dans le rapport téléchargeable.</p>{% endif %}
     </section>
 
     <section class="section-card">
@@ -210,7 +303,7 @@
     </details>
   </section>
 
-  <section class="section-card">
+  <section class="section-card" id="enregistrer">
     <h2>Enregistrer le lot</h2>
     <p>L'import utilise le fichier et les décisions du dernier aperçu enregistré. Les modifications du formulaire ci-dessus doivent d'abord être validées avec « Enregistrer les décisions et refaire le dry-run ».</p>
     <form method="post" action="{{ url_for('admin.historical_apply', stage_id=stage_id) }}">
