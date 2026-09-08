@@ -35,11 +35,11 @@ ceux où le classeur laisse une vraie ambiguïté.
 
 | Objet | Blocages du rapport | Dossiers après triage | Restant à trancher |
 |---|---:|---:|---:|
-| Participants | 1 014 lignes | 834 dossiers | **182 dossiers** (407 lignes) |
+| Participants | 1 014 lignes | 834 dossiers | **221 dossiers** (492 lignes) |
 | Secteurs d'activité | 66 | 66 | **2** |
 | Séances | 46 | 46 | **5** |
 | Anomalies bloquantes | 58 | 58 | **58 acquittements** |
-| **Total** | **1 184** | | **247** |
+| **Total** | **1 184** | | **286** |
 
 ## Qualité de la source, telle qu'elle est
 
@@ -66,9 +66,15 @@ ceux où le classeur laisse une vraie ambiguïté.
 
 | Proposition | Dossiers | Lignes | Preuve retenue |
 |---|---:|---:|---|
-| Rattacher à une fiche ERP | 99 | 249 | nom, prénom **et** année identiques à une seule fiche, sans contradiction |
-| Regrouper les lignes du classeur | 103 | 358 | mêmes nom, prénom et année sur plusieurs feuilles, genre et territoire compatibles |
+| Rattacher à une fiche ERP | 90 | 236 | nom, prénom **et** année identiques à une seule fiche, sans contradiction |
+| Regrouper les lignes du classeur | 73 | 286 | mêmes nom, prénom et année sur plusieurs feuilles, genre et territoire compatibles |
 | Créer la personne | 450 | 450 | identité unique dans le classeur, aucun candidat proche |
+
+**Aucun rapprochement n'est proposé sur le seul nom.** Un dossier sans millésime
+— ni dans le classeur, ni sur la fiche ERP homonyme — part à l'arbitrage, même
+quand rien ne le contredit : c'est exactement le cas que `historical_matching`
+refuse de trancher seul, et le triage ne le contourne pas. Cela représente 39
+dossiers du vrai classeur.
 
 La clé d'identité ignore les espaces et les tirets : `EL BAYAD` et `ELBAYAD` sont
 le même dossier. Quand un dossier porte plusieurs orthographes, la décision fixe
@@ -85,13 +91,15 @@ différentes, donc ils ne sont pas regroupés.
 | Motif | Dossiers | Ce qu'il faut décider |
 |---|---:|---|
 | Orthographe proche | 147 | `SGIR` / `SGHIR` / `SHGIR fatima`, `KHALOUKY` / `KALOUKHY` / `KHALOUKI achraf`, `LAMARRE nnie` / `annie` : la même personne ou non. Attention aux fratries : `FELLOUS aylan` / `ayman`, `CHERRAD amir` / `amira`. |
+| Aucune année pour étayer le rapprochement | 39 | homonymes sans millésime : 30 groupes internes au classeur et 9 dossiers face à une fiche ERP. |
 | Identité incomplète ou année illisible | 17 | prénom seul, nom seul, `ADOS` en année : compléter, rattacher ou ignorer. |
 | Année du classeur ≠ fiche ERP | 9 | sept écarts de un à trois ans (1982/1983, 2018/2019, 1996/1997…). La fiche ERP n'est jamais écrasée : rattacher ne modifie pas sa date. |
 | Genre du classeur ≠ fiche ERP | 4 | dont `TOURE Sadou` (`F` au classeur, `Homme` en fiche). |
 | Homonymes dans le classeur | 3 | `BIATRANE naima` 1983/1993, `OTMANI cilia` 2003/2023, `HAMMOUD fidaa` 1988/2001. |
 | Genre contradictoire entre feuilles | 2 | `BASSAMA jeannelle`, `ALIMY zarlasht`. |
 
-Ces 182 dossiers portent 1 750 présences : il ne s'agit pas de cas marginaux.
+Ces 221 dossiers ne sont pas des cas marginaux : ils portent une part
+substantielle des présences du classeur.
 
 ### Séances — 41 dates sur 46
 
@@ -147,7 +155,19 @@ existants : `NUMERIQUE AUTREMENT` (candidat « Le Numérique Autrement », id 8)
 `NUMERIQUE PAR TOUS` (candidats « Numérique Par Tous » id 6 et « Numérique Par
 Tous pro » id 29).
 
-## Utilisation
+## Utilisation depuis l'application
+
+Sur l'écran de prévisualisation, le bouton **« Proposer un triage et refaire le
+dry-run »** applique tout ce qui précède sans quitter le navigateur : il
+recalcule le triage à partir de l'aperçu en cours, complète les décisions et
+relance l'analyse. Une décision déjà enregistrée n'est jamais remplacée, et
+aucune anomalie n'est acquittée. Les points restants se traitent ensuite dans le
+formulaire habituel de l'écran.
+
+C'est la voie normale. Les commandes ci-dessous servent au travail hors ligne,
+sur une copie, ou quand on préfère trancher les arbitrages au tableur.
+
+## Utilisation en ligne de commande
 
 L'outil ne lit que le rapport JSON. Il ne touche ni la base, ni le classeur, et
 n'applique rien.

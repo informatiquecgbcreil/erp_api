@@ -147,6 +147,36 @@ def test_annee_ou_genre_contredisant_la_fiche_erp_reste_a_trancher():
     assert triage["decisions"]["participants"] == {}
 
 
+@pytest.mark.parametrize("personnes, fiches", [
+    # Année absente du classeur : il ne reste que le nom face à la fiche.
+    ([_personne("FLE", 7, "DURAND", "Alice", None, "F")],
+     [{"id": 42, "raw": {"nom": "Durand", "prenom": "Alice", "date_naissance": "1975-04-02",
+                         "genre": "Femme", "telephone": None, "email": None,
+                         "ville": None, "quartier": None, "adresse": None}}]),
+    # Fiche sans aucune naissance connue : même problème dans l'autre sens.
+    ([_personne("FLE", 7, "DURAND", "Alice", 1975, "F")],
+     [{"id": 42, "raw": {"nom": "Durand", "prenom": "Alice", "date_naissance": None,
+                         "annee_naissance": None, "genre": "Femme", "telephone": None,
+                         "email": None, "ville": None, "quartier": None, "adresse": None}}]),
+    # Deux lignes homonymes du classeur, aucun millésime nulle part.
+    ([_personne("FLE", 7, "DURAND", "Alice", None, "F"),
+      _personne("ZUMBA", 8, "DURAND", "Alice", None, "F")], []),
+])
+def test_aucun_rapprochement_n_est_propose_sur_le_seul_nom(personnes, fiches):
+    triage = _trier(_rapport(personnes, fiches))
+    assert {d["categorie"] for d in triage["personnes"]} == {"aucune année pour étayer le rapprochement"}
+    assert triage["decisions"]["participants"] == {}
+
+
+def test_une_annee_sur_une_seule_ligne_du_dossier_suffit_a_regrouper():
+    personnes = [_personne("FLE", 7, "DURAND", "Alice", 1975, "F"),
+                 _personne("ZUMBA", 8, "DURAND", "Alice", None, "F")]
+    triage = _trier(_rapport(personnes))
+    dossier = triage["personnes"][0]
+    assert dossier["statut"] == "regrouper" and dossier["annee"] == 1975
+    assert len(triage["decisions"]["participants"]) == 2
+
+
 def test_deux_fiches_erp_homonymes_ne_sont_jamais_departagees():
     fiches = [{"id": 1, "raw": {"nom": "Sacko", "prenom": "Madi", "annee_naissance": 1990, "genre": "Homme",
                                 "date_naissance": None, "telephone": None, "email": None,

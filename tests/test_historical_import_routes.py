@@ -23,13 +23,23 @@ def historical_ui(app, admin_client, monkeypatch, tmp_path):
         return {
             "source": {"filename": Path(path).name}, "digest": digest,
             "summary": {"sheets": 1, "participants_source": 2, "sessions": 1},
-            "parser": {"sheets": [{"name": "Atelier", "classification": "ACTIVITY"}], "anomalies": [{"id": "a1", "message": "Total à contrôler"}], "errors": []},
+            "parser": {"sheets": [{"name": "Atelier", "classification": "ACTIVITY"}], "anomalies": [{"id": "a1", "message": "Total à contrôler"}], "errors": [],
+                       "attendance": [{"person_key": "sheet:5"}, {"person_key": "sheet:6"}]},
+            "anomalies": [{"id": "a1", "code": "invalid_day", "message": "Total à contrôler", "blocking": True,
+                           "acknowledged": "a1" in decisions.get("acknowledged_anomalies", []),
+                           "source_sheet": "Atelier", "source_cell": "J6", "raw_value": 6}],
             "matching": {"rows": [
-                {"key": "sheet:5", "classification": "REVIEW", "raw": {"nom": "TEST", "prenom": "Luc"}, "candidates": [{"kind": "participant", "id": 99, "raw": {"nom": "TEST", "prenom": "Luc"}}, {"kind": "source", "key": "sheet:6", "raw": {"nom": "TEST", "prenom": "Luc"}}]},
-                {"key": "sheet:6", "classification": "REVIEW", "raw": {"nom": "TEST", "prenom": "Luc"}, "candidates": []},
+                {"key": "sheet:5", "classification": "REVIEW", "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980},
+                 "normalized": {"nom": "test", "prenom": "luc", "birth_year": 1980, "birth_date": None, "genre": "Femme", "telephone": None, "email": None, "ville": None, "quartier": None, "adresse": None},
+                 "candidates": [{"kind": "participant", "id": 99, "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "date_naissance": "1980-03-02"}}, {"kind": "source", "key": "sheet:6", "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980}}]},
+                {"key": "sheet:6", "classification": "REVIEW", "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980},
+                 "normalized": {"nom": "test", "prenom": "luc", "birth_year": 1980, "birth_date": None, "genre": "Femme", "telephone": None, "email": None, "ville": None, "quartier": None, "adresse": None},
+                 "candidates": []},
             ]},
-            "activities": [{"key": "act:1", "name": "Atelier", "secteur": decisions.get('activities', {}).get('act:1', {}).get('secteur'), "status": "REVIEW", "candidates": [{"id": 1, "name": "Atelier existant"}]}],
-            "sessions": [{"key": "session:1", "sheet": "Atelier", "date_session": "2026-01-12", "status": "REVIEW", "candidates": [{"id": 7, "date_session": "2026-01-12"}]}],
+            "activities": [{"key": "act:1", "name": "Atelier", "source_sheet": "Atelier", "secteur": decisions.get('activities', {}).get('act:1', {}).get('secteur'), "status": "REVIEW", "match_status": "NEW", "candidates": [{"id": 1, "name": "Atelier existant"}]}],
+            "sessions": [{"key": "session:1", "sheet": "Atelier", "source_sheet": "Atelier", "source_cell": "J6", "source_column": 10,
+                          "source_slot": "M", "raw_headers": {"J2": "2026-01-01T00:00:00", "J4": "M", "J6": 6}, "anomalies": [],
+                          "candidate_dates": [], "date_session": "2026-01-12", "status": "REVIEW", "candidates": [{"id": 7, "date_session": "2026-01-12"}]}],
             "blockers": [] if calls["ready"] else [{"kind": "participant", "key": "sheet:5", "message": "Homonyme à valider"}],
             "ready": calls["ready"], "decisions": decisions,
         }
@@ -178,6 +188,66 @@ def test_decisions_reject_stale_digest_and_invalid_json(historical_ui):
     }, content_type="multipart/form-data")
     assert response.status_code == 400
     assert len(historical_ui.calls["analyze"]) == 1
+
+
+def test_triage_proposes_decisions_and_reruns_the_dry_run(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    response = historical_ui.client.post(url + "/triage", data={"digest": plan["digest"]})
+    assert response.status_code == 302
+    proposees = historical_ui.calls["analyze"][-1]["decisions"]
+    # Les deux lignes de même identité forment un dossier unique, rattaché à la fiche.
+    assert proposees["participants"] == {
+        "sheet:5": {"action": "participant", "participant_id": 99},
+        "sheet:6": {"action": "participant", "participant_id": 99}}
+    # La colonne datable est proposée ; un nom d'activité muet ne fait deviner aucun secteur.
+    assert proposees["sessions"] == {"session:1": {"action": "date", "date_session": "2026-01-06"}}
+    assert proposees["activities"] == {}
+    assert json.loads((stage / "decisions.json").read_text(encoding="utf-8")) == proposees
+    assert json.loads((stage / "plan.json").read_text(encoding="utf-8"))["digest"] != plan["digest"]
+    assert not historical_ui.calls["apply"]
+
+
+def test_triage_never_replaces_a_saved_decision(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    saisie = {"participants": {"sheet:5": {"action": "ignore"}}}
+    response = historical_ui.client.post(url + "/decisions", data={
+        "digest": plan["digest"], "decisions_file": (BytesIO(json.dumps(saisie).encode()), "decisions.json"),
+    }, content_type="multipart/form-data")
+    assert response.status_code == 302
+    courant = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
+    assert historical_ui.client.post(url + "/triage", data={"digest": courant["digest"]}).status_code == 302
+    proposees = historical_ui.calls["analyze"][-1]["decisions"]
+    assert proposees["participants"]["sheet:5"] == {"action": "ignore"}
+    assert proposees["participants"]["sheet:6"] == {"action": "participant", "participant_id": 99}
+
+
+def test_triage_never_acknowledges_an_anomaly(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    historical_ui.client.post(url + "/triage", data={"digest": plan["digest"]})
+    assert historical_ui.calls["analyze"][-1]["decisions"]["acknowledged_anomalies"] == []
+
+
+def test_triage_refuses_a_stale_preview_and_a_malformed_plan(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    assert historical_ui.client.post(url + "/triage", data={"digest": "perime"}).status_code == 409
+    casse = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
+    for row in casse["matching"]["rows"]:
+        row.pop("normalized")
+    (stage / "plan.json").write_text(json.dumps(casse), encoding="utf-8")
+    response = historical_ui.client.post(url + "/triage", data={"digest": plan["digest"]})
+    assert response.status_code == 400
+    assert "Rapport d&#39;analyse incomplet" in response.get_data(as_text=True)
+    assert len(historical_ui.calls["analyze"]) == 1
+
+
+def test_triage_button_is_hidden_once_the_batch_is_applied(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    historical_ui.calls["ready"] = True
+    historical_ui.client.post(url + "/decisions", data={"digest": plan["digest"]})
+    courant = json.loads((historical_ui.root / url.rsplit("/", 1)[1] / "plan.json").read_text(encoding="utf-8"))
+    assert "/triage" in historical_ui.client.get(url).get_data(as_text=True)
+    historical_ui.client.post(url + "/apply", data={"digest": courant["digest"], "confirm": "yes"})
+    assert "/triage" not in historical_ui.client.get(url).get_data(as_text=True)
 
 
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):

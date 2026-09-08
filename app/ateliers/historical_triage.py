@@ -186,14 +186,23 @@ def _dossier_personne(cle, groupe, presences):
     elif voisins:
         dossier.update(statut="arbitrer", categorie="orthographe proche",
                        motif="variante possible de " + ", ".join(sorted(voisins)))
+    elif not annees and (fiches or len(groupe) > 1):
+        # Sans millésime, il ne reste que le nom : c'est exactement ce que le
+        # moteur refuse de trancher seul, et le triage ne le contourne pas.
+        dossier.update(statut="arbitrer", categorie="aucune année pour étayer le rapprochement",
+                       motif=("fiche ERP homonyme" if fiches else f"{len(groupe)} lignes homonymes")
+                             + " sans année de naissance dans le classeur")
+    elif fiches and not annees_fiches:
+        dossier.update(statut="arbitrer", categorie="aucune année pour étayer le rapprochement",
+                       motif="la fiche ERP homonyme ne porte aucune naissance connue")
     elif fiches:
         identifiant = next(iter(fiches))
         dossier.update(statut="rattacher", categorie="rattachement à une fiche ERP",
-                       motif=f"fiche ERP {identifiant} : nom, prénom et année concordants",
+                       motif=f"fiche ERP {identifiant} : nom, prénom et année {next(iter(annees))} concordants",
                        decision={"action": "participant", "participant_id": identifiant})
     elif len(groupe) > 1:
         dossier.update(statut="regrouper", categorie="regroupement interne au classeur",
-                       motif=f"{len(groupe)} lignes de même nom, prénom et année")
+                       motif=f"{len(groupe)} lignes de même nom, prénom et année {next(iter(annees))}")
     else:
         dossier.update(statut="creer", categorie="création sans candidat",
                        motif="identité unique dans le classeur, aucune fiche ERP proche")
@@ -219,11 +228,12 @@ def _attribuer_groupes(dossiers):
 
 
 def _colonne(seance):
-    return re.match(r"[A-Z]+", seance["source_cell"]).group(0)
+    lettres = re.match(r"[A-Z]+", str(seance.get("source_cell") or ""))
+    return lettres.group(0) if lettres else ""
 
 
 def _jour_semaine(seance):
-    entete = seance["raw_headers"].get(_colonne(seance) + "4")
+    entete = (seance.get("raw_headers") or {}).get(_colonne(seance) + "4")
     return JOURS_SEMAINE.get(str(entete or "").strip().upper())
 
 
@@ -233,7 +243,7 @@ def _numero_jour(seance):
     Le classeur contient des saisies doublées — « 30/30 » pour le 30, « 66 »
     pour le 6 — que l'analyse refuse à juste titre d'interpréter seule.
     """
-    brut = seance["raw_headers"].get(_colonne(seance) + "6")
+    brut = (seance.get("raw_headers") or {}).get(_colonne(seance) + "6")
     for nombre in re.findall(r"\d+", str(brut or "")):
         if 1 <= int(nombre) <= 31:
             return int(nombre)
@@ -246,8 +256,9 @@ def _bornes(seance, datees, ancre):
     À défaut de colonne datée d'un côté, le mois inscrit en ligne 2 ferme la
     fenêtre. Il ne sert qu'à rétrécir un intervalle sinon large d'une année.
     """
-    avant = [d for colonne, d in datees if colonne < seance["source_column"]]
-    apres = [d for colonne, d in datees if colonne > seance["source_column"]]
+    colonne_cible = seance.get("source_column") or 0
+    avant = [d for colonne, d in datees if colonne < colonne_cible]
+    apres = [d for colonne, d in datees if colonne > colonne_cible]
     debut = max(avant) if avant else (ancre if ancre else None)
     fin = min(apres) if apres else (_fin_de_mois(ancre) if ancre else None)
     return debut, fin
@@ -262,14 +273,15 @@ def _ancre_mois(seance, seances_feuille):
     """Dernier mois explicite inscrit en ligne 2, à hauteur ou à gauche de la colonne."""
     ancres = []
     for autre in seances_feuille:
-        valeur = autre["raw_headers"].get(_colonne(autre) + "2")
+        valeur = (autre.get("raw_headers") or {}).get(_colonne(autre) + "2")
         if not valeur:
             continue
         try:
-            ancres.append((autre["source_column"], date.fromisoformat(str(valeur)[:10]).replace(day=1)))
+            ancres.append((autre.get("source_column") or 0,
+                           date.fromisoformat(str(valeur)[:10]).replace(day=1)))
         except ValueError:
             continue
-    retenues = [mois for colonne, mois in sorted(ancres) if colonne <= seance["source_column"]]
+    retenues = [mois for colonne, mois in sorted(ancres) if colonne <= (seance.get("source_column") or 0)]
     return retenues[-1] if retenues else None
 
 
@@ -304,21 +316,22 @@ def trier_seances(rapport):
     """Propose une date pour les séances REVIEW dont le classeur ne laisse qu'une lecture."""
     annee = rapport["source"].get("year") or date.today().year
     par_feuille = defaultdict(list)
-    for seance in rapport["sessions"]:
-        par_feuille[seance["source_sheet"]].append(seance)
+    for seance in rapport.get("sessions", []):
+        par_feuille[seance.get("source_sheet")].append(seance)
 
     dossiers, resolues = [], {}
-    a_traiter = sorted((s for s in rapport["sessions"] if s["status"] == "REVIEW"),
-                       key=lambda s: (s["source_sheet"], s["source_column"]))
+    a_traiter = sorted((s for s in rapport.get("sessions", []) if s.get("status") == "REVIEW"),
+                       key=lambda s: (str(s.get("source_sheet")), s.get("source_column") or 0))
     # Deux passes : les colonnes tranchées par l'analyse servent de bornes aux autres.
     for passe in (1, 2):
         for seance in list(a_traiter):
             datees = sorted(
-                (autre["source_column"], date.fromisoformat(resolues.get(autre["key"], autre["date_session"])))
-                for autre in par_feuille[seance["source_sheet"]]
-                if resolues.get(autre["key"]) or autre["date_session"])
+                (autre.get("source_column") or 0,
+                 date.fromisoformat(resolues.get(autre["key"], autre.get("date_session"))))
+                for autre in par_feuille[seance.get("source_sheet")]
+                if resolues.get(autre["key"]) or autre.get("date_session"))
             dossier = _dossier_seance(seance, datees, annee, passe,
-                                      _ancre_mois(seance, par_feuille[seance["source_sheet"]]))
+                                      _ancre_mois(seance, par_feuille[seance.get("source_sheet")]))
             if dossier is None:
                 continue
             a_traiter.remove(seance)
@@ -348,11 +361,11 @@ def _dossier_seance(seance, datees, annee, passe, ancre=None):
 
     dossier = {
         "cle": seance["key"],
-        "feuille": seance["source_sheet"],
-        "cellule": seance["source_cell"],
+        "feuille": seance.get("source_sheet"),
+        "cellule": seance.get("source_cell"),
         "creneau": seance.get("source_slot"),
-        "jour_saisi": seance["raw_headers"].get(_colonne(seance) + "6"),
-        "jour_semaine": seance["raw_headers"].get(_colonne(seance) + "4"),
+        "jour_saisi": (seance.get("raw_headers") or {}).get(_colonne(seance) + "6"),
+        "jour_semaine": (seance.get("raw_headers") or {}).get(_colonne(seance) + "4"),
         "anomalies": sorted({a["code"] for a in seance.get("anomalies", [])}),
         "options": [d.isoformat() for d in retenues[:8]],
         "statut": None, "motif": "", "decision": None,
@@ -377,7 +390,7 @@ def trier_anomalies(rapport, seances=()):
     propositions = {d["cle"]: d for d in seances}
     par_cellule = {}
     for seance in rapport.get("sessions", []):
-        par_cellule[(seance["source_sheet"], seance["source_cell"])] = seance["key"]
+        par_cellule[(seance.get("source_sheet"), seance.get("source_cell"))] = seance["key"]
 
     dossiers = []
     for anomalie in rapport.get("anomalies", []):
@@ -475,8 +488,30 @@ def _signaler_voisines(dossiers):
                                     "confirmer deux activités distinctes ou un nom commun")
 
 
+def verifier_rapport(rapport):
+    """Refuse un fichier qui n'est pas un rapport d'analyse exploitable.
+
+    Mieux vaut une erreur nette qu'un triage qui déclarerait tout le monde
+    « identité incomplète » parce qu'il lit un fichier de la mauvaise forme.
+    """
+    if not isinstance(rapport, dict) or not isinstance(rapport.get("matching"), dict):
+        raise ValueError("Ce fichier n'est pas un rapport d'analyse historique.")
+    lignes = rapport["matching"].get("rows")
+    if not isinstance(lignes, list):
+        raise ValueError("Rapport d'analyse sans lignes de rapprochement.")
+    attendus = ("key", "normalized", "reasons", "candidates", "raw")
+    manquants = sorted({champ for ligne in lignes[:1] for champ in attendus if champ not in ligne})
+    if manquants:
+        raise ValueError("Rapport d'analyse incomplet : " + ", ".join(manquants)
+                         + " absents des lignes de rapprochement. Refaire l'analyse du classeur.")
+    parser = rapport.get("parser")
+    if not isinstance(parser, dict) or not isinstance(parser.get("attendance"), list):
+        raise ValueError("Rapport d'analyse sans les cellules de présence lues dans le classeur.")
+
+
 def trier(rapport, *, proposer_secteurs=True, secteurs_connus=()):
     """Triage complet : dossiers, décisions proposées et compteurs de relecture."""
+    verifier_rapport(rapport)
     personnes = trier_personnes(rapport)
     seances = trier_seances(rapport)
     activites = trier_activites(rapport, proposer_secteurs=proposer_secteurs,

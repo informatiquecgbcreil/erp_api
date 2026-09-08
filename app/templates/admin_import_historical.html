@@ -68,6 +68,17 @@
   </section>
 
   {% if not metadata.applied %}
+  <section class="section-card">
+    <h2>Triage assisté</h2>
+    <p>Le rapport compte des <strong>lignes source</strong>, pas des personnes : une même personne occupe souvent plusieurs lignes réparties dans autant de feuilles. Le triage les regroupe par dossier et propose les décisions que le classeur rend évidentes — rattachement à une fiche existante dont le nom, le prénom et l'année concordent, regroupement des lignes répétées d'une même identité, date d'une colonne encadrée par ses voisines et confirmée par le jour de semaine, secteur déduit du nom métier.</p>
+    <p>Aucune règle de rapprochement n'est assouplie : orthographes proches, homonymes, contradictions avec une fiche existante et lectures de date ambiguës restent bloquants. Une décision déjà enregistrée n'est jamais remplacée, et aucune anomalie n'est acquittée à votre place. <strong>Relisez ensuite les secteurs proposés</strong> : ils sont déduits du seul nom de la feuille.</p>
+    <form method="post" action="{{ url_for('admin.historical_triage', stage_id=stage_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="digest" value="{{ plan.digest }}">
+      <button class="btn" type="submit">Proposer un triage et refaire le dry-run</button>
+    </form>
+  </section>
+
   <form method="post" action="{{ url_for('admin.historical_decisions', stage_id=stage_id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="digest" value="{{ plan.digest }}">
