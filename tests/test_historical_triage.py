@@ -10,6 +10,7 @@ from app.ateliers.historical_matching import resolve_people
 from app.ateliers.historical_triage import (
     COLONNES_CSV, exporter_arbitrages, fusionner_arbitrages, rapport_markdown, trier,
 )
+from tools.historical_triage import main
 
 
 def _personne(feuille, ligne, nom, prenom, annee=None, sexe=None, quartier=None):
@@ -358,6 +359,67 @@ def test_rapport_markdown_resume_le_travail_restant():
     assert "# Triage de la migration historique" in texte
     assert "orthographe proche" in texte
     assert "REUNION DU MARDI" in texte
+
+
+# --- Ligne de commande ----------------------------------------------------
+
+@pytest.fixture
+def rapport_json(tmp_path):
+    chemin = tmp_path / "rapport.json"
+    chemin.write_text(json.dumps(_rapport_complet(), default=str), encoding="utf-8")
+    return chemin
+
+
+def test_ligne_de_commande_produit_decisions_compte_rendu_et_tableur(tmp_path, rapport_json):
+    decisions, markdown, tableur = (tmp_path / "sortie" / n
+                                    for n in ("decisions.json", "triage.md", "arbitrages.csv"))
+    assert main(["trier", "--report", str(rapport_json), "--decisions", str(decisions),
+                 "--markdown", str(markdown), "--csv", str(tableur)]) == 0
+    # Les dossiers de sortie manquants sont créés, contrairement aux entrées.
+    assert json.loads(decisions.read_text(encoding="utf-8"))["participants"] == {}
+    assert "# Triage de la migration historique" in markdown.read_text(encoding="utf-8")
+    entetes = next(csv.reader(io.StringIO(tableur.read_text(encoding="utf-8-sig")), delimiter=";"))
+    assert entetes == list(COLONNES_CSV)
+
+
+def test_ligne_de_commande_reprend_les_arbitrages_et_signale_les_refus(tmp_path, rapport_json):
+    decisions, tableur = tmp_path / "decisions.json", tmp_path / "arbitrages.csv"
+    main(["trier", "--report", str(rapport_json), "--decisions", str(decisions), "--csv", str(tableur)])
+    lignes = list(csv.DictReader(io.StringIO(tableur.read_text(encoding="utf-8-sig")), delimiter=";"))
+    for ligne in lignes:
+        ligne["decision"] = {"CONCERT!I": "2026-01-17"}.get(ligne["cle"], "n_importe_quoi")
+    with tableur.open("w", encoding="utf-8-sig", newline="") as sortie:
+        ecrivain = csv.DictWriter(sortie, fieldnames=COLONNES_CSV, delimiter=";")
+        ecrivain.writeheader()
+        ecrivain.writerows(lignes)
+    # Un refus vaut code de retour non nul : le lot n'est pas prêt.
+    assert main(["fusionner", "--report", str(rapport_json), "--csv", str(tableur),
+                 "--decisions", str(decisions)]) == 1
+    reprises = json.loads(decisions.read_text(encoding="utf-8"))
+    assert reprises["sessions"]["CONCERT!I"] == {"action": "date", "date_session": "2026-01-17"}
+
+
+@pytest.mark.parametrize("arguments, extrait", [
+    (["trier", "--report", "{absent}", "--decisions", "{sortie}"], "Rapport d'analyse introuvable"),
+    (["trier", "--report", "{dossier}", "--decisions", "{sortie}"], "est un dossier, pas un fichier"),
+    (["trier", "--report", "{illisible}", "--decisions", "{sortie}"], "n'est pas du JSON valide"),
+    (["fusionner", "--report", "{rapport}", "--csv", "{absent}", "--decisions", "{sortie}"],
+     "CSV d'arbitrages introuvable"),
+    (["fusionner", "--report", "{rapport}", "--csv", "{illisible}", "--decisions", "{sortie}"],
+     "colonnes absentes"),
+])
+def test_un_chemin_manquant_donne_une_erreur_lisible_pas_une_trace(
+        tmp_path, rapport_json, capsys, arguments, extrait):
+    illisible = tmp_path / "illisible.txt"
+    illisible.write_text("ceci n'est pas un rapport", encoding="utf-8")
+    (tmp_path / "vide").mkdir()
+    chemins = {"absent": tmp_path / "absent.json", "dossier": tmp_path / "vide",
+               "illisible": illisible, "rapport": rapport_json, "sortie": tmp_path / "sortie.json"}
+    with pytest.raises(SystemExit) as sortie:
+        main([a.format(**{k: str(v) for k, v in chemins.items()}) for a in arguments])
+    assert sortie.value.code == 2
+    assert extrait in capsys.readouterr().err
+    assert not chemins["sortie"].exists()
 
 
 # --- Intégration sur le vrai rapport, si le fichier privé est fourni -------

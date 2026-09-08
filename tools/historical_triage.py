@@ -18,8 +18,39 @@ from app.ateliers.historical_triage import (
 )
 
 
-def _lire_json(chemin):
-    return json.loads(Path(chemin).read_text(encoding="utf-8-sig"))
+def _fichier(parser, chemin, quoi, indice):
+    """Un chemin manquant est une erreur d'usage, pas une trace Python."""
+    cible = Path(chemin).expanduser()
+    if cible.is_dir():
+        parser.error(f"{quoi} : « {cible} » est un dossier, pas un fichier.")
+    if not cible.is_file():
+        parser.error(f"{quoi} introuvable : « {cible} »\n{indice}")
+    return cible
+
+
+def _lire_json(parser, chemin):
+    cible = _fichier(parser, chemin, "Rapport d'analyse",
+                     "Fournir le rapport JSON produit par « python -m tools.historical_import "
+                     "--database <base> analyze --output <rapport.json> », ou celui exporté depuis "
+                     "Administration → Migration historique. Le triage ne relit pas le classeur : "
+                     "il lui faut ce rapport.")
+    try:
+        return json.loads(cible.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as erreur:
+        parser.error(f"Rapport illisible : « {cible} » n'est pas du JSON valide ({erreur}).")
+
+
+def _lire_csv(parser, chemin):
+    cible = _fichier(parser, chemin, "CSV d'arbitrages",
+                     "Produire d'abord le tableur avec « trier --csv <arbitrages.csv> », "
+                     "puis remplir sa colonne « decision ».")
+    with cible.open(encoding="utf-8-sig", newline="") as entree:
+        lignes = list(csv.DictReader(entree, delimiter=";"))
+    manquantes = set(COLONNES_CSV) - set(lignes[0] if lignes else ())
+    if manquantes:
+        parser.error(f"CSV d'arbitrages incomplet : colonnes absentes {sorted(manquantes)}. "
+                     "Conserver la ligne d'en-tête et le séparateur point-virgule.")
+    return lignes
 
 
 def _ecrire(chemin, contenu):
@@ -70,7 +101,7 @@ def main(argv=None):
     fusion.add_argument("--sans-secteurs", action="store_true")
 
     args = parser.parse_args(argv)
-    rapport = _lire_json(args.report)
+    rapport = _lire_json(parser, args.report)
     triage = trier(rapport, proposer_secteurs=not args.sans_secteurs,
                    secteurs_connus=_secteurs(rapport, args.secteurs))
 
@@ -81,9 +112,7 @@ def main(argv=None):
         if args.csv:
             print("Arbitrages    : " + str(_ecrire_csv(args.csv, exporter_arbitrages(triage))))
     else:
-        with Path(args.csv).open(encoding="utf-8-sig", newline="") as entree:
-            lignes = list(csv.DictReader(entree, delimiter=";"))
-        decisions, refusees = fusionner_arbitrages(triage, lignes)
+        decisions, refusees = fusionner_arbitrages(triage, _lire_csv(parser, args.csv))
 
     _ecrire(args.decisions, json.dumps(decisions, ensure_ascii=False, indent=2, sort_keys=True))
     print("Décisions     : " + str(Path(args.decisions).resolve()))

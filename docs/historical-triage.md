@@ -131,6 +131,13 @@ Tous pro » id 29).
 L'outil ne lit que le rapport JSON. Il ne touche ni la base, ni le classeur, et
 n'applique rien.
 
+Le rapport d'entrée est celui de l'analyse : soit le `--output` de
+`python -m tools.historical_import --database <base> analyze`, soit le fichier
+téléchargé depuis Administration → Migration historique. Le triage ne relit pas
+le classeur : sans ce rapport il ne peut rien faire, et il le dit clairement au
+lieu de lever une exception. Le chemin passé à `--report` est relatif au dossier
+courant ; les dossiers de sortie manquants, eux, sont créés.
+
 ```powershell
 python -m tools.historical_triage trier `
   --report instance/historical_validation/rapport.json `
