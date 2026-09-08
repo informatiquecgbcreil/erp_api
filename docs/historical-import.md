@@ -40,7 +40,7 @@ La migration avancée est séparée de l'import standard pour réutiliser les mo
 | `app/services/participant_privacy.py`, `purge_rgpd.py`, `participant_suppression.py`, `app/activite/participants_secteur.py`, `app/participants/routes.py` | Maintien des voies d'effacement et exposition de l'année connue à la recherche. |
 | `app/services/senacs.py` | Année seule utilisée pour l'âge au 31 décembre, sans inventer de jour de naissance. |
 | `tools/historical_import.py` | Analyse/application/vérification en ligne de commande sur une base SQLite explicitement désignée. |
-| `app/ateliers/historical_triage.py`, `tools/historical_triage.py` | Regroupement du rapport en dossiers, propositions de décisions et reprise des arbitrages au tableur. Aucune base, aucun classeur, aucune écriture. |
+| `app/ateliers/historical_triage.py`, `tools/historical_triage.py` | Regroupement du rapport en dossiers, propositions de décisions et reprise des arbitrages au tableur. Aucune base, aucun classeur, aucune écriture. Exposé aussi par le bouton « Proposer un triage » de l'aperçu. |
 | `tests/test_historical_*.py` | Tests du parseur, matching, transactions, interface et migration ; intégration du vrai fichier par variable d'environnement. |
 
 ## Règles de lecture
@@ -161,11 +161,12 @@ Sur PostgreSQL, utiliser l'interface de staging après sauvegarde et mise à niv
 ## Triage assisté
 
 Le rapport compte des lignes source, pas des personnes : sur le vrai classeur,
-1 014 lignes REVIEW ne représentent que 182 dossiers réellement ambigus. Le
+1 014 lignes REVIEW ne représentent que 221 dossiers réellement ambigus. Le
 triage regroupe le rapport par identité, propose les décisions que le classeur
 rend évidentes et exporte le reste dans un tableur. Il n'assouplit aucune règle
 de rapprochement et n'écrit rien : sa sortie est un fichier de décisions à
-relire, puis à rejouer par `analyze --decisions`. Voir
+relire, puis à rejouer par `analyze --decisions`. Le bouton « Proposer un
+triage » de l'aperçu fait la même chose sans quitter le navigateur. Voir
 [historical-triage.md](historical-triage.md).
 
 ## Tests et limites à valider

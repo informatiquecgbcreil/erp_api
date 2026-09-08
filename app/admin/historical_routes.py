@@ -302,6 +302,63 @@ def historical_decisions(stage_id):
     return redirect(url_for("admin.historical_preview", stage_id=stage_id))
 
 
+def _fusion_decisions(existantes, proposees):
+    """Une proposition complète les décisions prises, elle ne les remplace jamais."""
+    fusion = {}
+    for section in ("participants", "activities", "sessions"):
+        fusion[section] = dict(proposees.get(section, {}))
+        fusion[section].update(existantes.get(section, {}))
+    fusion["acknowledged_anomalies"] = list(dict.fromkeys(
+        list(existantes.get("acknowledged_anomalies", []))
+        + list(proposees.get("acknowledged_anomalies", []))))
+    return fusion
+
+
+@bp.route("/import-historical/<stage_id>/triage", methods=["POST"])
+@login_required
+@require_perm("ateliers:sync")
+def historical_triage(stage_id):
+    """Regroupe l'aperçu par dossier et propose les décisions évidentes.
+
+    Aucune règle de rapprochement n'est assouplie : le triage écrit les
+    décisions qu'un humain aurait saisies pour les cas que le classeur tranche
+    lui-même, et laisse tout le reste bloquant.
+    """
+    stage, _, _ = _load(stage_id)
+    with _stage_lock(stage):
+        stage, metadata, source = _load(stage_id)
+        plan = _read_json(stage / "plan.json")
+        _assert_preview(plan, metadata)
+        try:
+            from app.ateliers.historical_triage import trier
+            from app.ateliers.historical_import import analyze_import
+            triage = trier(plan, secteurs_connus=_sectors())
+            existantes = _read_json(stage / "decisions.json")
+            decisions = _fusion_decisions(existantes, triage["decisions"])
+            ajoutees = sum(1 for section in ("participants", "activities", "sessions")
+                           for key in triage["decisions"][section]
+                           if key not in existantes.get(section, {}))
+            refreshed = analyze_import(str(source), decisions=decisions, year=metadata["year"])
+            _assert_sectors(refreshed)
+            _write_json(stage / "plan.json", refreshed)
+            _write_json(stage / "decisions.json", refreshed.get("decisions", decisions))
+        except Exception as exc:
+            db.session.rollback()
+            if isinstance(exc, HTTPException):
+                raise
+            return _preview_response(stage_id, metadata, plan,
+                                     error=f"Triage non appliqué : {exc}", status=400)
+    resume = triage["resume"]
+    flash(f"Triage proposé : {ajoutees} décisions ajoutées, dont "
+          f"{resume['personnes_rattachees']} rattachements à une fiche existante, "
+          f"{resume['personnes_regroupees']} regroupements de lignes, "
+          f"{resume['seances_datees']} dates de séance et "
+          f"{resume['activites_avec_secteur']} secteurs déduits du nom métier. "
+          f"Aucune décision déjà enregistrée n'a été remplacée et aucune anomalie n'a été acquittée. "
+          f"Relisez les secteurs proposés : ils sont déduits du seul nom de la feuille.", "success")
+    return redirect(url_for("admin.historical_preview", stage_id=stage_id))
+
+
 @bp.route("/import-historical/<stage_id>/apply", methods=["POST"])
 @login_required
 @require_perm("ateliers:sync")

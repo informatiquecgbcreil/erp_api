@@ -35,11 +35,11 @@ ceux où le classeur laisse une vraie ambiguïté.
 
 | Objet | Blocages du rapport | Dossiers après triage | Restant à trancher |
 |---|---:|---:|---:|
-| Participants | 1 014 lignes | 834 dossiers | **182 dossiers** (407 lignes) |
+| Participants | 1 014 lignes | 834 dossiers | **221 dossiers** (492 lignes) |
 | Secteurs d'activité | 66 | 66 | **2** |
 | Séances | 46 | 46 | **5** |
-| Anomalies bloquantes | 58 | — | comprises dans les lignes ci-dessus |
-| **Total** | **1 184** | | **189** |
+| Anomalies bloquantes | 58 | 58 | **58 acquittements** |
+| **Total** | **1 184** | | **286** |
 
 ## Qualité de la source, telle qu'elle est
 
@@ -66,9 +66,15 @@ ceux où le classeur laisse une vraie ambiguïté.
 
 | Proposition | Dossiers | Lignes | Preuve retenue |
 |---|---:|---:|---|
-| Rattacher à une fiche ERP | 99 | 249 | nom, prénom **et** année identiques à une seule fiche, sans contradiction |
-| Regrouper les lignes du classeur | 103 | 358 | mêmes nom, prénom et année sur plusieurs feuilles, genre et territoire compatibles |
+| Rattacher à une fiche ERP | 90 | 236 | nom, prénom **et** année identiques à une seule fiche, sans contradiction |
+| Regrouper les lignes du classeur | 73 | 286 | mêmes nom, prénom et année sur plusieurs feuilles, genre et territoire compatibles |
 | Créer la personne | 450 | 450 | identité unique dans le classeur, aucun candidat proche |
+
+**Aucun rapprochement n'est proposé sur le seul nom.** Un dossier sans millésime
+— ni dans le classeur, ni sur la fiche ERP homonyme — part à l'arbitrage, même
+quand rien ne le contredit : c'est exactement le cas que `historical_matching`
+refuse de trancher seul, et le triage ne le contourne pas. Cela représente 39
+dossiers du vrai classeur.
 
 La clé d'identité ignore les espaces et les tirets : `EL BAYAD` et `ELBAYAD` sont
 le même dossier. Quand un dossier porte plusieurs orthographes, la décision fixe
@@ -85,13 +91,15 @@ différentes, donc ils ne sont pas regroupés.
 | Motif | Dossiers | Ce qu'il faut décider |
 |---|---:|---|
 | Orthographe proche | 147 | `SGIR` / `SGHIR` / `SHGIR fatima`, `KHALOUKY` / `KALOUKHY` / `KHALOUKI achraf`, `LAMARRE nnie` / `annie` : la même personne ou non. Attention aux fratries : `FELLOUS aylan` / `ayman`, `CHERRAD amir` / `amira`. |
+| Aucune année pour étayer le rapprochement | 39 | homonymes sans millésime : 30 groupes internes au classeur et 9 dossiers face à une fiche ERP. |
 | Identité incomplète ou année illisible | 17 | prénom seul, nom seul, `ADOS` en année : compléter, rattacher ou ignorer. |
 | Année du classeur ≠ fiche ERP | 9 | sept écarts de un à trois ans (1982/1983, 2018/2019, 1996/1997…). La fiche ERP n'est jamais écrasée : rattacher ne modifie pas sa date. |
 | Genre du classeur ≠ fiche ERP | 4 | dont `TOURE Sadou` (`F` au classeur, `Homme` en fiche). |
 | Homonymes dans le classeur | 3 | `BIATRANE naima` 1983/1993, `OTMANI cilia` 2003/2023, `HAMMOUD fidaa` 1988/2001. |
 | Genre contradictoire entre feuilles | 2 | `BASSAMA jeannelle`, `ALIMY zarlasht`. |
 
-Ces 182 dossiers portent 1 750 présences : il ne s'agit pas de cas marginaux.
+Ces 221 dossiers ne sont pas des cas marginaux : ils portent une part
+substantielle des présences du classeur.
 
 ### Séances — 41 dates sur 46
 
@@ -113,6 +121,27 @@ contradictions entre quantième et jour de semaine (`CTAI LUCIA!CH`,
 `LAB EXPRESSION!U` et `!W`, deux dates possibles chacune). Aucune n'est tranchée
 automatiquement : deux lectures possibles ne valent pas une décision.
 
+### Anomalies bloquantes — 58 acquittements, jamais automatiques
+
+Les 57 anomalies du parseur et l'anomalie territoriale forment une famille de
+blocages **distincte** des décisions ci-dessus : une séance datée reste bloquée
+par l'anomalie qui a signalé sa cellule tant que celle-ci n'est pas acquittée.
+Acquitter n'est pas corriger, c'est déclarer avoir vérifié la cellule d'origine.
+Le triage ne le fait donc jamais tout seul, même quand il propose une lecture.
+
+Il fait en revanche le travail de préparation : chaque anomalie est exportée avec
+sa feuille, sa cellule, la valeur réellement saisie et, pour 41 d'entre elles, la
+date que le triage propose pour cette colonne. On acquitte en connaissance de
+cause au lieu de cocher 58 cases dans une page web.
+
+| Code | Anomalies | Lecture proposée en regard |
+|---|---:|---|
+| `weekday_mismatch` | 25 | oui, quand la colonne est datée |
+| `invalid_day` | 13 | idem |
+| `missing_identity` | 11 | non, elles renvoient à un dossier de personne |
+| `invalid_calendar_date` | 8 | oui |
+| `unknown_territory` | 1 | non, c'est `MOULIN` |
+
 ### Activités — 64 secteurs sur 66
 
 Le secteur est déduit du nom métier par mots-clés, avec une confiance affichée.
@@ -126,10 +155,29 @@ existants : `NUMERIQUE AUTREMENT` (candidat « Le Numérique Autrement », id 8)
 `NUMERIQUE PAR TOUS` (candidats « Numérique Par Tous » id 6 et « Numérique Par
 Tous pro » id 29).
 
-## Utilisation
+## Utilisation depuis l'application
+
+Sur l'écran de prévisualisation, le bouton **« Proposer un triage et refaire le
+dry-run »** applique tout ce qui précède sans quitter le navigateur : il
+recalcule le triage à partir de l'aperçu en cours, complète les décisions et
+relance l'analyse. Une décision déjà enregistrée n'est jamais remplacée, et
+aucune anomalie n'est acquittée. Les points restants se traitent ensuite dans le
+formulaire habituel de l'écran.
+
+C'est la voie normale. Les commandes ci-dessous servent au travail hors ligne,
+sur une copie, ou quand on préfère trancher les arbitrages au tableur.
+
+## Utilisation en ligne de commande
 
 L'outil ne lit que le rapport JSON. Il ne touche ni la base, ni le classeur, et
 n'applique rien.
+
+Le rapport d'entrée est celui de l'analyse : soit le `--output` de
+`python -m tools.historical_import --database <base> analyze`, soit le fichier
+téléchargé depuis Administration → Migration historique. Le triage ne relit pas
+le classeur : sans ce rapport il ne peut rien faire, et il le dit clairement au
+lieu de lever une exception. Le chemin passé à `--report` est relatif au dossier
+courant ; les dossiers de sortie manquants, eux, sont créés.
 
 ```powershell
 python -m tools.historical_triage trier `
@@ -148,6 +196,7 @@ python -m tools.historical_triage trier `
    | `personne` | `nouvelle`, `fiche:<id ERP>`, `groupe:<clé d'un autre dossier>`, `ignorer` |
    | `seance` | `AAAA-MM-JJ`, `ignorer` |
    | `activite` | un libellé de secteur, `atelier:<id ERP>`, `nouvelle`, `ignorer` |
+   | `anomalie` | `acquitter` — et rien d'autre : refuser une anomalie, c'est la laisser vide |
 
    `groupe:` accepte une cible située n'importe où dans le fichier, y compris plus
    bas ; les renvois sont résolus après coup. Les lignes vides restent bloquantes,
@@ -182,6 +231,8 @@ du rapport, sinon `config.SECTEURS`.
 
 - Le triage **propose** ; il ne remplace pas la relecture. Un dossier « rattacher »
   reste une affirmation d'identité fondée sur nom, prénom et année seuls.
+- Les anomalies ne sont jamais acquittées par l'outil, quelle que soit la
+  confiance de la lecture qu'il propose pour la colonne concernée.
 - Les propositions de secteur sont lexicales. Elles n'ont aucune connaissance du
   projet social ni de l'organigramme réel.
 - Les dates déduites reposent sur l'ordre chronologique des colonnes et sur les

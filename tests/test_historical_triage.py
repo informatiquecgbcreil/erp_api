@@ -10,6 +10,7 @@ from app.ateliers.historical_matching import resolve_people
 from app.ateliers.historical_triage import (
     COLONNES_CSV, exporter_arbitrages, fusionner_arbitrages, rapport_markdown, trier,
 )
+from tools.historical_triage import main
 
 
 def _personne(feuille, ligne, nom, prenom, annee=None, sexe=None, quartier=None):
@@ -35,13 +36,22 @@ def _activite(nom, statut="NEW", candidats=()):
             "secteur": None, "atelier_id": None, "candidates": list(candidats)}
 
 
-def _rapport(personnes=(), fiches=(), seances=(), activites=(), presences=()):
+def _anomalie(identifiant, code, feuille, cellule, message, valeur=None,
+              bloquante=True, acquittee=False):
+    return {"id": identifiant, "code": code, "source_sheet": feuille, "source_cell": cellule,
+            "message": message, "raw_value": valeur, "blocking": bloquante,
+            "acknowledged": acquittee}
+
+
+def _rapport(personnes=(), fiches=(), seances=(), activites=(), presences=(), anomalies=()):
     matching = resolve_people(list(personnes), list(fiches))
     return {"version": "historical-import-1", "source": {"filename": "test.xlsx", "sha256": "a" * 64, "year": 2026},
             "digest": "b" * 64, "database_digest": "c" * 64, "secteurs": [],
             "matching": matching, "sessions": list(seances), "activities": list(activites),
+            "anomalies": list(anomalies),
             "parser": {"people": list(personnes), "attendance": [{"person_key": k} for k in presences],
-                       "sessions": list(seances), "activities": list(activites)}}
+                       "sessions": list(seances), "activities": list(activites),
+                       "anomalies": list(anomalies)}}
 
 
 SECTEURS = ["Numérique", "Familles", "EPE", "Santé Transition",
@@ -137,6 +147,36 @@ def test_annee_ou_genre_contredisant_la_fiche_erp_reste_a_trancher():
     assert triage["decisions"]["participants"] == {}
 
 
+@pytest.mark.parametrize("personnes, fiches", [
+    # Année absente du classeur : il ne reste que le nom face à la fiche.
+    ([_personne("FLE", 7, "DURAND", "Alice", None, "F")],
+     [{"id": 42, "raw": {"nom": "Durand", "prenom": "Alice", "date_naissance": "1975-04-02",
+                         "genre": "Femme", "telephone": None, "email": None,
+                         "ville": None, "quartier": None, "adresse": None}}]),
+    # Fiche sans aucune naissance connue : même problème dans l'autre sens.
+    ([_personne("FLE", 7, "DURAND", "Alice", 1975, "F")],
+     [{"id": 42, "raw": {"nom": "Durand", "prenom": "Alice", "date_naissance": None,
+                         "annee_naissance": None, "genre": "Femme", "telephone": None,
+                         "email": None, "ville": None, "quartier": None, "adresse": None}}]),
+    # Deux lignes homonymes du classeur, aucun millésime nulle part.
+    ([_personne("FLE", 7, "DURAND", "Alice", None, "F"),
+      _personne("ZUMBA", 8, "DURAND", "Alice", None, "F")], []),
+])
+def test_aucun_rapprochement_n_est_propose_sur_le_seul_nom(personnes, fiches):
+    triage = _trier(_rapport(personnes, fiches))
+    assert {d["categorie"] for d in triage["personnes"]} == {"aucune année pour étayer le rapprochement"}
+    assert triage["decisions"]["participants"] == {}
+
+
+def test_une_annee_sur_une_seule_ligne_du_dossier_suffit_a_regrouper():
+    personnes = [_personne("FLE", 7, "DURAND", "Alice", 1975, "F"),
+                 _personne("ZUMBA", 8, "DURAND", "Alice", None, "F")]
+    triage = _trier(_rapport(personnes))
+    dossier = triage["personnes"][0]
+    assert dossier["statut"] == "regrouper" and dossier["annee"] == 1975
+    assert len(triage["decisions"]["participants"]) == 2
+
+
 def test_deux_fiches_erp_homonymes_ne_sont_jamais_departagees():
     fiches = [{"id": 1, "raw": {"nom": "Sacko", "prenom": "Madi", "annee_naissance": 1990, "genre": "Homme",
                                 "date_naissance": None, "telephone": None, "email": None,
@@ -203,6 +243,57 @@ def test_seance_deja_datee_n_est_pas_reproposee():
     assert triage["decisions"]["sessions"] == {}
 
 
+# --- Anomalies bloquantes -------------------------------------------------
+
+def test_seule_une_anomalie_bloquante_et_non_acquittee_reste_a_traiter():
+    anomalies = [_anomalie("a1", "invalid_day", "FLE", "Z6", "Jour illisible.", 66),
+                 _anomalie("a2", "implicit_month_rollover", "FLE", "Y6", "Mois déduit.", bloquante=False),
+                 _anomalie("a3", "missing_identity", "FLE", "A9", "Nom absent.", acquittee=True)]
+    triage = _trier(_rapport(anomalies=anomalies))
+    assert [d["cle"] for d in triage["anomalies"]] == ["a1"]
+    assert triage["resume"]["anomalies_a_acquitter"] == 1
+    # Une anomalie n'est jamais acquittée d'office, même quand la date est proposée.
+    assert triage["decisions"]["acknowledged_anomalies"] == []
+
+
+def test_l_anomalie_rappelle_la_date_que_le_triage_propose_pour_sa_colonne():
+    seances = [_seance("ALPHA", "AA", 27, jour=4, semaine="L", date_session="2026-05-04"),
+               _seance("ALPHA", "AB", 28, jour=66, semaine="ME", statut="REVIEW"),
+               _seance("ALPHA", "AC", 29, jour=11, semaine="L", date_session="2026-05-11")]
+    anomalies = [_anomalie("a1", "invalid_day", "ALPHA", "AB6", "Jour illisible.", 66)]
+    triage = _trier(_rapport(seances=seances, anomalies=anomalies))
+    dossier = triage["anomalies"][0]
+    assert dossier["cible"] == "ALPHA!AB"
+    assert dossier["lecture_proposee"] == "2026-05-06"
+
+
+def test_une_anomalie_sans_colonne_de_seance_reste_sans_lecture_proposee():
+    anomalies = [_anomalie("a1", "missing_identity", "FLE", "A20", "Nom absent.")]
+    triage = _trier(_rapport(anomalies=anomalies))
+    assert triage["anomalies"][0]["lecture_proposee"] is None
+
+
+def test_acquitter_une_anomalie_l_ajoute_a_la_liste_et_rien_d_autre_n_est_accepte():
+    anomalies = [_anomalie("a1", "invalid_day", "FLE", "Z6", "Jour illisible.", 66)]
+    triage = _trier(_rapport(anomalies=anomalies))
+    lignes = exporter_arbitrages(triage)
+    assert [l["type"] for l in lignes] == ["anomalie"]
+    lignes[0]["decision"] = "acquitter"
+    decisions, refusees = fusionner_arbitrages(triage, lignes)
+    assert refusees == [] and decisions["acknowledged_anomalies"] == ["a1"]
+    lignes[0]["decision"] = "corrigee"
+    decisions, refusees = fusionner_arbitrages(triage, lignes)
+    assert decisions["acknowledged_anomalies"] == []
+    assert "décision anomalie non reconnue" in refusees[0]["erreur"]
+
+
+def test_les_anomalies_comptent_dans_les_blocages_restants():
+    anomalies = [_anomalie(f"a{i}", "invalid_day", "FLE", f"Z{i}", "Jour illisible.", 66)
+                 for i in range(3)]
+    triage = _trier(_rapport(activites=[_activite("REUNION DU MARDI")], anomalies=anomalies))
+    assert triage["resume"]["blocages_restants"] == 4
+
+
 # --- Activités ------------------------------------------------------------
 
 def test_secteur_deduit_du_nom_metier_et_confiance_affichee():
@@ -264,14 +355,15 @@ def _rapport_complet():
     seances = [_seance("CONCERT", "I", 9, jour=None, semaine="S",
                        mois="2026-01-01T00:00:00", statut="REVIEW")]
     activites = [_activite("REUNION DU MARDI")]
-    return _rapport(personnes, seances=seances, activites=activites,
+    anomalies = [_anomalie("a1", "missing_identity", "FLE", "A9", "Nom absent.")]
+    return _rapport(personnes, seances=seances, activites=activites, anomalies=anomalies,
                     presences=["FLE!7", "ZUMBA!8", "FLE!9"])
 
 
 def test_export_csv_une_ligne_par_dossier_a_trancher():
     triage = _trier(_rapport_complet())
     lignes = exporter_arbitrages(triage)
-    assert {l["type"] for l in lignes} == {"personne", "seance", "activite"}
+    assert {l["type"] for l in lignes} == {"personne", "seance", "activite", "anomalie"}
     assert all(set(l) == set(COLONNES_CSV) for l in lignes)
     assert all(l["decision"] == "" for l in lignes)
     # Le dossier déjà proposé n'encombre pas la liste de relecture.
@@ -283,7 +375,8 @@ def test_reprise_des_arbitrages_saisis_au_tableur():
     triage = _trier(_rapport_complet())
     lignes = exporter_arbitrages(triage)
     saisies = {"sgir|fatima": "nouvelle", "sghir|fatima": "groupe:sgir|fatima",
-               "CONCERT!I": "2026-01-17", "REUNION DU MARDI": "Animation Globale"}
+               "CONCERT!I": "2026-01-17", "REUNION DU MARDI": "Animation Globale",
+               "a1": "acquitter"}
     for ligne in lignes:
         ligne["decision"] = saisies.get(ligne["cle"], "")
     decisions, refusees = fusionner_arbitrages(triage, lignes)
@@ -292,6 +385,7 @@ def test_reprise_des_arbitrages_saisis_au_tableur():
     assert len(groupes) == 1
     assert decisions["sessions"]["CONCERT!I"] == {"action": "date", "date_session": "2026-01-17"}
     assert decisions["activities"]["REUNION DU MARDI"] == {"secteur": "Animation Globale"}
+    assert decisions["acknowledged_anomalies"] == ["a1"]
 
 
 def test_le_renvoi_vers_un_autre_dossier_ignore_l_ordre_des_lignes():
@@ -311,6 +405,8 @@ def test_le_renvoi_vers_un_autre_dossier_ignore_l_ordre_des_lignes():
     ("sgir|fatima", "groupe:inconnu", "absente du triage"),
     ("CONCERT!I", "le 17", "décision séance non reconnue"),
     ("REUNION DU MARDI", "atelier:x", "non numérique"),
+    ("a1", "vu", "décision anomalie non reconnue"),
+    ("a1", "acquitter", None),
 ])
 def test_saisies_invalides_sont_refusees_sans_toucher_aux_decisions(cle, choix, extrait):
     triage = _trier(_rapport_complet())
@@ -318,6 +414,9 @@ def test_saisies_invalides_sont_refusees_sans_toucher_aux_decisions(cle, choix, 
     for ligne in lignes:
         ligne["decision"] = choix if ligne["cle"] == cle else ""
     decisions, refusees = fusionner_arbitrages(triage, lignes)
+    if extrait is None:  # témoin : la même mécanique accepte la saisie valide
+        assert refusees == [] and decisions != triage["decisions"]
+        return
     assert len(refusees) == 1 and extrait in refusees[0]["erreur"]
     assert decisions == triage["decisions"]
 
@@ -358,6 +457,69 @@ def test_rapport_markdown_resume_le_travail_restant():
     assert "# Triage de la migration historique" in texte
     assert "orthographe proche" in texte
     assert "REUNION DU MARDI" in texte
+    assert "Anomalies bloquantes à acquitter" in texte
+    assert "Nom absent." in texte
+
+
+# --- Ligne de commande ----------------------------------------------------
+
+@pytest.fixture
+def rapport_json(tmp_path):
+    chemin = tmp_path / "rapport.json"
+    chemin.write_text(json.dumps(_rapport_complet(), default=str), encoding="utf-8")
+    return chemin
+
+
+def test_ligne_de_commande_produit_decisions_compte_rendu_et_tableur(tmp_path, rapport_json):
+    decisions, markdown, tableur = (tmp_path / "sortie" / n
+                                    for n in ("decisions.json", "triage.md", "arbitrages.csv"))
+    assert main(["trier", "--report", str(rapport_json), "--decisions", str(decisions),
+                 "--markdown", str(markdown), "--csv", str(tableur)]) == 0
+    # Les dossiers de sortie manquants sont créés, contrairement aux entrées.
+    assert json.loads(decisions.read_text(encoding="utf-8"))["participants"] == {}
+    assert "# Triage de la migration historique" in markdown.read_text(encoding="utf-8")
+    entetes = next(csv.reader(io.StringIO(tableur.read_text(encoding="utf-8-sig")), delimiter=";"))
+    assert entetes == list(COLONNES_CSV)
+
+
+def test_ligne_de_commande_reprend_les_arbitrages_et_signale_les_refus(tmp_path, rapport_json):
+    decisions, tableur = tmp_path / "decisions.json", tmp_path / "arbitrages.csv"
+    main(["trier", "--report", str(rapport_json), "--decisions", str(decisions), "--csv", str(tableur)])
+    lignes = list(csv.DictReader(io.StringIO(tableur.read_text(encoding="utf-8-sig")), delimiter=";"))
+    for ligne in lignes:
+        ligne["decision"] = {"CONCERT!I": "2026-01-17"}.get(ligne["cle"], "n_importe_quoi")
+    with tableur.open("w", encoding="utf-8-sig", newline="") as sortie:
+        ecrivain = csv.DictWriter(sortie, fieldnames=COLONNES_CSV, delimiter=";")
+        ecrivain.writeheader()
+        ecrivain.writerows(lignes)
+    # Un refus vaut code de retour non nul : le lot n'est pas prêt.
+    assert main(["fusionner", "--report", str(rapport_json), "--csv", str(tableur),
+                 "--decisions", str(decisions)]) == 1
+    reprises = json.loads(decisions.read_text(encoding="utf-8"))
+    assert reprises["sessions"]["CONCERT!I"] == {"action": "date", "date_session": "2026-01-17"}
+
+
+@pytest.mark.parametrize("arguments, extrait", [
+    (["trier", "--report", "{absent}", "--decisions", "{sortie}"], "Rapport d'analyse introuvable"),
+    (["trier", "--report", "{dossier}", "--decisions", "{sortie}"], "est un dossier, pas un fichier"),
+    (["trier", "--report", "{illisible}", "--decisions", "{sortie}"], "n'est pas du JSON valide"),
+    (["fusionner", "--report", "{rapport}", "--csv", "{absent}", "--decisions", "{sortie}"],
+     "CSV d'arbitrages introuvable"),
+    (["fusionner", "--report", "{rapport}", "--csv", "{illisible}", "--decisions", "{sortie}"],
+     "colonnes absentes"),
+])
+def test_un_chemin_manquant_donne_une_erreur_lisible_pas_une_trace(
+        tmp_path, rapport_json, capsys, arguments, extrait):
+    illisible = tmp_path / "illisible.txt"
+    illisible.write_text("ceci n'est pas un rapport", encoding="utf-8")
+    (tmp_path / "vide").mkdir()
+    chemins = {"absent": tmp_path / "absent.json", "dossier": tmp_path / "vide",
+               "illisible": illisible, "rapport": rapport_json, "sortie": tmp_path / "sortie.json"}
+    with pytest.raises(SystemExit) as sortie:
+        main([a.format(**{k: str(v) for k, v in chemins.items()}) for a in arguments])
+    assert sortie.value.code == 2
+    assert extrait in capsys.readouterr().err
+    assert not chemins["sortie"].exists()
 
 
 # --- Intégration sur le vrai rapport, si le fichier privé est fourni -------
