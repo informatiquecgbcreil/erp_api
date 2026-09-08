@@ -42,6 +42,8 @@ def participant_has_presence_outside_secteur(participant_id: int, secteur: str, 
 
 
 def anonymize_participant_fields(participant: Participant, *, strict: bool = False, tag_with_id: bool = True) -> Participant:
+    from app.ateliers.historical_privacy import redact_sources
+    redact_sources(participant.id)
     participant.nom = "ANONYME"
     participant.prenom = f"P{participant.id}" if tag_with_id else "ANONYME"
     participant.adresse = None
@@ -51,6 +53,7 @@ def anonymize_participant_fields(participant: Participant, *, strict: bool = Fal
     if strict:
         participant.genre = None
         participant.date_naissance = None
+        participant.annee_naissance = None
         participant.type_public = "H"
         participant.quartier_id = None
     return participant

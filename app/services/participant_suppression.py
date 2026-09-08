@@ -130,6 +130,9 @@ def supprimer_definitivement(participant: Participant) -> dict:
     """
     pid = participant.id
     resume = analyser(participant)
+    from app.ateliers.historical_privacy import redact_sources
+    redact_sources(pid, delete_links=True)
+    db.session.flush()
 
     # Fichiers d'abord : une fois les lignes parties, plus moyen de les retrouver.
     for piece in PasseportPieceJointe.query.filter_by(participant_id=pid).all():

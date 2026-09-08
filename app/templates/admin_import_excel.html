@@ -4,10 +4,11 @@
   <section class="hero-card">
     <div class="page-header">
       <div class="page-title-wrap">
-        <h1>Administration avancée · import Excel des présences</h1>
+        <h1>Import standard des présences</h1>
         <p class="muted">Outil réservé aux utilisateurs à l'aise avec l'application. Il permet d'importer un fichier Excel pour créer ateliers, séances et présences.</p>
       </div>
     </div>
+    <div class="hero-actions"><a class="btn" href="{{ url_for('admin.historical_import') }}">Migration historique · prévisualiser un classeur complet</a></div>
   </section>
 
   <section class="section-card">
@@ -21,7 +22,10 @@
       <div class="form-grid-3">
         <label class="field-stack">
           <span>Secteur</span>
-          <input class="in" type="text" name="secteur" value="{{ secteur or 'NUMERIQUE' }}">
+          <select class="in" name="secteur" required>
+            <option value="">Choisir le secteur de destination</option>
+            {% for s in secteurs %}<option value="{{ s }}" {% if secteur == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
         </label>
         <label class="field-stack">
           <span>Fichier Excel (.xlsx)</span>

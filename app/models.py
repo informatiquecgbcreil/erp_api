@@ -1343,6 +1343,8 @@ class Participant(db.Model):
     telephone = db.Column(db.String(60), nullable=True)
     genre = db.Column(db.String(20), nullable=True)
     date_naissance = db.Column(db.Date, nullable=True)
+    # Import historique : une année connue n'est pas une date au 1er janvier.
+    annee_naissance = db.Column(db.Integer, nullable=True)
     # Champs legacy insertion : conservés temporairement pour migration douce.
     # La source cible doit désormais vivre dans les tables dédiées du module insertion.
     pays_origine = db.Column(db.String(120), nullable=True)
@@ -1438,9 +1440,12 @@ class Participant(db.Model):
         période analysée : un bilan d'une année passée ne doit pas dériver avec
         le temps. Pour une période = année civile, l'âge au 31/12 coïncide avec
         la convention SENACS (année - année de naissance)."""
-        if not self.date_naissance:
-            return None
         reference = reference or date.today()
+        if not self.date_naissance:
+            # Une année seule donne un âge certain au 31/12, pas à une autre date.
+            if self.annee_naissance and (reference.month, reference.day) == (12, 31):
+                return reference.year - self.annee_naissance
+            return None
         years = reference.year - self.date_naissance.year
         if (reference.month, reference.day) < (self.date_naissance.month, self.date_naissance.day):
             years -= 1
@@ -1721,6 +1726,8 @@ class SessionActivite(db.Model):
     date_session = db.Column(db.Date, nullable=True, index=True)
     heure_debut = db.Column(db.String(10), nullable=True)
     heure_fin = db.Column(db.String(10), nullable=True)
+    # Libellé source conservé sans conversion arbitraire M/AM/ME en heures.
+    creneau_source = db.Column(db.String(80), nullable=True)
     capacite = db.Column(db.Integer, nullable=True)
     statut = db.Column(db.String(20), nullable=False, default="realisee")  # realisee / annulee
 
@@ -1923,6 +1930,42 @@ STATUTS_INSCRIPTION_LABELS = {
     "attente": "Liste d'attente",
     "annule": "Annulée",
 }
+
+
+class HistoricalImportBatch(db.Model):
+    """Un lot validé, atomique. Les prévisualisations restent hors base."""
+    __tablename__ = "historical_import_batch"
+    id = db.Column(db.String(36), primary_key=True)
+    file_hash = db.Column(db.String(64), nullable=False, index=True)
+    filename = db.Column(db.String(255), nullable=False)
+    secteurs_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    actor_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))
+    plan_digest = db.Column(db.String(64), nullable=False)
+    decisions_json = db.Column(db.Text, nullable=False)
+    summary_json = db.Column(db.Text, nullable=False)
+    __table_args__ = (db.UniqueConstraint("file_hash", name="uq_historical_file"),)
+
+
+class HistoricalImportSource(db.Model):
+    """Preuve de chaque ligne/cellule, y compris les exclusions explicites."""
+    __tablename__ = "historical_import_source"
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.String(36), db.ForeignKey("historical_import_batch.id"), nullable=False, index=True)
+    kind = db.Column(db.String(20), nullable=False)
+    source_key = db.Column(db.String(255), nullable=False)
+    source_sheet = db.Column(db.String(100), nullable=True)
+    source_row = db.Column(db.Integer, nullable=True)
+    source_column = db.Column(db.Integer, nullable=True)
+    source_cell = db.Column(db.String(30), nullable=True)
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id", ondelete="SET NULL"), index=True)
+    atelier_id = db.Column(db.Integer, db.ForeignKey("atelier_activite.id", ondelete="SET NULL"))
+    session_id = db.Column(db.Integer, db.ForeignKey("session_activite.id", ondelete="SET NULL"))
+    presence_id = db.Column(db.Integer, db.ForeignKey("presence_activite.id", ondelete="SET NULL"))
+    created_target = db.Column(db.Boolean, nullable=False, default=False)
+    raw_json = db.Column(db.Text, nullable=False)
+    decision_json = db.Column(db.Text, nullable=False)
+    __table_args__ = (db.UniqueConstraint("batch_id", "kind", "source_key", name="uq_historical_source"),)
 
 
 class InscriptionActivite(db.Model):

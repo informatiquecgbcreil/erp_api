@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 from app.extensions import db
 from app.models import User, Role, Permission, Secteur, InstanceSettings, Framework, Skill
 from app.utils.delete_guard import commit_delete
-from app.rbac import require_perm, can, HIDDEN_LEGACY_PERMS
+from app.rbac import require_perm, can, can_access_secteur, HIDDEN_LEGACY_PERMS
 from app.services.audit import journaliser
 from app.services.storage import ensure_upload_subdir, media_relpath
 from app.ateliers.excel_import import import_presences_from_xlsx
@@ -957,12 +957,19 @@ def sante_test_portail():
 @require_perm("ateliers:sync")
 def import_excel():
     """Import Excel des présences (format tableaux Antoine)."""
+    from app.secteurs import get_secteur_labels
+
+    secteurs = [s for s in get_secteur_labels(active_only=True) if can_access_secteur(s)]
     if request.method == "GET":
-        return render_template("admin_import_excel.html")
+        return render_template("admin_import_excel.html", secteurs=secteurs, dry_run=True)
 
     f = request.files.get("xlsx_file")
-    secteur = (request.form.get("secteur") or "NUMERIQUE").strip() or "NUMERIQUE"
-    dry_run = (request.form.get("dry_run") in ("1", "true", "on", "yes"))
+    secteur = (request.form.get("secteur") or "").strip()
+    dry_run = request.form.get("dry_run", "1") != "0"
+
+    if secteur not in secteurs:
+        flash("Choisissez un secteur actif auquel vous avez accès.", "danger")
+        return render_template("admin_import_excel.html", secteurs=secteurs, dry_run=True), 400
 
     if not f or not f.filename:
         flash("Fichier manquant.", "danger")
@@ -979,10 +986,11 @@ def import_excel():
             flash("Dry-run OK : rien n'a été enregistré (rollback).", "info")
         else:
             flash("Import terminé ✅", "success")
-        return render_template("admin_import_excel.html", stats=stats, secteur=secteur, dry_run=dry_run)
+        return render_template("admin_import_excel.html", stats=stats, secteur=secteur, secteurs=secteurs, dry_run=dry_run)
     except Exception as e:
+        db.session.rollback()
         flash(f"Erreur import : {e}", "danger")
-        return render_template("admin_import_excel.html", secteur=secteur, dry_run=dry_run)
+        return render_template("admin_import_excel.html", secteur=secteur, secteurs=secteurs, dry_run=dry_run)
     finally:
         try:
             os.remove(tmp_path)
@@ -1100,3 +1108,7 @@ def import_skills():
         return redirect(url_for("admin.referentiels"))
 
     return render_template("admin_import_skills.html", preset_code=preset_code)
+
+
+# Register advanced import routes on the existing, permission-guarded blueprint.
+from app.admin import historical_routes  # noqa: E402, F401
