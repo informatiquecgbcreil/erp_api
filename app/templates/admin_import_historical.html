@@ -176,6 +176,9 @@
   <form method="post" action="{{ url_for('admin.historical_decisions', stage_id=stage_id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="digest" value="{{ plan.digest }}">
+    <input type="hidden" name="vue" value="{{ vue }}">
+    <input type="hidden" name="q" value="{{ recherche }}">
+    <input type="hidden" name="page" value="{{ participants.page }}">
 
     <section class="section-card" id="participants">
       <h2>Personnes à valider</h2>
@@ -321,6 +324,7 @@
 
     <section class="section-card">
       <h2>Mettre à jour l'aperçu</h2>
+      <p>L'enregistrement relit le classeur entier et rejoue tous les rapprochements : comptez plusieurs secondes. Un bandeau vous dira ensuite exactement ce qui a été enregistré et comment le nombre de points bloquants a évolué, et vous reviendrez sur cette page de dossiers.</p>
       <div class="hero-actions"><button class="btn ok" type="submit">Enregistrer les décisions et refaire le dry-run</button></div>
     </section>
   </form>

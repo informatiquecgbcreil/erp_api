@@ -407,6 +407,39 @@ def test_ignoring_never_reads_as_already_exists(historical_ui):
     assert "Cette activité existe-t-elle déjà dans l'ERP ?" in page
 
 
+def test_saving_says_what_changed_and_returns_where_you_were(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    envoi = {"digest": plan["digest"], "participants.0": "ignore",
+             "vue": "tous", "q": "test", "page": "1"}
+    response = historical_ui.client.post(url + "/decisions", data=envoi)
+    assert response.status_code == 302
+    # On revient sur le filtre et la page de travail, pas au début de la liste.
+    destination = response.headers["Location"]
+    assert "vue=tous" in destination and "q=test" in destination and "#participants" in destination
+    page = historical_ui.client.get(destination).get_data(as_text=True)
+    assert "Décisions enregistrées : 1 personne, 0 activité, 0 séance" in page
+    assert "Recalcul du dry-run en" in page
+
+
+def test_saving_nothing_says_so_instead_of_looking_successful(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    courant = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
+    response = historical_ui.client.post(url + "/decisions", data={"digest": courant["digest"]})
+    page = historical_ui.client.get(response.headers["Location"]).get_data(as_text=True)
+    assert "rien n&#39;a changé" in page
+    assert "elles n&#39;ont pas été transmises" in page
+
+
+def test_a_stale_preview_explains_itself_on_the_page(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    response = historical_ui.client.post(url + "/decisions", data={"digest": "perime"})
+    assert response.status_code == 409
+    page = response.get_data(as_text=True)
+    # Une page d'erreur nue laisserait l'utilisateur sans savoir si sa saisie est passée.
+    assert "Vos décisions n&#39;ont PAS été enregistrées" in page
+    assert "Personnes à valider" in page
+
+
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):
     url, _, plan = _stage(historical_ui)
     assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"]}).status_code == 400
