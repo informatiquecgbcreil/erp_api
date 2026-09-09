@@ -521,7 +521,9 @@ def historical_triage(stage_id):
             ajoutees = sum(1 for section in ("participants", "activities", "sessions")
                            for key in triage["decisions"][section]
                            if key not in existantes.get(section, {}))
+            depart = time.monotonic()
             refreshed = analyze_import(str(source), decisions=decisions, year=metadata["year"])
+            duree = time.monotonic() - depart
             _assert_sectors(refreshed)
             _write_json(stage / "plan.json", refreshed)
             _write_json(stage / "decisions.json", refreshed.get("decisions", decisions))
@@ -533,15 +535,26 @@ def historical_triage(stage_id):
                 raise
             return _preview_response(stage_id, metadata, plan,
                                      error=f"Triage non appliqué : {exc}", status=400)
+    bloquants, restants = len(plan.get("blockers", [])), len(refreshed.get("blockers", []))
+    evolution = (f"Points bloquants {bloquants} → {restants}." if restants != bloquants
+                 else f"Points bloquants inchangés ({restants}).")
+    if not ajoutees:
+        # Le triage est stable : relancé sur le même classeur et la même base, il
+        # propose exactement les mêmes décisions. Le dire évite de le recliquer.
+        flash(f"Le triage n'a rien de nouveau à proposer : tout ce qu'il sait trancher est déjà "
+              f"enregistré. {evolution} Recalcul en {duree:.1f} s. Il ne reproposera du nouveau "
+              f"que si des fiches ou des activités apparaissent dans l'ERP entre-temps.", "warning")
+        return redirect(_retour_apercu(stage_id))
     resume = triage["resume"]
-    flash(f"Triage proposé : {ajoutees} décisions ajoutées, dont "
+    flash(f"Triage proposé : {_pluriel(ajoutees, 'décision ajoutée', 'décisions ajoutées')}, dont "
           f"{resume['personnes_rattachees']} rattachements à une fiche existante, "
           f"{resume['personnes_regroupees']} regroupements de lignes, "
           f"{resume['seances_datees']} dates de séance et "
-          f"{resume['activites_avec_secteur']} secteurs déduits du nom métier. "
-          f"Aucune décision déjà enregistrée n'a été remplacée et aucune anomalie n'a été acquittée. "
-          f"Relisez les secteurs proposés : ils sont déduits du seul nom de la feuille.", "success")
-    return redirect(url_for("admin.historical_preview", stage_id=stage_id))
+          f"{resume['activites_avec_secteur']} secteurs déduits du nom métier. {evolution} "
+          f"Recalcul en {duree:.1f} s. Aucune décision déjà enregistrée n'a été remplacée et aucune "
+          f"anomalie n'a été acquittée. Relisez les secteurs proposés : ils sont déduits du seul nom "
+          f"de la feuille.", "success")
+    return redirect(_retour_apercu(stage_id))
 
 
 @bp.route("/import-historical/<stage_id>/apply", methods=["POST"])

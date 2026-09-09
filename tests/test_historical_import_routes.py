@@ -440,6 +440,21 @@ def test_a_stale_preview_explains_itself_on_the_page(historical_ui):
     assert "Personnes à valider" in page
 
 
+def test_a_second_triage_adds_nothing_and_says_so(historical_ui):
+    url, stage, _ = _stage(historical_ui)
+    courant = lambda: json.loads((stage / "plan.json").read_text(encoding="utf-8"))["digest"]
+    premier = historical_ui.client.post(url + "/triage", data={"digest": courant()})
+    assert premier.status_code == 302
+    apres_un = json.loads((stage / "decisions.json").read_text(encoding="utf-8"))
+    second = historical_ui.client.post(url + "/triage", data={"digest": courant()})
+    assert second.status_code == 302
+    # Rien n'a bougé, et l'écran le dit au lieu de laisser croire à un progrès.
+    assert json.loads((stage / "decisions.json").read_text(encoding="utf-8")) == apres_un
+    page = historical_ui.client.get(second.headers["Location"]).get_data(as_text=True)
+    assert "n&#39;a rien de nouveau à proposer" in page
+    assert "Recalcul en" in page
+
+
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):
     url, _, plan = _stage(historical_ui)
     assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"]}).status_code == 400
