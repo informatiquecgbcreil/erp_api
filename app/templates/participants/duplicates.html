@@ -1,48 +1,88 @@
 {% extends "layout.html" %}
-{% macro groupe_fusion(g, indice) %}
-  {% set conserve = (g['items']|map(attribute='id')|list)|min %}
-  <article class="soft-panel" style="margin-bottom:1rem">
+{% macro lignes(fiches, conserve, cocher) %}
+  {% for p in fiches %}
+  <tr>
+    <td><input type="radio" name="keep_id" value="{{ p.id }}" {% if p.id == conserve %}checked{% endif %} aria-label="Conserver la fiche {{ p.id }}"></td>
+    <td><input type="checkbox" name="merge_ids" value="{{ p.id }}" {% if cocher %}checked{% endif %} aria-label="Verser la fiche {{ p.id }}"></td>
+    <td>{{ p.id }}</td>
+    <td><strong>{{ p.nom }} {{ p.prenom }}</strong></td>
+    <td>{{ p.date_naissance or '—' }}</td>
+    <td class="num">{{ presences.get(p.id, 0) }}</td>
+    <td>{{ p.email or '—' }}</td>
+    <td>{{ p.telephone or '—' }}</td>
+    <td>{{ p.created_secteur or '—' }}</td>
+    <td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}" target="_blank" rel="noopener">Ouvrir</a></td>
+  </tr>
+  {% endfor %}
+{% endmacro %}
+{% macro fusion(g, fiches, cocher, libelle_bouton, aide) %}
+  {% set conserve = (fiches|map(attribute='id')|list)|min %}
+  <form method="post" action="{{ url_for('participants.merge_participants') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="t" value="{{ threshold }}">
+    <input type="hidden" name="q" value="{{ recherche }}">
+    <input type="hidden" name="ancre" value="{{ g.ancre }}">
+    <div class="tablewrap clean">
+      <table class="compact-table">
+        <thead><tr><th>Conserver</th><th>Verser</th><th>ID</th><th>Nom</th><th>Naissance</th><th>Présences</th><th>Email</th><th>Téléphone</th><th>Secteur</th><th></th></tr></thead>
+        <tbody>{{ lignes(fiches, conserve, cocher) }}</tbody>
+      </table>
+    </div>
+    {% if peut_fusionner %}
+    <div class="inline-actions" style="margin-top:.6rem">
+      <button class="btn ok" type="submit" onclick="return confirm('Verser les fiches cochées dans la fiche conservée ? Leurs présences, adhésions, inscriptions et notes suivront. Les fiches versées seront supprimées.');">{{ libelle_bouton }}</button>
+      <span class="muted">{{ aide }}</span>
+    </div>
+    {% else %}
+    <p class="muted">La fusion demande le droit de suppression des participants.</p>
+    {% endif %}
+  </form>
+{% endmacro %}
+{% macro groupe(g) %}
+  <article class="soft-panel" id="{{ g.ancre }}" style="margin-bottom:1rem">
     <div class="page-header">
       <div class="page-title-wrap">
         <strong>{{ g['items'][0].nom }} {{ g['items'][0].prenom }}</strong>
-        <p class="muted">{{ {'nom_prenom':'même nom et prénom', 'email':'même adresse e-mail', 'telephone':'même téléphone', 'ressemblance':'orthographes proches'}.get(g.type, g.type) }}{% if g.score %} · ressemblance {{ g.score }}{% endif %} · <code>{{ g.key }}</code></p>
+        <p class="muted">{{ {'nom_prenom':'même nom et prénom', 'email':'même adresse e-mail', 'telephone':'même téléphone', 'ressemblance':'orthographes proches'}.get(g.type, g.type) }}{% if g.score %} · ressemblance {{ g.score }}{% endif %} · <code>{{ g['items'][0].email if g.type == 'email' else (g['items'][0].telephone if g.type == 'telephone' else g.key) }}</code></p>
       </div>
-      <span class="chip">{{ g['items']|length }} fiches</span>
+      <span class="chip">{{ g['items']|length }} fiches{% if g.identites|length > 1 %} · {{ g.identites|length }} identités{% endif %}</span>
     </div>
-    <form method="post" action="{{ url_for('participants.merge_participants') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="mode" value="{{ mode }}">
-      <input type="hidden" name="t" value="{{ threshold }}">
-      <div class="tablewrap clean">
-        <table class="compact-table">
-          <thead><tr><th>Conserver</th><th>Verser</th><th>ID</th><th>Nom</th><th>Naissance</th><th>Présences</th><th>Email</th><th>Téléphone</th><th>Secteur</th><th></th></tr></thead>
-          <tbody>
-            {% for p in g['items'] %}
-            <tr>
-              <td><input type="radio" name="keep_id" value="{{ p.id }}" {% if p.id == conserve %}checked{% endif %} aria-label="Conserver la fiche {{ p.id }}"></td>
-              <td><input type="checkbox" name="merge_ids" value="{{ p.id }}" checked aria-label="Verser la fiche {{ p.id }}"></td>
-              <td>{{ p.id }}</td>
-              <td><strong>{{ p.nom }} {{ p.prenom }}</strong></td>
-              <td>{{ p.date_naissance or '—' }}</td>
-              <td class="num">{{ presences.get(p.id, 0) }}</td>
-              <td>{{ p.email or '—' }}</td>
-              <td>{{ p.telephone or '—' }}</td>
-              <td>{{ p.created_secteur or '—' }}</td>
-              <td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}" target="_blank" rel="noopener">Ouvrir</a></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+
+    {% if g.homogene %}
+      {{ fusion(g, g['items'], true, "Fusionner ce groupe",
+                "Toutes ces fiches portent le même nom et le même prénom.") }}
+    {% else %}
+      <div class="callout-soft warnish">
+        <strong>Rien n'est coché d'avance dans ce groupe.</strong>
+        {{ g.reserve }} Chaque identité se fusionne séparément ci-dessous.
       </div>
-      {% if peut_fusionner %}
-      <div class="inline-actions" style="margin-top:.6rem">
-        <button class="btn ok" type="submit" onclick="return confirm('Verser les fiches cochées dans la fiche conservée ? Leurs présences, adhésions, inscriptions et notes suivront. Les fiches versées seront supprimées.');">Fusionner ce groupe</button>
-        <span class="muted">La fiche conservée absorbe les autres. La cocher ou non ne change rien : on ne se verse pas dans soi-même.</span>
-      </div>
-      {% else %}
-      <p class="muted">La fusion demande le droit de suppression des participants.</p>
-      {% endif %}
-    </form>
+      {% for identite in g.identites %}
+        {% set sur = identite['items']|length > 1 and not contradiction(identite['items']) %}
+        <h4>{{ identite.libelle }} <span class="chip">{{ identite['items']|length }} fiche{{ 's' if identite['items']|length > 1 }}</span></h4>
+        {% if identite['items']|length > 1 %}
+          {{ fusion(g, identite['items'], sur, "Fusionner " ~ identite.libelle,
+                    "Ces fiches-là portent le même nom et le même prénom." if sur
+                    else "Mêmes noms, mais naissances ou genres contradictoires : vérifiez avant de cocher.") }}
+        {% else %}
+          <div class="tablewrap clean">
+            <table class="compact-table">
+              <thead><tr><th></th><th></th><th>ID</th><th>Nom</th><th>Naissance</th><th>Présences</th><th>Email</th><th>Téléphone</th><th>Secteur</th><th></th></tr></thead>
+              <tbody>{{ lignes(identite['items'], none, false) }}</tbody>
+            </table>
+          </div>
+          <p class="muted">Seule fiche à ce nom : rien à fusionner ici, elle est montrée parce qu'elle partage ce contact.</p>
+        {% endif %}
+      {% endfor %}
+      <details class="details-card">
+        <summary>Ce sont malgré tout la même personne, malgré des noms différents</summary>
+        <div class="details-body">
+          <p class="muted">À n'utiliser que pour une vraie faute de saisie sur le nom ou le prénom. Cochez vous-même les fiches concernées : rien n'est coché d'avance, et une fratrie fusionnée ne se sépare pas.</p>
+          {{ fusion(g, g['items'], false, "Fusionner les fiches cochées",
+                    "Vérifiez chaque ligne avant de valider.") }}
+        </div>
+      </details>
+    {% endif %}
   </article>
 {% endmacro %}
 {% block body %}
@@ -51,7 +91,7 @@
     <div class="page-header">
       <div class="page-title-wrap">
         <h1>Doublons participants</h1>
-        <p class="muted">Chaque groupe se règle d'un seul geste : choisissez la fiche à conserver, décochez ce qui n'en fait pas partie, fusionnez. Tout ce qui pointait vers les fiches versées — présences, adhésions, inscriptions, passeport, bénévolat, provenance de migration — est rattaché à la fiche conservée.</p>
+        <p class="muted">Choisissez la fiche à conserver, décochez ce qui n'en fait pas partie, fusionnez. Tout ce qui pointait vers les fiches versées — présences, adhésions, inscriptions, passeport, bénévolat, provenance de migration — est rattaché à la fiche conservée. Un groupe qui mélange plusieurs identités n'est jamais coché d'avance.</p>
       </div>
       <div class="hero-actions"><a class="btn" href="{{ url_for('participants.list_participants') }}">⬅ Retour</a></div>
     </div>
@@ -60,28 +100,29 @@
   <section class="section-card">
     <form class="filters-panel" method="get" action="{{ url_for('participants.duplicates') }}">
       <div class="filters-grid">
+        <label class="field-stack"><span>Chercher un nom ou un prénom</span><input class="in" type="search" name="q" value="{{ recherche }}" placeholder="Ex. : ELBAYAD"></label>
         <label class="field-stack"><span>Mode</span><select class="in" name="mode"><option value="certain" {% if mode=='certain' %}selected{% endif %}>Doublons certains</option><option value="probable" {% if mode=='probable' %}selected{% endif %}>Doublons probables</option></select></label>
         <label class="field-stack"><span>Seuil de ressemblance</span><input class="in" type="text" name="t" value="{{ threshold }}" placeholder="0.90"></label>
         <label class="field-stack"><span>Fiches analysées</span><input class="in" type="number" name="limit" value="{{ limit }}" min="100" max="50000" step="100"></label>
         <div class="field-stack field-actions"><span>&nbsp;</span><button class="btn" type="submit">Analyser</button></div>
       </div>
-      <p class="muted">{% if not is_global %}Filtré sur votre secteur.{% else %}Périmètre global.{% endif %} {{ analyses }} fiches examinées{% if total > analyses %}, les plus récentes sur {{ total }} : augmentez « fiches analysées » pour remonter plus loin{% endif %}.</p>
+      <p class="muted">{% if not is_global %}Filtré sur votre secteur.{% else %}Périmètre global.{% endif %} {{ analyses }} fiches examinées{% if total > analyses %}, les plus récentes sur {{ total }} : augmentez « fiches analysées » pour remonter plus loin{% endif %}{% if recherche %}, restreintes à « {{ recherche }} »{% endif %}. Une recherche par nom garde une famille entière sous les yeux, y compris après une première fusion.</p>
     </form>
   </section>
 
   {% if mode == 'certain' %}
   <section class="section-card">
-    <div class="page-header"><div class="page-title-wrap"><h2>Doublons certains</h2><p class="muted">Nom et prénom identiques, ou même e-mail, ou même téléphone.</p></div><span class="chip">{{ groups|length }} groupes</span></div>
+    <div class="page-header"><div class="page-title-wrap"><h2>Doublons certains</h2><p class="muted">Nom et prénom identiques, ou même e-mail, ou même téléphone. Un contact partagé ne prouve pas que c'est la même personne : ces groupes-là sont découpés par identité.</p></div><span class="chip">{{ groups|length }} groupes</span></div>
     {% if not groups %}<div class="empty-state">Aucun doublon certain détecté ✅</div>{% endif %}
-    {% for g in groups %}{{ groupe_fusion(g, loop.index0) }}{% endfor %}
+    {% for g in groups %}{{ groupe(g) }}{% endfor %}
   </section>
   {% endif %}
 
   {% if mode == 'probable' %}
   <section class="section-card">
-    <div class="page-header"><div class="page-title-wrap"><h2>Doublons probables</h2><p class="muted">Orthographes proches sur nom + prénom, seuil {{ threshold }}. Les fiches qui se ressemblent en chaîne forment un seul groupe, pas des paires successives.</p></div><span class="chip">{{ probable|length }} groupes</span></div>
+    <div class="page-header"><div class="page-title-wrap"><h2>Doublons probables</h2><p class="muted">Orthographes proches sur nom + prénom, seuil {{ threshold }}. Les fiches qui se ressemblent en chaîne forment un seul groupe, et la comparaison se fait par blocs stables : le résultat ne change pas d'ordre après une fusion.</p></div><span class="chip">{{ probable|length }} groupes</span></div>
     {% if not probable %}<div class="empty-state">Aucun rapprochement probable détecté ✅</div>{% endif %}
-    {% for g in probable %}{{ groupe_fusion(g, loop.index0) }}{% endfor %}
+    {% for g in probable %}{{ groupe(g) }}{% endfor %}
   </section>
   {% endif %}
 </div>
