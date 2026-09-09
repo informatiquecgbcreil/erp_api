@@ -141,6 +141,107 @@ def _key(row):
     return str(row.get("source_key") or row.get("key") or row.get("source_id") or "")
 
 
+VUES_PARTICIPANTS = ("a-traiter", "regles", "tous")
+DOSSIERS_PAR_PAGE = 50
+
+
+def _en_attente(row):
+    """Une ligne attend une décision aux conditions exactes qui la rendent bloquante."""
+    revue = row.get("classification") == "REVIEW" or row.get("status") == "REVIEW"
+    return bool(revue) and not row.get("resolved") and not row.get("group_key")
+
+
+def _libelle_ligne(row):
+    brut = row.get("raw", {}) if isinstance(row.get("raw"), dict) else {}
+    nom = str(row.get("nom") or brut.get("nom") or "").strip()
+    prenom = str(row.get("prenom") or brut.get("prenom") or "").strip()
+    return (f"{nom.upper()} {prenom}".strip()) or _key(row) or "Ligne sans identité"
+
+
+def _dossiers(plan, decisions):
+    """Regroupe les lignes source par identité, exactement comme le triage.
+
+    L'aperçu compte des lignes, l'utilisateur raisonne par personne : une même
+    personne occupe souvent plusieurs lignes réparties dans autant de feuilles.
+    L'écran et les propositions du triage parlent ainsi des mêmes dossiers.
+    Un rapport inexploitable retombe sur un dossier par ligne plutôt que de
+    priver l'utilisateur de son aperçu.
+    """
+    rows = _rows(plan)
+    enregistrees = decisions.get("participants", {})
+    positions = {}
+    for index, row in enumerate(rows):
+        positions.setdefault(_key(row), (index, row))
+
+    try:
+        from app.ateliers.historical_triage import trier_personnes
+        matching = dict(plan.get("matching", {}), rows=rows)
+        groupes = trier_personnes(dict(plan, matching=matching))
+    except Exception:
+        current_app.logger.info("Regroupement par dossier indisponible", exc_info=True)
+        groupes = [{"libelle": _libelle_ligne(row), "lignes": [_key(row)], "presences": 0,
+                    "feuilles": [], "orthographes": [], "fiches_erp": [], "voisins": [],
+                    "alertes": [], "statut": None, "categorie": None, "motif": ""}
+                   for row in rows]
+
+    dossiers = []
+    for groupe in groupes:
+        lignes = []
+        for key in groupe.get("lignes", []):
+            if key not in positions:
+                continue
+            index, row = positions[key]
+            lignes.append({"index": index, "key": key, "row": row,
+                           "saved": enregistrees.get(key, {}),
+                           "en_attente": _en_attente(row)})
+        if not lignes:
+            continue
+        dossier = dict(groupe, lignes=lignes)
+        dossier["a_traiter"] = any(ligne["en_attente"] for ligne in lignes)
+        dossier["recherche"] = " ".join([
+            str(groupe.get("libelle") or ""), *groupe.get("orthographes", []),
+            *groupe.get("feuilles", []), *(ligne["key"] for ligne in lignes),
+        ]).casefold()
+        dossiers.append(dossier)
+    return dossiers
+
+
+def _selection_dossiers(dossiers, vue, recherche, page, taille=DOSSIERS_PAR_PAGE):
+    """Découpe la liste des dossiers : un écran doit rester lisible et fini."""
+    if vue == "regles":
+        retenus = [d for d in dossiers if not d["a_traiter"]]
+    elif vue == "tous":
+        retenus = list(dossiers)
+    else:
+        retenus = [d for d in dossiers if d["a_traiter"]]
+    if recherche:
+        motif = recherche.casefold()
+        retenus = [d for d in retenus if motif in d["recherche"]]
+    pages = max(1, -(-len(retenus) // taille))
+    page = min(max(page, 1), pages)
+    return {
+        "dossiers": retenus[(page - 1) * taille:page * taille],
+        "page": page, "pages": pages, "retenus": len(retenus),
+        "total": len(dossiers), "taille": taille,
+        "a_traiter": sum(1 for d in dossiers if d["a_traiter"]),
+        "lignes": sum(len(d["lignes"]) for d in dossiers),
+    }
+
+
+def _vue_participants(plan):
+    """Lit les filtres de l'URL ; toute valeur inattendue retombe sur la vue utile."""
+    vue = request.args.get("vue", "a-traiter")
+    if vue not in VUES_PARTICIPANTS:
+        vue = "a-traiter"
+    recherche = (request.args.get("q") or "").strip()[:80]
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    decisions = plan.get("decisions", {})
+    return vue, recherche, _selection_dossiers(_dossiers(plan, decisions), vue, recherche, page)
+
+
 def _form_decisions(plan, previous):
     upload = request.files.get("decisions_file")
     if upload and upload.filename:
@@ -207,9 +308,11 @@ def _form_decisions(plan, previous):
 
 
 def _preview_response(stage_id, metadata, plan, error=None, status=200):
+    vue, recherche, participants = _vue_participants(plan)
     return render_template(
         "admin_import_historical.html", stage_id=stage_id, metadata=metadata,
         plan=plan, match_rows=_rows(plan), row_key=_key,
+        participants=participants, vue=vue, recherche=recherche,
         decisions=plan.get("decisions", {}), error=error, secteurs=_sectors(),
     ), status
 

@@ -104,6 +104,20 @@ Ouvrir Administration → Importer depuis Excel → Migration historique, ou `/a
 5. Enregistrer les décisions et refaire le dry-run. Répéter tant que des points bloquants subsistent.
 6. Télécharger le rapport et les décisions, puis confirmer le lot lorsque l'aperçu est prêt.
 
+L'écran raisonne par **dossier**, pas par ligne source : les lignes de même nom,
+prénom et année sont présentées ensemble, avec leurs orthographes, leurs
+feuilles, leurs présences et les fiches ERP homonymes. Le regroupement est celui
+du triage, pour que l'écran et les propositions parlent des mêmes dossiers.
+Seuls les dossiers qui bloquent encore l'import sont affichés ; une recherche et
+un filtre (« ceux qui bloquent l'import », « ceux qui sont réglés », « tous »)
+donnent accès aux autres, par pages de 50. Les activités déjà affectées à un
+secteur et les anomalies déjà acceptées sont repliées de la même manière.
+
+Le formulaire ne renvoie que les dossiers affichés ; les décisions des dossiers
+masqués sont conservées telles quelles. Enregistrer avant de changer de page.
+L'écran ne recopie plus le plan complet : le détail intégral d'une ligne, d'une
+séance ou d'une erreur de lecture est dans le rapport téléchargeable.
+
 L'accès utilise `ateliers:sync` et les secteurs autorisés. L'espace temporaire est réservé au propriétaire de l'aperçu, protégé des chemins arbitraires, des accès croisés et des doubles soumissions. Les formulaires sont protégés par CSRF. Les fichiers sont conservés dans `instance/historical_imports/<identifiant>` pendant sept jours par défaut, nettoyés lors d'un prochain dépôt. Prévoir des droits Windows/Linux restreints sur `instance`, qui contient des données personnelles. Un verrou laissé par l'arrêt brutal d'un processus nécessite le contrôle de l'administrateur avant suppression manuelle.
 
 ## Commandes exactes sur copie ou staging SQLite
