@@ -40,7 +40,12 @@ def historical_ui(app, admin_client, monkeypatch, tmp_path):
                  "normalized": {"nom": "test", "prenom": "luc", "birth_year": 1980, "birth_date": None, "genre": "Femme", "telephone": None, "email": None, "ville": None, "quartier": None, "adresse": None},
                  "candidates": []},
             ]},
-            "activities": [{"key": "act:1", "name": "Atelier", "source_sheet": "Atelier", "secteur": decisions.get('activities', {}).get('act:1', {}).get('secteur'), "status": "REVIEW", "match_status": "NEW", "candidates": [{"id": 1, "name": "Atelier existant"}]}],
+            "activities": [dict({"key": "act:1", "source_sheet": "Atelier", "source_names": ["Atelier"],
+                                 "name": decisions.get('activities', {}).get('act:1', {}).get('name') or "Atelier",
+                                 "secteur": decisions.get('activities', {}).get('act:1', {}).get('secteur'),
+                                 "status": "REVIEW", "match_status": "NEW",
+                                 "candidates": [{"id": 1, "name": "Atelier existant"}]},
+                                **({"status": "IGNORE"} if decisions.get('activities', {}).get('act:1', {}).get('action') == 'ignore' else {}))],
             "sessions": [{"key": "session:1", "sheet": "Atelier", "source_sheet": "Atelier", "source_cell": "J6", "source_column": 10,
                           "source_slot": "M", "raw_headers": {"J2": "2026-01-01T00:00:00", "J4": "M", "J6": 6}, "anomalies": [],
                           "candidate_dates": [], "date_session": "2026-01-12", "status": "REVIEW", "candidates": [{"id": 7, "date_session": "2026-01-12"}]}],
@@ -65,6 +70,12 @@ def _upload(ui, **fields):
     data = {"secteur": secteur, "xlsx_file": (BytesIO(b"route-test-workbook"), "STATS_2026_par_activite.xlsx"), **fields}
     response = ui.client.post("/admin/import-historical", data=data, content_type="multipart/form-data")
     return response
+
+
+def _secteur(ui):
+    from app.secteurs import get_secteur_labels
+    with ui.app.app_context():
+        return get_secteur_labels()[0]
 
 
 def _stage(ui):
@@ -360,6 +371,30 @@ def test_a_suggested_identifier_never_collides_with_a_saved_one(app):
         occupe = _dossiers(rapport, {"participants": {"z!9": {"action": "new", "group": libre}}})
     assert libre == "test-luc-sans-annee"
     assert occupe[0]["groupe_suggere"] == "test-luc-sans-annee-2"
+
+
+def test_a_corrected_activity_name_survives_without_a_match_decision(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    envoi = {"digest": plan["digest"], "activities.0": "", "activities.0.secteur": _secteur(historical_ui),
+             "activities.0.name": "Troc ton Tract"}
+    assert historical_ui.client.post(url + "/decisions", data=envoi).status_code == 302
+    enregistrees = json.loads((stage / "decisions.json").read_text(encoding="utf-8"))
+    assert enregistrees["activities"]["act:1"]["name"] == "Troc ton Tract"
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert 'value="Troc ton Tract"' in page
+    assert "nom corrigé" in page
+
+
+def test_an_abandoned_activity_is_shown_with_its_consequence(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    envoi = {"digest": plan["digest"], "activities.0": "ignore",
+             "activities.0.secteur": _secteur(historical_ui)}
+    assert historical_ui.client.post(url + "/decisions", data=envoi).status_code == 302
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "1 activité abandonnée" in page
+    assert "ni l'activité, ni ses séances, ni ses présences" in page
+    # L'abandon n'est jamais rangé avec les cas réglés.
+    assert "Activités réglées" not in page
 
 
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):

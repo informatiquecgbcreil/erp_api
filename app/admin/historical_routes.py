@@ -280,8 +280,17 @@ def _form_decisions(plan, previous):
             key = _key(row)
             choice = request.form[field]
             if not choice:
-                if kind == "activities" and request.form.get(field + ".secteur"):
-                    decisions[kind][key] = {"secteur": request.form[field + ".secteur"]}
+                # Un secteur ou un nom métier corrigé valent décision à eux seuls :
+                # le moteur les honore sans action de correspondance, et jeter une
+                # saisie en silence la fait disparaître de l'écran sans explication.
+                partielle = {}
+                if kind == "activities":
+                    if request.form.get(field + ".secteur"):
+                        partielle["secteur"] = request.form[field + ".secteur"]
+                    if request.form.get(field + ".name", "").strip():
+                        partielle["name"] = request.form[field + ".name"].strip()
+                if partielle:
+                    decisions[kind][key] = partielle
                 else:
                     decisions[kind].pop(key, None)
                 continue
