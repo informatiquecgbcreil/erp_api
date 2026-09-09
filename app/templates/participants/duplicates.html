@@ -1,11 +1,57 @@
 {% extends "layout.html" %}
+{% macro groupe_fusion(g, indice) %}
+  {% set conserve = (g['items']|map(attribute='id')|list)|min %}
+  <article class="soft-panel" style="margin-bottom:1rem">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <strong>{{ g['items'][0].nom }} {{ g['items'][0].prenom }}</strong>
+        <p class="muted">{{ {'nom_prenom':'même nom et prénom', 'email':'même adresse e-mail', 'telephone':'même téléphone', 'ressemblance':'orthographes proches'}.get(g.type, g.type) }}{% if g.score %} · ressemblance {{ g.score }}{% endif %} · <code>{{ g.key }}</code></p>
+      </div>
+      <span class="chip">{{ g['items']|length }} fiches</span>
+    </div>
+    <form method="post" action="{{ url_for('participants.merge_participants') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <input type="hidden" name="t" value="{{ threshold }}">
+      <div class="tablewrap clean">
+        <table class="compact-table">
+          <thead><tr><th>Conserver</th><th>Verser</th><th>ID</th><th>Nom</th><th>Naissance</th><th>Présences</th><th>Email</th><th>Téléphone</th><th>Secteur</th><th></th></tr></thead>
+          <tbody>
+            {% for p in g['items'] %}
+            <tr>
+              <td><input type="radio" name="keep_id" value="{{ p.id }}" {% if p.id == conserve %}checked{% endif %} aria-label="Conserver la fiche {{ p.id }}"></td>
+              <td><input type="checkbox" name="merge_ids" value="{{ p.id }}" checked aria-label="Verser la fiche {{ p.id }}"></td>
+              <td>{{ p.id }}</td>
+              <td><strong>{{ p.nom }} {{ p.prenom }}</strong></td>
+              <td>{{ p.date_naissance or '—' }}</td>
+              <td class="num">{{ presences.get(p.id, 0) }}</td>
+              <td>{{ p.email or '—' }}</td>
+              <td>{{ p.telephone or '—' }}</td>
+              <td>{{ p.created_secteur or '—' }}</td>
+              <td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}" target="_blank" rel="noopener">Ouvrir</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if peut_fusionner %}
+      <div class="inline-actions" style="margin-top:.6rem">
+        <button class="btn ok" type="submit" onclick="return confirm('Verser les fiches cochées dans la fiche conservée ? Leurs présences, adhésions, inscriptions et notes suivront. Les fiches versées seront supprimées.');">Fusionner ce groupe</button>
+        <span class="muted">La fiche conservée absorbe les autres. La cocher ou non ne change rien : on ne se verse pas dans soi-même.</span>
+      </div>
+      {% else %}
+      <p class="muted">La fusion demande le droit de suppression des participants.</p>
+      {% endif %}
+    </form>
+  </article>
+{% endmacro %}
 {% block body %}
 <div class="page-shell dense-list-shell wide-shell">
   <section class="hero-card">
     <div class="page-header">
       <div class="page-title-wrap">
         <h1>Doublons participants</h1>
-        <p class="muted">Analyse rapide des doublons certains ou probables, avec raccourcis d’ouverture et fusion quand tu es sûr de ton coup.</p>
+        <p class="muted">Chaque groupe se règle d'un seul geste : choisissez la fiche à conserver, décochez ce qui n'en fait pas partie, fusionnez. Tout ce qui pointait vers les fiches versées — présences, adhésions, inscriptions, passeport, bénévolat, provenance de migration — est rattaché à la fiche conservée.</p>
       </div>
       <div class="hero-actions"><a class="btn" href="{{ url_for('participants.list_participants') }}">⬅ Retour</a></div>
     </div>
@@ -15,92 +61,27 @@
     <form class="filters-panel" method="get" action="{{ url_for('participants.duplicates') }}">
       <div class="filters-grid">
         <label class="field-stack"><span>Mode</span><select class="in" name="mode"><option value="certain" {% if mode=='certain' %}selected{% endif %}>Doublons certains</option><option value="probable" {% if mode=='probable' %}selected{% endif %}>Doublons probables</option></select></label>
-        <label class="field-stack"><span>Seuil</span><input class="in" type="text" name="t" value="{{ threshold }}" placeholder="0.90"></label>
-        <div class="field-stack field-actions"><span>Périmètre</span><div class="muted">{% if not is_global %}Filtré sur ton secteur.{% else %}Global.{% endif %}</div></div>
+        <label class="field-stack"><span>Seuil de ressemblance</span><input class="in" type="text" name="t" value="{{ threshold }}" placeholder="0.90"></label>
+        <label class="field-stack"><span>Fiches analysées</span><input class="in" type="number" name="limit" value="{{ limit }}" min="100" max="50000" step="100"></label>
         <div class="field-stack field-actions"><span>&nbsp;</span><button class="btn" type="submit">Analyser</button></div>
       </div>
+      <p class="muted">{% if not is_global %}Filtré sur votre secteur.{% else %}Périmètre global.{% endif %} {{ analyses }} fiches examinées{% if total > analyses %}, les plus récentes sur {{ total }} : augmentez « fiches analysées » pour remonter plus loin{% endif %}.</p>
     </form>
   </section>
 
   {% if mode == 'certain' %}
   <section class="section-card">
-    <div class="page-header"><div class="page-title-wrap"><h2>Doublons certains</h2></div></div>
+    <div class="page-header"><div class="page-title-wrap"><h2>Doublons certains</h2><p class="muted">Nom et prénom identiques, ou même e-mail, ou même téléphone.</p></div><span class="chip">{{ groups|length }} groupes</span></div>
     {% if not groups %}<div class="empty-state">Aucun doublon certain détecté ✅</div>{% endif %}
-    <div class="stack">
-      {% for g in groups %}
-      <article class="soft-panel">
-        <div class="page-header">
-          <div class="page-title-wrap"><strong>{{ g.type }}</strong><p class="muted">{{ g.key }}</p></div>
-          <span class="chip">{{ g['items']|length }} fiche(s)</span>
-        </div>
-        <div class="tablewrap clean">
-          <table class="compact-table">
-            <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Secteur</th><th></th></tr></thead>
-            <tbody>{% for p in g['items'] %}<tr><td>{{ p.id }}</td><td><strong>{{ p.nom }} {{ p.prenom }}</strong></td><td>{{ p.email or '—' }}</td><td>{{ p.telephone or '—' }}</td><td>{{ p.created_secteur or '—' }}</td><td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></td></tr>{% endfor %}</tbody>
-          </table>
-        </div>
-        <div class="responsive-card-list" aria-label="Doublons certains (vue compacte)">
-          {% for p in g['items'] %}
-          <article class="responsive-card">
-            <header class="responsive-card__head">
-              <strong>{{ p.nom }} {{ p.prenom }}</strong>
-              <span class="chip">#{{ p.id }}</span>
-            </header>
-            <dl class="responsive-card__grid">
-              <div><dt>Email</dt><dd>{{ p.email or '—' }}</dd></div>
-              <div><dt>Téléphone</dt><dd>{{ p.telephone or '—' }}</dd></div>
-              <div><dt>Secteur</dt><dd>{{ p.created_secteur or '—' }}</dd></div>
-            </dl>
-            <div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></div>
-          </article>
-          {% endfor %}
-        </div>
-      </article>
-      {% endfor %}
-    </div>
+    {% for g in groups %}{{ groupe_fusion(g, loop.index0) }}{% endfor %}
   </section>
   {% endif %}
 
   {% if mode == 'probable' %}
   <section class="section-card">
-    <div class="page-header"><div class="page-title-wrap"><h2>Doublons probables</h2><p class="muted">Comparaison approximative sur nom + prénom (seuil {{ threshold }}).</p></div></div>
-    {% if not probable %}<div class="empty-state">Aucun match probable détecté ✅</div>{% endif %}
-    <div class="stack">
-      {% for x in probable %}
-      <article class="soft-panel">
-        <div class="page-header"><div class="page-title-wrap"><strong>Score {{ x.score }}</strong><p class="muted">suspect</p></div></div>
-        <div class="inline-actions wrapy">
-          <form method="post" action="{{ url_for('participants.merge_participants') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="keep_id" value="{{ x.a.id }}"><input type="hidden" name="merge_ids" value="{{ x.a.id }}"><input type="hidden" name="merge_ids" value="{{ x.b.id }}"><button class="btn ok" type="submit" onclick="return confirm('Garder A et fusionner B → A ?');">Garder A ✅</button></form>
-          <form method="post" action="{{ url_for('participants.merge_participants') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="keep_id" value="{{ x.b.id }}"><input type="hidden" name="merge_ids" value="{{ x.a.id }}"><input type="hidden" name="merge_ids" value="{{ x.b.id }}"><button class="btn warn" type="submit" onclick="return confirm('Garder B et fusionner A → B ?');">Garder B ⚠️</button></form>
-          <a class="btn" href="{{ url_for('participants.edit_participant', participant_id=x.a.id) }}">Ouvrir A</a>
-          <a class="btn" href="{{ url_for('participants.edit_participant', participant_id=x.b.id) }}">Ouvrir B</a>
-        </div>
-        <div class="tablewrap clean">
-          <table class="compact-table">
-            <thead><tr><th>ID</th><th>Nom</th><th>Email</th><th>Tél</th><th>Secteur</th><th></th></tr></thead>
-            <tbody>
-              {% set p = x.a %}<tr><td>{{ p.id }}</td><td><strong>{{ p.nom }} {{ p.prenom }}</strong></td><td>{{ p.email or '—' }}</td><td>{{ p.telephone or '—' }}</td><td>{{ p.created_secteur or '—' }}</td><td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></td></tr>
-              {% set p = x.b %}<tr><td>{{ p.id }}</td><td><strong>{{ p.nom }} {{ p.prenom }}</strong></td><td>{{ p.email or '—' }}</td><td>{{ p.telephone or '—' }}</td><td>{{ p.created_secteur or '—' }}</td><td class="num"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir</a></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="responsive-card-list" aria-label="Doublons probables (vue compacte)">
-          {% set p = x.a %}
-          <article class="responsive-card">
-            <header class="responsive-card__head"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="chip">A · #{{ p.id }}</span></header>
-            <dl class="responsive-card__grid"><div><dt>Email</dt><dd>{{ p.email or '—' }}</dd></div><div><dt>Téléphone</dt><dd>{{ p.telephone or '—' }}</dd></div><div><dt>Secteur</dt><dd>{{ p.created_secteur or '—' }}</dd></div></dl>
-            <div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir A</a></div>
-          </article>
-          {% set p = x.b %}
-          <article class="responsive-card">
-            <header class="responsive-card__head"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="chip">B · #{{ p.id }}</span></header>
-            <dl class="responsive-card__grid"><div><dt>Email</dt><dd>{{ p.email or '—' }}</dd></div><div><dt>Téléphone</dt><dd>{{ p.telephone or '—' }}</dd></div><div><dt>Secteur</dt><dd>{{ p.created_secteur or '—' }}</dd></div></dl>
-            <div class="inline-actions"><a class="btn" href="{{ url_for('participants.edit_participant', participant_id=p.id) }}">Ouvrir B</a></div>
-          </article>
-        </div>
-      </article>
-      {% endfor %}
-    </div>
+    <div class="page-header"><div class="page-title-wrap"><h2>Doublons probables</h2><p class="muted">Orthographes proches sur nom + prénom, seuil {{ threshold }}. Les fiches qui se ressemblent en chaîne forment un seul groupe, pas des paires successives.</p></div><span class="chip">{{ probable|length }} groupes</span></div>
+    {% if not probable %}<div class="empty-state">Aucun rapprochement probable détecté ✅</div>{% endif %}
+    {% for g in probable %}{{ groupe_fusion(g, loop.index0) }}{% endfor %}
   </section>
   {% endif %}
 </div>

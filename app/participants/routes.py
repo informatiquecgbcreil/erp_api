@@ -26,7 +26,7 @@ from app.models import (
 )
 from app.services.quartiers import normalize_quartier_for_ville
 from app.secteurs import get_secteur_labels
-from sqlalchemy import select, exists
+from sqlalchemy import select, exists, func
 from app.utils.delete_guard import commit_delete
 from app.services.insertion import (
     can_edit_insertion as can_edit_insertion_module,
@@ -1746,6 +1746,54 @@ def _phone_norm(s: str | None) -> str:
 def _sim(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
+def _regrouper_transitif(paires):
+    """Fusionner les paires qui se recoupent en groupes.
+
+    Vingt et une fiches d'une même personne forment vingt paires : les traiter
+    deux par deux est vingt décisions pour un seul dossier.
+    """
+    parent = {}
+
+    def racine(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    scores = {}
+    for paire in paires:
+        a, b = paire["a"], paire["b"]
+        parent[racine(a.id)] = racine(b.id)
+        for fiche in (a, b):
+            scores.setdefault(fiche.id, (fiche, 0.0))
+            scores[fiche.id] = (fiche, max(scores[fiche.id][1], paire["score"]))
+    groupes = defaultdict(list)
+    for identifiant, (fiche, score) in scores.items():
+        groupes[racine(identifiant)].append((fiche, score))
+    sortie = []
+    for membres in groupes.values():
+        if len(membres) < 2:
+            continue
+        fiches = sorted((f for f, _ in membres), key=lambda x: x.id)
+        sortie.append({"type": "ressemblance", "score": round(max(s for _, s in membres), 3),
+                       "key": f"{_norm(fiches[0].nom)} {_norm(fiches[0].prenom)}",
+                       "items": fiches})
+    return sorted(sortie, key=lambda g: (-len(g["items"]), -g["score"]))
+
+
+def _presences_par_participant(participants):
+    """Compter les présences en une requête, pour éclairer le choix de la fiche."""
+    ids = [p.id for p in participants]
+    if not ids:
+        return {}
+    lignes = db.session.execute(
+        select(PresenceActivite.participant_id, func.count(PresenceActivite.id))
+        .where(PresenceActivite.participant_id.in_(ids))
+        .group_by(PresenceActivite.participant_id)).all()
+    return {identifiant: nombre for identifiant, nombre in lignes}
+
+
 @bp.route("/duplicates", methods=["GET"])
 @login_required
 def duplicates():
@@ -1754,8 +1802,14 @@ def duplicates():
 
     # réglages
     mode = (request.args.get("mode") or "certain").strip()  # certain / probable
-    threshold = float(request.args.get("t") or "0.90")      # pour probable
-    limit = int(request.args.get("limit") or "2000")
+    try:
+        threshold = min(max(float(request.args.get("t") or "0.90"), 0.5), 1.0)
+    except ValueError:
+        threshold = 0.90
+    try:
+        limit = min(max(int(request.args.get("limit") or "5000"), 100), 50000)
+    except ValueError:
+        limit = 5000
 
     # scope secteur pour non-global
     sec = _current_secteur()
@@ -1765,6 +1819,7 @@ def duplicates():
             abort(403)
         q = q.filter(Participant.created_secteur == sec)
 
+    total = q.count()
     items = q.order_by(Participant.id.desc()).limit(limit).all()
 
     # --- doublons certains ---
@@ -1792,6 +1847,7 @@ def duplicates():
                 groups.append({
                     "type": source,
                     "key": k,
+                    "score": None,
                     "items": sorted(arr, key=lambda x: (x.nom or "", x.prenom or "", x.id))
                 })
 
@@ -1799,7 +1855,7 @@ def duplicates():
     push_groups("email", by_email)
     push_groups("telephone", by_phone)
 
-    # --- doublons probables (approx) ---
+    # --- doublons probables (approx), regroupés et non plus par paires ---
     probable = []
     if mode == "probable":
         # on compare uniquement sur nom/prénom normalisés
@@ -1807,6 +1863,7 @@ def duplicates():
         # petit tri pour limiter comparaisons
         normed.sort(key=lambda x: (x[1][:3], x[2][:3], x[0].id))
 
+        paires = []
         # comparaison locale par “fenêtre” (évite O(n²) complet)
         for i in range(len(normed)):
             p1, n1, pr1 = normed[i]
@@ -1819,26 +1876,84 @@ def duplicates():
                 base2 = f"{n2} {pr2}"
                 s = _sim(base1, base2)
                 if s >= threshold and p1.id != p2.id:
-                    probable.append({
-                        "score": round(s, 3),
-                        "a": p1,
-                        "b": p2
-                    })
-
-        probable = sorted(probable, key=lambda x: x["score"], reverse=True)[:200]
+                    paires.append({"score": round(s, 3), "a": p1, "b": p2})
+        probable = _regrouper_transitif(paires)[:200]
 
     # tri groupes certains : les plus gros d’abord
     groups.sort(key=lambda g: (-len(g["items"]), g["type"], g["key"]))
 
+    affiches = [p for g in (groups if mode == "certain" else probable) for p in g["items"]]
     return render_template(
         "participants/duplicates.html",
         groups=groups,
         probable=probable,
         mode=mode,
         threshold=threshold,
+        limit=limit,
+        analyses=len(items),
+        total=total,
+        presences=_presences_par_participant(affiches),
+        peut_fusionner=can("participants:delete"),
         secteur=sec,
         is_global=_is_global_role(),
     )
+
+
+def _colonnes_vers_participant():
+    """Toutes les colonnes qui désignent un participant, quelle que soit la table.
+
+    Énumérer le schéma plutôt qu'une liste écrite à la main : une table ajoutée
+    plus tard est prise en compte sans que personne n'y pense, et un test
+    vérifie qu'aucun lien n'échappe à la fusion.
+    """
+    cible = Participant.__table__.c.id
+    for table in db.metadata.sorted_tables:
+        if table is Participant.__table__:
+            continue
+        for colonne in table.columns:
+            if any(fk.column is cible for fk in colonne.foreign_keys):
+                yield table, colonne
+
+
+def _colonnes_uniques_avec(table, colonne):
+    """Les jeux de colonnes dont l'unicité empêcherait de déplacer une ligne."""
+    jeux = []
+    for contrainte in table.constraints:
+        colonnes = getattr(contrainte, "columns", None)
+        if colonnes is not None and colonne.name in colonnes and len(colonnes) > 1 \
+                and contrainte.__class__.__name__ == "UniqueConstraint":
+            jeux.append([c for c in colonnes if c.name != colonne.name])
+    for index in table.indexes:
+        if index.unique and colonne.name in index.columns and len(index.columns) > 1:
+            jeux.append([c for c in index.columns if c.name != colonne.name])
+    return jeux
+
+
+def _transferer_liens(keep_id, merge_ids):
+    """Rattacher au participant conservé tout ce qui pointait vers les doublons.
+
+    Une ligne du doublon qui ferait double emploi avec une ligne du conservé —
+    même séance, même compétence évaluée — est supprimée : c'est la version du
+    participant conservé qui fait foi. Tout le reste est déplacé, jamais perdu.
+    """
+    deplaces, ecartes = {}, {}
+    for table, colonne in _colonnes_vers_participant():
+        for autres in _colonnes_uniques_avec(table, colonne):
+            deja = {tuple(ligne) for ligne in db.session.execute(
+                select(*autres).where(colonne.in_([keep_id]))).all()}
+            if not deja:
+                continue
+            doublons = db.session.execute(
+                select(table.c.id, *autres).where(colonne.in_(merge_ids))).all()
+            perimes = [ligne[0] for ligne in doublons if tuple(ligne[1:]) in deja]
+            if perimes:
+                db.session.execute(table.delete().where(table.c.id.in_(perimes)))
+                ecartes[table.name] = ecartes.get(table.name, 0) + len(perimes)
+        resultat = db.session.execute(
+            table.update().where(colonne.in_(merge_ids)).values({colonne.name: keep_id}))
+        if resultat.rowcount:
+            deplaces[table.name] = deplaces.get(table.name, 0) + resultat.rowcount
+    return deplaces, ecartes
 
 
 @bp.route("/merge", methods=["POST"])
@@ -1848,53 +1963,43 @@ def merge_participants():
         abort(403)
 
     keep_id = int(request.form.get("keep_id") or 0)
-    merge_ids = request.form.getlist("merge_ids")
-    merge_ids = [int(x) for x in merge_ids if str(x).isdigit() and int(x) != keep_id]
+    merge_ids = sorted({int(x) for x in request.form.getlist("merge_ids")
+                        if str(x).isdigit() and int(x) != keep_id})
+    retour = url_for("participants.duplicates", mode=request.form.get("mode") or "certain",
+                     t=request.form.get("t") or "0.90")
 
     if not keep_id or not merge_ids:
-        flash("La fusion est impossible : la sélection est invalide.", "danger")
-        return redirect(url_for("participants.duplicates"))
+        flash("Fusion impossible : indiquez la fiche à conserver et au moins un doublon à y verser.", "danger")
+        return redirect(retour)
 
-    db.get_or_404(Participant, keep_id)
+    keep = db.get_or_404(Participant, keep_id)
     victims = Participant.query.filter(Participant.id.in_(merge_ids)).all()
+    if len(victims) != len(merge_ids):
+        flash("Fusion impossible : une des fiches sélectionnées n'existe plus.", "danger")
+        return redirect(retour)
+    # Le périmètre de la liste doit valoir pour l'action : sans ce contrôle, des
+    # identifiants postés à la main fusionneraient des fiches d'un autre secteur.
+    if not _is_global_role():
+        secteur = _current_secteur()
+        if not secteur or any(p.created_secteur != secteur for p in [keep] + victims):
+            abort(403)
 
     try:
-        # 1) Transférer Evaluations (safe)
-        db.session.query(Evaluation).filter(Evaluation.participant_id.in_(merge_ids))\
-            .update({Evaluation.participant_id: keep_id}, synchronize_session=False)
-
-        # 2) Présences: éviter les collisions AVANT l'update
-        # sessions déjà présentes chez keep
-        keep_session_ids = set(
-            sid for (sid,) in db.session.query(PresenceActivite.session_id)
-            .filter(PresenceActivite.participant_id == keep_id)
-            .all()
-        )
-
-        if keep_session_ids:
-            # supprimer les présences des victims qui collent sur les mêmes sessions
-            db.session.query(PresenceActivite)\
-                .filter(PresenceActivite.participant_id.in_(merge_ids))\
-                .filter(PresenceActivite.session_id.in_(keep_session_ids))\
-                .delete(synchronize_session=False)
-
-        # maintenant, update sans risque
-        db.session.query(PresenceActivite)\
-            .filter(PresenceActivite.participant_id.in_(merge_ids))\
-            .update({PresenceActivite.participant_id: keep_id}, synchronize_session=False)
-
-        # 3) Delete des participants doublons (ils n'ont plus de liens)
+        deplaces, ecartes = _transferer_liens(keep_id, merge_ids)
         for v in victims:
             db.session.delete(v)
-
         db.session.commit()
-        flash(f"La fusion a bien été effectuée : le participant #{keep_id} a absorbé {len(merge_ids)} doublon(s).", "success")
-        return redirect(url_for("participants.edit_participant", participant_id=keep_id))
-
     except Exception as e:
         db.session.rollback()
-        flash(f"La fusion a échoué : {e}", "danger")
-        return redirect(url_for("participants.duplicates"))
+        flash(f"La fusion a échoué, rien n'a été modifié : {e}", "danger")
+        return redirect(retour)
+
+    detail = ", ".join(f"{nombre} {nom}" for nom, nombre in sorted(deplaces.items())) or "aucun lien"
+    doublons = ("" if not ecartes else " Doublons de lignes écartés : "
+                + ", ".join(f"{nombre} {nom}" for nom, nombre in sorted(ecartes.items())) + ".")
+    flash(f"Fusion effectuée : la fiche #{keep_id} {keep.nom} {keep.prenom} a absorbé "
+          f"{len(merge_ids)} fiche(s). Rattachés : {detail}.{doublons}", "success")
+    return redirect(retour)
 
 
 # ---------------------------------------------------------------------

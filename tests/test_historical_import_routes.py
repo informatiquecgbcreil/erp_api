@@ -440,6 +440,49 @@ def test_a_stale_preview_explains_itself_on_the_page(historical_ui):
     assert "Personnes à valider" in page
 
 
+def test_a_second_triage_adds_nothing_and_says_so(historical_ui):
+    url, stage, _ = _stage(historical_ui)
+    courant = lambda: json.loads((stage / "plan.json").read_text(encoding="utf-8"))["digest"]
+    premier = historical_ui.client.post(url + "/triage", data={"digest": courant()})
+    assert premier.status_code == 302
+    apres_un = json.loads((stage / "decisions.json").read_text(encoding="utf-8"))
+    second = historical_ui.client.post(url + "/triage", data={"digest": courant()})
+    assert second.status_code == 302
+    # Rien n'a bougé, et l'écran le dit au lieu de laisser croire à un progrès.
+    assert json.loads((stage / "decisions.json").read_text(encoding="utf-8")) == apres_un
+    page = historical_ui.client.get(second.headers["Location"]).get_data(as_text=True)
+    assert "n&#39;a rien de nouveau à proposer" in page
+    assert "Recalcul en" in page
+
+
+def test_each_blocker_links_to_the_control_that_resolves_it(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "Ce qui bloque encore l'import (1)" in page
+    # Le point nomme la personne et mène à son dossier, pas à un compteur.
+    assert "TEST Luc — ligne sheet:5" in page
+    assert "vue=tous&amp;q=sheet:5#participants" in page
+    # Le lien de recherche retrouve bien le dossier visé.
+    cible = historical_ui.client.get(url + "?vue=tous&q=sheet:5").get_data(as_text=True)
+    assert "TEST Luc" in cible
+    assert "Aucun dossier ne correspond" not in cible
+
+
+def test_anchors_survive_keys_carrying_spaces_and_punctuation(app):
+    from app.admin.historical_routes import _ancre
+    assert _ancre("activite", "ACCES AUX DROITS NUMERIQUE ATEL") == "activite-acces-aux-droits-numerique-atel"
+    assert _ancre("seance", "CAFE SANTE!J") == "seance-cafe-sante-j"
+    assert _ancre("anomalie", "") == "anomalie-sans-cle"
+
+
+def test_a_ready_preview_says_nothing_blocks(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    historical_ui.calls["ready"] = True
+    historical_ui.client.post(url + "/decisions", data={"digest": plan["digest"]})
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "Plus rien ne bloque." in page
+
+
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):
     url, _, plan = _stage(historical_ui)
     assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"]}).status_code == 400

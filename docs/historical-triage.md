@@ -166,6 +166,16 @@ formulaire habituel de l'écran, qui les présente par dossier et n'affiche par
 défaut que ceux qui bloquent encore l'import : après le triage, l'écran ne
 montre plus que les arbitrages réels.
 
+Le relancer est sans danger et sans effet : les propositions se fondent dans
+les décisions enregistrées, qui gagnent toujours, et le triage est déterministe
+— à classeur et base inchangés, il propose exactement les mêmes décisions. Un
+second passage n'apporte du nouveau que si des fiches ou des activités sont
+apparues dans l'ERP entre-temps, et l'écran annonce alors le nombre de décisions
+ajoutées ; sinon il dit qu'il n'a rien à proposer. Une proposition annulée en
+remettant le menu sur la valeur automatique n'est plus une décision : elle sera
+reproposée au passage suivant. Pour la refuser durablement, poser la décision
+contraire.
+
 C'est la voie normale. Les commandes ci-dessous servent au travail hors ligne,
 sur une copie, ou quand on préfère trancher les arbitrages au tableur.
 

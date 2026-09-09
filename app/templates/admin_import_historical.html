@@ -26,7 +26,7 @@
 {% endmacro %}
 {% macro carte_activite(index, activity) %}
   {% set key = row_key(activity) %}{% set saved = decisions.get('activities', {}).get(key, {}) %}
-  <article class="soft-panel" style="margin-bottom:1rem">
+  <article class="soft-panel" id="{{ ancre('activite', key) }}" style="margin-bottom:1rem">
     <h3>{{ activity.name or activity.nom }}</h3>
     <p class="muted">{{ activity.status }}{% if activity.source_sheet %} · feuille {{ activity.source_sheet }}{% endif %}{% if saved.get('name') %} · nom corrigé ; le classeur écrit {{ (activity.source_names or [activity.key])|join(' / ') }}{% endif %}</p>
     <p>
@@ -57,7 +57,7 @@
   {% set phrases = {'unknown_territory':'Ville ou quartier inconnu du référentiel : la personne sera enregistrée sans territoire.', 'unknown_city':'Commune inconnue du référentiel : la personne sera enregistrée sans ville.', 'city_district_conflict':'La ville et le quartier se contredisent : aucun territoire ne sera déduit.'} %}
   {% set technique = ('id', 'acknowledged', 'blocking', 'code', 'message', 'reason', 'key', 'source_id', 'source_sheet', 'source_cell') %}
   {% set champs = {'raw_value':'valeur lue', 'cached_value':'valeur calculée par Excel', 'value':'valeur', 'candidate_names':'noms trouvés', 'candidate_date':'date reconstruite', 'previous_date':'date de la colonne précédente', 'raw_weekday':'jour de semaine lu', 'source_row':'ligne du classeur', 'presence_count':'présences', 'calculated':'présences comptées', 'excel_total':'total Excel', 'month':'mois retenu', 'ville':'ville', 'quartier':'quartier'} %}
-  <article class="soft-panel" style="margin-bottom:.8rem">
+  <article class="soft-panel" id="{{ ancre('anomalie', anomaly.id) }}" style="margin-bottom:.8rem">
     <p>{{ anomaly.message or anomaly.reason or phrases.get(anomaly.code) or 'Anomalie source à examiner.' }}</p>
     <p class="muted">
       {%- if anomaly.code %}{{ anomaly.code }}{% endif %}
@@ -126,15 +126,23 @@
       {% for name, value in plan.get('summary', {}).items() %}<dt>{{ labels.get(name, name|replace('_', ' ')) }}</dt><dd>{% if value is mapping or value is sequence and value is not string %}{{ value|tojson }}{% else %}{{ value }}{% endif %}</dd>{% endfor %}
     </dl>
     {% if plan.blockers %}
-    {% set familles = {'participant':'Personnes', 'activity':'Activités', 'session':'Séances', 'anomaly':'Anomalies', 'sector':'Secteurs', 'presence':'Présences'} %}
-    <details class="details-card"><summary>Points bloquants ({{ plan.blockers|length }})</summary>
+    <details class="details-card" {% if blocages.total <= 60 %}open{% endif %}>
+      <summary>Ce qui bloque encore l'import ({{ blocages.total }})</summary>
       <div class="details-body">
-        <p class="muted">Un point bloquant compte une <strong>ligne source</strong>, pas une personne : les décisions ci-dessous en résolvent plusieurs à la fois. Cette liste sert au contrôle final.</p>
-        {% if plan.blockers[0] is mapping %}<p>{% for famille, lot in plan.blockers|groupby('kind') %}<span class="chip">{{ familles.get(famille, famille) }} : {{ lot|length }}</span> {% endfor %}</p>{% endif %}
-        <ul>{% for blocker in plan.blockers[:40] %}<li>{{ blocker.message or blocker }}{% if blocker.key %} <small class="muted">{{ blocker.key }}</small>{% endif %}</li>{% endfor %}</ul>
-        {% if plan.blockers|length > 40 %}<p class="muted">… et {{ plan.blockers|length - 40 }} autres. La liste complète figure dans le rapport téléchargeable.</p>{% endif %}
+        <p class="muted">Chaque ligne renvoie au contrôle qui la résout. Un point compte une <strong>ligne source</strong> : une seule décision peut en résoudre plusieurs.</p>
+        {% for famille, points in blocages.groupes.items() %}
+        <h3>{{ famille }} ({{ points|length }})</h3>
+        <ul>
+          {% for point in points[:40] %}
+          <li>{% if point.lien %}<a href="{{ point.lien }}">{{ point.libelle }}</a>{% else %}{{ point.libelle }}{% endif %}{% if point.message %} <small class="muted">— {{ point.message }}</small>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% if points|length > 40 %}<p class="muted">… et {{ points|length - 40 }} autres de cette famille. La liste complète figure dans le rapport téléchargeable.</p>{% endif %}
+        {% endfor %}
       </div>
     </details>
+    {% elif not metadata.applied %}
+    <div class="callout-soft"><strong>Plus rien ne bloque.</strong> Vous pouvez confirmer le lot en bas de page.</div>
     {% endif %}
   </section>
 
@@ -164,9 +172,13 @@
     <h2>Triage assisté</h2>
     <p>Le rapport compte des <strong>lignes source</strong>, pas des personnes : une même personne occupe souvent plusieurs lignes réparties dans autant de feuilles. Le triage les regroupe par dossier et propose les décisions que le classeur rend évidentes — rattachement à une fiche existante dont le nom, le prénom et l'année concordent, regroupement des lignes répétées d'une même identité, date d'une colonne encadrée par ses voisines et confirmée par le jour de semaine, secteur déduit du nom métier.</p>
     <p>Aucune règle de rapprochement n'est assouplie : orthographes proches, homonymes, contradictions avec une fiche existante et lectures de date ambiguës restent bloquants. Une décision déjà enregistrée n'est jamais remplacée, et aucune anomalie n'est acquittée à votre place. <strong>Relisez ensuite les secteurs proposés</strong> : ils sont déduits du seul nom de la feuille.</p>
+    <p>Le relancer ne peut rien écraser : une décision enregistrée gagne toujours sur une proposition. À classeur et base inchangés, il propose exactement la même chose, donc un second clic ne change rien — sauf si des fiches ou des activités sont apparues dans l'ERP entre-temps. Attention en revanche : une proposition que vous avez <em>annulée</em> en remettant un menu sur « Laisser la proposition automatique » sera reproposée. Pour la refuser durablement, posez la décision contraire.</p>
     <form method="post" action="{{ url_for('admin.historical_triage', stage_id=stage_id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="digest" value="{{ plan.digest }}">
+      <input type="hidden" name="vue" value="{{ vue }}">
+      <input type="hidden" name="q" value="{{ recherche }}">
+      <input type="hidden" name="page" value="{{ participants.page }}">
       <button class="btn" type="submit">Proposer un triage et refaire le dry-run</button>
     </form>
   </section>
@@ -283,7 +295,7 @@
         {% set key = row_key(session) %}{% set saved = decisions.get('sessions', {}).get(key, {}) %}
         {% if session.status == 'REVIEW' or saved %}
           {% set ns.review_count = ns.review_count + 1 %}
-          <article class="soft-panel" style="margin-bottom:1rem">
+          <article class="soft-panel" id="{{ ancre('seance', key) }}" style="margin-bottom:1rem">
             <h3>{{ session.sheet or session.source_sheet }} · {{ session.date_session or 'Date à vérifier' }} · {{ session.slot or session.source_slot or '' }}</h3>
             <p class="muted">Cellule source <code>{{ session.source_cell }}</code> · ligne <code>{{ key }}</code>{% if session.raw_headers %} · en-têtes lus {{ session.raw_headers|tojson }}{% endif %}</p>
             {% if session.anomalies %}<p>{% for anomaly in session.anomalies %}<span class="chip">{{ anomaly.message or anomaly }}</span> {% endfor %}</p>{% endif %}
