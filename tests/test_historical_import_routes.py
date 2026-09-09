@@ -28,7 +28,10 @@ def historical_ui(app, admin_client, monkeypatch, tmp_path):
                        "attendance": [{"person_key": "sheet:5"}, {"person_key": "sheet:6"}]},
             "anomalies": [{"id": "a1", "code": "invalid_day", "message": "Total à contrôler", "blocking": True,
                            "acknowledged": "a1" in decisions.get("acknowledged_anomalies", []),
-                           "source_sheet": "Atelier", "source_cell": "J6", "raw_value": 6}],
+                           "source_sheet": "Atelier", "source_cell": "J6", "raw_value": 6},
+                          {"id": "t1", "code": "unknown_territory", "value": "MOULIN", "blocking": True,
+                           "acknowledged": "t1" in decisions.get("acknowledged_anomalies", []),
+                           "key": "sheet:5", "source_id": "sheet:5"}],
             "matching": {"rows": [
                 {"key": "sheet:5", "classification": "REVIEW", "resolved": tranchee("sheet:5"), "reasons": ["names_without_sufficient_identity_evidence"], "raw": {"nom": "TEST", "prenom": "Luc", "annee_naissance": 1980},
                  "normalized": {"nom": "test", "prenom": "luc", "birth_year": 1980, "birth_date": None, "genre": "Femme", "telephone": None, "email": None, "ville": None, "quartier": None, "adresse": None},
@@ -318,6 +321,45 @@ def test_dossiers_survive_a_report_the_triage_cannot_read(app, caplog):
         dossiers = _dossiers(infirme, {})
     assert [d["libelle"] for d in dossiers] == ["TEST Luc"]
     assert dossiers[0]["a_traiter"] is True
+
+
+def test_territory_anomaly_is_written_in_words_not_dumped(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "Ville ou quartier inconnu du référentiel" in page
+    assert "valeur <code>MOULIN</code>" in page  # libellé français, pas la clé « value »
+    assert "ligne <code>sheet:5</code>" in page
+    # Ni dictionnaire brut, ni libellé sans valeur.
+    assert "&#39;code&#39;: &#39;unknown_territory&#39;" not in page
+    assert "valeur lue <code></code>" not in page
+
+
+def test_multi_line_dossier_offers_a_free_grouping_identifier(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "Créer / regrouper une nouvelle personne" in page
+    assert "<code>test-luc-1980</code>" in page
+
+
+def test_a_suggested_identifier_never_collides_with_a_saved_one(app):
+    from app.admin.historical_routes import _dossiers
+    rapport = {"parser": {"attendance": []}, "matching": {"rows": [
+        {"key": "a!1", "classification": "REVIEW", "reasons": [], "candidates": [],
+         "raw": {"nom": "TEST", "prenom": "Luc"},
+         "normalized": {"nom": "test", "prenom": "luc", "birth_year": None, "birth_date": None,
+                        "genre": None, "telephone": None, "email": None, "ville": None,
+                        "quartier": None, "adresse": None}},
+        {"key": "a!2", "classification": "REVIEW", "reasons": [], "candidates": [],
+         "raw": {"nom": "TEST", "prenom": "Luc"},
+         "normalized": {"nom": "test", "prenom": "luc", "birth_year": None, "birth_date": None,
+                        "genre": None, "telephone": None, "email": None, "ville": None,
+                        "quartier": None, "adresse": None}},
+    ]}}
+    with app.test_request_context("/"):
+        libre = _dossiers(rapport, {})[0]["groupe_suggere"]
+        occupe = _dossiers(rapport, {"participants": {"z!9": {"action": "new", "group": libre}}})
+    assert libre == "test-luc-sans-annee"
+    assert occupe[0]["groupe_suggere"] == "test-luc-sans-annee-2"
 
 
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):
