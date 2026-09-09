@@ -9,13 +9,13 @@
       <option value="">Laisser la proposition automatique / à valider</option>
       {% for candidate in row.get('candidates', []) %}
         {% set participant_id = candidate.participant_id or (candidate.id if candidate.kind != 'source' else none) %}
-        {% if participant_id %}<option value="existing:{{ participant_id }}" {% if saved.action == 'participant' and saved.participant_id == participant_id %}selected{% endif %}>Même personne : #{{ participant_id }} {{ candidate.nom or candidate.get('raw', {}).get('nom', '') }} {{ candidate.prenom or candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
-        {% if candidate.kind == 'source' %}<option value="source:{{ candidate.key }}" {% if saved.action == 'source' and saved.source_id == candidate.key %}selected{% endif %}>Même personne que la ligne {{ candidate.key }} · {{ candidate.get('raw', {}).get('nom', '') }} {{ candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+        {% if participant_id %}<option value="existing:{{ participant_id }}" {% if saved.action == 'participant' and saved.participant_id == participant_id %}selected{% endif %}>C'est la fiche existante #{{ participant_id }} · {{ candidate.nom or candidate.get('raw', {}).get('nom', '') }} {{ candidate.prenom or candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+        {% if candidate.kind == 'source' %}<option value="source:{{ candidate.key }}" {% if saved.action == 'source' and saved.source_id == candidate.key %}selected{% endif %}>C'est la même personne que la ligne {{ candidate.key }} · {{ candidate.get('raw', {}).get('nom', '') }} {{ candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
       {% endfor %}
-      {% if saved.action == 'participant' %}<option value="existing:{{ saved.participant_id }}" selected>Même personne : participant #{{ saved.participant_id }} (décision enregistrée)</option>{% endif %}
-      {% if saved.action == 'source' %}<option value="source:{{ saved.source_id }}" selected>Même personne que la ligne {{ saved.source_id }} (décision enregistrée)</option>{% endif %}
+      {% if saved.action == 'participant' %}<option value="existing:{{ saved.participant_id }}" selected>C'est la fiche existante #{{ saved.participant_id }} (décision enregistrée)</option>{% endif %}
+      {% if saved.action == 'source' %}<option value="source:{{ saved.source_id }}" selected>C'est la même personne que la ligne {{ saved.source_id }} (décision enregistrée)</option>{% endif %}
       <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer / regrouper une nouvelle personne</option>
-      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer cette ligne et ses présences</option>
+      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>⚠ Ne rien importer de cette ligne : ni la personne, ni ses présences</option>
     </select></label>
     <label class="field-stack"><span>Identifiant commun si même personne</span><input class="in" name="participants.{{ ligne.index }}.group" value="{{ saved.get('group', '') }}" placeholder="Vide = personne distincte"></label>
     {% if not row.get('normalized', {}).get('nom') or not row.get('normalized', {}).get('prenom') or saved.get('values') %}
@@ -181,7 +181,7 @@
       <h2>Personnes à valider</h2>
       <p>Les {{ participants.lignes }} lignes de participants du classeur forment <strong>{{ participants.total }} dossiers</strong> : un dossier = une identité, ses orthographes et toutes ses lignes. <strong>{{ participants.a_traiter }}</strong> bloquent encore l'import et sont affichés par défaut ; les autres sont réglés, par un rapprochement automatique ou par une décision déjà enregistrée.</p>
       <p><strong>EXACT</strong> : correspondance certaine. <strong>HIGH_CONFIDENCE</strong> : plusieurs indices concordants. <strong>REVIEW</strong> : décision humaine nécessaire. <strong>NEW</strong> : nouvelle personne proposée. Pour déclarer que plusieurs lignes sont la même nouvelle personne, choisissez « Créer / regrouper » sur chacune et renseignez le même identifiant de regroupement ; laissez-le vide pour une personne distincte. « Ignorer » exclut la ligne et ses présences du lot.</p>
-      <p class="muted">Seuls les dossiers affichés ci-dessous sont renvoyés par le formulaire. Les décisions des dossiers non affichés sont conservées telles quelles.</p>
+      <p class="muted">Seuls les dossiers affichés ci-dessous sont renvoyés par le formulaire. Les décisions des dossiers non affichés sont conservées telles quelles. Une personne déjà présente dans l'ERP se règle par « C'est la fiche existante #… », jamais par « Ne rien importer », qui abandonnerait aussi ses présences.</p>
 
       <div class="form-grid-3">
         <label class="field-stack"><span>Chercher un nom, une feuille ou une ligne source</span><input class="in" type="search" name="q" form="filtre-personnes" value="{{ recherche }}" placeholder="Ex. : DUPONT, Numérique, atelier!12"></label>

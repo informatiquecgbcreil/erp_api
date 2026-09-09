@@ -397,6 +397,16 @@ def test_an_abandoned_activity_is_shown_with_its_consequence(historical_ui):
     assert "Activités réglées" not in page
 
 
+def test_ignoring_never_reads_as_already_exists(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    # « Déjà dans l'ERP » et « ne rien importer » ne doivent pas se confondre.
+    assert "C'est la fiche existante #99" in page
+    assert "Ne rien importer de cette ligne : ni la personne, ni ses présences" in page
+    assert "Ne rien importer de cette activité : ni séances, ni présences" in page
+    assert "Cette activité existe-t-elle déjà dans l'ERP ?" in page
+
+
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):
     url, _, plan = _stage(historical_ui)
     assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"]}).status_code == 400
