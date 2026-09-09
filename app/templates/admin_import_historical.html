@@ -210,6 +210,9 @@
           {% if dossier.fiches_erp %}<p>Fiche{{ 's' if dossier.fiches_erp|length > 1 }} ERP au même nom : {% for fiche in dossier.fiches_erp %}<span class="chip">#{{ fiche.id }} {{ fiche.nom }} {{ fiche.prenom }}{% if fiche.naissance %} · {{ fiche.naissance }}{% endif %}{% if fiche.genre %} · {{ fiche.genre }}{% endif %}</span> {% endfor %}</p>{% endif %}
           {% if dossier.voisins %}<p>Orthographes proches dans le classeur : {% for voisin in dossier.voisins %}<span class="chip">{{ voisin.libelle }} ({{ voisin.lignes }})</span> {% endfor %}</p>{% endif %}
           {% if dossier.alertes %}<p class="muted">Lignes incomplètes : {{ dossier.alertes|join(', ') }}</p>{% endif %}
+          {% if dossier.groupe_suggere %}
+          <p><strong>Une seule personne ?</strong> Mettez les {{ dossier.lignes|length }} lignes sur « Créer / regrouper une nouvelle personne » et copiez le même identifiant sur chacune : <code>{{ dossier.groupe_suggere }}</code>. <strong>Des personnes différentes ?</strong> Même choix, identifiant laissé vide partout. Une ligne rattachée à une fiche ERP existante se règle avec « Même personne : #… ».</p>
+          {% endif %}
           {% for ligne in dossier.lignes %}
             {% set brut = ligne.row.get('raw', {}) %}
             <p class="muted">

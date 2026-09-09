@@ -334,6 +334,34 @@ def test_territory_anomaly_is_written_in_words_not_dumped(historical_ui):
     assert "valeur lue <code></code>" not in page
 
 
+def test_multi_line_dossier_offers_a_free_grouping_identifier(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "Créer / regrouper une nouvelle personne" in page
+    assert "<code>test-luc-1980</code>" in page
+
+
+def test_a_suggested_identifier_never_collides_with_a_saved_one(app):
+    from app.admin.historical_routes import _dossiers
+    rapport = {"parser": {"attendance": []}, "matching": {"rows": [
+        {"key": "a!1", "classification": "REVIEW", "reasons": [], "candidates": [],
+         "raw": {"nom": "TEST", "prenom": "Luc"},
+         "normalized": {"nom": "test", "prenom": "luc", "birth_year": None, "birth_date": None,
+                        "genre": None, "telephone": None, "email": None, "ville": None,
+                        "quartier": None, "adresse": None}},
+        {"key": "a!2", "classification": "REVIEW", "reasons": [], "candidates": [],
+         "raw": {"nom": "TEST", "prenom": "Luc"},
+         "normalized": {"nom": "test", "prenom": "luc", "birth_year": None, "birth_date": None,
+                        "genre": None, "telephone": None, "email": None, "ville": None,
+                        "quartier": None, "adresse": None}},
+    ]}}
+    with app.test_request_context("/"):
+        libre = _dossiers(rapport, {})[0]["groupe_suggere"]
+        occupe = _dossiers(rapport, {"participants": {"z!9": {"action": "new", "group": libre}}})
+    assert libre == "test-luc-sans-annee"
+    assert occupe[0]["groupe_suggere"] == "test-luc-sans-annee-2"
+
+
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):
     url, _, plan = _stage(historical_ui)
     assert historical_ui.client.post(url + "/apply", data={"digest": plan["digest"]}).status_code == 400

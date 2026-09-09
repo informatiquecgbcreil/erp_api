@@ -184,6 +184,11 @@ def _dossiers(plan, decisions):
                     "alertes": [], "statut": None, "categorie": None, "motif": ""}
                    for row in rows]
 
+    # « Même personne que la ligne X » exige que X porte elle-même une décision :
+    # l'identifiant de regroupement est la voie sûre, on la propose toute faite.
+    from app.ateliers.historical_triage import _slug
+    pris = {d["group"] for d in enregistrees.values() if d.get("group")}
+
     dossiers = []
     for groupe in groupes:
         lignes = []
@@ -198,6 +203,14 @@ def _dossiers(plan, decisions):
             continue
         dossier = dict(groupe, lignes=lignes)
         dossier["a_traiter"] = any(ligne["en_attente"] for ligne in lignes)
+        if len(lignes) > 1 and not (groupe.get("decision") or {}).get("group"):
+            base = _slug(f"{groupe.get('nom') or ''} {groupe.get('prenom') or ''} "
+                         f"{groupe.get('annee') or 'sans-annee'}") or "dossier"
+            suggestion, suffixe = base, 2
+            while suggestion in pris:
+                suggestion, suffixe = f"{base}-{suffixe}", suffixe + 1
+            pris.add(suggestion)
+            dossier["groupe_suggere"] = suggestion
         dossier["recherche"] = " ".join([
             str(groupe.get("libelle") or ""), *groupe.get("orthographes", []),
             *groupe.get("feuilles", []), *(ligne["key"] for ligne in lignes),
