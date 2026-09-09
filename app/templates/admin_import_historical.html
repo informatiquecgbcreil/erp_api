@@ -45,9 +45,19 @@
   </article>
 {% endmacro %}
 {% macro carte_anomalie(anomaly, acquittees) %}
+  {# Les anomalies territoriales ne portent pas de message : il est écrit ici. #}
+  {% set phrases = {'unknown_territory':'Ville ou quartier inconnu du référentiel : la personne sera enregistrée sans territoire.', 'unknown_city':'Commune inconnue du référentiel : la personne sera enregistrée sans ville.', 'city_district_conflict':'La ville et le quartier se contredisent : aucun territoire ne sera déduit.'} %}
+  {% set technique = ('id', 'acknowledged', 'blocking', 'code', 'message', 'reason', 'key', 'source_id', 'source_sheet', 'source_cell') %}
+  {% set champs = {'raw_value':'valeur lue', 'cached_value':'valeur calculée par Excel', 'value':'valeur', 'candidate_names':'noms trouvés', 'candidate_date':'date reconstruite', 'previous_date':'date de la colonne précédente', 'raw_weekday':'jour de semaine lu', 'source_row':'ligne du classeur', 'presence_count':'présences', 'calculated':'présences comptées', 'excel_total':'total Excel', 'month':'mois retenu', 'ville':'ville', 'quartier':'quartier'} %}
   <article class="soft-panel" style="margin-bottom:.8rem">
-    <p>{{ anomaly.message or anomaly }}</p>
-    <p class="muted">{% if anomaly.code %}{{ anomaly.code }}{% endif %}{% if anomaly.source_sheet %} · feuille {{ anomaly.source_sheet }}{% endif %}{% if anomaly.source_cell %} · cellule <code>{{ anomaly.source_cell }}</code>{% endif %}{% if anomaly.raw_value is not none %} · valeur lue <code>{{ anomaly.raw_value }}</code>{% endif %}</p>
+    <p>{{ anomaly.message or anomaly.reason or phrases.get(anomaly.code) or 'Anomalie source à examiner.' }}</p>
+    <p class="muted">
+      {%- if anomaly.code %}{{ anomaly.code }}{% endif %}
+      {%- if anomaly.source_sheet %} · feuille {{ anomaly.source_sheet }}{% endif %}
+      {%- if anomaly.source_cell %} · cellule <code>{{ anomaly.source_cell }}</code>{% endif %}
+      {%- if anomaly.key or anomaly.source_id %} · ligne <code>{{ anomaly.key or anomaly.source_id }}</code>{% endif %}
+      {%- for nom, valeur in anomaly.items()|sort if nom not in technique and valeur is not none %} · {{ champs.get(nom, nom|replace('_', ' ')) }} <code>{{ valeur if valeur is not sequence or valeur is string else valeur|join(', ') }}</code>{% endfor %}
+    </p>
     {% if anomaly.id and anomaly.get('blocking', true) %}<label><input type="checkbox" name="acknowledged_anomalies" value="{{ anomaly.id }}" {% if anomaly.id in acquittees %}checked{% endif %}> J'ai vérifié et j'accepte cette anomalie</label>{% endif %}
   </article>
 {% endmacro %}
