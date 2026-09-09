@@ -197,3 +197,123 @@ def test_merging_returns_to_the_duplicates_list_not_the_edit_page(app, admin_cli
     # Le compte rendu nomme ce qui a bougé, il ne se contente pas de « fusion faite ».
     page = admin_client.get(destination).get_data(as_text=True)
     assert "a absorbé 1 fiche(s)" in page
+
+
+def _bloc_du_groupe(page, cle):
+    """Le fragment de page correspondant à un groupe, repéré par sa clé."""
+    debut = page.index(f"<code>{cle}</code>")
+    fin = page.find("</article>", debut)
+    return page[debut:fin]
+
+
+def test_a_family_sharing_a_phone_is_never_pre_checked(app, admin_client):
+    """Une fratrie partage le téléphone des parents : ce n'est pas un doublon."""
+    from app.extensions import db
+    from app.models import Participant
+    with app.app_context():
+        for prenom in ("Jean", "Marie"):
+            for _ in range(2):
+                db.session.add(Participant(nom="FRATRIE", prenom=prenom,
+                                           telephone="0344110022", created_secteur="EPE"))
+        db.session.commit()
+    page = admin_client.get("/participants/duplicates?mode=certain").get_data(as_text=True)
+    bloc = _bloc_du_groupe(page, "0344110022")
+    assert "Rien n'est coché d'avance" in bloc
+    assert "fratrie" in bloc
+    assert "2 identités" in bloc
+    # Chaque prénom garde sa propre fusion, avec ses deux fiches cochées.
+    assert "Fusionner FRATRIE Jean" in bloc and "Fusionner FRATRIE Marie" in bloc
+    assert bloc.count('type="checkbox" name="merge_ids"') > bloc.count('checked aria-label="Verser')
+
+
+def test_a_couple_with_opposite_genders_is_never_pre_checked(app, admin_client):
+    from app.extensions import db
+    from app.models import Participant
+    with app.app_context():
+        db.session.add_all([
+            Participant(nom="COUPLETEST", prenom="Jean", genre="Homme",
+                        email="couple.test@example.org", created_secteur="EPE"),
+            Participant(nom="COUPLETEST", prenom="Jeanne", genre="Femme",
+                        email="couple.test@example.org", created_secteur="EPE"),
+        ])
+        db.session.commit()
+    page = admin_client.get("/participants/duplicates?mode=certain").get_data(as_text=True)
+    bloc = _bloc_du_groupe(page, "couple.test@example.org")  # la vraie adresse, pas sa forme normalisée
+    # Les prénoms se ressemblent, mais les genres s'opposent : deux personnes.
+    assert "Rien n'est coché d'avance" in bloc
+    assert "genres contradictoires" in bloc
+
+
+def test_two_homonyms_born_on_different_days_are_never_pre_checked(app, admin_client):
+    from app.extensions import db
+    from app.models import Participant
+    with app.app_context():
+        db.session.add_all([
+            Participant(nom="HOMONYMETEST", prenom="Paul", date_naissance=dt.date(1970, 4, 5),
+                        created_secteur="EPE"),
+            Participant(nom="HOMONYMETEST", prenom="Paul", date_naissance=dt.date(1995, 9, 1),
+                        created_secteur="EPE"),
+        ])
+        db.session.commit()
+    page = admin_client.get("/participants/duplicates?mode=certain").get_data(as_text=True)
+    bloc = _bloc_du_groupe(page, "homonymetest|paul")
+    assert "Rien n'est coché d'avance" in bloc
+    assert "Naissances ou genres contradictoires" in bloc
+
+
+def test_spelling_variants_stay_a_single_pre_checked_merge(app, admin_client):
+    """Le cas légitime ne doit pas payer le prix de la prudence."""
+    from app.extensions import db
+    from app.models import Participant
+    with app.app_context():
+        for prenom in ("Kadiatou", "Kadiattou"):
+            db.session.add(Participant(nom="VARIANTETEST", prenom=prenom,
+                                       telephone="0344110099", created_secteur="EPE"))
+        db.session.commit()
+    page = admin_client.get("/participants/duplicates?mode=certain").get_data(as_text=True)
+    bloc = _bloc_du_groupe(page, "0344110099")
+    assert "Rien n'est coché d'avance" not in bloc
+    assert "Fusionner ce groupe" in bloc
+
+
+def test_searching_keeps_a_whole_family_in_view(app, admin_client):
+    from app.extensions import db
+    from app.models import Participant
+    with app.app_context():
+        for prenom in ("Alpha", "Beta", "Gamma"):
+            for _ in range(2):
+                db.session.add(Participant(nom="RECHERCHETEST", prenom=prenom, created_secteur="EPE"))
+        db.session.commit()
+    page = admin_client.get("/participants/duplicates?mode=certain&q=recherchetest").get_data(as_text=True)
+    assert "restreintes à « recherchetest »" in page
+    # Les trois identités de la famille restent visibles ensemble.
+    for prenom in ("Alpha", "Beta", "Gamma"):
+        assert f"RECHERCHETEST {prenom}" in page
+
+
+def test_merging_comes_back_to_the_same_family(app, admin_client):
+    garde, doublon = _participant(app), _participant(app)
+    reponse = admin_client.post("/participants/merge", data={
+        "keep_id": garde, "merge_ids": [doublon], "mode": "certain",
+        "t": "0.9", "q": "elbayad", "ancre": "groupe-nom-prenom-elbayad-kamelia"})
+    destination = reponse.headers["Location"]
+    assert "q=elbayad" in destination
+    assert destination.endswith("#groupe-nom-prenom-elbayad-kamelia")
+
+
+def test_probable_blocks_do_not_depend_on_row_order(app, admin_client):
+    """La comparaison par blocs ne doit pas dépendre du contenu de la base."""
+    from app.extensions import db
+    from app.models import Participant
+    with app.app_context():
+        for prenom in ("Sylvianne", "Sylviane"):
+            db.session.add(Participant(nom="BLOCTEST", prenom=prenom, created_secteur="EPE"))
+        db.session.commit()
+        # Vingt fiches sans rapport s'intercalent : avec une fenêtre glissante,
+        # elles suffisaient à faire disparaître la paire.
+        for indice in range(20):
+            db.session.add(Participant(nom=f"BLOCTEST{indice}", prenom=f"Zzz{indice}",
+                                       created_secteur="EPE"))
+        db.session.commit()
+    page = admin_client.get("/participants/duplicates?mode=probable&t=0.85").get_data(as_text=True)
+    assert page.count("<code>bloctest sylvianne</code>") == 1

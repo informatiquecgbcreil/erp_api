@@ -1746,6 +1746,78 @@ def _phone_norm(s: str | None) -> str:
 def _sim(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
+def _cle_blocage(participant):
+    """Bloc de comparaison : les trois premières lettres du nom, sans séparateur.
+
+    Une fenêtre glissante sur une liste triée dépend de l'ordre, donc du contenu
+    de la base : après une fusion, des fiches qui se comparaient auparavant
+    sortaient de la fenêtre et le groupe disparaissait de l'écran.
+    """
+    return re.sub(r"[^a-z0-9]", "", _norm(participant.nom))[:3]
+
+
+def _decouper_par_identite(items):
+    """Séparer les identités d'un groupe : un contact partagé n'est pas une personne.
+
+    Une fratrie partage le téléphone des parents, un couple une adresse e-mail.
+    Fusionner un tel groupe d'un bloc écraserait des personnes distinctes.
+    """
+    par_identite = defaultdict(list)
+    for p in items:
+        par_identite[(_norm(p.nom), _norm(p.prenom))].append(p)
+    identites = [{"libelle": f"{(fiches[0].nom or '').upper()} {fiches[0].prenom or ''}".strip() or "Sans nom",
+                  "items": sorted(fiches, key=lambda x: x.id)}
+                 for _, fiches in sorted(par_identite.items())]
+    return sorted(identites, key=lambda i: (-len(i["items"]), i["libelle"]))
+
+
+def _contradiction(items):
+    """Naissances ou genres qui s'opposent : deux personnes, pas deux saisies."""
+    naissances = {p.date_naissance for p in items if p.date_naissance}
+    genres = {_normalize_gender_group(p.genre) for p in items if p.genre}
+    genres.discard("unknown")
+    return len(naissances) > 1 or len(genres) > 1
+
+
+def _identites_proches(identites):
+    """Des orthographes d'un même nom, ou des personnes différentes ?
+
+    « Muzeyyen » et « Muzeyyene » sont une faute de frappe ; « Jean » et
+    « Marie » sont un frère et une sœur. La ressemblance des prénoms et des
+    noms tranche, là où leur simple différence ne dit rien.
+    """
+    cles = [(_norm(i["items"][0].nom), _norm(i["items"][0].prenom)) for i in identites]
+    for indice, (nom, prenom) in enumerate(cles):
+        for autre_nom, autre_prenom in cles[indice + 1:]:
+            if _sim(nom, autre_nom) < 0.8 or _sim(prenom, autre_prenom) < 0.8:
+                return False
+    return True
+
+
+def _qualifier(groupe):
+    """Dire si un groupe peut être coché d'avance, et pourquoi il ne l'est pas.
+
+    Cocher d'avance n'est légitime que si toutes les fiches désignent la même
+    personne : mêmes noms, ou orthographes voisines, et aucune naissance ni
+    aucun genre qui se contredisent.
+    """
+    groupe["identites"] = _decouper_par_identite(groupe["items"])
+    plusieurs = len(groupe["identites"]) > 1
+    contradiction = _contradiction(groupe["items"])
+    groupe["homogene"] = (not contradiction) and (
+        not plusieurs or _identites_proches(groupe["identites"]))
+    groupe["reserve"] = None
+    if contradiction:
+        groupe["reserve"] = ("Naissances ou genres contradictoires : ces fiches ne peuvent pas "
+                             "être la même personne, ou l'une d'elles est mal saisie.")
+    elif plusieurs and not groupe["homogene"]:
+        groupe["reserve"] = ("Prénoms ou noms franchement différents : c'est le cas d'une fratrie "
+                             "qui partage le téléphone des parents, ou d'un couple qui partage "
+                             "une adresse e-mail.")
+    groupe["ancre"] = "groupe-" + re.sub(r"[^a-z0-9]+", "-", f"{groupe['type']} {groupe['key']}".lower()).strip("-")
+    return groupe
+
+
 def _regrouper_transitif(paires):
     """Fusionner les paires qui se recoupent en groupes.
 
@@ -1776,9 +1848,10 @@ def _regrouper_transitif(paires):
         if len(membres) < 2:
             continue
         fiches = sorted((f for f, _ in membres), key=lambda x: x.id)
-        sortie.append({"type": "ressemblance", "score": round(max(s for _, s in membres), 3),
-                       "key": f"{_norm(fiches[0].nom)} {_norm(fiches[0].prenom)}",
-                       "items": fiches})
+        sortie.append(_qualifier({
+            "type": "ressemblance", "score": round(max(s for _, s in membres), 3),
+            "key": f"{_norm(fiches[0].nom)} {_norm(fiches[0].prenom)}",
+            "items": fiches}))
     return sorted(sortie, key=lambda g: (-len(g["items"]), -g["score"]))
 
 
@@ -1819,6 +1892,10 @@ def duplicates():
             abort(403)
         q = q.filter(Participant.created_secteur == sec)
 
+    recherche = (request.args.get("q") or "").strip()[:80]
+    if recherche:
+        motif = f"%{recherche}%"
+        q = q.filter(db.or_(Participant.nom.ilike(motif), Participant.prenom.ilike(motif)))
     total = q.count()
     items = q.order_by(Participant.id.desc()).limit(limit).all()
 
@@ -1844,12 +1921,12 @@ def duplicates():
     def push_groups(source: str, dct):
         for k, arr in dct.items():
             if len(arr) >= 2:
-                groups.append({
+                groups.append(_qualifier({
                     "type": source,
                     "key": k,
                     "score": None,
                     "items": sorted(arr, key=lambda x: (x.nom or "", x.prenom or "", x.id))
-                })
+                }))
 
     push_groups("nom_prenom", by_name)
     push_groups("email", by_email)
@@ -1859,25 +1936,22 @@ def duplicates():
     probable = []
     if mode == "probable":
         # on compare uniquement sur nom/prénom normalisés
-        normed = [(p, _norm(p.nom), _norm(p.prenom)) for p in items if _norm(p.nom) and _norm(p.prenom)]
-        # petit tri pour limiter comparaisons
-        normed.sort(key=lambda x: (x[1][:3], x[2][:3], x[0].id))
-
+        # Comparaison exhaustive à l'intérieur de blocs stables, plutôt qu'une
+        # fenêtre glissante : le résultat ne dépend plus de l'ordre de la base.
+        blocs = defaultdict(list)
+        for p in items:
+            if _norm(p.nom) and _norm(p.prenom):
+                blocs[_cle_blocage(p)].append((p, f"{_norm(p.nom)} {_norm(p.prenom)}"))
         paires = []
-        # comparaison locale par “fenêtre” (évite O(n²) complet)
-        for i in range(len(normed)):
-            p1, n1, pr1 = normed[i]
-            base1 = f"{n1} {pr1}"
-            for j in range(i+1, min(i+15, len(normed))):
-                p2, n2, pr2 = normed[j]
-                # si les 3 premières lettres divergent trop, on stop
-                if n2[:3] != n1[:3] and pr2[:3] != pr1[:3]:
-                    continue
-                base2 = f"{n2} {pr2}"
-                s = _sim(base1, base2)
-                if s >= threshold and p1.id != p2.id:
-                    paires.append({"score": round(s, 3), "a": p1, "b": p2})
-        probable = _regrouper_transitif(paires)[:200]
+        for membres in blocs.values():
+            if len(membres) > 600:  # bloc improbable : on ne fige pas la page dessus
+                membres = sorted(membres, key=lambda x: x[0].id, reverse=True)[:600]
+            for i, (p1, base1) in enumerate(membres):
+                for p2, base2 in membres[i + 1:]:
+                    s = _sim(base1, base2)
+                    if s >= threshold and p1.id != p2.id:
+                        paires.append({"score": round(s, 3), "a": p1, "b": p2})
+        probable = _regrouper_transitif(paires)
 
     # tri groupes certains : les plus gros d’abord
     groups.sort(key=lambda g: (-len(g["items"]), g["type"], g["key"]))
@@ -1890,10 +1964,12 @@ def duplicates():
         mode=mode,
         threshold=threshold,
         limit=limit,
+        recherche=recherche,
         analyses=len(items),
         total=total,
         presences=_presences_par_participant(affiches),
         peut_fusionner=can("participants:delete"),
+        contradiction=_contradiction,
         secteur=sec,
         is_global=_is_global_role(),
     )
@@ -1965,8 +2041,12 @@ def merge_participants():
     keep_id = int(request.form.get("keep_id") or 0)
     merge_ids = sorted({int(x) for x in request.form.getlist("merge_ids")
                         if str(x).isdigit() and int(x) != keep_id})
+    # Revenir sur la même famille : après une fusion partielle, le reste du
+    # groupe doit rester sous les yeux, pas disparaître d'une liste globale.
     retour = url_for("participants.duplicates", mode=request.form.get("mode") or "certain",
-                     t=request.form.get("t") or "0.90")
+                     t=request.form.get("t") or "0.90",
+                     q=(request.form.get("q") or "").strip() or None,
+                     _anchor=(request.form.get("ancre") or "").strip() or None)
 
     if not keep_id or not merge_ids:
         flash("Fusion impossible : indiquez la fiche à conserver et au moins un doublon à y verser.", "danger")
