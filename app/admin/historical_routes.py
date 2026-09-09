@@ -123,11 +123,23 @@ def _stage_lock(stage):
         lock.unlink(missing_ok=True)
 
 
+class ApercuPerime(Exception):
+    """L'aperçu envoyé ne correspond plus à celui du serveur.
+
+    Une page d'erreur nue laisserait l'utilisateur sans savoir si sa saisie
+    est passée : l'appelant réaffiche l'aperçu à jour avec l'explication.
+    """
+
+
 def _assert_preview(plan, metadata):
     if metadata.get("applied"):
-        abort(409, "Ce lot a déjà été importé.")
+        raise ApercuPerime("Ce lot a déjà été importé. Vos modifications n'ont pas été enregistrées.")
     if not request.form.get("digest") or request.form["digest"] != plan.get("digest"):
-        abort(409, "L'aperçu a changé. Rechargez la page avant de continuer.")
+        raise ApercuPerime(
+            "Vos décisions n'ont PAS été enregistrées : l'aperçu a changé pendant votre saisie. "
+            "Cela arrive quand la base bouge, par exemple si quelqu'un d'autre saisit une présence, "
+            "ou si vous travaillez dans deux onglets. La page ci-dessous est à jour : refaites la "
+            "saisie ici, et enregistrez plus souvent pour limiter la reprise.")
 
 
 def _rows(plan):
@@ -280,8 +292,17 @@ def _form_decisions(plan, previous):
             key = _key(row)
             choice = request.form[field]
             if not choice:
-                if kind == "activities" and request.form.get(field + ".secteur"):
-                    decisions[kind][key] = {"secteur": request.form[field + ".secteur"]}
+                # Un secteur ou un nom métier corrigé valent décision à eux seuls :
+                # le moteur les honore sans action de correspondance, et jeter une
+                # saisie en silence la fait disparaître de l'écran sans explication.
+                partielle = {}
+                if kind == "activities":
+                    if request.form.get(field + ".secteur"):
+                        partielle["secteur"] = request.form[field + ".secteur"]
+                    if request.form.get(field + ".name", "").strip():
+                        partielle["name"] = request.form[field + ".name"].strip()
+                if partielle:
+                    decisions[kind][key] = partielle
                 else:
                     decisions[kind].pop(key, None)
                 continue
@@ -402,20 +423,66 @@ def historical_decisions(stage_id):
     with _stage_lock(stage):
         stage, metadata, source = _load(stage_id)
         plan = _read_json(stage / "plan.json")
-        _assert_preview(plan, metadata)
         try:
-            decisions = _form_decisions(plan, _read_json(stage / "decisions.json"))
+            _assert_preview(plan, metadata)
+            precedentes = _read_json(stage / "decisions.json")
+            decisions = _form_decisions(plan, precedentes)
             from app.ateliers.historical_import import analyze_import
+            depart = time.monotonic()
             refreshed = analyze_import(str(source), decisions=decisions, year=metadata["year"])
+            duree = time.monotonic() - depart
             _assert_sectors(refreshed)
             _write_json(stage / "plan.json", refreshed)
             _write_json(stage / "decisions.json", refreshed.get("decisions", decisions))
+        except ApercuPerime as exc:
+            return _preview_response(stage_id, metadata, plan, error=str(exc), status=409)
         except Exception as exc:
             db.session.rollback()
             if isinstance(exc, HTTPException):
                 raise
             return _preview_response(stage_id, metadata, plan, error=f"Décisions non enregistrées : {exc}", status=400)
-    return redirect(url_for("admin.historical_preview", stage_id=stage_id))
+    message, ton = _bilan_enregistrement(precedentes, decisions, plan, refreshed, duree)
+    flash(message, ton)
+    return redirect(_retour_apercu(stage_id))
+
+
+def _normaliser_decisions(decisions):
+    """Forme comparable : un lot vide et un lot aux sections vides sont identiques."""
+    normalisees = {section: dict(decisions.get(section) or {})
+                   for section in ("participants", "activities", "sessions")}
+    normalisees["acknowledged_anomalies"] = sorted(decisions.get("acknowledged_anomalies") or [])
+    return normalisees
+
+
+def _pluriel(nombre, singulier, pluriel=None):
+    return f"{nombre} {singulier if nombre <= 1 else (pluriel or singulier + 's')}"
+
+
+def _bilan_enregistrement(avant, apres, plan, refreshed, duree):
+    """Dire noir sur blanc ce que l'enregistrement a changé, y compris « rien »."""
+    avant, apres = _normaliser_decisions(avant), _normaliser_decisions(apres)
+    bloquants, restants = len(plan.get("blockers", [])), len(refreshed.get("blockers", []))
+    total = ", ".join((
+        _pluriel(len(apres["participants"]), "personne"),
+        _pluriel(len(apres["activities"]), "activité"),
+        _pluriel(len(apres["sessions"]), "séance"),
+        _pluriel(len(apres["acknowledged_anomalies"]), "anomalie acceptée", "anomalies acceptées"),
+    ))
+    if avant == apres:
+        return (f"Enregistrement effectué, mais rien n'a changé : les décisions envoyées étaient déjà "
+                f"celles du serveur ({total}). Si vous veniez d'en saisir, elles n'ont pas été transmises — "
+                f"vérifiez que vous étiez bien sur les dossiers affichés. Recalcul en {duree:.1f} s.", "warning")
+    evolution = (f"points bloquants {bloquants} → {restants}" if restants != bloquants
+                 else f"points bloquants inchangés ({restants})")
+    return (f"Décisions enregistrées : {total}. {evolution.capitalize()}. "
+            f"Recalcul du dry-run en {duree:.1f} s.", "success")
+
+
+def _retour_apercu(stage_id):
+    """Ramener l'utilisateur là où il travaillait, filtre et page compris."""
+    filtres = {nom: (request.form.get(nom) or "").strip() for nom in ("vue", "q", "page")}
+    return url_for("admin.historical_preview", stage_id=stage_id,
+                   **{k: v for k, v in filtres.items() if v}, _anchor="participants")
 
 
 def _fusion_decisions(existantes, proposees):
@@ -444,8 +511,8 @@ def historical_triage(stage_id):
     with _stage_lock(stage):
         stage, metadata, source = _load(stage_id)
         plan = _read_json(stage / "plan.json")
-        _assert_preview(plan, metadata)
         try:
+            _assert_preview(plan, metadata)
             from app.ateliers.historical_triage import trier
             from app.ateliers.historical_import import analyze_import
             triage = trier(plan, secteurs_connus=_sectors())
@@ -458,6 +525,8 @@ def historical_triage(stage_id):
             _assert_sectors(refreshed)
             _write_json(stage / "plan.json", refreshed)
             _write_json(stage / "decisions.json", refreshed.get("decisions", decisions))
+        except ApercuPerime as exc:
+            return _preview_response(stage_id, metadata, plan, error=str(exc), status=409)
         except Exception as exc:
             db.session.rollback()
             if isinstance(exc, HTTPException):
@@ -483,7 +552,10 @@ def historical_apply(stage_id):
     with _stage_lock(stage):
         stage, metadata, source = _load(stage_id)
         plan = _read_json(stage / "plan.json")
-        _assert_preview(plan, metadata)
+        try:
+            _assert_preview(plan, metadata)
+        except ApercuPerime as exc:
+            return _preview_response(stage_id, metadata, plan, error=str(exc), status=409)
         if request.form.get("confirm") != "yes":
             return _preview_response(stage_id, metadata, plan, error="Confirmez l'import du lot présenté avant de l'enregistrer.", status=400)
         if not plan.get("ready"):

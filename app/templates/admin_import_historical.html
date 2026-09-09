@@ -9,13 +9,13 @@
       <option value="">Laisser la proposition automatique / à valider</option>
       {% for candidate in row.get('candidates', []) %}
         {% set participant_id = candidate.participant_id or (candidate.id if candidate.kind != 'source' else none) %}
-        {% if participant_id %}<option value="existing:{{ participant_id }}" {% if saved.action == 'participant' and saved.participant_id == participant_id %}selected{% endif %}>Même personne : #{{ participant_id }} {{ candidate.nom or candidate.get('raw', {}).get('nom', '') }} {{ candidate.prenom or candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
-        {% if candidate.kind == 'source' %}<option value="source:{{ candidate.key }}" {% if saved.action == 'source' and saved.source_id == candidate.key %}selected{% endif %}>Même personne que la ligne {{ candidate.key }} · {{ candidate.get('raw', {}).get('nom', '') }} {{ candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+        {% if participant_id %}<option value="existing:{{ participant_id }}" {% if saved.action == 'participant' and saved.participant_id == participant_id %}selected{% endif %}>C'est la fiche existante #{{ participant_id }} · {{ candidate.nom or candidate.get('raw', {}).get('nom', '') }} {{ candidate.prenom or candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
+        {% if candidate.kind == 'source' %}<option value="source:{{ candidate.key }}" {% if saved.action == 'source' and saved.source_id == candidate.key %}selected{% endif %}>C'est la même personne que la ligne {{ candidate.key }} · {{ candidate.get('raw', {}).get('nom', '') }} {{ candidate.get('raw', {}).get('prenom', '') }}</option>{% endif %}
       {% endfor %}
-      {% if saved.action == 'participant' %}<option value="existing:{{ saved.participant_id }}" selected>Même personne : participant #{{ saved.participant_id }} (décision enregistrée)</option>{% endif %}
-      {% if saved.action == 'source' %}<option value="source:{{ saved.source_id }}" selected>Même personne que la ligne {{ saved.source_id }} (décision enregistrée)</option>{% endif %}
+      {% if saved.action == 'participant' %}<option value="existing:{{ saved.participant_id }}" selected>C'est la fiche existante #{{ saved.participant_id }} (décision enregistrée)</option>{% endif %}
+      {% if saved.action == 'source' %}<option value="source:{{ saved.source_id }}" selected>C'est la même personne que la ligne {{ saved.source_id }} (décision enregistrée)</option>{% endif %}
       <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer / regrouper une nouvelle personne</option>
-      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer cette ligne et ses présences</option>
+      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>⚠ Ne rien importer de cette ligne : ni la personne, ni ses présences</option>
     </select></label>
     <label class="field-stack"><span>Identifiant commun si même personne</span><input class="in" name="participants.{{ ligne.index }}.group" value="{{ saved.get('group', '') }}" placeholder="Vide = personne distincte"></label>
     {% if not row.get('normalized', {}).get('nom') or not row.get('normalized', {}).get('prenom') or saved.get('values') %}
@@ -27,21 +27,29 @@
 {% macro carte_activite(index, activity) %}
   {% set key = row_key(activity) %}{% set saved = decisions.get('activities', {}).get(key, {}) %}
   <article class="soft-panel" style="margin-bottom:1rem">
-    <h3>{{ activity.name or activity.nom }}</h3><p>{{ activity.status }}{% if activity.atelier_id %} · Activité existante #{{ activity.atelier_id }}{% endif %}{% if activity.source_sheet %} · feuille {{ activity.source_sheet }}{% endif %}</p>
+    <h3>{{ activity.name or activity.nom }}</h3>
+    <p class="muted">{{ activity.status }}{% if activity.source_sheet %} · feuille {{ activity.source_sheet }}{% endif %}{% if saved.get('name') %} · nom corrigé ; le classeur écrit {{ (activity.source_names or [activity.key])|join(' / ') }}{% endif %}</p>
+    <p>
+      {%- if activity.status == 'IGNORE' %}<strong>⚠ Abandonnée.</strong> Cette activité, ses séances et toutes ses présences resteront hors de l'import.
+      {%- elif activity.status == 'EXACT' and activity.atelier_id %}<strong>Rattachée.</strong> Les séances et les présences iront dans l'activité existante #{{ activity.atelier_id }}, secteur {{ activity.secteur }}.
+      {%- elif activity.status == 'REVIEW' %}<strong>À trancher.</strong> {% if not activity.secteur %}Choisissez d'abord le secteur.{% else %}Une activité existante lui ressemble : rattachez-la ou confirmez la création.{% endif %}
+      {%- elif activity.secteur %}<strong>Sera créée.</strong> Une nouvelle activité « {{ activity.name or activity.nom }} » dans le secteur {{ activity.secteur }}.
+      {%- else %}<strong>Secteur à choisir.</strong>{% endif %}
+    </p>
     <label class="field-stack"><span>Secteur de cette activité</span><select class="in" name="activities.{{ index }}.secteur">
       <option value="">À affecter après analyse</option>
       {% for secteur in secteurs %}<option value="{{ secteur }}" {% if activity.secteur == secteur %}selected{% endif %}>{{ secteur }}</option>{% endfor %}
     </select></label>
-    <label class="field-stack"><span>Correspondance métier</span><select class="in" name="activities.{{ index }}">
-      <option value="">Laisser la proposition automatique / à valider</option>
+    <label class="field-stack"><span>Cette activité existe-t-elle déjà dans l'ERP ?</span><select class="in" name="activities.{{ index }}">
+      <option value="">Non, ou laisser la proposition automatique</option>
       {% for candidate in activity.get('candidates', []) %}{% set target = candidate.atelier_id or candidate.id %}
-        <option value="existing:{{ target }}" {% if saved.action == 'existing' and saved.atelier_id == target %}selected{% endif %}>Utiliser #{{ target }} · {{ candidate.name or candidate.nom }}</option>
+        <option value="existing:{{ target }}" {% if saved.action == 'existing' and saved.atelier_id == target %}selected{% endif %}>Oui : rattacher à l'activité existante #{{ target }} · {{ candidate.name or candidate.nom }}</option>
       {% endfor %}
-      {% if saved.action == 'existing' %}<option value="existing:{{ saved.atelier_id }}" selected>Utiliser l'activité #{{ saved.atelier_id }} (décision enregistrée)</option>{% endif %}
-      <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Créer une activité distincte dans le secteur choisi</option>
-      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>Ignorer l'activité et toutes ses présences</option>
+      {% if saved.action == 'existing' %}<option value="existing:{{ saved.atelier_id }}" selected>Oui : rattacher à l'activité existante #{{ saved.atelier_id }} (décision enregistrée)</option>{% endif %}
+      <option value="new" {% if saved.action == 'new' %}selected{% endif %}>Non : créer une activité distincte dans le secteur choisi</option>
+      <option value="ignore" {% if saved.action == 'ignore' %}selected{% endif %}>⚠ Ne rien importer de cette activité : ni séances, ni présences</option>
     </select></label>
-    <label class="field-stack"><span>Nom métier corrigé, si nécessaire (avec décision de création)</span><input class="in" name="activities.{{ index }}.name" value="{{ saved.get('name', '') }}" maxlength="200"></label>
+    <label class="field-stack"><span>Nom métier corrigé, si le classeur l'écrit mal</span><input class="in" name="activities.{{ index }}.name" value="{{ saved.get('name', '') }}" maxlength="200" placeholder="{{ activity.name or activity.nom }}"></label>
   </article>
 {% endmacro %}
 {% macro carte_anomalie(anomaly, acquittees) %}
@@ -168,12 +176,15 @@
   <form method="post" action="{{ url_for('admin.historical_decisions', stage_id=stage_id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="digest" value="{{ plan.digest }}">
+    <input type="hidden" name="vue" value="{{ vue }}">
+    <input type="hidden" name="q" value="{{ recherche }}">
+    <input type="hidden" name="page" value="{{ participants.page }}">
 
     <section class="section-card" id="participants">
       <h2>Personnes à valider</h2>
       <p>Les {{ participants.lignes }} lignes de participants du classeur forment <strong>{{ participants.total }} dossiers</strong> : un dossier = une identité, ses orthographes et toutes ses lignes. <strong>{{ participants.a_traiter }}</strong> bloquent encore l'import et sont affichés par défaut ; les autres sont réglés, par un rapprochement automatique ou par une décision déjà enregistrée.</p>
       <p><strong>EXACT</strong> : correspondance certaine. <strong>HIGH_CONFIDENCE</strong> : plusieurs indices concordants. <strong>REVIEW</strong> : décision humaine nécessaire. <strong>NEW</strong> : nouvelle personne proposée. Pour déclarer que plusieurs lignes sont la même nouvelle personne, choisissez « Créer / regrouper » sur chacune et renseignez le même identifiant de regroupement ; laissez-le vide pour une personne distincte. « Ignorer » exclut la ligne et ses présences du lot.</p>
-      <p class="muted">Seuls les dossiers affichés ci-dessous sont renvoyés par le formulaire. Les décisions des dossiers non affichés sont conservées telles quelles.</p>
+      <p class="muted">Seuls les dossiers affichés ci-dessous sont renvoyés par le formulaire. Les décisions des dossiers non affichés sont conservées telles quelles. Une personne déjà présente dans l'ERP se règle par « C'est la fiche existante #… », jamais par « Ne rien importer », qui abandonnerait aussi ses présences.</p>
 
       <div class="form-grid-3">
         <label class="field-stack"><span>Chercher un nom, une feuille ou une ligne source</span><input class="in" type="search" name="q" form="filtre-personnes" value="{{ recherche }}" placeholder="Ex. : DUPONT, Numérique, atelier!12"></label>
@@ -238,15 +249,28 @@
 
     <section class="section-card" id="activites">
       <h2>Activités</h2>
-      <p>Affectez chaque activité à un secteur. Les séances et leurs présences seront comptées dans ce secteur. Choisir une activité existante conserve son affectation actuelle.</p>
+      <p>Chaque activité doit avoir un secteur, et l'ERP doit savoir si elle existe déjà chez lui. Toutes restent listées : une affectation de secteur se relit, elle ne se « termine » pas. Ce qui demande encore un arbitrage est en tête, le reste est replié.</p>
       {% set activites = plan.get('activities', []) %}
-      {% set a_affecter = [] %}{% set affectees = [] %}
-      {% for activity in activites %}{% if activity.secteur %}{{ affectees.append((loop.index0, activity)) or '' }}{% else %}{{ a_affecter.append((loop.index0, activity)) or '' }}{% endif %}{% endfor %}
-      <p><strong>{{ a_affecter|length }}</strong> activité{{ 's' if a_affecter|length > 1 }} sans secteur sur {{ activites|length }}.</p>
-      {% for index, activity in a_affecter %}{{ carte_activite(index, activity) }}{% endfor %}
-      {% if affectees %}
-      <details class="details-card"><summary>Activités déjà affectées à un secteur ({{ affectees|length }})</summary><div class="details-body">
-        {% for index, activity in affectees %}{{ carte_activite(index, activity) }}{% endfor %}
+      {% set a_trancher = [] %}{% set abandonnees = [] %}{% set reglees = [] %}
+      {% for activity in activites %}
+        {%- if activity.status == 'REVIEW' or not activity.secteur %}{{ a_trancher.append((loop.index0, activity)) or '' }}
+        {%- elif activity.status == 'IGNORE' %}{{ abandonnees.append((loop.index0, activity)) or '' }}
+        {%- else %}{{ reglees.append((loop.index0, activity)) or '' }}{% endif %}
+      {% endfor %}
+      {% set rattachees = reglees|selectattr('1.atelier_id')|list %}
+      <p>Sur {{ activites|length }} activités : <strong>{{ a_trancher|length }}</strong> à trancher · {{ rattachees|length }} rattachée{{ 's' if rattachees|length > 1 }} à une activité existante · {{ reglees|length - rattachees|length }} à créer · <strong>{{ abandonnees|length }}</strong> abandonnée{{ 's' if abandonnees|length > 1 }}.</p>
+
+      {% if a_trancher %}<h3>À trancher</h3>{% endif %}
+      {% for index, activity in a_trancher %}{{ carte_activite(index, activity) }}{% endfor %}
+
+      {% if abandonnees %}
+      <div class="callout-soft warnish"><strong>{{ abandonnees|length }} activité{{ 's' if abandonnees|length > 1 }} abandonnée{{ 's' if abandonnees|length > 1 }}.</strong> Rien n'en sera importé : ni l'activité, ni ses séances, ni ses présences. Si vous vouliez seulement dire « elle existe déjà dans l'ERP », c'est « Oui : rattacher à l'activité existante #… » qu'il faut choisir, pas celle-ci.</div>
+      {% for index, activity in abandonnees %}{{ carte_activite(index, activity) }}{% endfor %}
+      {% endif %}
+
+      {% if reglees %}
+      <details class="details-card"><summary>Activités réglées ({{ reglees|length }})</summary><div class="details-body">
+        {% for index, activity in reglees %}{{ carte_activite(index, activity) }}{% endfor %}
       </div></details>
       {% endif %}
     </section>
@@ -300,6 +324,7 @@
 
     <section class="section-card">
       <h2>Mettre à jour l'aperçu</h2>
+      <p>L'enregistrement relit le classeur entier et rejoue tous les rapprochements : comptez plusieurs secondes. Un bandeau vous dira ensuite exactement ce qui a été enregistré et comment le nombre de points bloquants a évolué, et vous reviendrez sur cette page de dossiers.</p>
       <div class="hero-actions"><button class="btn ok" type="submit">Enregistrer les décisions et refaire le dry-run</button></div>
     </section>
   </form>

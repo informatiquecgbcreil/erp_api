@@ -40,7 +40,12 @@ def historical_ui(app, admin_client, monkeypatch, tmp_path):
                  "normalized": {"nom": "test", "prenom": "luc", "birth_year": 1980, "birth_date": None, "genre": "Femme", "telephone": None, "email": None, "ville": None, "quartier": None, "adresse": None},
                  "candidates": []},
             ]},
-            "activities": [{"key": "act:1", "name": "Atelier", "source_sheet": "Atelier", "secteur": decisions.get('activities', {}).get('act:1', {}).get('secteur'), "status": "REVIEW", "match_status": "NEW", "candidates": [{"id": 1, "name": "Atelier existant"}]}],
+            "activities": [dict({"key": "act:1", "source_sheet": "Atelier", "source_names": ["Atelier"],
+                                 "name": decisions.get('activities', {}).get('act:1', {}).get('name') or "Atelier",
+                                 "secteur": decisions.get('activities', {}).get('act:1', {}).get('secteur'),
+                                 "status": "REVIEW", "match_status": "NEW",
+                                 "candidates": [{"id": 1, "name": "Atelier existant"}]},
+                                **({"status": "IGNORE"} if decisions.get('activities', {}).get('act:1', {}).get('action') == 'ignore' else {}))],
             "sessions": [{"key": "session:1", "sheet": "Atelier", "source_sheet": "Atelier", "source_cell": "J6", "source_column": 10,
                           "source_slot": "M", "raw_headers": {"J2": "2026-01-01T00:00:00", "J4": "M", "J6": 6}, "anomalies": [],
                           "candidate_dates": [], "date_session": "2026-01-12", "status": "REVIEW", "candidates": [{"id": 7, "date_session": "2026-01-12"}]}],
@@ -65,6 +70,12 @@ def _upload(ui, **fields):
     data = {"secteur": secteur, "xlsx_file": (BytesIO(b"route-test-workbook"), "STATS_2026_par_activite.xlsx"), **fields}
     response = ui.client.post("/admin/import-historical", data=data, content_type="multipart/form-data")
     return response
+
+
+def _secteur(ui):
+    from app.secteurs import get_secteur_labels
+    with ui.app.app_context():
+        return get_secteur_labels()[0]
 
 
 def _stage(ui):
@@ -360,6 +371,73 @@ def test_a_suggested_identifier_never_collides_with_a_saved_one(app):
         occupe = _dossiers(rapport, {"participants": {"z!9": {"action": "new", "group": libre}}})
     assert libre == "test-luc-sans-annee"
     assert occupe[0]["groupe_suggere"] == "test-luc-sans-annee-2"
+
+
+def test_a_corrected_activity_name_survives_without_a_match_decision(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    envoi = {"digest": plan["digest"], "activities.0": "", "activities.0.secteur": _secteur(historical_ui),
+             "activities.0.name": "Troc ton Tract"}
+    assert historical_ui.client.post(url + "/decisions", data=envoi).status_code == 302
+    enregistrees = json.loads((stage / "decisions.json").read_text(encoding="utf-8"))
+    assert enregistrees["activities"]["act:1"]["name"] == "Troc ton Tract"
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert 'value="Troc ton Tract"' in page
+    assert "nom corrigé" in page
+
+
+def test_an_abandoned_activity_is_shown_with_its_consequence(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    envoi = {"digest": plan["digest"], "activities.0": "ignore",
+             "activities.0.secteur": _secteur(historical_ui)}
+    assert historical_ui.client.post(url + "/decisions", data=envoi).status_code == 302
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    assert "1 activité abandonnée" in page
+    assert "ni l'activité, ni ses séances, ni ses présences" in page
+    # L'abandon n'est jamais rangé avec les cas réglés.
+    assert "Activités réglées" not in page
+
+
+def test_ignoring_never_reads_as_already_exists(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    page = historical_ui.client.get(url).get_data(as_text=True)
+    # « Déjà dans l'ERP » et « ne rien importer » ne doivent pas se confondre.
+    assert "C'est la fiche existante #99" in page
+    assert "Ne rien importer de cette ligne : ni la personne, ni ses présences" in page
+    assert "Ne rien importer de cette activité : ni séances, ni présences" in page
+    assert "Cette activité existe-t-elle déjà dans l'ERP ?" in page
+
+
+def test_saving_says_what_changed_and_returns_where_you_were(historical_ui):
+    url, _, plan = _stage(historical_ui)
+    envoi = {"digest": plan["digest"], "participants.0": "ignore",
+             "vue": "tous", "q": "test", "page": "1"}
+    response = historical_ui.client.post(url + "/decisions", data=envoi)
+    assert response.status_code == 302
+    # On revient sur le filtre et la page de travail, pas au début de la liste.
+    destination = response.headers["Location"]
+    assert "vue=tous" in destination and "q=test" in destination and "#participants" in destination
+    page = historical_ui.client.get(destination).get_data(as_text=True)
+    assert "Décisions enregistrées : 1 personne, 0 activité, 0 séance" in page
+    assert "Recalcul du dry-run en" in page
+
+
+def test_saving_nothing_says_so_instead_of_looking_successful(historical_ui):
+    url, stage, plan = _stage(historical_ui)
+    courant = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
+    response = historical_ui.client.post(url + "/decisions", data={"digest": courant["digest"]})
+    page = historical_ui.client.get(response.headers["Location"]).get_data(as_text=True)
+    assert "rien n&#39;a changé" in page
+    assert "elles n&#39;ont pas été transmises" in page
+
+
+def test_a_stale_preview_explains_itself_on_the_page(historical_ui):
+    url, _, _ = _stage(historical_ui)
+    response = historical_ui.client.post(url + "/decisions", data={"digest": "perime"})
+    assert response.status_code == 409
+    page = response.get_data(as_text=True)
+    # Une page d'erreur nue laisserait l'utilisateur sans savoir si sa saisie est passée.
+    assert "Vos décisions n&#39;ont PAS été enregistrées" in page
+    assert "Personnes à valider" in page
 
 
 def test_apply_requires_ready_confirmation_and_current_digest(historical_ui):

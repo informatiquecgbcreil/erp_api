@@ -99,7 +99,7 @@ Ouvrir Administration → Importer depuis Excel → Migration historique, ou `/a
 
 1. Déposer le classeur et lancer l'analyse sans secteur global.
 2. Examiner la cartographie, les totaux et les anomalies.
-3. Affecter chaque activité à son secteur, ou sélectionner l'activité existante correspondante.
+3. Affecter chaque activité à son secteur, ou sélectionner l'activité existante correspondante. « Ne rien importer de cette activité » abandonne l'activité, ses séances et ses présences : ce n'est pas la réponse à « elle existe déjà », qui se règle par le rattachement à l'activité existante. Les activités abandonnées sont regroupées et signalées comme telles dans l'écran. Un secteur ou un nom métier corrigé sont enregistrés même sans choix de correspondance.
 4. Résoudre les participants et les séances ambigus. Pour regrouper deux nouvelles lignes, leur donner le même identifiant de regroupement explicite, ou désigner la première comme source de la seconde.
 5. Enregistrer les décisions et refaire le dry-run. Répéter tant que des points bloquants subsistent.
 6. Télécharger le rapport et les décisions, puis confirmer le lot lorsque l'aperçu est prêt.
