@@ -264,7 +264,68 @@ def _vue_participants(plan):
     except (TypeError, ValueError):
         page = 1
     decisions = plan.get("decisions", {})
-    return vue, recherche, _selection_dossiers(_dossiers(plan, decisions), vue, recherche, page)
+    dossiers = _dossiers(plan, decisions)
+    return vue, recherche, _selection_dossiers(dossiers, vue, recherche, page), dossiers
+
+
+def _ancre(prefixe, cle):
+    """Ancre HTML valide : les clés source portent espaces, « ! » et « : »."""
+    return f"{prefixe}-" + (re.sub(r"[^a-z0-9]+", "-", str(cle).lower()).strip("-") or "sans-cle")
+
+
+FAMILLES_BLOCAGES = {
+    "participant": "Personnes", "sector": "Activités sans secteur", "activity": "Activités",
+    "session": "Séances", "anomaly": "Anomalies", "error": "Erreurs de lecture",
+    "provenance": "Provenance du lot précédent",
+}
+
+
+def _blocages(plan, dossiers, stage_id):
+    """Transformer chaque point bloquant en une tâche nommée et cliquable.
+
+    Un compteur ne dit pas où corriger. Chaque point renvoie donc vers le
+    contrôle qui le résout : le dossier de la personne, la carte de l'activité,
+    la séance ou l'anomalie concernée.
+    """
+    par_ligne = {}
+    for dossier in dossiers:
+        for ligne in dossier["lignes"]:
+            par_ligne[ligne["key"]] = dossier
+    activites = {_key(a): a for a in plan.get("activities", [])}
+    seances = {_key(s): s for s in plan.get("sessions", [])}
+    anomalies = {a.get("id"): a for a in plan.get("anomalies", []) if isinstance(a, dict)}
+
+    enrichis = []
+    for blocage in plan.get("blockers", []):
+        if not isinstance(blocage, dict):
+            enrichis.append({"famille": "Autres", "libelle": str(blocage), "message": "", "lien": None})
+            continue
+        genre, cle = blocage.get("kind", ""), blocage.get("key", "")
+        libelle, lien = cle, None
+        if genre == "participant" and cle in par_ligne:
+            dossier = par_ligne[cle]
+            # Même affichage que la carte du dossier : l'orthographe du classeur.
+            nom = " ".join(filter(None, (dossier.get("nom"), dossier.get("prenom"))))
+            libelle = f"{nom or dossier.get('libelle') or cle} — ligne {cle}"
+            lien = url_for("admin.historical_preview", stage_id=stage_id, vue="tous", q=cle,
+                           _anchor="participants")
+        elif genre in ("activity", "sector") and cle in activites:
+            libelle = activites[cle].get("name") or activites[cle].get("nom") or cle
+            lien = "#" + _ancre("activite", cle)
+        elif genre == "session" and cle in seances:
+            seance = seances[cle]
+            libelle = f"{seance.get('sheet') or seance.get('source_sheet') or ''} · " \
+                      f"{seance.get('date_session') or 'date à établir'} · cellule {seance.get('source_cell') or '?'}"
+            lien = "#" + _ancre("seance", cle)
+        elif genre == "anomaly" and cle in anomalies:
+            libelle = anomalies[cle].get("message") or anomalies[cle].get("code") or cle
+            lien = "#" + _ancre("anomalie", cle)
+        enrichis.append({"famille": FAMILLES_BLOCAGES.get(genre, genre or "Autres"),
+                         "libelle": libelle, "message": blocage.get("message", ""), "lien": lien})
+    groupes = {}
+    for item in enrichis:
+        groupes.setdefault(item["famille"], []).append(item)
+    return {"total": len(enrichis), "groupes": groupes}
 
 
 def _form_decisions(plan, previous):
@@ -342,11 +403,12 @@ def _form_decisions(plan, previous):
 
 
 def _preview_response(stage_id, metadata, plan, error=None, status=200):
-    vue, recherche, participants = _vue_participants(plan)
+    vue, recherche, participants, dossiers = _vue_participants(plan)
     return render_template(
         "admin_import_historical.html", stage_id=stage_id, metadata=metadata,
         plan=plan, match_rows=_rows(plan), row_key=_key,
         participants=participants, vue=vue, recherche=recherche,
+        blocages=_blocages(plan, dossiers, stage_id), ancre=_ancre,
         decisions=plan.get("decisions", {}), error=error, secteurs=_sectors(),
     ), status
 

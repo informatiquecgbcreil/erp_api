@@ -104,6 +104,12 @@ Ouvrir Administration → Importer depuis Excel → Migration historique, ou `/a
 5. Enregistrer les décisions et refaire le dry-run. Répéter tant que des points bloquants subsistent.
 6. Télécharger le rapport et les décisions, puis confirmer le lot lorsque l'aperçu est prêt.
 
+Le bloc « Ce qui bloque encore l'import » est la liste de travail : chaque point
+est nommé — la personne, l'activité, la séance, l'anomalie — et renvoie au
+contrôle qui le résout, le dossier de la personne étant atteint par une
+recherche sur sa ligne source. Il est déplié tant qu'il reste soixante points ou
+moins, et remplacé par « Plus rien ne bloque » quand l'aperçu est prêt.
+
 L'écran raisonne par **dossier**, pas par ligne source : les lignes de même nom,
 prénom et année sont présentées ensemble, avec leurs orthographes, leurs
 feuilles, leurs présences et les fiches ERP homonymes. Le regroupement est celui
