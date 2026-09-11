@@ -22,7 +22,7 @@ from flask_login import current_user, login_required
 
 from app.extensions import db
 from app.main.common import bp
-from app.models import AgendaCreneau, AtelierActivite, Subvention, TYPES_CRENEAU, TYPES_CRENEAU_LABELS, User
+from app.models import AgendaCreneau, AtelierActivite, Espace, Subvention, TYPES_CRENEAU, TYPES_CRENEAU_LABELS, User
 from app.rbac import require_perm
 from app.services.calendrier import (
     CHAMPS_DESCRIPTION,
@@ -211,6 +211,12 @@ def _champs_creneau_du_formulaire() -> dict | None:
         subvention_id = None
     if subvention_id is not None and db.session.get(Subvention, subvention_id) is None:
         subvention_id = None
+    # Salle : renseignée, elle occupe le planning des salles aussitôt, ce qui
+    # empêche l'accueil de louer par-dessus une réunion d'équipe.
+    espace_id = request.form.get("espace_id", type=int) or None
+    if espace_id is not None and db.session.get(Espace, espace_id) is None:
+        espace_id = None
+
     return {
         "titre": titre[:200],
         "date_creneau": d,
@@ -219,6 +225,7 @@ def _champs_creneau_du_formulaire() -> dict | None:
         "heure_fin": (request.form.get("heure_fin") or "").strip() or None,
         "description": (request.form.get("description") or "").strip() or None,
         "subvention_id": subvention_id,
+        "espace_id": espace_id,
     }
 
 

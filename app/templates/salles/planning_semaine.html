@@ -19,6 +19,12 @@
           text-decoration:none; color:inherit; }
   .pl-ev .h{ font-weight:800; }
   .pl-ev.indirect{ opacity:.62; font-style:italic; }
+  .pl-case{ position:relative; }
+  .pl-ajout{ position:absolute; top:2px; right:3px; width:19px; height:19px; border-radius:5px;
+             display:flex; align-items:center; justify-content:center; text-decoration:none;
+             font-weight:900; font-size:.85rem; line-height:1; color:#1d4ed8;
+             background:rgba(59,130,246,.14); opacity:0; transition:opacity .12s; }
+  .pl-case:hover .pl-ajout, .pl-ajout:focus{ opacity:1; }
   .pl-legende{ display:flex; gap:16px; flex-wrap:wrap; font-size:.8rem; align-items:center; margin-top:12px; }
   .pl-legende i{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px;
                  vertical-align:middle; font-style:normal; }
@@ -60,7 +66,7 @@
         <button class="btn ok" type="button" onclick="window.print()">🖨️ Imprimer</button>
         <a class="btn" href="{{ url_for('salles.planning_mensuel', site_id=site.id) }}">Vue mois</a>
         {% if can('salles:edit') %}
-          <a class="btn" href="{{ url_for('salles.blocage_form') }}">🚧 Rendre indisponible</a>
+          <a class="btn" href="{{ url_for('salles.occuper_form') }}">📌 Occuper une salle</a>
         {% endif %}
       </div>
     </div>
@@ -132,6 +138,14 @@
                 {% for cellule in ligne.cellules %}
                   <td class="pl-case {% if cellule.jour in feries %}ferie{% elif cellule.jour.weekday() >= 5 %}week-end{% endif %}"
                       data-jour="{{ cellule.jour.strftime('%a %d/%m') }}">
+                    {% if can('salles:edit') %}
+                      <a class="pl-ajout no-print"
+                         title="Occuper {{ ligne.espace.nom }} le {{ cellule.jour.strftime('%d/%m') }}"
+                         href="{{ url_for('salles.occuper_form',
+                                          espace_id=ligne.espace.id,
+                                          jour=cellule.jour.isoformat(),
+                                          retour=request.full_path) }}">+</a>
+                    {% endif %}
                     {% for ev in cellule.evenements %}
                       <span class="pl-ev {% if not ev.direct %}indirect{% endif %}"
                             style="border-left-color:{{ ev.couleur }}; background:{{ ev.couleur }}1f;"
@@ -139,6 +153,12 @@
                         <span class="h">{{ ev.occupation.heure_debut }}</span>
                         {{ ev.occupation.titre or ev.occupation.origine_label }}
                         {%- if not ev.direct %} <em>({{ ev.occupation.espace.nom }})</em>{% endif %}
+                        {%- if can('salles:edit') and ev.direct and not ev.occupation.pilotee %}
+                          <a class="no-print" style="float:right; text-decoration:none; opacity:.5;"
+                             title="Lever cette occupation"
+                             href="#" onclick="event.preventDefault();
+                               document.getElementById('lever-{{ ev.occupation.id }}').submit();">×</a>
+                        {%- endif %}
                       </span>
                     {% endfor %}
                   </td>
@@ -148,6 +168,20 @@
           </tbody>
         </table>
       </div>
+
+      {% if can('salles:edit') %}
+        <div hidden>
+          {% for ligne in lignes %}{% for cellule in ligne.cellules %}{% for ev in cellule.evenements %}
+            {%- if ev.direct and not ev.occupation.pilotee %}
+              <form id="lever-{{ ev.occupation.id }}" method="post"
+                    action="{{ url_for('salles.occupation_supprimer', occupation_id=ev.occupation.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="retour" value="{{ request.full_path }}">
+              </form>
+            {%- endif %}
+          {% endfor %}{% endfor %}{% endfor %}
+        </div>
+      {% endif %}
 
       <div class="pl-legende">
         <span><i style="background:#3b82f6;"></i>Activité</span>
