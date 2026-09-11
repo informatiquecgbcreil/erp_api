@@ -207,6 +207,7 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
             "questionnaires:export",
             "veille:view",
             "inscriptions_annuelles:view",
+            "salles:view",
 
         ],
     },
@@ -317,6 +318,12 @@ PERMS_AUTO_GRANT = {
     "inscriptions_annuelles:edit": ("direction", "directrice", "finance", "responsable_secteur"),
     "inscriptions_annuelles:reglement": ("direction", "directrice", "finance", "responsable_secteur"),
     "inscriptions_annuelles:export": ("direction", "directrice", "finance", "responsable_secteur"),
+    # Le plan des salles se consulte largement : tout le monde a besoin de
+    # savoir où se déroule une activité, et l'accueil doit pouvoir répondre
+    # à « la grande salle est libre jeudi ? » sans demander à personne.
+    "salles:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
+    # La structure du bâtiment, elle, se modifie rarement et par peu de monde.
+    "salles:edit": ("direction", "directrice", "responsable_secteur"),
 }
 
 
@@ -347,6 +354,7 @@ def _category_from_code(code: str) -> str:
         "partenaires": "Partenaires",
         "questionnaires": "Questionnaires",
         "inventaire": "Inventaire",
+        "salles": "Salles et espaces",
         "pedagogie": "Pédagogie",
         "stats": "Statistiques et bilans",
         "statsimpact": "Statistiques et bilans",
