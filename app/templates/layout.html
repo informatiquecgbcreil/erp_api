@@ -604,6 +604,9 @@
                     <a class="pill {% if ep.startswith('salles.planning') %}active{% endif %}" href="{{ url_for('salles.planning') }}">🗓️ Planning des salles</a>
                     <a class="pill {% if ep == 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
                   {% endif %}
+                  {% if can('locations:view') %}
+                    <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+                  {% endif %}
                   {% if can('partenaires:view') %}
                     <a class="pill {% if ep.startswith('partenaires.') and ep != 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.index') }}">Partenaires</a>
                     <a class="pill {% if ep == 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.carte') }}">Carte des partenaires</a>
@@ -760,6 +763,9 @@
                   {% if can('salles:view') %}
                     <a class="pill {% if ep.startswith('salles.planning') %}active{% endif %}" href="{{ url_for('salles.planning') }}">🗓️ Planning des salles</a>
                     <a class="pill {% if ep == 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
+                  {% endif %}
+                  {% if can('locations:view') %}
+                    <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
                   {% if can('partenaires:view') %}
@@ -841,6 +847,9 @@
                   {% if can('salles:view') %}
                     <a class="pill {% if ep.startswith('salles.planning') %}active{% endif %}" href="{{ url_for('salles.planning') }}">🗓️ Planning des salles</a>
                     <a class="pill {% if ep == 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
+                  {% endif %}
+                  {% if can('locations:view') %}
+                    <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
                 </div>

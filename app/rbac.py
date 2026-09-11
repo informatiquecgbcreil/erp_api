@@ -108,6 +108,9 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     # Salles & espaces
     ("salles:view", "Voir le plan des salles et leur disponibilité"),
     ("salles:edit", "Créer / modifier / supprimer les sites et les espaces"),
+    ("salles:tarifs", "Gérer la grille tarifaire, les prestations et les majorations"),
+    ("locations:view", "Voir les preneurs et les mises à disposition"),
+    ("locations:edit", "Créer / modifier une mise à disposition, suivre caution et règlements"),
 
     # Inventaire
     ("inventaire:view", "Voir l’inventaire"),
@@ -208,6 +211,7 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
             "veille:view",
             "inscriptions_annuelles:view",
             "salles:view",
+            "locations:view",
 
         ],
     },
@@ -324,6 +328,11 @@ PERMS_AUTO_GRANT = {
     "salles:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
     # La structure du bâtiment, elle, se modifie rarement et par peu de monde.
     "salles:edit": ("direction", "directrice", "responsable_secteur"),
+    # La grille des prix engage la structure : direction et finance.
+    "salles:tarifs": ("direction", "directrice", "finance"),
+    # L'accueil tient le planning de location au quotidien.
+    "locations:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
+    "locations:edit": ("direction", "directrice", "finance", "responsable_secteur"),
 }
 
 
@@ -355,6 +364,7 @@ def _category_from_code(code: str) -> str:
         "questionnaires": "Questionnaires",
         "inventaire": "Inventaire",
         "salles": "Salles et espaces",
+        "locations": "Mises à disposition",
         "pedagogie": "Pédagogie",
         "stats": "Statistiques et bilans",
         "statsimpact": "Statistiques et bilans",

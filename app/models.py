@@ -4023,6 +4023,12 @@ class Site(db.Model):
     #: repli quand les espaces n'ont pas de valeur individuelle.
     valeur_locative_annuelle = db.Column(db.Float, nullable=True)
 
+    #: Assujettissement à la TVA sur les mises à disposition. La plupart
+    #: des centres sociaux ne le sont pas et doivent porter la mention
+    #: d'exonération sur leurs contrats et factures.
+    tva_applicable = db.Column(db.Boolean, nullable=False, default=False)
+    mention_tva = db.Column(db.String(255), nullable=True)
+
     #: Horaires d'ouverture par jour de semaine, en JSON :
     #: ``{"lundi": ["09:00", "18:00"], "dimanche": null}``. Une plage
     #: absente ou nulle signifie « fermé ». Sert à borner les plannings et
@@ -4048,6 +4054,13 @@ class Site(db.Model):
     @property
     def regime_label(self) -> str:
         return REGIMES_SOUS_LOCATION_LABELS.get(self.regime_sous_location, self.regime_sous_location)
+
+    @property
+    def mention_tva_affichee(self) -> str:
+        """Mention légale à porter sur les contrats et factures."""
+        if self.tva_applicable:
+            return (self.mention_tva or "TVA applicable au taux en vigueur.").strip()
+        return (self.mention_tva or "TVA non applicable, art. 293 B du CGI.").strip()
 
     @property
     def alerte_sous_location(self) -> str | None:
@@ -4233,6 +4246,12 @@ class Occupation(db.Model):
         db.Integer, db.ForeignKey("agenda_creneau.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
+    #: Mise à disposition à l'origine de l'occupation. Chaque date retenue
+    #: d'une réservation est une ligne ici : la location passe donc par le
+    #: même moteur de conflits que les séances et les réunions.
+    reservation_id = db.Column(
+        db.Integer, db.ForeignKey("reservation.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     #: Libellé recopié pour que le planning s'affiche sans aller chercher
     #: la séance, l'atelier et le secteur à chaque case de la grille.
     titre = db.Column(db.String(200), nullable=True)
@@ -4252,6 +4271,11 @@ class Occupation(db.Model):
     creneau = db.relationship(
         "AgendaCreneau",
         backref=db.backref("occupations", cascade="all, delete-orphan"),
+    )
+    reservation = db.relationship(
+        "Reservation",
+        backref=db.backref("occupations", cascade="all, delete-orphan",
+                           order_by="Occupation.date_jour, Occupation.minute_debut"),
     )
 
     __table_args__ = (
@@ -4290,12 +4314,411 @@ class Occupation(db.Model):
 
     @property
     def pilotee(self) -> bool:
-        """Vrai si elle est le reflet d'une séance ou d'un créneau d'agenda.
+        """Vrai si elle est le reflet d'une séance, d'un créneau ou d'une
+        réservation.
 
         Une occupation pilotée se modifie à sa source : la supprimer depuis
-        le planning ne servirait à rien, elle reviendrait toute seule.
+        le planning ne servirait à rien — elle reviendrait toute seule, ou
+        laisserait un contrat sans date.
         """
-        return self.origine in ORIGINES_PILOTEES
+        return self.origine in ORIGINES_PILOTEES or self.reservation_id is not None
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Occupation {self.date_jour} {self.plage} espace={self.espace_id}>"
+
+
+# =====================================================================
+# LOCATIONS : preneurs, tarifs, réservations
+# =====================================================================
+#
+# Le principe qui gouverne tout ce bloc : le PRIX NE SE DISCUTE PAS AU
+# COMPTOIR. La grille est saisie une fois, le calcul retient toujours le
+# tarif le plus avantageux pour le preneur, et le détail s'affiche ligne
+# par ligne. Quand il faut malgré tout s'écarter du barème, c'est possible
+# — mais avec un motif obligatoire, tracé et imprimable.
+
+#: Unités de facturation, de la plus fine à la plus large. L'ordre compte :
+#: le moteur les essaie toutes et garde la moins chère.
+UNITES_TARIF = ["heure", "demi_journee", "journee", "semaine", "mois", "annee"]
+UNITES_TARIF_LABELS = {
+    "heure": "Heure",
+    "demi_journee": "Demi-journée",
+    "journee": "Journée",
+    "semaine": "Semaine",
+    "mois": "Mois",
+    "annee": "Année",
+}
+#: Durée couverte par un forfait, en minutes. Sert à savoir si une
+#: occupation « tient » dans le forfait ou le déborde.
+UNITES_TARIF_MINUTES = {
+    "heure": 60,
+    "demi_journee": 4 * 60,
+    "journee": 12 * 60,
+}
+#: Forfaits qui couvrent plusieurs jours : comparés au total, pas à chaque
+#: occurrence (une semaine de location, ce n'est pas sept journées).
+UNITES_PERIODE_JOURS = {"semaine": 7, "mois": 30, "annee": 365}
+
+#: Conditions déclenchant une majoration. Volontairement peu nombreuses :
+#: une règle qu'on ne sait pas expliquer en une phrase au preneur est une
+#: règle qui finira en litige.
+CONDITIONS_MAJORATION = ["soiree", "samedi", "dimanche", "ferie"]
+CONDITIONS_MAJORATION_LABELS = {
+    "soiree": "En soirée (à partir d'une heure donnée)",
+    "samedi": "Le samedi",
+    "dimanche": "Le dimanche",
+    "ferie": "Un jour férié",
+}
+
+#: Base de facturation d'une prestation annexe.
+UNITES_PRESTATION = ["forfait", "heure", "jour"]
+UNITES_PRESTATION_LABELS = {
+    "forfait": "Au forfait (une fois)",
+    "heure": "Par heure",
+    "jour": "Par jour",
+}
+
+STATUTS_RESERVATION = ["option", "confirmee", "annulee", "realisee"]
+STATUTS_RESERVATION_LABELS = {
+    "option": "Option (pré-réservation)",
+    "confirmee": "Confirmée",
+    "annulee": "Annulée",
+    "realisee": "Terminée",
+}
+#: Statuts qui immobilisent réellement la salle.
+STATUTS_RESERVATION_BLOQUANTS = ["option", "confirmee", "realisee"]
+
+
+class CategoriePreneur(db.Model):
+    """Qui loue : association du territoire, entreprise, particulier…
+
+    Administrable de bout en bout — chaque structure a ses propres
+    catégories, et elles bougent. C'est le second axe de la grille
+    tarifaire : une entreprise et une association du quartier ne paient pas
+    le même prix pour la même salle.
+    """
+
+    __tablename__ = "categorie_preneur"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(40), nullable=False, unique=True, index=True)
+    libelle = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    ordre = db.Column(db.Integer, nullable=False, default=0)
+    #: Catégorie dont les mises à disposition sont gratuites par principe
+    #: (partenaire conventionné, service interne). Le motif reste demandé :
+    #: c'est lui qui justifie la valorisation au compte de résultat.
+    gratuit_par_defaut = db.Column(db.Boolean, nullable=False, default=False)
+    actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<CategoriePreneur {self.code}>"
+
+
+class Preneur(db.Model):
+    """Une association, une entreprise, un particulier qui occupe les lieux.
+
+    Distinct de ``Partenaire`` (l'annuaire des structures avec qui on
+    travaille) : on loue à des gens qui ne sont pas des partenaires, et on
+    a des partenaires à qui on ne loue rien. Le lien reste possible pour ne
+    pas ressaisir les coordonnées d'une structure déjà connue.
+    """
+
+    __tablename__ = "preneur"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(180), nullable=False, index=True)
+    categorie_id = db.Column(
+        db.Integer, db.ForeignKey("categorie_preneur.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    partenaire_id = db.Column(
+        db.Integer, db.ForeignKey("partenaire.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    contact_nom = db.Column(db.String(160), nullable=True)
+    email = db.Column(db.String(180), nullable=True)
+    telephone = db.Column(db.String(60), nullable=True)
+    adresse = db.Column(db.String(255), nullable=True)
+    code_postal = db.Column(db.String(10), nullable=True)
+    ville = db.Column(db.String(120), nullable=True)
+    siret = db.Column(db.String(20), nullable=True)
+    #: Représentant légal, pour les contrats.
+    representant = db.Column(db.String(160), nullable=True)
+
+    #: Attestation de responsabilité civile : sans elle, pas de clés. On
+    #: stocke la date de fin de validité pour prévenir AVANT le jour J.
+    assurance_rc_fin = db.Column(db.Date, nullable=True, index=True)
+    assurance_reference = db.Column(db.String(160), nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+    actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    categorie = db.relationship("CategoriePreneur")
+    partenaire = db.relationship("Partenaire")
+
+    @property
+    def assurance_valide_le(self):
+        """Renvoie une fonction de test lisible : ``preneur.assurance_ok(jour)``."""
+        return self.assurance_rc_fin
+
+    def assurance_ok(self, jour: date) -> bool:
+        """Vrai si l'attestation couvre encore ce jour-là.
+
+        Une attestation absente n'est PAS considérée valide : c'est
+        justement le cas qu'il faut voir.
+        """
+        return bool(self.assurance_rc_fin and self.assurance_rc_fin >= jour)
+
+    @property
+    def coordonnees(self) -> str:
+        morceaux = [self.adresse, " ".join(filter(None, [self.code_postal, self.ville]))]
+        return ", ".join(m for m in morceaux if m)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Preneur {self.nom!r}>"
+
+
+class TarifSalle(db.Model):
+    """Le prix d'une salle, pour une unité et une catégorie de preneur.
+
+    Historisé comme ``TarifBareme`` : plusieurs lignes coexistent pour le
+    même triplet avec des dates de début différentes, et le tarif retenu
+    est celui dont la date de début est la plus récente sans dépasser la
+    date de référence. Changer un prix en janvier ne touche donc pas aux
+    contrats déjà signés.
+    """
+
+    __tablename__ = "tarif_salle"
+
+    id = db.Column(db.Integer, primary_key=True)
+    espace_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="CASCADE"), nullable=False, index=True)
+    categorie_id = db.Column(
+        db.Integer, db.ForeignKey("categorie_preneur.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    unite = db.Column(db.String(20), nullable=False, index=True)
+    montant = db.Column(db.Float, nullable=False)
+    date_debut = db.Column(db.Date, nullable=False, index=True)
+    commentaire = db.Column(db.String(255), nullable=True)
+
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    espace = db.relationship("Espace", backref=db.backref("tarifs", cascade="all, delete-orphan"))
+    categorie = db.relationship("CategoriePreneur")
+
+    __table_args__ = (
+        db.Index("ix_tarif_salle_lookup", "espace_id", "categorie_id", "unite", "date_debut"),
+    )
+
+    @property
+    def unite_label(self) -> str:
+        return UNITES_TARIF_LABELS.get(self.unite, self.unite)
+
+
+class PrestationSalle(db.Model):
+    """Une prestation annexe facturable : vidéoprojecteur, sono, ménage…"""
+
+    __tablename__ = "prestation_salle"
+
+    id = db.Column(db.Integer, primary_key=True)
+    libelle = db.Column(db.String(160), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    montant = db.Column(db.Float, nullable=False, default=0.0)
+    unite = db.Column(db.String(20), nullable=False, default="forfait")
+    ordre = db.Column(db.Integer, nullable=False, default=0)
+    actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    @property
+    def unite_label(self) -> str:
+        return UNITES_PRESTATION_LABELS.get(self.unite, self.unite)
+
+
+class MajorationSalle(db.Model):
+    """Un supplément conditionnel : soirée, week-end, jour férié.
+
+    Exprimé en pourcentage OU en montant fixe, jamais les deux — une règle
+    qu'on ne sait pas dire en une phrase au preneur finit en litige.
+    """
+
+    __tablename__ = "majoration_salle"
+
+    id = db.Column(db.Integer, primary_key=True)
+    libelle = db.Column(db.String(160), nullable=False)
+    condition = db.Column(db.String(30), nullable=False, index=True)
+    #: Pour la condition « soirée » : heure à partir de laquelle elle
+    #: s'applique, en minutes depuis minuit (1200 = 20 h).
+    seuil_minute = db.Column(db.Integer, nullable=True)
+    pourcentage = db.Column(db.Float, nullable=True)
+    montant_fixe = db.Column(db.Float, nullable=True)
+    actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    @property
+    def condition_label(self) -> str:
+        return CONDITIONS_MAJORATION_LABELS.get(self.condition, self.condition)
+
+    @property
+    def libelle_complet(self) -> str:
+        if self.pourcentage:
+            return f"{self.libelle} (+{self.pourcentage:g} %)"
+        if self.montant_fixe:
+            return f"{self.libelle} (+{self.montant_fixe:g} €)"
+        return self.libelle
+
+
+class Reservation(db.Model):
+    """Une mise à disposition : qui, quelle salle, quand, à quel prix.
+
+    Les dates n'ont pas de colonne ici : chaque date retenue devient une
+    ``Occupation`` rattachée à cette réservation. C'est ce qui fait
+    qu'une location profite du moteur de conflits du lot 1 sans une ligne
+    de code supplémentaire, et qu'une réunion d'équipe protège la salle
+    contre une location exactement comme l'inverse.
+    """
+
+    __tablename__ = "reservation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    reference = db.Column(db.String(30), nullable=False, unique=True, index=True)
+    preneur_id = db.Column(db.Integer, db.ForeignKey("preneur.id", ondelete="RESTRICT"), nullable=False, index=True)
+    espace_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="RESTRICT"), nullable=False, index=True)
+    #: Catégorie recopiée au moment de la réservation : si le preneur change
+    #: de catégorie plus tard, le prix déjà convenu ne doit pas bouger.
+    categorie_id = db.Column(
+        db.Integer, db.ForeignKey("categorie_preneur.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    titre = db.Column(db.String(200), nullable=False)
+    effectif = db.Column(db.Integer, nullable=True)
+    statut = db.Column(db.String(20), nullable=False, default="option", index=True)
+    #: Une option posée au téléphone se libère toute seule à cette date, si
+    #: personne n'a rappelé. Sans ça, le planning se remplit de fantômes.
+    option_expire_le = db.Column(db.Date, nullable=True, index=True)
+
+    # --- Prix -------------------------------------------------------------
+    #: Montant issu du barème, recalculé tant que la réservation est une
+    #: option, puis figé à la confirmation.
+    montant_calcule = db.Column(db.Float, nullable=False, default=0.0)
+    #: Détail du calcul au format JSON, figé lui aussi : c'est ce qui
+    #: s'imprime sur le contrat et ce qui explique le prix six mois après.
+    detail_json = db.Column(db.Text, nullable=True)
+    #: Prix imposé à la main. Toujours accompagné de son motif : on peut
+    #: s'écarter du barème, on ne peut pas le faire sans le dire.
+    montant_manuel = db.Column(db.Float, nullable=True)
+    motif_montant_manuel = db.Column(db.String(255), nullable=True)
+    gratuite = db.Column(db.Boolean, nullable=False, default=False)
+    motif_gratuite = db.Column(db.String(255), nullable=True)
+
+    # --- Garanties et règlements -----------------------------------------
+    caution_montant = db.Column(db.Float, nullable=True)
+    caution_encaissee = db.Column(db.Boolean, nullable=False, default=False)
+    caution_restituee_le = db.Column(db.Date, nullable=True)
+    acompte_montant = db.Column(db.Float, nullable=True)
+    acompte_regle_le = db.Column(db.Date, nullable=True)
+    solde_regle_le = db.Column(db.Date, nullable=True)
+
+    # --- Logistique -------------------------------------------------------
+    referent = db.Column(db.String(160), nullable=True)
+    cles_remises_le = db.Column(db.Date, nullable=True)
+    cles_rendues_le = db.Column(db.Date, nullable=True)
+    conditions_particulieres = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    preneur = db.relationship("Preneur", backref=db.backref("reservations", lazy="dynamic"))
+    espace = db.relationship("Espace")
+    categorie = db.relationship("CategoriePreneur")
+    prestations = db.relationship(
+        "ReservationPrestation", back_populates="reservation", cascade="all, delete-orphan"
+    )
+
+    @property
+    def statut_label(self) -> str:
+        return STATUTS_RESERVATION_LABELS.get(self.statut, self.statut)
+
+    @property
+    def bloquante(self) -> bool:
+        return self.statut in STATUTS_RESERVATION_BLOQUANTS
+
+    @property
+    def montant_du(self) -> float:
+        """Le prix réellement dû, dans l'ordre des priorités métier."""
+        if self.gratuite:
+            return 0.0
+        if self.montant_manuel is not None:
+            return round(float(self.montant_manuel), 2)
+        return round(float(self.montant_calcule or 0.0), 2)
+
+    @property
+    def montant_regle(self) -> float:
+        total = 0.0
+        if self.acompte_regle_le and self.acompte_montant:
+            total += float(self.acompte_montant)
+        if self.solde_regle_le:
+            total = self.montant_du
+        return round(total, 2)
+
+    @property
+    def reste_du(self) -> float:
+        return round(max(0.0, self.montant_du - self.montant_regle), 2)
+
+    @property
+    def ecart_au_bareme(self) -> float | None:
+        """De combien on s'écarte du barème, pour le contrôle et la
+        valorisation des gratuités consenties."""
+        if self.gratuite:
+            return round(-float(self.montant_calcule or 0.0), 2)
+        if self.montant_manuel is not None:
+            return round(float(self.montant_manuel) - float(self.montant_calcule or 0.0), 2)
+        return None
+
+    @property
+    def detail(self) -> list[dict]:
+        """Le détail du calcul, prêt à afficher (jamais None)."""
+        if not self.detail_json:
+            return []
+        try:
+            donnees = json.loads(self.detail_json)
+        except (TypeError, ValueError):
+            return []
+        return donnees if isinstance(donnees, list) else []
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Reservation {self.reference} {self.titre!r}>"
+
+
+class ReservationPrestation(db.Model):
+    """Une prestation retenue sur une réservation, avec sa quantité.
+
+    Le libellé et le prix unitaire sont RECOPIÉS : modifier le catalogue
+    ne doit pas réécrire le prix d'un contrat déjà signé.
+    """
+
+    __tablename__ = "reservation_prestation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    reservation_id = db.Column(
+        db.Integer, db.ForeignKey("reservation.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    prestation_id = db.Column(
+        db.Integer, db.ForeignKey("prestation_salle.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    libelle = db.Column(db.String(160), nullable=False)
+    montant_unitaire = db.Column(db.Float, nullable=False, default=0.0)
+    unite = db.Column(db.String(20), nullable=False, default="forfait")
+    quantite = db.Column(db.Float, nullable=False, default=1.0)
+
+    reservation = db.relationship("Reservation", back_populates="prestations")
+    prestation = db.relationship("PrestationSalle")
+
+    @property
+    def total(self) -> float:
+        return round(float(self.montant_unitaire or 0) * float(self.quantite or 0), 2)

@@ -60,17 +60,26 @@ def plan(app):
         db.session.add_all([grande, demi_a, demi_b, atelier, armoire, cuisine])
         db.session.commit()
 
-        yield {
+        ids = {
             "site_id": site.id, "grande": grande.id, "demi_a": demi_a.id,
             "demi_b": demi_b.id, "atelier": atelier.id, "armoire": armoire.id,
             "cuisine": cuisine.id,
         }
+        site_id = site.id
 
+    # Le contexte applicatif est REFERMÉ avant le yield : le garder ouvert
+    # pendant le test le ferait réutiliser par les requêtes du client HTTP,
+    # qui liraient alors des objets restés en cache dans la session au lieu
+    # de l'état réel en base. C'est exactement ce qui se passe en production,
+    # où chaque requête a son propre contexte.
+    yield ids
+
+    with app.app_context():
         # Suppression par l'ORM et non en masse : c'est lui qui porte les
         # cascades (SQLite n'applique pas les ON DELETE). Un DELETE en masse
         # laisserait des espaces orphelins, que SQLite rattacherait au
         # prochain site créé en recyclant l'identifiant libéré.
-        reste = db.session.get(Site, site.id)
+        reste = db.session.get(Site, site_id)
         if reste is not None:
             db.session.delete(reste)
             db.session.commit()

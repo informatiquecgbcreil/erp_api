@@ -44,10 +44,17 @@ def batiment(app):
         db.session.add_all([grande, demi_a, atelier])
         db.session.commit()
         ids = {"site": site.id, "grande": grande.id, "demi_a": demi_a.id, "atelier": atelier.id}
+        site_id = site.id
 
-        yield ids
+    # Le contexte applicatif est REFERMÉ avant le yield : le garder ouvert
+    # pendant le test le ferait réutiliser par les requêtes du client HTTP,
+    # qui liraient alors des objets restés en cache dans la session au lieu
+    # de l'état réel en base. C'est exactement ce qui se passe en production,
+    # où chaque requête a son propre contexte.
+    yield ids
 
-        reste = db.session.get(Site, site.id)
+    with app.app_context():
+        reste = db.session.get(Site, site_id)
         if reste is not None:
             db.session.delete(reste)
             db.session.commit()

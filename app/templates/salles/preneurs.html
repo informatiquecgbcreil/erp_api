@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+{% block title %}Preneurs{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>👥 Preneurs</h1>
+        <p class="muted" style="margin:0;">
+          Les structures et personnes qui occupent tes locaux. Distinct de
+          l'annuaire des partenaires : on loue à des gens qui n'en sont pas,
+          et on a des partenaires à qui on ne loue rien.
+        </p>
+      </div>
+      {% if can('locations:edit') %}
+        <a class="btn ok" href="{{ url_for('salles.preneur_form') }}">➕ Nouveau preneur</a>
+      {% endif %}
+    </div>
+    <form method="get" class="inline" style="gap:8px; margin-top:12px;">
+      <input class="in" name="q" value="{{ recherche }}" placeholder="Rechercher un preneur…"
+             style="min-width:230px;">
+      <button class="btn" type="submit">Chercher</button>
+    </form>
+  </div>
+
+  <div class="card">
+    {% if preneurs %}
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr><th>Nom</th><th>Catégorie</th><th>Contact</th><th>Assurance RC</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for p in preneurs %}
+              <tr {% if not p.actif %}class="muted"{% endif %}>
+                <td><strong>{{ p.nom }}</strong>{% if not p.actif %} <span class="tag">inactif</span>{% endif %}</td>
+                <td class="muted">{{ p.categorie.libelle if p.categorie else '—' }}</td>
+                <td class="muted">
+                  {{ p.contact_nom or '—' }}
+                  {%- if p.telephone %}<br>{{ p.telephone }}{% endif %}
+                </td>
+                <td>
+                  {% if not p.assurance_rc_fin %}
+                    <span style="color:#b91c1c; font-weight:700;">⛔ absente</span>
+                  {% elif not p.assurance_ok(aujourdhui) %}
+                    <span style="color:#b91c1c; font-weight:700;">
+                      ⛔ périmée le {{ p.assurance_rc_fin.strftime('%d/%m/%Y') }}</span>
+                  {% else %}
+                    <span style="color:#047857;">✅ jusqu'au {{ p.assurance_rc_fin.strftime('%d/%m/%Y') }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if can('locations:edit') %}
+                    <a class="btn" href="{{ url_for('salles.preneur_form', preneur_id=p.id) }}">✏️</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="ui-empty-state">
+        <p class="muted">Aucun preneur{% if recherche %} pour « {{ recherche }} »{% endif %}.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

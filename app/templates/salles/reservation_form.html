@@ -1,0 +1,222 @@
+{% extends "layout.html" %}
+{% block title %}Nouvelle mise à disposition{% endblock %}
+{% block body %}
+<style>
+  .jours-semaine{ display:flex; gap:6px; flex-wrap:wrap; }
+  .jours-semaine label{ border:2px solid var(--border,#e3e6ef); border-radius:9px; padding:6px 11px;
+                        cursor:pointer; font-size:.85rem; font-weight:600; }
+  .jours-semaine label:has(input:checked){ border-color:#3b82f6; background:rgba(59,130,246,.1); }
+  .jours-semaine input{ margin-right:5px; }
+  .presta-ligne{ display:flex; align-items:center; gap:11px; padding:7px 0;
+                 border-bottom:1px solid var(--border,#eef1f7); flex-wrap:wrap; }
+  .presta-ligne:last-child{ border-bottom:none; }
+  .presta-nom{ flex:1; min-width:190px; }
+</style>
+
+<div class="stack">
+  <div class="card">
+    <h1>🤝 Nouvelle mise à disposition</h1>
+    <p class="muted">
+      Qui, quelle salle, quelles dates. Le prix se calcule tout seul à partir
+      de la grille — tu n'as aucun barème à connaître, et le détail s'affiche
+      ligne par ligne sur la fiche.
+    </p>
+  </div>
+
+  {% if not preneurs %}
+    <div class="card" style="border-left:4px solid #f59e0b;">
+      <p style="margin:0;">Aucun preneur enregistré. Crée d'abord la structure ou la personne qui occupe les lieux.</p>
+      <a class="btn ok" style="margin-top:10px;" href="{{ url_for('salles.preneur_form') }}">➕ Nouveau preneur</a>
+    </div>
+  {% elif not salles %}
+    <div class="card" style="border-left:4px solid #f59e0b;">
+      <p style="margin:0;">
+        Aucune salle n'est marquée « mobilisable par un tiers ». Coche la case
+        sur les salles concernées, dans le plan.
+      </p>
+      <a class="btn" style="margin-top:10px;" href="{{ url_for('salles.index') }}">Aller au plan</a>
+    </div>
+  {% else %}
+  <form method="post" class="stack" style="gap:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card">
+      <h2 style="margin-top:0;">Qui et où</h2>
+      <div class="stack" style="gap:10px;">
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:230px;">
+            <label class="ui-label">Preneur *</label>
+            <select class="in" name="preneur_id" required style="width:100%;">
+              <option value="">— Choisir —</option>
+              {% for p in preneurs %}
+                <option value="{{ p.id }}">
+                  {{ p.nom }}{% if p.categorie %} · {{ p.categorie.libelle }}{% endif %}
+                  {%- if not p.assurance_rc_fin %} ⚠️ sans assurance{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
+              La catégorie du preneur détermine le tarif appliqué.
+              <a href="{{ url_for('salles.preneur_form') }}">Nouveau preneur</a>
+            </p>
+          </div>
+          <div style="flex:1; min-width:230px;">
+            <label class="ui-label">Salle *</label>
+            <select class="in" name="espace_id" required style="width:100%;">
+              <option value="">— Choisir —</option>
+              {% for s in salles %}
+                <option value="{{ s.id }}" {% if espace_prefere == s.id %}selected{% endif %}>
+                  {{ s.chemin }}{% if s.capacite_affichee %} ({{ s.capacite_affichee }} pl.){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:2; min-width:230px;">
+            <label class="ui-label">Intitulé *</label>
+            <input class="in" name="titre" required style="width:100%;"
+                   placeholder="Cours de gym, assemblée générale, anniversaire…">
+          </div>
+          <div style="width:130px;">
+            <label class="ui-label">Effectif</label>
+            <input class="in" name="effectif" inputmode="numeric" style="width:100%;">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Quand</h2>
+      <div class="stack" style="gap:10px;">
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:160px;">
+            <label class="ui-label">Du *</label>
+            <input class="in" type="date" name="date_debut" required style="width:100%;"
+                   value="{{ jour_prefere }}">
+          </div>
+          <div style="flex:1; min-width:160px;">
+            <label class="ui-label">Au</label>
+            <input class="in" type="date" name="date_fin" style="width:100%;">
+            <p class="muted" style="margin:4px 0 0; font-size:.8rem;">Vide = une seule date.</p>
+          </div>
+          <div style="width:140px;">
+            <label class="ui-label">De</label>
+            <input class="in" type="time" name="heure_debut" value="09:00" style="width:100%;">
+          </div>
+          <div style="width:140px;">
+            <label class="ui-label">À</label>
+            <input class="in" type="time" name="heure_fin" value="12:00" style="width:100%;">
+          </div>
+        </div>
+
+        <div>
+          <label class="ui-label">Jours retenus (pour une occupation régulière)</label>
+          <div class="jours-semaine">
+            {% for i, nom in [(0,'Lundi'),(1,'Mardi'),(2,'Mercredi'),(3,'Jeudi'),
+                              (4,'Vendredi'),(5,'Samedi'),(6,'Dimanche')] %}
+              <label><input type="checkbox" name="jour_semaine" value="{{ i }}">{{ nom }}</label>
+            {% endfor %}
+          </div>
+          <p class="muted" style="margin:6px 0 0; font-size:.8rem;">
+            Rien de coché = toutes les dates de la période.
+            « L'asso de gym, tous les mardis de septembre à juin » : coche Mardi,
+            mets septembre en début et juin en fin.
+          </p>
+        </div>
+
+        <label class="inline" style="gap:7px; align-items:center;">
+          <input type="checkbox" name="sauter_feries" value="1" checked>
+          <span>Ne pas retenir les jours fériés</span>
+        </label>
+      </div>
+    </div>
+
+    {% if catalogue %}
+      <div class="card">
+        <h2 style="margin-top:0;">Prestations</h2>
+        <p class="muted">Laisse à zéro ce qui n'est pas retenu.</p>
+        {% for p in catalogue %}
+          <div class="presta-ligne">
+            <span class="presta-nom">
+              <strong>{{ p.libelle }}</strong>
+              {% if p.description %}<br><span class="muted" style="font-size:.8rem;">{{ p.description }}</span>{% endif %}
+            </span>
+            <span class="muted" style="white-space:nowrap;">{{ '%.2f'|format(p.montant) }} € · {{ p.unite_label|lower }}</span>
+            <input class="in" name="prestation_{{ p.id }}" inputmode="decimal"
+                   style="width:90px;" placeholder="0">
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 style="margin-top:0;">Conditions</h2>
+      <div class="stack" style="gap:10px;">
+        <label class="inline" style="gap:7px; align-items:flex-start;">
+          <input type="checkbox" name="poser_option" value="1" checked>
+          <span>
+            <strong>Poser une option</strong> plutôt que confirmer tout de suite
+            <span class="muted" style="display:block; font-size:.82rem;">
+              La salle est bloquée, mais la réservation se libérera seule à la date
+              limite si personne ne rappelle.
+            </span>
+          </span>
+        </label>
+        <div style="max-width:260px;">
+          <label class="ui-label">L'option expire le</label>
+          <input class="in" type="date" name="option_expire_le" style="width:100%;">
+        </div>
+
+        <label class="inline" style="gap:7px; align-items:center;">
+          <input type="checkbox" name="gratuite" value="1"
+                 onchange="document.getElementById('motif-gratuite').hidden = !this.checked;">
+          <span><strong>Mise à disposition gratuite</strong></span>
+        </label>
+        <div id="motif-gratuite" hidden>
+          <label class="ui-label">Motif de la gratuité *</label>
+          <input class="in" name="motif_gratuite" style="width:100%;"
+                 placeholder="Convention de partenariat, réciprocité, action d'intérêt général…">
+          <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
+            Obligatoire : c'est ce motif qui justifie la gratuité en contrôle et
+            qui permet de valoriser ce que la structure apporte au territoire.
+          </p>
+        </div>
+
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:160px;">
+            <label class="ui-label">Caution (€)</label>
+            <input class="in" name="caution_montant" inputmode="decimal" style="width:100%;">
+          </div>
+          <div style="flex:1; min-width:160px;">
+            <label class="ui-label">Acompte (€)</label>
+            <input class="in" name="acompte_montant" inputmode="decimal" style="width:100%;">
+          </div>
+          <div style="flex:1; min-width:190px;">
+            <label class="ui-label">Référent (ouverture / fermeture)</label>
+            <input class="in" name="referent" style="width:100%;">
+          </div>
+        </div>
+
+        <div>
+          <label class="ui-label">Conditions particulières</label>
+          <textarea class="in" name="conditions_particulieres" rows="2" style="width:100%;"
+                    placeholder="Accès par la porte arrière, remise en état des tables, pas d'accès cuisine…"></textarea>
+        </div>
+        <div>
+          <label class="ui-label">Notes internes</label>
+          <textarea class="in" name="notes" rows="2" style="width:100%;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <button class="btn ok" type="submit">🤝 Créer et calculer le prix</button>
+        <a class="btn" href="{{ url_for('salles.reservations') }}">Annuler</a>
+      </div>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

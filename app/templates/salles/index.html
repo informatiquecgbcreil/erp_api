@@ -45,6 +45,12 @@
         <a class="btn" href="{{ url_for('salles.occuper_form') }}">📌 Occuper une salle</a>
         <a class="btn" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
         <a class="btn" href="{{ url_for('salles.planning_jour') }}">📍 Aujourd'hui</a>
+        {% if can('locations:view') %}
+          <a class="btn" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+        {% endif %}
+        {% if can('salles:tarifs') %}
+          <a class="btn" href="{{ url_for('salles.tarifs') }}">💶 Tarifs</a>
+        {% endif %}
         {% if can('salles:edit') %}
           <a class="btn" href="{{ url_for('salles.site_form') }}">➕ Nouveau site</a>
         {% endif %}

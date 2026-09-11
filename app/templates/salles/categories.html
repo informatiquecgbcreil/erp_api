@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% block title %}Catégories de preneurs{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>🏷️ Catégories de preneurs</h1>
+    <p class="muted">
+      Le second axe de la grille tarifaire. C'est ce qui permet de facturer une
+      entreprise autrement qu'une association du quartier, sans que personne
+      n'ait à y penser au moment de la réservation.
+    </p>
+  </div>
+
+  <div class="card">
+    {% if categories %}
+      <div class="tablewrap clean">
+        <table>
+          <thead><tr><th>Catégorie</th><th>Description</th><th>Gratuité</th><th>État</th><th></th></tr></thead>
+          <tbody>
+            {% for c in categories %}
+              <tr {% if not c.actif %}class="muted"{% endif %}>
+                <td><strong>{{ c.libelle }}</strong></td>
+                <td class="muted">{{ c.description or '—' }}</td>
+                <td>{% if c.gratuit_par_defaut %}<span class="tag">gratuit par principe</span>{% else %}—{% endif %}</td>
+                <td>{{ 'active' if c.actif else 'désactivée' }}</td>
+                <td>
+                  <div class="inline" style="gap:6px;">
+                    <form method="post" action="{{ url_for('salles.categorie_basculer', categorie_id=c.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn" type="submit" style="padding:2px 9px; font-size:.76rem;">
+                        {{ 'Désactiver' if c.actif else 'Réactiver' }}</button>
+                    </form>
+                    <form method="post" action="{{ url_for('salles.categorie_supprimer', categorie_id=c.id) }}"
+                          style="display:inline;"
+                          onsubmit="return confirm('Supprimer « {{ c.libelle|e }} » et tous ses tarifs ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;">🗑️</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="ui-empty-state">
+        <p class="muted">Aucune catégorie. On peut partir d'un jeu courant, à ajuster ensuite.</p>
+        <form method="post" action="{{ url_for('salles.categories_installer') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn ok" type="submit">Créer les {{ depart|length }} catégories courantes</button>
+        </form>
+        <p class="muted" style="margin-top:8px; font-size:.82rem;">
+          {{ depart | map(attribute=1) | join(' · ') }}
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Ajouter une catégorie</h2>
+    <form method="post" class="stack" style="gap:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:220px;">
+          <label class="ui-label">Libellé *</label>
+          <input class="in" name="libelle" required style="width:100%;"
+                 placeholder="Association du territoire, Comité d'entreprise…">
+        </div>
+        <div style="flex:2; min-width:240px;">
+          <label class="ui-label">Description</label>
+          <input class="in" name="description" style="width:100%;">
+        </div>
+      </div>
+      <label class="inline" style="gap:7px; align-items:flex-start;">
+        <input type="checkbox" name="gratuit_par_defaut" value="1">
+        <span>
+          <strong>Gratuit par principe</strong>
+          <span class="muted" style="display:block; font-size:.82rem;">
+            La gratuité est pré-cochée à la réservation. Le motif reste demandé :
+            c'est lui qui la justifie en contrôle et permet de la valoriser.
+          </span>
+        </span>
+      </label>
+      <div><button class="btn ok" type="submit">➕ Ajouter</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends "layout.html" %}
+{% block title %}Prestations et majorations{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>🧰 Prestations et majorations</h1>
+    <p class="muted">
+      Ce qui s'ajoute au prix de la salle : le matériel qu'on prête, le ménage
+      qu'on fait, et les créneaux qui coûtent plus cher parce qu'il faut
+      quelqu'un pour ouvrir et fermer.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Prestations facturables</h2>
+    {% if prestations %}
+      <div class="tablewrap clean">
+        <table>
+          <thead><tr><th>Prestation</th><th>Base</th><th>Montant</th><th></th></tr></thead>
+          <tbody>
+            {% for p in prestations %}
+              <tr>
+                <td><strong>{{ p.libelle }}</strong>
+                  {% if p.description %}<br><span class="muted" style="font-size:.8rem;">{{ p.description }}</span>{% endif %}</td>
+                <td class="muted">{{ p.unite_label }}</td>
+                <td style="font-variant-numeric:tabular-nums;">{{ '%.2f'|format(p.montant) }} €</td>
+                <td>
+                  <form method="post" action="{{ url_for('salles.prestation_supprimer', prestation_id=p.id) }}"
+                        style="display:inline;" onsubmit="return confirm('Supprimer cette prestation ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;">🗑️</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Aucune prestation. Exemples : vidéoprojecteur, sono, ménage, mise en place des tables, café.</p>
+    {% endif %}
+
+    <form method="post" class="stack" style="gap:10px; margin-top:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="cible" value="prestation">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:190px;">
+          <label class="ui-label">Libellé *</label>
+          <input class="in" name="libelle" required style="width:100%;" placeholder="Vidéoprojecteur">
+        </div>
+        <div style="width:130px;">
+          <label class="ui-label">Montant (€)</label>
+          <input class="in" name="montant" inputmode="decimal" style="width:100%;">
+        </div>
+        <div style="min-width:170px;">
+          <label class="ui-label">Base</label>
+          <select class="in" name="unite" style="width:100%;">
+            {% for u in unites %}<option value="{{ u }}">{{ unites_labels[u] }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="ui-label">Description</label>
+        <input class="in" name="description" style="width:100%;">
+      </div>
+      <div><button class="btn ok" type="submit">➕ Ajouter la prestation</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Majorations</h2>
+    <p class="muted">
+      Un supplément conditionnel. Pourcentage <em>ou</em> montant fixe, jamais
+      les deux : une règle qu'on ne sait pas dire en une phrase au preneur finit
+      toujours en litige au comptoir.
+    </p>
+    {% if majorations %}
+      <div class="tablewrap clean">
+        <table>
+          <thead><tr><th>Majoration</th><th>Quand</th><th>Supplément</th><th></th></tr></thead>
+          <tbody>
+            {% for m in majorations %}
+              <tr {% if not m.actif %}class="muted"{% endif %}>
+                <td><strong>{{ m.libelle }}</strong></td>
+                <td class="muted">
+                  {{ m.condition_label }}
+                  {%- if m.condition == 'soiree' and m.seuil_minute %}
+                    — à partir de {{ '%02d:%02d'|format(m.seuil_minute // 60, m.seuil_minute % 60) }}
+                  {% endif %}
+                </td>
+                <td>{% if m.pourcentage %}+{{ '%g'|format(m.pourcentage) }} %{% else %}+{{ '%.2f'|format(m.montant_fixe or 0) }} €{% endif %}</td>
+                <td>
+                  <form method="post" action="{{ url_for('salles.majoration_supprimer', majoration_id=m.id) }}"
+                        style="display:inline;" onsubmit="return confirm('Supprimer cette majoration ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;">🗑️</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Aucune majoration. Exemples : soirée après 20 h, samedi, dimanche, jour férié.</p>
+    {% endif %}
+
+    <form method="post" class="stack" style="gap:10px; margin-top:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="cible" value="majoration">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:190px;">
+          <label class="ui-label">Libellé *</label>
+          <input class="in" name="libelle_majoration" required style="width:100%;"
+                 placeholder="Ouverture en soirée">
+        </div>
+        <div style="min-width:210px;">
+          <label class="ui-label">Condition</label>
+          <select class="in" name="condition" style="width:100%;">
+            {% for c in conditions %}<option value="{{ c }}">{{ conditions_labels[c] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div style="width:140px;">
+          <label class="ui-label">Seuil (soirée)</label>
+          <input class="in" type="time" name="seuil_heure" value="20:00" style="width:100%;">
+        </div>
+      </div>
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <div style="width:150px;">
+          <label class="ui-label">Pourcentage (%)</label>
+          <input class="in" name="pourcentage" inputmode="decimal" style="width:100%;">
+        </div>
+        <div style="width:150px;">
+          <label class="ui-label">…ou montant (€)</label>
+          <input class="in" name="montant_fixe" inputmode="decimal" style="width:100%;">
+        </div>
+      </div>
+      <div><button class="btn ok" type="submit">➕ Ajouter la majoration</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

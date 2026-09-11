@@ -1,0 +1,125 @@
+{% extends "layout.html" %}
+{% block title %}{{ "Modifier un preneur" if preneur else "Nouveau preneur" }}{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>{{ "✏️ " + preneur.nom if preneur else "➕ Nouveau preneur" }}</h1>
+  </div>
+
+  <form method="post" class="stack" style="gap:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card">
+      <h2 style="margin-top:0;">Identité</h2>
+      <div class="stack" style="gap:10px;">
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:2; min-width:230px;">
+            <label class="ui-label">Nom *</label>
+            <input class="in" name="nom" required style="width:100%;"
+                   value="{{ preneur.nom if preneur else '' }}"
+                   placeholder="Association Gym Volontaire, M. Dupont…">
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <label class="ui-label">Catégorie</label>
+            <select class="in" name="categorie_id" style="width:100%;">
+              <option value="">— Non classé —</option>
+              {% for c in categories %}
+                <option value="{{ c.id }}" {% if preneur and preneur.categorie_id == c.id %}selected{% endif %}>
+                  {{ c.libelle }}{% if c.gratuit_par_defaut %} (gratuit){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
+              C'est elle qui détermine le tarif appliqué.
+            </p>
+          </div>
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:200px;">
+            <label class="ui-label">Contact</label>
+            <input class="in" name="contact_nom" style="width:100%;"
+                   value="{{ preneur.contact_nom or '' if preneur else '' }}">
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <label class="ui-label">Représentant légal (contrat)</label>
+            <input class="in" name="representant" style="width:100%;"
+                   value="{{ preneur.representant or '' if preneur else '' }}">
+          </div>
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:200px;">
+            <label class="ui-label">Courriel</label>
+            <input class="in" type="email" name="email" style="width:100%;"
+                   value="{{ preneur.email or '' if preneur else '' }}">
+          </div>
+          <div style="flex:1; min-width:170px;">
+            <label class="ui-label">Téléphone</label>
+            <input class="in" name="telephone" style="width:100%;"
+                   value="{{ preneur.telephone or '' if preneur else '' }}">
+          </div>
+          <div style="flex:1; min-width:170px;">
+            <label class="ui-label">SIRET</label>
+            <input class="in" name="siret" style="width:100%;"
+                   value="{{ preneur.siret or '' if preneur else '' }}">
+          </div>
+        </div>
+        <div>
+          <label class="ui-label">Adresse</label>
+          <input class="in" name="adresse" style="width:100%;"
+                 value="{{ preneur.adresse or '' if preneur else '' }}">
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="width:140px;">
+            <label class="ui-label">Code postal</label>
+            <input class="in" name="code_postal" style="width:100%;"
+                   value="{{ preneur.code_postal or '' if preneur else '' }}">
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <label class="ui-label">Ville</label>
+            <input class="in" name="ville" style="width:100%;"
+                   value="{{ preneur.ville or '' if preneur else '' }}">
+          </div>
+        </div>
+        <label class="inline" style="gap:7px; align-items:center;">
+          <input type="checkbox" name="actif" value="1" {% if not preneur or preneur.actif %}checked{% endif %}>
+          <span>Preneur actif</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:4px solid #ef4444;">
+      <h2 style="margin-top:0;">Assurance responsabilité civile</h2>
+      <p class="muted">
+        Sans attestation valide, pas de clés — et la confirmation d'une mise à
+        disposition sera refusée. Ce n'est pas une formalité : c'est ce qui
+        protège la structure si quelque chose arrive pendant l'occupation.
+      </p>
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:190px;">
+          <label class="ui-label">Valable jusqu'au</label>
+          <input class="in" type="date" name="assurance_rc_fin" style="width:100%;"
+                 value="{{ preneur.assurance_rc_fin.isoformat() if preneur and preneur.assurance_rc_fin else '' }}">
+        </div>
+        <div style="flex:2; min-width:220px;">
+          <label class="ui-label">Référence / compagnie</label>
+          <input class="in" name="assurance_reference" style="width:100%;"
+                 value="{{ preneur.assurance_reference or '' if preneur else '' }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="ui-label">Notes</label>
+      <textarea class="in" name="notes" rows="3" style="width:100%;"
+        >{{ preneur.notes or '' if preneur else '' }}</textarea>
+    </div>
+
+    <div class="card">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <button class="btn ok" type="submit">💾 Enregistrer</button>
+        <a class="btn" href="{{ url_for('salles.preneurs') }}">Annuler</a>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
