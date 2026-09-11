@@ -484,3 +484,59 @@ def test_un_espace_ne_peut_pas_devenir_son_propre_descendant(app, plan):
         grande = Espace.query.get(plan["grande"])
         interdits = zone_conflit_ids(grande)
         assert plan["demi_a"] in interdits  # donc refusé comme parent de la grande salle
+
+
+# ---------------------------------------------------------------------------
+# Mise à jour d'une installation existante
+# ---------------------------------------------------------------------------
+
+def test_les_droits_arrivent_sur_une_installation_existante(app):
+    """Une permission neuve doit atteindre les rôles DÉJÀ en base.
+
+    Les gabarits de rôles ne sont pas réappliqués lors d'une mise à jour
+    (pour ne pas écraser les réglages faits à la main dans l'écran des
+    droits) : sans entrée dans ``PERMS_AUTO_GRANT``, la permission serait
+    créée sans être accordée à personne, et le module resterait invisible
+    en production tout en passant les tests sur base neuve.
+    """
+    from app.models import Permission, Role
+    from app.rbac import PERMS_AUTO_GRANT, bootstrap_rbac
+
+    with app.app_context():
+        codes = ("salles:view", "salles:edit")
+        for code in codes:
+            assert code in PERMS_AUTO_GRANT, f"{code} n'atteindrait aucun rôle existant"
+
+        # On rejoue la situation d'avant la mise à jour : la permission
+        # n'existe pas encore, les rôles, eux, sont déjà là.
+        for code in codes:
+            perm = Permission.query.filter_by(code=code).first()
+            if perm is not None:
+                for role in list(perm.roles) if hasattr(perm, "roles") else []:
+                    role.permissions = [p for p in role.permissions if p.code != code]
+                for role in Role.query.all():
+                    role.permissions = [p for p in role.permissions if p.code != code]
+                db.session.delete(perm)
+        db.session.commit()
+
+        bootstrap_rbac()
+
+        for code in codes:
+            perm = Permission.query.filter_by(code=code).first()
+            assert perm is not None, f"{code} n'a pas été recréée"
+            beneficiaires = {
+                r.code for r in Role.query.all() if perm in r.permissions
+            }
+            attendus = set(PERMS_AUTO_GRANT[code])
+            manquants = attendus - beneficiaires
+            assert not manquants, f"{code} n'a pas été accordée à {manquants}"
+
+
+def test_le_menu_affiche_les_salles(admin_client, plan):
+    """Le module doit être atteignable depuis la navigation, pas seulement
+    par son URL — dans le mode d'interface simple comme en mode expert."""
+    for mode in ("simple", "expert"):
+        admin_client.post("/ui-mode", data={"mode": mode})
+        page = admin_client.get("/dashboard").get_data(as_text=True)
+        assert "/salles/" in page, f"entrée « Salles » absente du menu en mode {mode}"
+        assert "/salles/disponibilite" in page, f"entrée « Qui est libre ? » absente en mode {mode}"
