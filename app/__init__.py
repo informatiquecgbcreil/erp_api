@@ -350,6 +350,26 @@ def create_app():
         return {"can": can}
 
     @app.context_processor
+    def _inject_salles():
+        """Liste des salles occupables, pour les listes déroulantes.
+
+        Exposée comme fonction plutôt que comme valeur : elle n'est
+        interrogée que par les gabarits qui en ont besoin (formulaire
+        d'atelier, formulaire de séance), pas sur chaque page. Évite
+        surtout de trimballer la même variable dans une dizaine d'appels
+        à ``render_template`` répartis dans plusieurs modules.
+        """
+        def salles_occupables():
+            try:
+                from app.services.salles import espaces_reservables
+
+                return espaces_reservables()
+            except Exception:  # noqa: BLE001 - un formulaire ne doit jamais tomber pour ça
+                return []
+
+        return {"salles_occupables": salles_occupables}
+
+    @app.context_processor
     def _inject_aide_contextuelle():
         # Aide « Comprendre cette page » : pilotée par le registre central
         # app/aide/contenu.py, affichée automatiquement par layout.html.

@@ -47,6 +47,18 @@
           <label>Heure de fin</label>
           <input class="in" type="time" name="heure_fin">
         </div>
+          <div style="margin-top:10px;">
+            <label>Salle</label>
+            <select class="in" name="espace_id">
+              <option value="">— Hors les murs / aucune salle —</option>
+              {% for salle in salles_occupables() %}
+                <option value="{{ salle.id }}" {% if atelier.espace_id == salle.id %}selected{% endif %}>
+                  {{ salle.chemin }}{% if salle.capacite_affichee %} ({{ salle.capacite_affichee }} pl.){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted">Toutes les séances créées seront placées dans cette salle.</div>
+          </div>
         <div class="field-stack">
           <label>Capacité</label>
           <input class="in" type="number" min="0" step="1" name="capacite"

@@ -41,7 +41,9 @@
         </p>
       </div>
       <div class="inline" style="gap:8px; flex-wrap:wrap;">
-        <a class="btn ok" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
+        <a class="btn ok" href="{{ url_for('salles.planning') }}">🗓️ Planning</a>
+        <a class="btn" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
+        <a class="btn" href="{{ url_for('salles.planning_jour') }}">📍 Aujourd'hui</a>
         {% if can('salles:edit') %}
           <a class="btn" href="{{ url_for('salles.site_form') }}">➕ Nouveau site</a>
         {% endif %}
@@ -95,6 +97,7 @@
         <div class="inline" style="gap:8px; flex-wrap:wrap;">
           {% if can('salles:edit') %}
             <a class="btn" href="{{ url_for('salles.espace_form', site_id=site.id) }}">➕ Espace</a>
+            <a class="btn" href="{{ url_for('salles.site_horaires', site_id=site.id) }}">🕗 Horaires</a>
             <a class="btn" href="{{ url_for('salles.site_form', site_id=site.id) }}">✏️ Le site</a>
           {% endif %}
         </div>
