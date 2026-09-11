@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+{% block title %}Mises à disposition{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>🤝 Mises à disposition</h1>
+        <p class="muted" style="margin:0;">
+          Les options arrivées à échéance se libèrent à l'ouverture de cette page :
+          ton planning ne se remplit pas de fantômes.
+        </p>
+      </div>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        {% if can('locations:edit') %}
+          <a class="btn ok" href="{{ url_for('salles.reservation_nouvelle') }}">➕ Nouvelle</a>
+        {% endif %}
+        <a class="btn" href="{{ url_for('salles.preneurs') }}">👥 Preneurs</a>
+        {% if can('salles:tarifs') %}
+          <a class="btn" href="{{ url_for('salles.tarifs') }}">💶 Tarifs</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="inline" style="gap:7px; flex-wrap:wrap; margin-top:12px;">
+      <a class="pill {% if not statut %}active{% endif %}" href="{{ url_for('salles.reservations') }}">Toutes</a>
+      {% for code in statuts %}
+        <a class="pill {% if statut == code %}active{% endif %}"
+           href="{{ url_for('salles.reservations', statut=code) }}">{{ statuts_labels[code] }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if reservations %}
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th>Référence</th><th>Preneur</th><th>Salle</th><th>Objet</th>
+              <th>Dates</th><th>Montant</th><th>État</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in reservations %}
+              <tr>
+                <td><a href="{{ url_for('salles.reservation_fiche', reservation_id=r.id) }}">{{ r.reference }}</a></td>
+                <td>
+                  {{ r.preneur.nom }}
+                  {%- if r.preneur.assurance_rc_fin and not r.preneur.assurance_ok(aujourdhui) %}
+                    <span class="tag" style="background:rgba(239,68,68,.15);">assurance périmée</span>
+                  {%- elif not r.preneur.assurance_rc_fin %}
+                    <span class="tag" style="background:rgba(245,158,11,.18);">sans assurance</span>
+                  {% endif %}
+                </td>
+                <td class="muted">{{ r.espace.nom }}</td>
+                <td><strong>{{ r.titre }}</strong></td>
+                <td class="muted">
+                  {% set occ = r.occupations %}
+                  {% if occ %}
+                    {{ occ[0].date_jour.strftime('%d/%m/%y') }}
+                    {%- if occ|length > 1 %} → {{ occ[-1].date_jour.strftime('%d/%m/%y') }}
+                      ({{ occ|length }}){% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td style="white-space:nowrap; font-variant-numeric:tabular-nums;">
+                  {% if r.gratuite %}
+                    <span class="muted">gratuit</span>
+                  {% else %}
+                    {{ '%.2f'|format(r.montant_du) }} €
+                    {%- if r.reste_du and r.reste_du < r.montant_du %}
+                      <br><span class="muted" style="font-size:.76rem;">reste {{ '%.2f'|format(r.reste_du) }} €</span>
+                    {% endif %}
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="tag">{{ r.statut_label }}</span>
+                  {% if r.statut == 'option' and r.option_expire_le %}
+                    <br><span class="muted" style="font-size:.74rem;">
+                      jusqu'au {{ r.option_expire_le.strftime('%d/%m') }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="ui-empty-state">
+        <h2>Aucune mise à disposition</h2>
+        <p class="muted">
+          Pour louer une salle il faut trois choses : un preneur, une salle cochée
+          « mobilisable par un tiers », et une grille tarifaire.
+        </p>
+        {% if can('locations:edit') %}
+          <a class="btn ok" href="{{ url_for('salles.reservation_nouvelle') }}">➕ Créer la première</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

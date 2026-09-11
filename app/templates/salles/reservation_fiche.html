@@ -1,0 +1,242 @@
+{% extends "layout.html" %}
+{% block title %}{{ r.reference }}{% endblock %}
+{% block body %}
+<style>
+  .ctrl{ padding:9px 12px; border-radius:9px; margin-bottom:7px; font-size:.88rem; border-left:4px solid; }
+  .ctrl.bloquant{ background:rgba(239,68,68,.09); border-color:#ef4444; }
+  .ctrl.alerte{ background:rgba(245,158,11,.11); border-color:#f59e0b; }
+  .det-ligne{ display:flex; gap:12px; padding:7px 0; border-bottom:1px solid var(--border,#eef1f7);
+              flex-wrap:wrap; align-items:baseline; }
+  .det-ligne:last-child{ border-bottom:none; }
+  .det-lib{ flex:1; min-width:210px; font-weight:600; }
+  .det-detail{ flex:2; min-width:240px; font-size:.82rem; opacity:.8; }
+  .det-montant{ font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
+  .det-ligne.majoration .det-lib{ font-weight:500; opacity:.85; }
+  .total-box{ display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+              padding:12px 0 0; margin-top:6px; border-top:2px solid var(--border,#d7dbe8);
+              font-size:1.16rem; font-weight:900; flex-wrap:wrap; }
+  .etat{ display:inline-block; padding:3px 11px; border-radius:20px; font-size:.78rem; font-weight:800; }
+  .etat.option{ background:rgba(245,158,11,.18); color:#92400e; }
+  .etat.confirmee{ background:rgba(16,185,129,.18); color:#047857; }
+  .etat.annulee{ background:rgba(148,163,184,.22); color:#475569; }
+  .etat.realisee{ background:rgba(59,130,246,.16); color:#1d4ed8; }
+  @media print{ .no-print{ display:none !important; } }
+</style>
+
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1 style="margin-bottom:3px;">
+          {{ r.titre }} <span class="etat {{ r.statut }}">{{ r.statut_label }}</span>
+        </h1>
+        <p class="muted" style="margin:0;">
+          {{ r.reference }} · {{ r.preneur.nom }}
+          {%- if r.categorie %} ({{ r.categorie.libelle }}){% endif %}
+          · {{ r.espace.chemin }}
+          {%- if r.effectif %} · {{ r.effectif }} personnes{% endif %}
+        </p>
+        {% if r.statut == 'option' and r.option_expire_le %}
+          <p class="muted" style="margin:6px 0 0;">
+            ⏳ Option valable jusqu'au <strong>{{ r.option_expire_le.strftime('%d/%m/%Y') }}</strong>,
+            libérée automatiquement après.
+          </p>
+        {% endif %}
+      </div>
+      <div class="inline no-print" style="gap:8px; flex-wrap:wrap;">
+        <button class="btn" type="button" onclick="window.print()">🖨️ Imprimer</button>
+        <a class="btn" href="{{ url_for('salles.reservations') }}">← Les réservations</a>
+      </div>
+    </div>
+  </div>
+
+  {% if controles %}
+    <div class="card">
+      <h2 style="margin-top:0;">Points à vérifier avant de s'engager</h2>
+      {% for c in controles %}
+        <div class="ctrl {{ c.niveau }}">
+          {{ '⛔' if c.niveau == 'bloquant' else '⚠️' }} {{ c.message }}
+        </div>
+      {% endfor %}
+      {% if controles | selectattr('niveau', 'equalto', 'bloquant') | list %}
+        <p class="muted" style="margin:10px 0 0; font-size:.84rem;">
+          Les points rouges empêchent la confirmation tant qu'ils ne sont pas levés.
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <h2 style="margin-top:0;">Le prix, ligne par ligne</h2>
+    {% if r.gratuite %}
+      <p style="padding:10px 13px; border-radius:9px; background:rgba(16,185,129,.1);
+                border-left:4px solid #10b981;">
+        <strong>Mise à disposition gratuite.</strong>
+        {% if r.motif_gratuite %}{{ r.motif_gratuite }}{% endif %}
+        {% if r.montant_calcule %}
+          <br><span class="muted" style="font-size:.84rem;">
+            Valeur au barème : {{ '%.2f'|format(r.montant_calcule) }} € — c'est ce que la
+            structure apporte, et ce qui se valorise au compte de résultat.
+          </span>
+        {% endif %}
+      </p>
+    {% endif %}
+
+    {% if r.detail %}
+      {% for ligne in r.detail %}
+        <div class="det-ligne {{ ligne.type }}">
+          <span class="det-lib">{{ ligne.libelle }}</span>
+          <span class="det-detail">{{ ligne.detail or '' }}</span>
+          <span class="det-montant">{{ '%.2f'|format(ligne.montant) }} €</span>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">Aucun détail : la grille tarifaire est probablement vide pour cette salle.</p>
+    {% endif %}
+
+    <div class="total-box">
+      <span>{{ 'Valeur au barème' if r.gratuite else 'Total' }}</span>
+      <span>{{ '%.2f'|format(r.montant_calcule) }} €</span>
+    </div>
+
+    {% if r.montant_manuel is not none %}
+      <div class="total-box" style="border-top:none; padding-top:4px; color:#92400e;">
+        <span>Prix appliqué (saisi à la main)</span>
+        <span>{{ '%.2f'|format(r.montant_manuel) }} €</span>
+      </div>
+      <p class="muted" style="margin:4px 0 0; font-size:.84rem;">
+        Motif : {{ r.motif_montant_manuel }}
+        {% if r.ecart_au_bareme %}
+          — écart de {{ '%+.2f'|format(r.ecart_au_bareme) }} € par rapport au barème.
+        {% endif %}
+      </p>
+    {% endif %}
+
+    <p class="muted" style="margin-top:12px; font-size:.82rem;">
+      {{ r.espace.site.mention_tva_affichee if r.espace and r.espace.site else '' }}
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Dates retenues ({{ r.occupations | length }})</h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead><tr><th>Date</th><th>Horaire</th><th>État</th></tr></thead>
+        <tbody>
+          {% for occ in r.occupations %}
+            <tr>
+              <td>{{ occ.date_jour.strftime('%a %d/%m/%Y') }}</td>
+              <td>{{ occ.plage }}</td>
+              <td class="{% if occ.statut == 'annule' %}muted{% endif %}">
+                {{ 'Annulée' if occ.statut == 'annule' else 'Salle bloquée' }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if can('locations:edit') %}
+    <div class="card no-print">
+      <h2 style="margin-top:0;">Suivi</h2>
+      <form method="post" action="{{ url_for('salles.reservation_reglements', reservation_id=r.id) }}"
+            class="stack" style="gap:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:150px;">
+            <label class="ui-label">Caution (€)</label>
+            <input class="in" name="caution_montant" inputmode="decimal" style="width:100%;"
+                   value="{{ r.caution_montant or '' }}">
+          </div>
+          <label class="inline" style="gap:6px; align-items:center; padding-bottom:9px;">
+            <input type="checkbox" name="caution_encaissee" value="1" {% if r.caution_encaissee %}checked{% endif %}>
+            <span>Encaissée</span>
+          </label>
+          <div style="flex:1; min-width:170px;">
+            <label class="ui-label">Caution restituée le</label>
+            <input class="in" type="date" name="caution_restituee_le" style="width:100%;"
+                   value="{{ r.caution_restituee_le.isoformat() if r.caution_restituee_le else '' }}">
+          </div>
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:150px;">
+            <label class="ui-label">Acompte (€)</label>
+            <input class="in" name="acompte_montant" inputmode="decimal" style="width:100%;"
+                   value="{{ r.acompte_montant or '' }}">
+          </div>
+          <div style="flex:1; min-width:165px;">
+            <label class="ui-label">Acompte réglé le</label>
+            <input class="in" type="date" name="acompte_regle_le" style="width:100%;"
+                   value="{{ r.acompte_regle_le.isoformat() if r.acompte_regle_le else '' }}">
+          </div>
+          <div style="flex:1; min-width:165px;">
+            <label class="ui-label">Solde réglé le</label>
+            <input class="in" type="date" name="solde_regle_le" style="width:100%;"
+                   value="{{ r.solde_regle_le.isoformat() if r.solde_regle_le else '' }}">
+          </div>
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:165px;">
+            <label class="ui-label">Clés remises le</label>
+            <input class="in" type="date" name="cles_remises_le" style="width:100%;"
+                   value="{{ r.cles_remises_le.isoformat() if r.cles_remises_le else '' }}">
+          </div>
+          <div style="flex:1; min-width:165px;">
+            <label class="ui-label">Clés rendues le</label>
+            <input class="in" type="date" name="cles_rendues_le" style="width:100%;"
+                   value="{{ r.cles_rendues_le.isoformat() if r.cles_rendues_le else '' }}">
+          </div>
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+          <div style="flex:1; min-width:150px;">
+            <label class="ui-label">Prix imposé (€)</label>
+            <input class="in" name="montant_manuel" inputmode="decimal" style="width:100%;"
+                   value="{{ r.montant_manuel if r.montant_manuel is not none else '' }}">
+          </div>
+          <div style="flex:2; min-width:230px;">
+            <label class="ui-label">Motif de l'écart au barème *</label>
+            <input class="in" name="motif_montant_manuel" style="width:100%;"
+                   value="{{ r.motif_montant_manuel or '' }}"
+                   placeholder="Tarif négocié, situation particulière, geste commercial…">
+          </div>
+        </div>
+        <p class="muted" style="margin:0; font-size:.82rem;">
+          S'écarter du barème est permis — le faire sans le dire ne l'est pas.
+          Le motif s'imprime avec le prix.
+        </p>
+        <div><button class="btn ok" type="submit">💾 Enregistrer le suivi</button></div>
+      </form>
+    </div>
+
+    <div class="card no-print">
+      <h2 style="margin-top:0;">Changer l'état</h2>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        {% for code in statuts %}
+          {% if code != r.statut %}
+            <form method="post" action="{{ url_for('salles.reservation_statut', reservation_id=r.id) }}"
+                  style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="statut" value="{{ code }}">
+              <button class="btn {% if code == 'confirmee' %}ok{% elif code == 'annulee' %}warn{% endif %}"
+                      type="submit">{{ statuts_labels[code] }}</button>
+            </form>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <p class="muted" style="margin:10px 0 0; font-size:.83rem;">
+        Annuler libère toutes les dates sur le planning. La réservation reste
+        consultable : on garde la trace de la demande.
+      </p>
+    </div>
+
+    <div class="card no-print ui-delete-row">
+      <form method="post" action="{{ url_for('salles.reservation_supprimer', reservation_id=r.id) }}"
+            onsubmit="return confirm('Supprimer définitivement {{ r.reference }} et ses dates ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn warn" type="submit">🗑️ Supprimer</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+{% block title %}Grille tarifaire{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>💶 Grille tarifaire</h1>
+    <p class="muted">
+      Un prix par <strong>salle × unité × catégorie de preneur</strong>. Une
+      entreprise et une association du quartier ne paient pas le même prix pour
+      la même salle, et personne n'a à s'en souvenir au comptoir.
+    </p>
+    <p class="muted" style="margin-top:8px;">
+      Chaque enregistrement porte une <strong>date d'effet</strong> : changer un
+      prix en janvier ne touche pas aux mises à disposition déjà calculées.
+      Tu peux préparer la grille de l'an prochain dès aujourd'hui.
+    </p>
+  </div>
+
+  {% if not categories %}
+    <div class="card" style="border-left:4px solid #f59e0b;">
+      <p style="margin:0;">Aucune catégorie de preneur : la grille n'a pas de second axe.</p>
+      <a class="btn ok" style="margin-top:10px;" href="{{ url_for('salles.categories') }}">Créer les catégories</a>
+    </div>
+  {% elif not salles %}
+    <div class="card" style="border-left:4px solid #f59e0b;">
+      <p style="margin:0;">Aucune salle n'est cochée « mobilisable par un tiers ».</p>
+      <a class="btn" style="margin-top:10px;" href="{{ url_for('salles.index') }}">Aller au plan</a>
+    </div>
+  {% else %}
+
+  <div class="card">
+    <form method="get" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+      <div>
+        <label class="ui-label">Salle</label>
+        <select class="in" name="espace_id" onchange="this.form.submit()" style="min-width:250px;">
+          {% for s in salles %}
+            <option value="{{ s.id }}" {% if espace_id == s.id %}selected{% endif %}>{{ s.chemin }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="ui-label">Tarifs en vigueur au</label>
+        <input class="in" type="date" name="au" value="{{ jour.isoformat() }}" onchange="this.form.submit()">
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">
+      {{ espace.nom if espace else '' }} — au {{ jour.strftime('%d/%m/%Y') }}
+    </h2>
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Catégorie</th>
+            {% for u in unites %}<th style="text-align:right;">{{ unites_labels[u] }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for ligne in lignes %}
+            <tr>
+              <td>
+                <strong>{{ ligne.categorie.libelle }}</strong>
+                {% if ligne.categorie.gratuit_par_defaut %}
+                  <br><span class="muted" style="font-size:.76rem;">gratuit par principe</span>
+                {% endif %}
+              </td>
+              {% for u in unites %}
+                <td style="text-align:right; font-variant-numeric:tabular-nums;">
+                  {% if u in ligne.montants %}
+                    {{ '%.2f'|format(ligne.montants[u]) }} €
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" style="margin-top:10px; font-size:.83rem;">
+      Une case vide n'est pas une gratuité : c'est une unité qui ne sera pas
+      proposée au calcul. Renseigne au moins l'heure ou la demi-journée.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Enregistrer des tarifs</h2>
+    <form method="post" class="stack" style="gap:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="espace_id" value="{{ espace_id }}">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:220px;">
+          <label class="ui-label">Catégorie *</label>
+          <select class="in" name="categorie_id" required style="width:100%;">
+            {% for c in categories %}<option value="{{ c.id }}">{{ c.libelle }}</option>{% endfor %}
+          </select>
+        </div>
+        <div style="min-width:180px;">
+          <label class="ui-label">À effet du *</label>
+          <input class="in" type="date" name="date_debut" required style="width:100%;"
+                 value="{{ aujourdhui.isoformat() }}">
+        </div>
+      </div>
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        {% for u in unites %}
+          <div style="flex:1; min-width:120px;">
+            <label class="ui-label">{{ unites_labels[u] }} (€)</label>
+            <input class="in" name="montant_{{ u }}" inputmode="decimal" style="width:100%;" placeholder="—">
+          </div>
+        {% endfor %}
+      </div>
+      <div>
+        <label class="ui-label">Commentaire</label>
+        <input class="in" name="commentaire" style="width:100%;"
+               placeholder="Délibération du conseil d'administration du…">
+      </div>
+      <div><button class="btn ok" type="submit">💾 Enregistrer</button></div>
+      <p class="muted" style="margin:0; font-size:.82rem;">
+        Laisse vide ce que tu ne tarifes pas. Le calcul retiendra toujours,
+        parmi les unités renseignées, celle qui revient le moins cher au preneur.
+      </p>
+    </form>
+  </div>
+
+  {% if historique %}
+    <div class="card">
+      <h2 style="margin-top:0;">Historique de cette salle</h2>
+      <div class="tablewrap clean">
+        <table>
+          <thead><tr><th>À effet du</th><th>Catégorie</th><th>Unité</th><th>Montant</th><th>Commentaire</th><th></th></tr></thead>
+          <tbody>
+            {% for t in historique %}
+              <tr {% if t.date_debut > jour %}class="muted"{% endif %}>
+                <td>{{ t.date_debut.strftime('%d/%m/%Y') }}{% if t.date_debut > jour %} <span class="tag">à venir</span>{% endif %}</td>
+                <td>{{ t.categorie.libelle if t.categorie else '—' }}</td>
+                <td>{{ t.unite_label }}</td>
+                <td style="font-variant-numeric:tabular-nums;">{{ '%.2f'|format(t.montant) }} €</td>
+                <td class="muted">{{ t.commentaire or '' }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('salles.tarif_supprimer', tarif_id=t.id) }}"
+                        style="display:inline;" onsubmit="return confirm('Supprimer cette ligne ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn warn" type="submit" style="padding:2px 8px; font-size:.75rem;">🗑️</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
