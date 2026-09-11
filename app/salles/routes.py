@@ -33,11 +33,25 @@ from app.services.audit import journaliser
 from app.services.salles import (
     SalleErreur,
     arbre_du_site,
+    espaces_reservables,
     espaces_stockage,
     normaliser_plage,
+    planning_du_jour,
+    planning_mois,
+    planning_semaine,
     recherche_disponibilite,
     reconcilier_occupations,
     zone_conflit_ids,
+)
+from app.services.temps_ouverture import (
+    HORAIRES_DEFAUT,
+    JOURS_SEMAINE_ORDRE,
+    MOIS_FR,
+    ecrire_horaires,
+    jour_ferie,
+    jours_feries,
+    libelle_jour,
+    lire_horaires,
 )
 from app.services.salles_seed import installer_plan
 from app.utils.delete_guard import commit_delete
@@ -79,6 +93,17 @@ def _decimal(champ: str):
 
 def _date(champ: str):
     brut = (request.form.get(champ) or "").strip()
+    if not brut:
+        return None
+    try:
+        return date.fromisoformat(brut)
+    except ValueError:
+        return None
+
+
+def _date_arg(nom: str):
+    """Lit une date passée en paramètre d'URL, en ignorant ce qui est illisible."""
+    brut = (request.args.get(nom) or "").strip()
     if not brut:
         return None
     try:
@@ -440,3 +465,213 @@ def reconcilier():
         "success",
     )
     return redirect(url_for("salles.index"))
+
+
+# ---------------------------------------------------------------------------
+# Plannings : ce qu'on affiche au mur et ce qu'on pose sur la table
+# ---------------------------------------------------------------------------
+
+def _site_courant(site_id: int | None) -> Site | None:
+    if site_id:
+        return Site.query.get_or_404(site_id)
+    return Site.query.filter(Site.actif.is_(True)).order_by(Site.id).first()
+
+
+@bp.route("/planning")
+@login_required
+@require_perm("salles:view")
+def planning():
+    """La grille murale : une ligne par salle, une colonne par jour."""
+    site = _site_courant(request.args.get("site_id", type=int))
+    if site is None:
+        flash("Crée d'abord un site pour voir un planning.", "warning")
+        return redirect(url_for("salles.index"))
+
+    jour = _date_arg("semaine") or date.today()
+    louables_seulement = request.args.get("louables") == "1"
+    donnees = planning_semaine(site.id, jour, louables_seulement=louables_seulement)
+    return render_template(
+        "salles/planning_semaine.html",
+        site=site, sites=Site.query.filter(Site.actif.is_(True)).order_by(Site.nom).all(),
+        impression=request.args.get("impression") == "1",
+        louables_seulement=louables_seulement,
+        aujourdhui=date.today(),
+        precedente=(donnees["debut"] - timedelta(days=7)).isoformat(),
+        suivante=(donnees["debut"] + timedelta(days=7)).isoformat(),
+        **donnees,
+    )
+
+
+@bp.route("/planning/mois")
+@login_required
+@require_perm("salles:view")
+def planning_mensuel():
+    """Le calendrier du mois, pour une salle ou pour tout le site."""
+    site = _site_courant(request.args.get("site_id", type=int))
+    if site is None:
+        flash("Crée d'abord un site pour voir un planning.", "warning")
+        return redirect(url_for("salles.index"))
+
+    repere = _date_arg("mois") or date.today().replace(day=1)
+    espace_id = request.args.get("espace_id", type=int)
+    donnees = planning_mois(repere.year, repere.month, espace_id=espace_id, site_id=site.id)
+
+    precedent = (repere.replace(day=1) - timedelta(days=1)).replace(day=1)
+    suivant = (repere.replace(day=28) + timedelta(days=7)).replace(day=1)
+    return render_template(
+        "salles/planning_mois.html",
+        site=site, sites=Site.query.filter(Site.actif.is_(True)).order_by(Site.nom).all(),
+        salles=[e for e in espaces_reservables() if e.site_id == site.id],
+        espace_id=espace_id,
+        impression=request.args.get("impression") == "1",
+        aujourdhui=date.today(),
+        precedent=precedent.isoformat(), suivant=suivant.isoformat(),
+        libelle_mois=f"{MOIS_FR[donnees['mois'] - 1]} {donnees['annee']}",
+        **donnees,
+    )
+
+
+@bp.route("/aujourdhui")
+@login_required
+@require_perm("salles:view")
+def planning_jour():
+    """L'écran du hall : ce qui se passe aujourd'hui, en gros caractères."""
+    site = _site_courant(request.args.get("site_id", type=int))
+    if site is None:
+        flash("Crée d'abord un site.", "warning")
+        return redirect(url_for("salles.index"))
+    jour = _date_arg("jour") or date.today()
+    return render_template(
+        "salles/planning_jour.html",
+        site=site, jour=jour, lignes=planning_du_jour(site.id, jour),
+        ferie=jour_ferie(jour), libelle=libelle_jour(jour),
+        plein_ecran=request.args.get("ecran") == "1",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Indisponibilités : travaux, fermeture, salle réquisitionnée
+# ---------------------------------------------------------------------------
+
+@bp.route("/blocage", methods=["GET", "POST"])
+@login_required
+@require_perm("salles:edit")
+def blocage_form():
+    """Rendre une salle indisponible sans contrat ni facture.
+
+    Noël, des travaux, une chaudière en rade, la salle réquisitionnée pour
+    l'assemblée générale : ça n'a pas de preneur, pas de prix, et ça doit
+    quand même barrer le planning.
+    """
+    salles = espaces_reservables()
+
+    if request.method == "POST":
+        espace_id = _entier("espace_id")
+        jour_debut = _date("date_debut")
+        jour_fin = _date("date_fin") or jour_debut
+        motif = _texte("motif") or "Indisponible"
+        journee_entiere = _case("journee_entiere")
+        debut = "00:00" if journee_entiere else _texte("heure_debut", "09:00")
+        fin = "23:59" if journee_entiere else _texte("heure_fin", "18:00")
+
+        espace = Espace.query.get(espace_id) if espace_id else None
+        if espace is None:
+            flash("Choisis une salle à rendre indisponible.", "danger")
+        elif not jour_debut:
+            flash("Il faut au moins une date de début.", "danger")
+        elif jour_fin < jour_debut:
+            flash("La date de fin doit être après la date de début.", "danger")
+        elif (jour_fin - jour_debut).days > 400:
+            flash("Une indisponibilité de plus d'un an, ça sent l'erreur de saisie.", "danger")
+        else:
+            try:
+                m_debut, m_fin = normaliser_plage(debut, fin)
+            except SalleErreur as exc:
+                flash(str(exc), "danger")
+                return render_template("salles/blocage_form.html", salles=salles, aujourdhui=date.today())
+
+            cree, jour = 0, jour_debut
+            while jour <= jour_fin:
+                db.session.add(Occupation(
+                    espace_id=espace.id, date_jour=jour,
+                    minute_debut=m_debut, minute_fin=m_fin,
+                    origine="blocage", statut="confirme", titre=motif[:200],
+                    note=_texte("note") or None,
+                    created_by_user_id=getattr(current_user, "id", None),
+                ))
+                cree += 1
+                jour += timedelta(days=1)
+            db.session.commit()
+            journaliser("salles.blocage", cible=espace.nom, details={"jours": cree, "motif": motif})
+            flash(
+                f"« {espace.nom} » indisponible sur {cree} jour(s) : {motif}."
+                + (" Les espaces qu'elle contient le sont aussi." if espace.enfants else ""),
+                "success",
+            )
+            return redirect(url_for("salles.planning", semaine=jour_debut.isoformat()))
+
+    return render_template("salles/blocage_form.html", salles=salles, aujourdhui=date.today())
+
+
+@bp.route("/occupation/<int:occupation_id>/supprimer", methods=["POST"])
+@login_required
+@require_perm("salles:edit")
+def occupation_supprimer(occupation_id: int):
+    """Lever une indisponibilité posée à la main.
+
+    Refuse de toucher aux occupations pilotées par une séance ou un
+    créneau : celles-là se modifient à leur source, sinon elles
+    réapparaîtraient à la prochaine synchronisation.
+    """
+    occ = Occupation.query.get_or_404(occupation_id)
+    retour = request.form.get("retour") or url_for("salles.planning")
+    if occ.origine in ("seance", "creneau"):
+        flash(
+            "Cette ligne vient d'une séance ou d'un créneau d'agenda : "
+            "modifie-la à sa source, sinon elle reviendra toute seule.",
+            "warning",
+        )
+        return redirect(retour)
+
+    titre, jour = occ.titre, occ.date_jour
+    db.session.delete(occ)
+    db.session.commit()
+    journaliser("salles.occupation_suppression", cible=titre, details={"jour": str(jour)})
+    flash(f"« {titre or 'Occupation'} » du {jour.strftime('%d/%m/%Y')} levée.", "success")
+    return redirect(retour)
+
+
+# ---------------------------------------------------------------------------
+# Horaires d'ouverture
+# ---------------------------------------------------------------------------
+
+@bp.route("/site/<int:site_id>/horaires", methods=["GET", "POST"])
+@login_required
+@require_perm("salles:edit")
+def site_horaires(site_id: int):
+    """Les heures d'ouverture, jour par jour.
+
+    Sert de garde-fou d'affichage : on prévient quand un créneau sort des
+    horaires, sans jamais l'interdire — une AG un samedi soir, ça existe.
+    """
+    site = Site.query.get_or_404(site_id)
+
+    if request.method == "POST":
+        horaires = {}
+        for jour in JOURS_SEMAINE_ORDRE:
+            if _case(f"ouvert_{jour}"):
+                horaires[jour] = [_texte(f"debut_{jour}", "09:00"), _texte(f"fin_{jour}", "18:00")]
+            else:
+                horaires[jour] = None
+        site.horaires_json = ecrire_horaires(horaires)
+        db.session.commit()
+        journaliser("salles.horaires", cible=site.code)
+        flash("Horaires d'ouverture enregistrés.", "success")
+        return redirect(url_for("salles.index"))
+
+    horaires = lire_horaires(site) or dict(HORAIRES_DEFAUT)
+    return render_template(
+        "salles/site_horaires.html",
+        site=site, horaires=horaires, jours=JOURS_SEMAINE_ORDRE,
+        feries_annee=sorted(jours_feries(date.today().year).items()),
+    )

@@ -43,6 +43,18 @@
         {% endif %}
 
         <label>Raison de modification (obligatoire)</label>
+          <div style="margin-top:10px;">
+            <label>Salle</label>
+            <select class="in" name="espace_id">
+              <option value="">— Hors les murs / aucune salle —</option>
+              {% for salle in salles_occupables() %}
+                <option value="{{ salle.id }}" {% if session.espace_id == salle.id %}selected{% endif %}>
+                  {{ salle.chemin }}{% if salle.capacite_affichee %} ({{ salle.capacite_affichee }} pl.){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted">Déplacer la séance libère l'ancienne salle et occupe la nouvelle.</div>
+          </div>
         <textarea class="in" name="edit_reason" rows="3" placeholder="Ex: erreur de saisie constatée après émargement, session déplacée suite à fermeture du site..." required></textarea>
 
         <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:10px;">

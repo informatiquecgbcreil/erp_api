@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block title %}Aujourd'hui{% endblock %}
+{% block body %}
+<style>
+  .jr-page{ {% if plein_ecran %}font-size:1.25rem;{% endif %} }
+  .jr-ligne{ display:flex; align-items:center; gap:18px; padding:13px 16px; border-radius:11px;
+             border:1px solid var(--border,#e3e6ef); border-left-width:6px; margin-bottom:9px; }
+  .jr-heure{ font-weight:900; font-variant-numeric:tabular-nums; min-width:126px;
+             font-size:{% if plein_ecran %}1.5rem{% else %}1.05rem{% endif %}; }
+  .jr-salle{ font-weight:700; min-width:210px;
+             font-size:{% if plein_ecran %}1.35rem{% else %}1rem{% endif %}; }
+  .jr-quoi{ flex:1; min-width:200px;
+            font-size:{% if plein_ecran %}1.25rem{% else %}.95rem{% endif %}; }
+  .jr-titre{ font-size:{% if plein_ecran %}2.1rem{% else %}1.5rem{% endif %}; font-weight:900; margin:0; }
+  @media (max-width:700px){ .jr-ligne{ flex-wrap:wrap; gap:7px; } .jr-heure,.jr-salle{ min-width:0; } }
+</style>
+
+<div class="stack jr-page">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1 class="jr-titre">📍 {{ libelle|capitalize }}</h1>
+        <p class="muted" style="margin:4px 0 0;">
+          {{ site.nom }}{% if ferie %} · <strong style="color:#b91c1c;">{{ ferie }} — centre fermé</strong>{% endif %}
+        </p>
+      </div>
+      <div class="inline no-print" style="gap:8px; flex-wrap:wrap;">
+        {% if plein_ecran %}
+          <a class="btn" href="{{ url_for('salles.planning_jour', site_id=site.id) }}">Quitter le plein écran</a>
+        {% else %}
+          <a class="btn ok" href="{{ url_for('salles.planning_jour', site_id=site.id, ecran=1) }}">📺 Affichage hall</a>
+          <a class="btn" href="{{ url_for('salles.planning', site_id=site.id) }}">Vue semaine</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if lignes %}
+      {% for l in lignes %}
+        <div class="jr-ligne" style="border-left-color:{{ l.couleur }};">
+          <span class="jr-heure">{{ l.occupation.plage }}</span>
+          <span class="jr-salle">{{ l.occupation.espace.icone }} {{ l.occupation.espace.nom }}</span>
+          <span class="jr-quoi">{{ l.occupation.titre or l.occupation.origine_label }}</span>
+          {% if not plein_ecran %}
+            <span class="muted" style="font-size:.8rem;">{{ l.occupation.origine_label }}</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="ui-empty-state">
+        <p class="muted" style="font-size:1.1rem;">
+          {% if ferie %}Centre fermé — {{ ferie }}.{% else %}Aucune salle occupée aujourd'hui.{% endif %}
+        </p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if plein_ecran %}
+  {# Écran du hall : on recharge toutes les 5 minutes pour suivre les ajouts
+     de la journée sans que personne n'ait à toucher au clavier. #}
+  <script>setTimeout(function(){ location.reload(); }, 300000);</script>
+{% endif %}
+{% endblock %}

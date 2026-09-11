@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+{% block title %}Horaires d'ouverture{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>🕗 Horaires d'ouverture — {{ site.nom }}</h1>
+    <p class="muted">
+      Garde-fou, pas interdiction : l'application prévient quand un créneau sort
+      des horaires ou tombe un jour férié, mais laisse toujours enregistrer.
+      Une assemblée générale un samedi soir, ça existe.
+    </p>
+  </div>
+
+  <form method="post" class="stack" style="gap:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card">
+      <div class="tablewrap clean">
+        <table>
+          <thead><tr><th style="width:150px;">Jour</th><th style="width:110px;">Ouvert</th><th>De</th><th>À</th></tr></thead>
+          <tbody>
+            {% for jour in jours %}
+              {% set plage = horaires.get(jour) %}
+              <tr>
+                <td><strong>{{ jour|capitalize }}</strong></td>
+                <td>
+                  <label class="inline" style="gap:6px; align-items:center;">
+                    <input type="checkbox" name="ouvert_{{ jour }}" value="1"
+                           {% if plage %}checked{% endif %}>
+                    <span class="muted" style="font-size:.8rem;">ouvert</span>
+                  </label>
+                </td>
+                <td><input class="in" type="time" name="debut_{{ jour }}"
+                           value="{{ plage[0] if plage else '09:00' }}" style="width:130px;"></td>
+                <td><input class="in" type="time" name="fin_{{ jour }}"
+                           value="{{ plage[1] if plage else '18:00' }}" style="width:130px;"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="inline" style="gap:10px; margin-top:14px; flex-wrap:wrap;">
+        <button class="btn ok" type="submit">💾 Enregistrer</button>
+        <a class="btn" href="{{ url_for('salles.index') }}">Annuler</a>
+      </div>
+    </div>
+  </form>
+
+  <div class="card">
+    <h2>🇫🇷 Jours fériés {{ feries_annee[0][0].year if feries_annee else '' }}</h2>
+    <p class="muted">
+      Calculés automatiquement, rien à saisir — et recalculés chaque année,
+      Pâques comprise. Le centre est considéré fermé ces jours-là.
+    </p>
+    <div class="inline" style="gap:8px; flex-wrap:wrap;">
+      {% for jour, nom in feries_annee %}
+        <span class="tag">{{ jour.strftime('%d/%m') }} · {{ nom }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

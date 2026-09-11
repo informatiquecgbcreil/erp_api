@@ -601,6 +601,7 @@
                   {% endif %}
                   {% if can('salles:view') %}
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles</a>
+                    <a class="pill {% if ep.startswith('salles.planning') %}active{% endif %}" href="{{ url_for('salles.planning') }}">🗓️ Planning des salles</a>
                     <a class="pill {% if ep == 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
                   {% endif %}
                   {% if can('partenaires:view') %}
@@ -757,6 +758,7 @@
                     <a class="pill {% if ep.startswith('inventaire_materiel.') %}active{% endif %}" href="{{ url_for('inventaire_materiel.list_items') }}">Inventaire matériel</a>
                   {% endif %}
                   {% if can('salles:view') %}
+                    <a class="pill {% if ep.startswith('salles.planning') %}active{% endif %}" href="{{ url_for('salles.planning') }}">🗓️ Planning des salles</a>
                     <a class="pill {% if ep == 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
@@ -837,6 +839,7 @@
                     <a class="pill {% if ep.startswith('questionnaires.') %}active{% endif %}" href="{{ url_for('questionnaires.index') }}">Questionnaires</a>
                   {% endif %}
                   {% if can('salles:view') %}
+                    <a class="pill {% if ep.startswith('salles.planning') %}active{% endif %}" href="{{ url_for('salles.planning') }}">🗓️ Planning des salles</a>
                     <a class="pill {% if ep == 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}

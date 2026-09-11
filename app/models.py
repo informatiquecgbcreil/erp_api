@@ -1677,6 +1677,11 @@ class AtelierActivite(db.Model):
     # pas forcément celui de la personne qui crée.
     est_intersecteur = db.Column(db.Boolean, nullable=False, default=False, index=True)
 
+    #: Salle de référence : la séance créée s'y attache toute seule, et
+    #: reste modifiable au cas par cas (sortie, salle occupée, hors les
+    #: murs). C'est ce réglage qui évite d'ouvrir l'écran de réservation
+    #: pour chaque atelier interne.
+    espace_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="SET NULL"), nullable=True, index=True)
     modele_docx_collectif = db.Column(db.String(255), nullable=True)
     modele_docx_individuel = db.Column(db.String(255), nullable=True)
 
@@ -3995,6 +4000,12 @@ class Site(db.Model):
     #: repli quand les espaces n'ont pas de valeur individuelle.
     valeur_locative_annuelle = db.Column(db.Float, nullable=True)
 
+    #: Horaires d'ouverture par jour de semaine, en JSON :
+    #: ``{"lundi": ["09:00", "18:00"], "dimanche": null}``. Une plage
+    #: absente ou nulle signifie « fermé ». Sert à borner les plannings et
+    #: à éviter qu'on réserve le dimanche à 3 h du matin par mégarde.
+    horaires_json = db.Column(db.Text, nullable=True)
+
     actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
@@ -4106,6 +4117,7 @@ class Espace(db.Model):
     items_inventaire = db.relationship("InventaireItem", backref="espace")
     seances = db.relationship("SessionActivite", backref="espace")
     creneaux_agenda = db.relationship("AgendaCreneau", backref="espace")
+    ateliers = db.relationship("AtelierActivite", backref="espace")
 
     __table_args__ = (
         db.Index("ix_espace_site_parent", "site_id", "parent_id"),

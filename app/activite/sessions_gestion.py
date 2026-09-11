@@ -11,7 +11,13 @@ from flask import (
 from flask_login import login_required, current_user
 
 from app.extensions import db
+from app.services.salles import (
+    avertissement_occupation,
+    avertissement_ouverture,
+    salle_par_defaut,
+)
 from app.models import (
+    Espace,
     AtelierActivite,
     SessionActivite,
     PresenceActivite,
@@ -47,6 +53,41 @@ from app.activite.helpers import (
 
 
 # ------------------ Création Session ------------------
+
+
+def _espace_depuis_formulaire(atelier):
+    """La salle de la séance : le choix explicite du formulaire l'emporte,
+    sinon la salle de référence de l'atelier.
+
+    La distinction compte : un formulaire qui envoie un champ vide dit
+    « hors les murs » et doit être respecté, alors qu'un chemin qui ne
+    connaît pas ce champ (création en série, import) doit hériter.
+    """
+    if "espace_id" in request.form:
+        return request.form.get("espace_id", type=int) or None
+    return salle_par_defaut(atelier)
+
+
+def _prevenir_si_salle_prise(seance) -> None:
+    """Signale un conflit ou un horaire inhabituel, sans rien interdire.
+
+    Programmer une séance ne doit pas virer au parcours du combattant :
+    refuser l'enregistrement ferait surtout perdre la séance. On informe,
+    on laisse passer, et le conflit ressort en rouge sur le planning.
+    """
+    if not seance.espace_id:
+        return
+    jour = seance.date_session or seance.rdv_date
+    debut = seance.heure_debut or seance.rdv_debut
+    fin = seance.heure_fin or seance.rdv_fin
+    occupation_liee = seance.occupations[0].id if seance.occupations else None
+    for message in (
+        avertissement_occupation(seance.espace_id, jour, debut, fin,
+                                 exclure_occupation_id=occupation_liee),
+        avertissement_ouverture(seance.espace_id, jour, debut, fin),
+    ):
+        if message:
+            flash(message, "warning")
 
 
 @bp.route("/atelier/<int:atelier_id>/session/new", methods=["GET", "POST"])
@@ -90,6 +131,7 @@ def session_new(atelier_id: int):
                 rdv_date=rdv_date_obj,
                 rdv_debut=rdv_debut,
                 rdv_fin=rdv_fin,
+                espace_id=_espace_depuis_formulaire(atelier),
             )
         else:
             date_session = request.form.get("date_session")
@@ -120,6 +162,7 @@ def session_new(atelier_id: int):
                 heure_debut=heure_debut,
                 heure_fin=heure_fin,
                 capacite=int(capacite) if capacite else None,
+                espace_id=_espace_depuis_formulaire(atelier),
             )
 
         module_ids = [int(mid) for mid in request.form.getlist("module_ids") if str(mid).isdigit()]
@@ -144,6 +187,7 @@ def session_new(atelier_id: int):
         save_session_materiels_from_form(s, request.form)
         db.session.commit()
         flash("La séance a bien été créée.", "success")
+        _prevenir_si_salle_prise(s)
         return redirect(url_for("activite.emargement", session_id=s.id))
 
     projet_id = request.args.get("projet_id", type=int)
@@ -236,6 +280,7 @@ def session_bulk_new(atelier_id: int):
         capacite = int(capacite_raw) if capacite_raw else None
         eviter_doublons = request.form.get("skip_existing") == "1"
         secteur_impute = _secteur_imputation_depuis_formulaire(atelier, request.form)
+        espace_serie = _espace_depuis_formulaire(atelier)
 
         existantes = set()
         if eviter_doublons:
@@ -266,6 +311,7 @@ def session_bulk_new(atelier_id: int):
                         heure_debut=heure_debut,
                         heure_fin=heure_fin,
                         capacite=capacite,
+                        espace_id=espace_serie,
                     ))
                     crees += 1
             d += timedelta(days=1)
@@ -312,6 +358,7 @@ def session_edit_schedule(session_id: int):
         old_start = s.rdv_debut if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_debut
         old_end = s.rdv_fin if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_fin
         old_secteur = s.secteur
+        old_espace_id = s.espace_id
 
         if s.session_type == "INDIVIDUEL_MENSUEL":
             rdv_date = request.form.get("rdv_date")
@@ -337,14 +384,27 @@ def session_edit_schedule(session_id: int):
         # il passe par la même page tracée.
         s.secteur = _secteur_imputation_depuis_formulaire(atelier, request.form, defaut=old_secteur)
 
+        # Changer de salle relève de la même page tracée : déplacer une séance
+        # libère une salle et en occupe une autre, ce n'est pas cosmétique.
+        if "espace_id" in request.form:
+            s.espace_id = request.form.get("espace_id", type=int) or None
+
         new_date = s.rdv_date if s.session_type == "INDIVIDUEL_MENSUEL" else s.date_session
         new_start = s.rdv_debut if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_debut
         new_end = s.rdv_fin if s.session_type == "INDIVIDUEL_MENSUEL" else s.heure_fin
 
         if (old_date == new_date and old_start == new_start and old_end == new_end
-                and old_secteur == s.secteur):
-            flash("Aucun changement détecté sur date/heure ou secteur d'imputation.", "info")
+                and old_secteur == s.secteur and old_espace_id == s.espace_id):
+            flash("Aucun changement détecté sur date/heure, salle ou secteur d'imputation.", "info")
             return redirect(url_for("activite.session_edit_schedule", session_id=s.id))
+
+        if old_espace_id != s.espace_id:
+            ancienne = db.session.get(Espace, old_espace_id) if old_espace_id else None
+            nouvelle = db.session.get(Espace, s.espace_id) if s.espace_id else None
+            reason = (
+                f"[Salle : {ancienne.nom if ancienne else 'aucune'} → "
+                f"{nouvelle.nom if nouvelle else 'aucune'}] {reason}"
+            )
 
         if old_secteur != s.secteur:
             # Le journal ne porte pas de colonne secteur : on consigne le
@@ -373,6 +433,7 @@ def session_edit_schedule(session_id: int):
             )
         else:
             flash("Date/heure de session mises à jour et tracées.", "success")
+        _prevenir_si_salle_prise(s)
         return redirect(url_for("activite.emargement", session_id=s.id))
 
     edits = (

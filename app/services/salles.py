@@ -20,7 +20,7 @@ atelier, ne doit jamais avoir à faire ce raisonnement de tête.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date as Date
+from datetime import date as Date, timedelta
 
 from app.extensions import db
 from app.models import (
@@ -505,3 +505,216 @@ def reconcilier_occupations() -> dict[str, int]:
 
     db.session.commit()
     return compteurs
+
+
+# ---------------------------------------------------------------------------
+# Plannings
+# ---------------------------------------------------------------------------
+#
+# Ce que l'équipe doit pouvoir afficher au mur et poser sur la table en
+# réunion. Toute la mise en forme se fait ici, pour que les gabarits se
+# contentent de boucler sur des lignes déjà prêtes.
+
+#: Couleur de chaque origine, reprise à l'identique du calendrier existant
+#: pour que l'équipe n'ait pas deux codes couleur à retenir.
+COULEURS_ORIGINE = {
+    "seance": "#3b82f6",     # bleu : activité avec du public
+    "creneau": "#10b981",    # vert : temps d'équipe
+    "location": "#8b5cf6",   # violet : un tiers occupe les lieux
+    "blocage": "#ef4444",    # rouge : indisponible
+}
+
+
+def _occupations_periode(debut: Date, fin: Date, *, site_id: int | None = None) -> list[Occupation]:
+    """Toutes les occupations bloquantes d'une période, en une requête."""
+    q = (
+        Occupation.query
+        .filter(Occupation.date_jour >= debut, Occupation.date_jour <= fin)
+        .filter(Occupation.statut != "annule")
+    )
+    if site_id:
+        q = q.filter(Occupation.espace_id.in_(
+            db.session.query(Espace.id).filter(Espace.site_id == site_id)
+        ))
+    return q.order_by(Occupation.date_jour, Occupation.minute_debut).all()
+
+
+def planning_semaine(site_id: int, jour_repere: Date, *, louables_seulement: bool = False) -> dict:
+    """La grille murale : une ligne par salle, une colonne par jour.
+
+    Format choisi pour l'impression en A3 paysage et la lecture à deux
+    mètres : on cherche « où suis-je jeudi ? », pas une frise horaire au
+    quart d'heure près.
+
+    Une occupation qui vient d'un espace parent ou enfant est répétée sur
+    la ligne de la salle concernée, et signalée comme telle : réserver une
+    moitié de la grande salle doit se VOIR sur la ligne de la grande salle.
+    """
+    from app.services.temps_ouverture import feries_entre, semaine_de
+
+    jours = semaine_de(jour_repere)
+    debut, fin = jours[0], jours[-1]
+
+    # Un centre social compte vite une trentaine d'espaces occupables. Sur
+    # une feuille affichée au mur, le dortoir et le hall d'accueil noient
+    # les salles qu'on cherche : on peut donc s'en tenir aux louables.
+    source = espaces_louables() if louables_seulement else espaces_reservables()
+    salles = [e for e in source if e.site_id == site_id]
+    occupations = _occupations_periode(debut, fin, site_id=site_id)
+
+    # Pour chaque salle, les identifiants dont l'occupation la concerne.
+    zones = {salle.id: zone_conflit_ids(salle) for salle in salles}
+
+    lignes = []
+    for salle in salles:
+        cellules = []
+        for jour in jours:
+            evenements = []
+            for occ in occupations:
+                if occ.date_jour != jour or occ.espace_id not in zones[salle.id]:
+                    continue
+                evenements.append({
+                    "occupation": occ,
+                    "direct": occ.espace_id == salle.id,
+                    "couleur": COULEURS_ORIGINE.get(occ.origine, "#94a3b8"),
+                })
+            cellules.append({"jour": jour, "evenements": evenements})
+        lignes.append({"espace": salle, "cellules": cellules})
+
+    return {
+        "jours": jours,
+        "lignes": lignes,
+        "feries": feries_entre(debut, fin),
+        "debut": debut,
+        "fin": fin,
+        "total": len(occupations),
+    }
+
+
+def planning_mois(annee: int, mois: int, *, espace_id: int | None = None,
+                  site_id: int | None = None) -> dict:
+    """Le calendrier mensuel, pour une salle ou pour tout le site.
+
+    Grille complète de semaines entières (lundi → dimanche) : les jours
+    des mois voisins sont présents mais marqués, pour que la grille reste
+    rectangulaire à l'impression.
+    """
+    import calendar as _cal
+
+    from app.services.temps_ouverture import feries_entre, lundi_de
+
+    premier = Date(annee, mois, 1)
+    dernier = Date(annee, mois, _cal.monthrange(annee, mois)[1])
+    debut = lundi_de(premier)
+    fin = lundi_de(dernier) + timedelta(days=6)
+
+    espace = Espace.query.get(espace_id) if espace_id else None
+    if espace is not None:
+        ids_retenus = zone_conflit_ids(espace)
+        occupations = [
+            o for o in _occupations_periode(debut, fin) if o.espace_id in ids_retenus
+        ]
+    else:
+        occupations = _occupations_periode(debut, fin, site_id=site_id)
+
+    par_jour: dict[Date, list] = defaultdict(list)
+    for occ in occupations:
+        par_jour[occ.date_jour].append({
+            "occupation": occ,
+            "direct": espace is None or occ.espace_id == espace.id,
+            "couleur": COULEURS_ORIGINE.get(occ.origine, "#94a3b8"),
+        })
+
+    semaines, courante, jour = [], [], debut
+    while jour <= fin:
+        courante.append({
+            "jour": jour,
+            "hors_mois": jour.month != mois,
+            "evenements": par_jour.get(jour, []),
+        })
+        if len(courante) == 7:
+            semaines.append(courante)
+            courante = []
+        jour += timedelta(days=1)
+    if courante:
+        semaines.append(courante)
+
+    return {
+        "annee": annee, "mois": mois, "espace": espace,
+        "semaines": semaines,
+        "feries": feries_entre(debut, fin),
+        "total": len(occupations),
+    }
+
+
+def planning_du_jour(site_id: int, jour: Date) -> list[dict]:
+    """Ce qui se passe aujourd'hui, trié par heure — pour l'écran du hall.
+
+    Seules les occupations DIRECTES sont listées : dans un hall d'accueil,
+    répéter qu'une salle est prise parce que sa moitié l'est n'aide
+    personne, ça brouille l'affichage.
+    """
+    occupations = [
+        o for o in _occupations_periode(jour, jour, site_id=site_id)
+        if o.espace is not None and o.espace.reservable
+    ]
+    return [
+        {
+            "occupation": occ,
+            "couleur": COULEURS_ORIGINE.get(occ.origine, "#94a3b8"),
+        }
+        for occ in sorted(occupations, key=lambda o: (o.minute_debut, o.espace.nom))
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Salle de référence : l'atelier connaît sa salle, la séance en hérite
+# ---------------------------------------------------------------------------
+
+def salle_par_defaut(atelier) -> int | None:
+    """La salle de référence d'un atelier, si elle est encore utilisable."""
+    espace_id = getattr(atelier, "espace_id", None)
+    if not espace_id:
+        return None
+    espace = db.session.get(Espace, espace_id)
+    if espace is None or not espace.actif or not espace.reservable:
+        return None
+    return espace.id
+
+
+def avertissement_occupation(espace_id, jour, debut, fin, *, exclure_occupation_id=None) -> str | None:
+    """Prévient qu'une salle est déjà prise, sans jamais bloquer la saisie.
+
+    Programmer une séance ne doit pas devenir un parcours du combattant :
+    on informe, on laisse passer, et le conflit apparaît en rouge sur le
+    planning. Interdire l'enregistrement ferait surtout perdre la séance.
+    """
+    if not espace_id or not jour:
+        return None
+    espace = db.session.get(Espace, espace_id)
+    if espace is None:
+        return None
+    try:
+        genants = conflits(espace, jour, debut, fin, exclure_occupation_id=exclure_occupation_id)
+    except SalleErreur:
+        return None
+    if not genants:
+        return None
+    return "⚠️ " + message_conflit(genants[0], espace)
+
+
+def avertissement_ouverture(espace_id, jour, debut, fin) -> str | None:
+    """Prévient qu'on sort des horaires d'ouverture ou qu'on est un férié."""
+    from app.services.temps_ouverture import hors_ouverture
+
+    if not espace_id or not jour:
+        return None
+    espace = db.session.get(Espace, espace_id)
+    if espace is None or espace.site is None:
+        return None
+    try:
+        m_debut, m_fin = normaliser_plage(debut, fin)
+    except SalleErreur:
+        return None
+    message = hors_ouverture(espace.site, jour, m_debut, m_fin)
+    return f"⚠️ {message}" if message else None

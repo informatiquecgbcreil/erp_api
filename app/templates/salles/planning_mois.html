@@ -1,0 +1,100 @@
+{% extends "layout.html" %}
+{% block title %}Planning du mois{% endblock %}
+{% block body %}
+<style>
+  .mo-grille{ display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:1px;
+              background:var(--border,#d7dbe8); border:1px solid var(--border,#d7dbe8);
+              border-radius:10px; overflow:hidden; }
+  .mo-entete{ background:var(--surface-soft,#f1f4fb); padding:6px 4px; font-size:.75rem; font-weight:700;
+              text-transform:uppercase; text-align:center; }
+  .mo-jour{ background:var(--panel,#fff); min-height:96px; padding:4px 5px 6px; }
+  .mo-jour.hors-mois{ background:var(--surface-soft,#fafbfe); opacity:.5; }
+  .mo-jour.week-end{ background:var(--surface-soft,#fafbfe); }
+  .mo-jour.ferie{ background:rgba(239,68,68,.07); }
+  .mo-jour.aujourdhui{ box-shadow:inset 0 0 0 2px #3b82f6; }
+  .mo-num{ font-size:.78rem; font-weight:800; opacity:.7; }
+  .mo-ferie{ font-size:.66rem; color:#b91c1c; font-weight:700; display:block; }
+  .mo-ev{ display:block; font-size:.7rem; line-height:1.28; margin-top:2px; padding:1px 4px;
+          border-radius:4px; border-left:3px solid #94a3b8; }
+  .mo-ev.indirect{ opacity:.6; font-style:italic; }
+  @media print{
+    @page{ size:A3 landscape; margin:9mm; }
+    header, nav, footer, .no-print, .mobile-nav-panel{ display:none !important; }
+    .card{ border:none !important; box-shadow:none !important; padding:0 !important; }
+    .mo-jour{ min-height:78px; }
+    .mo-grille{ break-inside:avoid; }
+  }
+  @media (max-width:760px){
+    .mo-grille{ grid-template-columns:1fr; }
+    .mo-entete{ display:none; }
+    .mo-jour{ min-height:0; }
+    .mo-jour.hors-mois{ display:none; }
+  }
+</style>
+
+<div class="stack">
+  <div class="card no-print">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>📅 {{ libelle_mois|capitalize }}</h1>
+        <p class="muted" style="margin:0;">
+          {% if espace %}{{ espace.nom }} — occupations directes et voisines.
+          {% else %}Toutes les salles de {{ site.nom }}.{% endif %}
+        </p>
+      </div>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        <button class="btn ok" type="button" onclick="window.print()">🖨️ Imprimer</button>
+        <a class="btn" href="{{ url_for('salles.planning', site_id=site.id) }}">Vue semaine</a>
+      </div>
+    </div>
+
+    <div class="inline" style="gap:10px; flex-wrap:wrap; margin-top:14px; align-items:center;">
+      <a class="btn" href="{{ url_for('salles.planning_mensuel', site_id=site.id, mois=precedent, espace_id=espace_id) }}">← Mois précédent</a>
+      <a class="btn" href="{{ url_for('salles.planning_mensuel', site_id=site.id, espace_id=espace_id) }}">Ce mois</a>
+      <a class="btn" href="{{ url_for('salles.planning_mensuel', site_id=site.id, mois=suivant, espace_id=espace_id) }}">Mois suivant →</a>
+      <form method="get" style="display:inline;">
+        <input type="hidden" name="site_id" value="{{ site.id }}">
+        <input type="hidden" name="mois" value="{{ annee }}-{{ '%02d'|format(mois) }}-01">
+        <select class="in" name="espace_id" onchange="this.form.submit()">
+          <option value="">— Toutes les salles —</option>
+          {% for s in salles %}
+            <option value="{{ s.id }}" {% if espace_id == s.id %}selected{% endif %}>{{ s.nom }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <span class="muted" style="margin-left:auto;">{{ total }} occupation(s)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">
+      {{ site.nom }} — {{ libelle_mois }}{% if espace %} · {{ espace.nom }}{% endif %}
+    </h2>
+    <div class="mo-grille">
+      {% for court in ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'] %}
+        <div class="mo-entete">{{ court }}</div>
+      {% endfor %}
+      {% for semaine in semaines %}
+        {% for case in semaine %}
+          <div class="mo-jour
+                      {% if case.hors_mois %}hors-mois{% endif %}
+                      {% if case.jour in feries %}ferie{% elif case.jour.weekday() >= 5 %}week-end{% endif %}
+                      {% if case.jour == aujourdhui %}aujourdhui{% endif %}">
+            <span class="mo-num">{{ case.jour.day }}</span>
+            {% if case.jour in feries %}<span class="mo-ferie">{{ feries[case.jour] }}</span>{% endif %}
+            {% for ev in case.evenements %}
+              <span class="mo-ev {% if not ev.direct %}indirect{% endif %}"
+                    style="border-left-color:{{ ev.couleur }}; background:{{ ev.couleur }}1a;"
+                    title="{{ ev.occupation.espace.nom }} — {{ ev.occupation.plage }}">
+                <strong>{{ ev.occupation.heure_debut }}</strong>
+                {{ ev.occupation.titre or ev.occupation.origine_label }}
+                {%- if not espace %} <em>· {{ ev.occupation.espace.nom }}</em>{% endif %}
+              </span>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% import "_ux_helpers.html" as ux %}
 
 {% block body %}
   <div class="stack">
@@ -99,6 +100,19 @@
             {# Default hint: in Numérique, collective workshops are typically 12 places #}
             <input class="in" type="number" name="capacite_defaut" value="{{ atelier.capacite_defaut if atelier else (12 if secteur in ['Numérique','Numerique'] else '') }}" min="0">
             <div class="muted">Utilisé pour pré-remplir les séances collectives (modifiable séance par séance).</div>
+          </div>
+          <div>
+            <label>Salle de référence {{ ux.tooltip("La salle où cet atelier se déroule habituellement. Chaque nouvelle séance s'y attachera automatiquement et bloquera le planning, sans que personne ait à passer par l'écran de réservation. Reste modifiable séance par séance : sortie, salle occupée, hors les murs.") }}</label>
+            <select class="in" name="espace_id">
+              <option value="">— Aucune (hors les murs, ou variable) —</option>
+              {% for salle in salles_occupables() %}
+                <option value="{{ salle.id }}"
+                  {% if atelier and atelier.espace_id == salle.id %}selected{% endif %}>
+                  {{ salle.chemin }}{% if salle.capacite_affichee %} ({{ salle.capacite_affichee }} pl.){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted">Chaque séance s'y attachera toute seule et bloquera le planning.</div>
           </div>
           <div>
             <label>Heures dispo/mois (individuel)</label>

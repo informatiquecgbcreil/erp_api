@@ -38,12 +38,36 @@
             <div><label>Heure de début</label><input class="in" type="text" name="rdv_debut" placeholder="09:00"></div>
             <div><label>Heure de fin</label><input class="in" type="text" name="rdv_fin" placeholder="09:45"></div>
           </div>
+          <div style="margin-top:10px;">
+            <label>Salle {{ ux.tooltip("Pré-remplie avec la salle de référence de l'atelier. La séance bloque alors le planning automatiquement. Change-la ponctuellement pour une sortie, une salle occupée ou un atelier hors les murs.") }}</label>
+            <select class="in" name="espace_id">
+              <option value="">— Hors les murs / aucune salle —</option>
+              {% for salle in salles_occupables() %}
+                <option value="{{ salle.id }}"
+                  {% if (session and session.espace_id == salle.id) or (not session and atelier.espace_id == salle.id) %}selected{% endif %}>
+                  {{ salle.chemin }}{% if salle.capacite_affichee %} ({{ salle.capacite_affichee }} pl.){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
         {% else %}
           <div class="form-grid-4">
             <div><label>Date de la séance</label><input class="in" type="date" name="date_session" value="{{ date_prefill|default('') }}" required></div>
             <div><label>Heure de début</label><input class="in" type="text" name="heure_debut" placeholder="14:00"></div>
             <div><label>Heure de fin</label><input class="in" type="text" name="heure_fin" placeholder="16:00"></div>
             <div><label>Capacité {{ ux.tooltip('Nombre maximal de participants attendus pour cette séance.') }}</label><input class="in" type="number" name="capacite" value="{{ atelier.capacite_defaut or '' }}" min="0"></div>
+          </div>
+          <div style="margin-top:10px;">
+            <label>Salle {{ ux.tooltip("Pré-remplie avec la salle de référence de l'atelier. La séance bloque alors le planning automatiquement. Change-la ponctuellement pour une sortie, une salle occupée ou un atelier hors les murs.") }}</label>
+            <select class="in" name="espace_id">
+              <option value="">— Hors les murs / aucune salle —</option>
+              {% for salle in salles_occupables() %}
+                <option value="{{ salle.id }}"
+                  {% if (session and session.espace_id == salle.id) or (not session and atelier.espace_id == salle.id) %}selected{% endif %}>
+                  {{ salle.chemin }}{% if salle.capacite_affichee %} ({{ salle.capacite_affichee }} pl.){% endif %}
+                </option>
+              {% endfor %}
+            </select>
           </div>
         {% endif %}
 

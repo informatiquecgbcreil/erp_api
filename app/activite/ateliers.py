@@ -166,6 +166,9 @@ def atelier_new():
             capacite_defaut=int(capacite_defaut) if capacite_defaut else None,
             heures_dispo_defaut_mois=float(heures_dispo_defaut_mois) if heures_dispo_defaut_mois else None,
             duree_defaut_minutes=int(duree_defaut_minutes) if duree_defaut_minutes else None,
+            # Salle de référence : les séances de cet atelier s'y attacheront
+            # toutes seules, sans passer par l'écran de réservation.
+            espace_id=request.form.get("espace_id", type=int) or None,
             motifs_json=motifs_json,
             is_active=is_active,
             continuity_parent_id=continuity_parent_id,
@@ -232,6 +235,11 @@ def atelier_edit(atelier_id: int):
 
         heures_dispo_defaut_mois = request.form.get("heures_dispo_defaut_mois") or None
         atelier.heures_dispo_defaut_mois = float(heures_dispo_defaut_mois) if heures_dispo_defaut_mois else None
+
+        # Salle de référence. Ne modifie que les séances À VENIR quand elle
+        # change : réécrire le passé fausserait les plannings déjà imprimés
+        # et les bilans déjà tirés.
+        atelier.espace_id = request.form.get("espace_id", type=int) or None
 
         motifs = [m.strip() for m in (request.form.get("motifs") or "").split(";") if m.strip()]
         is_active = request.form.get("is_active") in {"1", "true", "on", "yes", "YES"}

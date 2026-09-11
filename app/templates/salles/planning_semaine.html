@@ -1,0 +1,162 @@
+{% extends "layout.html" %}
+{% block title %}Planning de la semaine{% endblock %}
+{% block body %}
+<style>
+  .pl-grille{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  .pl-grille th, .pl-grille td{ border:1px solid var(--border,#d7dbe8); vertical-align:top; padding:4px 5px; }
+  .pl-grille thead th{ background:var(--surface-soft,#f1f4fb); font-size:.76rem; text-transform:uppercase;
+                       letter-spacing:.03em; text-align:center; padding:6px 4px; }
+  .pl-grille thead th.ferie{ background:rgba(239,68,68,.12); color:#b91c1c; }
+  .pl-grille thead th.aujourdhui{ background:rgba(59,130,246,.18); }
+  .pl-salle{ width:150px; font-weight:700; font-size:.82rem; background:var(--surface-soft,#f7f9fd); }
+  .pl-salle small{ display:block; font-weight:500; opacity:.65; font-size:.72rem; }
+  .pl-case{ height:62px; }
+  .pl-case.ferie{ background:repeating-linear-gradient(45deg, transparent, transparent 6px,
+                  rgba(239,68,68,.07) 6px, rgba(239,68,68,.07) 12px); }
+  .pl-case.week-end{ background:var(--surface-soft,#fafbfe); }
+  .pl-ev{ display:block; font-size:.72rem; line-height:1.3; margin-bottom:2px; padding:2px 5px;
+          border-radius:5px; border-left:3px solid #94a3b8; background:rgba(148,163,184,.12);
+          text-decoration:none; color:inherit; }
+  .pl-ev .h{ font-weight:800; }
+  .pl-ev.indirect{ opacity:.62; font-style:italic; }
+  .pl-legende{ display:flex; gap:16px; flex-wrap:wrap; font-size:.8rem; align-items:center; margin-top:12px; }
+  .pl-legende i{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px;
+                 vertical-align:middle; font-style:normal; }
+  .pl-entete-impression{ display:none; }
+
+  @media print{
+    @page{ size:A3 landscape; margin:9mm; }
+    body{ background:#fff !important; }
+    header, nav, footer, .ui-header, .no-print, .mobile-nav-panel, .right{ display:none !important; }
+    .card{ border:none !important; box-shadow:none !important; padding:0 !important; margin:0 !important; }
+    .pl-entete-impression{ display:block; margin-bottom:8px; }
+    .pl-grille{ font-size:9pt; }
+    .pl-case{ height:auto; min-height:52px; }
+    .pl-ev{ break-inside:avoid; }
+    .pl-grille thead{ display:table-header-group; }
+    .pl-grille tr{ break-inside:avoid; }
+  }
+  @media (max-width:900px){
+    .pl-grille, .pl-grille thead, .pl-grille tbody, .pl-grille tr, .pl-grille th, .pl-grille td{ display:block; }
+    .pl-grille thead{ display:none; }
+    .pl-salle{ width:auto; background:var(--surface-soft,#f1f4fb); }
+    .pl-case{ height:auto; }
+    .pl-case::before{ content:attr(data-jour); font-size:.72rem; font-weight:700; opacity:.6; }
+    .pl-case:empty{ display:none; }
+  }
+</style>
+
+<div class="stack">
+  <div class="card no-print">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>🗓️ Planning de la semaine</h1>
+        <p class="muted" style="margin:0;">
+          Une ligne par salle, une colonne par jour. Conçu pour être imprimé en A3
+          paysage et lu à deux mètres — celui qu'on scotche au mur de la salle de pause.
+        </p>
+      </div>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        <button class="btn ok" type="button" onclick="window.print()">🖨️ Imprimer</button>
+        <a class="btn" href="{{ url_for('salles.planning_mensuel', site_id=site.id) }}">Vue mois</a>
+        {% if can('salles:edit') %}
+          <a class="btn" href="{{ url_for('salles.blocage_form') }}">🚧 Rendre indisponible</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="inline" style="gap:10px; flex-wrap:wrap; margin-top:14px; align-items:center;">
+      <a class="btn" href="{{ url_for('salles.planning', site_id=site.id, semaine=precedente, louables='1' if louables_seulement else None) }}">← Semaine précédente</a>
+      <a class="btn" href="{{ url_for('salles.planning', site_id=site.id) }}">Cette semaine</a>
+      <a class="btn" href="{{ url_for('salles.planning', site_id=site.id, semaine=suivante, louables='1' if louables_seulement else None) }}">Semaine suivante →</a>
+      {% if sites|length > 1 %}
+        <form method="get" style="display:inline;">
+          <input type="hidden" name="semaine" value="{{ debut.isoformat() }}">
+          <select class="in" name="site_id" onchange="this.form.submit()">
+            {% for s in sites %}
+              <option value="{{ s.id }}" {% if s.id == site.id %}selected{% endif %}>{{ s.nom }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      {% endif %}
+      <form method="get" class="inline" style="gap:7px; align-items:center;">
+        <input type="hidden" name="site_id" value="{{ site.id }}">
+        <input type="hidden" name="semaine" value="{{ debut.isoformat() }}">
+        <label class="inline" style="gap:6px; align-items:center;">
+          <input type="checkbox" name="louables" value="1"
+                 {% if louables_seulement %}checked{% endif %} onchange="this.form.submit()">
+          <span>Salles louables uniquement</span>
+        </label>
+      </form>
+      <span class="muted" style="margin-left:auto;">
+        {{ lignes|length }} salle(s) · {{ total }} occupation(s)
+      </span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="pl-entete-impression">
+      <strong style="font-size:13pt;">{{ site.nom }} — semaine du {{ debut.strftime('%d/%m/%Y') }}
+      au {{ fin.strftime('%d/%m/%Y') }}</strong>
+    </div>
+
+    {% if not lignes %}
+      <div class="ui-empty-state">
+        <p class="muted">Aucune salle occupable sur ce site. Coche « Occupable » sur tes espaces.</p>
+        <a class="btn" href="{{ url_for('salles.index') }}">Aller au plan</a>
+      </div>
+    {% else %}
+      <div class="tablewrap">
+        <table class="pl-grille">
+          <thead>
+            <tr>
+              <th class="pl-salle">Salle</th>
+              {% for jour in jours %}
+                <th class="{% if jour in feries %}ferie{% elif jour == aujourdhui %}aujourdhui{% endif %}">
+                  {{ jour.strftime('%a %d/%m') }}
+                  {% if jour in feries %}<br><span style="font-size:.68rem;">{{ feries[jour] }}</span>{% endif %}
+                </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for ligne in lignes %}
+              <tr>
+                <td class="pl-salle">
+                  {{ ligne.espace.nom }}
+                  <small>
+                    {%- if ligne.espace.capacite_affichee %}{{ ligne.espace.capacite_affichee }} places{% endif -%}
+                    {%- if ligne.espace.louable %} · louable{% endif -%}
+                  </small>
+                </td>
+                {% for cellule in ligne.cellules %}
+                  <td class="pl-case {% if cellule.jour in feries %}ferie{% elif cellule.jour.weekday() >= 5 %}week-end{% endif %}"
+                      data-jour="{{ cellule.jour.strftime('%a %d/%m') }}">
+                    {% for ev in cellule.evenements %}
+                      <span class="pl-ev {% if not ev.direct %}indirect{% endif %}"
+                            style="border-left-color:{{ ev.couleur }}; background:{{ ev.couleur }}1f;"
+                            title="{{ ev.occupation.origine_label }}{% if not ev.direct %} — via {{ ev.occupation.espace.nom }}{% endif %}">
+                        <span class="h">{{ ev.occupation.heure_debut }}</span>
+                        {{ ev.occupation.titre or ev.occupation.origine_label }}
+                        {%- if not ev.direct %} <em>({{ ev.occupation.espace.nom }})</em>{% endif %}
+                      </span>
+                    {% endfor %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pl-legende">
+        <span><i style="background:#3b82f6;"></i>Activité</span>
+        <span><i style="background:#10b981;"></i>Réunion / temps d'équipe</span>
+        <span><i style="background:#8b5cf6;"></i>Mise à disposition</span>
+        <span><i style="background:#ef4444;"></i>Indisponible</span>
+        <span style="opacity:.62; font-style:italic;">En italique : occupé par une salle voisine (parent ou partie)</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
