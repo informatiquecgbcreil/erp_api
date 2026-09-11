@@ -1069,7 +1069,13 @@ class InventaireItem(db.Model):
     quantite = db.Column(db.Integer, nullable=False, default=1)
     numero_serie = db.Column(db.String(180), nullable=True)
     etat = db.Column(db.String(50), nullable=False, default="OK")
+    #: Ancienne localisation en texte libre. Conservée telle quelle : elle
+    #: reste la source de vérité tant que la reprise vers ``espace_id`` n'a
+    #: pas été faite, et sert de trace de ce qui avait été saisi.
     localisation = db.Column(db.String(255), nullable=True)
+    #: Emplacement structuré (salle, armoire sécurisée, réserve…). Pointe
+    #: vers un ``Espace`` marqué ``stockage``.
+    espace_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="SET NULL"), nullable=True, index=True)
 
     valeur_unitaire = db.Column(db.Float, nullable=True)
     date_entree = db.Column(db.Date, nullable=True)
@@ -1728,6 +1734,10 @@ class SessionActivite(db.Model):
     heure_fin = db.Column(db.String(10), nullable=True)
     # Libellé source conservé sans conversion arbitraire M/AM/ME en heures.
     creneau_source = db.Column(db.String(80), nullable=True)
+    #: Salle où se déroule la séance. Dès qu'elle est renseignée, une
+    #: ``Occupation`` est créée automatiquement : la salle devient
+    #: indisponible pour toute autre séance, réunion ou location.
+    espace_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="SET NULL"), nullable=True, index=True)
     capacite = db.Column(db.Integer, nullable=True)
     statut = db.Column(db.String(20), nullable=False, default="realisee")  # realisee / annulee
 
@@ -3135,6 +3145,9 @@ class AgendaCreneau(db.Model):
     heure_debut = db.Column(db.String(10), nullable=True)
     heure_fin = db.Column(db.String(10), nullable=True)
     description = db.Column(db.String(500), nullable=True)
+    #: Salle du créneau (réunion, formation…). Même effet que sur une
+    #: séance : la salle se bloque toute seule dans le planning.
+    espace_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="SET NULL"), nullable=True, index=True)
     # Rattachement facultatif à une subvention : le créneau compte alors dans
     # la feuille de temps du financeur (réunion projet, préparation dédiée…).
     subvention_id = db.Column(db.Integer, db.ForeignKey("subvention.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -3826,3 +3839,419 @@ class InscriptionAnnuelleDispo(db.Model):
     @property
     def libelle(self) -> str:
         return f"{JOURS_SEMAINE_LABELS.get(self.jour, self.jour)} {DEMI_JOURNEES_LABELS.get(self.demi_journee, self.demi_journee).lower()}"
+
+
+# =====================================================================
+# SALLES & ESPACES — référentiel des lieux, occupations, stockage
+# =====================================================================
+#
+# Principe central : un espace n'est PAS une ligne dans une liste plate,
+# c'est un NŒUD DANS UN ARBRE (``Espace.parent_id``). C'est ce qui permet
+# de gérer sans cas particulier :
+#   - la grande salle d'activité séparable en deux par cloisons amovibles
+#     (« Grande salle » parent de « Demi-salle A » et « Demi-salle B ») ;
+#   - l'espace petite enfance qui contient garderie, dortoir, snoezelen… ;
+#   - les points de stockage (« Armoire sécurisée n°1 » enfant de l'atelier).
+#
+# Règle d'or de la disponibilité, écrite UNE SEULE FOIS dans
+# ``app/services/salles.py`` : occuper un espace rend indisponibles tous
+# ses ANCÊTRES et tous ses DESCENDANTS. Louer la demi-salle A interdit la
+# grande salle entière ; louer la grande salle interdit les deux moitiés.
+
+#: Nature d'un site : d'où vient le bâtiment, et donc ce qu'on a le droit
+#: d'en faire. ``mis_a_disposition`` est le cas du bâtiment municipal.
+TYPES_SITE = ["propriete", "mis_a_disposition", "externe"]
+TYPES_SITE_LABELS = {
+    "propriete": "Propriété de la structure",
+    "mis_a_disposition": "Mis à disposition (mairie, bailleur…)",
+    "externe": "Site externe (agglomération, partenaire)",
+}
+
+#: Ce que la convention d'occupation autorise vis-à-vis des tiers. Sert de
+#: garde-fou : on affiche l'avertissement au moment de louer, on ne
+#: découvre pas la restriction après la signature.
+REGIMES_SOUS_LOCATION = ["autorisee", "soumise_autorisation", "interdite", "inconnue"]
+REGIMES_SOUS_LOCATION_LABELS = {
+    "autorisee": "Mise à disposition de tiers autorisée",
+    "soumise_autorisation": "Soumise à autorisation préalable",
+    "interdite": "Interdite par la convention",
+    "inconnue": "Non renseigné",
+}
+
+#: Nature d'un espace. Purement descriptif (filtres, icônes, regroupements) :
+#: ce sont les drapeaux ``reservable`` / ``louable`` / ``stockage`` qui
+#: décident du comportement réel, jamais le type.
+TYPES_ESPACE = [
+    "zone", "salle", "bureau", "atelier", "cuisine",
+    "sanitaire", "exterieur", "circulation", "stockage", "technique",
+]
+TYPES_ESPACE_LABELS = {
+    "zone": "Zone / aile",
+    "salle": "Salle",
+    "bureau": "Bureau",
+    "atelier": "Atelier",
+    "cuisine": "Cuisine",
+    "sanitaire": "Sanitaires / vestiaire",
+    "exterieur": "Espace extérieur",
+    "circulation": "Hall / circulation",
+    "stockage": "Rangement / stockage",
+    "technique": "Local technique",
+}
+TYPES_ESPACE_ICONES = {
+    "zone": "🏢", "salle": "🚪", "bureau": "💼", "atelier": "🔧", "cuisine": "🍳",
+    "sanitaire": "🚻", "exterieur": "🌳", "circulation": "🚶", "stockage": "📦", "technique": "⚙️",
+}
+
+#: Origine d'une occupation. Une seule table pour les quatre, sinon la
+#: détection de conflits devrait interroger quatre tables différentes.
+ORIGINES_OCCUPATION = ["seance", "creneau", "location", "blocage"]
+ORIGINES_OCCUPATION_LABELS = {
+    "seance": "Séance d'atelier",
+    "creneau": "Créneau agenda (réunion, préparation…)",
+    "location": "Mise à disposition / location",
+    "blocage": "Indisponibilité (travaux, fermeture…)",
+}
+
+STATUTS_OCCUPATION = ["confirme", "option", "annule"]
+STATUTS_OCCUPATION_LABELS = {
+    "confirme": "Confirmée",
+    "option": "Option (pré-réservation)",
+    "annule": "Annulée",
+}
+
+
+def minutes_depuis_texte(valeur) -> int | None:
+    """Convertit « 14:00 », « 9h30 », « 0900 » en minutes depuis minuit.
+
+    Les heures sont stockées en texte libre dans les séances et les
+    créneaux existants : impossible de comparer « 9:00 » et « 09:00 »
+    lexicographiquement. On normalise donc en entier une bonne fois pour
+    toutes, ce qui rend les chevauchements triviaux à calculer.
+
+    Retourne ``None`` si la valeur est vide ou inexploitable.
+    """
+    if valeur is None:
+        return None
+    if isinstance(valeur, int):
+        return valeur if 0 <= valeur <= 24 * 60 else None
+    txt = str(valeur).strip().lower().replace("h", ":").replace(".", ":")
+    if not txt:
+        return None
+    if ":" not in txt and txt.isdigit() and len(txt) == 4:  # « 0900 »
+        txt = txt[:2] + ":" + txt[2:]
+    morceaux = txt.split(":")
+    try:
+        heures = int(morceaux[0])
+        minutes = int(morceaux[1]) if len(morceaux) > 1 and morceaux[1] else 0
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= heures <= 24) or not (0 <= minutes < 60):
+        return None
+    total = heures * 60 + minutes
+    return total if 0 <= total <= 24 * 60 else None
+
+
+def texte_depuis_minutes(valeur) -> str:
+    """Formate des minutes depuis minuit en « 14:00 » (vide si None)."""
+    if valeur is None:
+        return ""
+    try:
+        v = int(valeur)
+    except (TypeError, ValueError):
+        return ""
+    return f"{v // 60:02d}:{v % 60:02d}"
+
+
+class Site(db.Model):
+    """Un bâtiment ou un lieu distinct : le centre social, une salle
+    municipale prêtée à l'autre bout de l'agglo, un local partenaire.
+
+    Porte la convention d'occupation (qui met à disposition, jusqu'à quand,
+    et surtout ce qu'elle autorise vis-à-vis des tiers) ainsi que la valeur
+    locative annuelle estimée, qui alimente la valorisation des
+    contributions volontaires en nature au compte de résultat.
+    """
+
+    __tablename__ = "site"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(180), nullable=False)
+    code = db.Column(db.String(40), nullable=False, unique=True, index=True)
+    type_site = db.Column(db.String(30), nullable=False, default="propriete", index=True)
+
+    adresse = db.Column(db.String(255), nullable=True)
+    code_postal = db.Column(db.String(10), nullable=True)
+    ville = db.Column(db.String(120), nullable=True)
+
+    #: Qui met le site à disposition (« Ville de Creil »).
+    proprietaire = db.Column(db.String(180), nullable=True)
+    convention_reference = db.Column(db.String(120), nullable=True)
+    convention_debut = db.Column(db.Date, nullable=True)
+    convention_fin = db.Column(db.Date, nullable=True)
+    regime_sous_location = db.Column(db.String(30), nullable=False, default="inconnue")
+    convention_notes = db.Column(db.Text, nullable=True)
+
+    #: Valeur locative annuelle estimée de l'ensemble du site. Sert de
+    #: repli quand les espaces n'ont pas de valeur individuelle.
+    valeur_locative_annuelle = db.Column(db.Float, nullable=True)
+
+    actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    # Pas de ``passive_deletes`` : SQLite (base par défaut) n'applique pas les
+    # ON DELETE CASCADE sans PRAGMA foreign_keys. L'ORM fait donc le ménage
+    # lui-même ; le CASCADE en base reste le filet de sécurité PostgreSQL.
+    espaces = db.relationship(
+        "Espace", back_populates="site", cascade="all, delete-orphan",
+        order_by="Espace.ordre, Espace.nom",
+    )
+
+    @property
+    def type_label(self) -> str:
+        return TYPES_SITE_LABELS.get(self.type_site, self.type_site)
+
+    @property
+    def regime_label(self) -> str:
+        return REGIMES_SOUS_LOCATION_LABELS.get(self.regime_sous_location, self.regime_sous_location)
+
+    @property
+    def alerte_sous_location(self) -> str | None:
+        """Message d'avertissement à afficher avant toute mise à disposition."""
+        if self.regime_sous_location == "interdite":
+            return "La convention d'occupation interdit la mise à disposition à des tiers."
+        if self.regime_sous_location == "soumise_autorisation":
+            return "Mise à disposition soumise à l'autorisation préalable du propriétaire."
+        if self.regime_sous_location == "inconnue":
+            return "Régime de mise à disposition non renseigné : à vérifier dans la convention."
+        return None
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Site {self.code} {self.nom!r}>"
+
+
+class Espace(db.Model):
+    """Un nœud du plan : aile, salle, bureau, sanitaire, armoire sécurisée.
+
+    Trois drapeaux indépendants commandent tout le comportement :
+
+    - ``reservable`` : l'espace peut recevoir une occupation et apparaît
+      dans les plannings. Un WC public ou une armoire : non.
+    - ``louable`` : l'espace peut être mis à disposition d'un TIERS.
+      Implique ``reservable``. Le bureau de la petite enfance est
+      réservable en interne mais jamais louable ; la salle informatique
+      peut l'être aussi (matériel sensible) selon le choix de l'équipe.
+    - ``stockage`` : l'espace est proposé comme emplacement d'inventaire.
+      C'est ce qui permet de dire « cette tablette est dans l'armoire
+      sécurisée n°1 de l'atelier » sans polluer la liste des salles.
+    """
+
+    __tablename__ = "espace"
+
+    id = db.Column(db.Integer, primary_key=True)
+    site_id = db.Column(db.Integer, db.ForeignKey("site.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    nom = db.Column(db.String(180), nullable=False)
+    type_espace = db.Column(db.String(30), nullable=False, default="salle", index=True)
+    #: Ordre d'affichage entre frères (plan de circulation réel plutôt
+    #: qu'ordre alphabétique : le hall avant les salles du fond).
+    ordre = db.Column(db.Integer, nullable=False, default=0)
+
+    # --- Comportement -----------------------------------------------------
+    reservable = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    louable = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    stockage = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    securise = db.Column(db.Boolean, nullable=False, default=False)
+    detenteur_cle = db.Column(db.String(180), nullable=True)
+
+    # --- Capacités --------------------------------------------------------
+    #: Effectif maximal fixé par la commission de sécurité (ERP au sens
+    #: « Établissement Recevant du Public »). Jamais dépassable.
+    capacite_reglementaire = db.Column(db.Integer, nullable=True)
+    #: Effectif de travail confortable, variable selon la configuration
+    #: (12 en atelier numérique, 20 en réunion dans la même pièce).
+    capacite_usage = db.Column(db.Integer, nullable=True)
+    surface_m2 = db.Column(db.Float, nullable=True)
+    pmr = db.Column(db.Boolean, nullable=False, default=False)
+
+    #: Battement minimal EN MINUTES entre deux occupations successives :
+    #: remise en état, ménage, aération. Une cuisine professionnelle en
+    #: demande nettement plus qu'une salle de réunion.
+    battement_minutes = db.Column(db.Integer, nullable=False, default=0)
+    #: Prérequis à la mise à disposition (HACCP pour la cuisine pro…).
+    habilitation_requise = db.Column(db.String(255), nullable=True)
+
+    equipements = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    valeur_locative_annuelle = db.Column(db.Float, nullable=True)
+
+    actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    site = db.relationship("Site", back_populates="espaces")
+    enfants = db.relationship(
+        "Espace",
+        backref=db.backref("parent", remote_side=[id]),
+        cascade="all, delete-orphan",
+        order_by="Espace.ordre, Espace.nom",
+    )
+    occupations = db.relationship(
+        "Occupation", back_populates="espace", cascade="all, delete-orphan"
+    )
+    #: Rattachements « SET NULL » : supprimer un espace ne détruit ni le
+    #: matériel qui s'y trouvait, ni les séances qui s'y déroulaient — l'ORM
+    #: se contente de vider la référence (SQLite ne le ferait pas seul).
+    items_inventaire = db.relationship("InventaireItem", backref="espace")
+    seances = db.relationship("SessionActivite", backref="espace")
+    creneaux_agenda = db.relationship("AgendaCreneau", backref="espace")
+
+    __table_args__ = (
+        db.Index("ix_espace_site_parent", "site_id", "parent_id"),
+    )
+
+    # --- Confort d'affichage ---------------------------------------------
+    @property
+    def type_label(self) -> str:
+        return TYPES_ESPACE_LABELS.get(self.type_espace, self.type_espace)
+
+    @property
+    def icone(self) -> str:
+        return TYPES_ESPACE_ICONES.get(self.type_espace, "🚪")
+
+    @property
+    def capacite_affichee(self):
+        """Capacité à montrer par défaut : l'usage, sinon le réglementaire."""
+        return self.capacite_usage or self.capacite_reglementaire
+
+    def ancetres(self) -> list["Espace"]:
+        """Du parent direct jusqu'à la racine. Protégé contre les cycles."""
+        chaine, vus, courant = [], {self.id}, self.parent
+        while courant is not None and courant.id not in vus:
+            chaine.append(courant)
+            vus.add(courant.id)
+            courant = courant.parent
+        return chaine
+
+    def descendants(self) -> list["Espace"]:
+        """Tout le sous-arbre, en profondeur. Protégé contre les cycles."""
+        trouves, vus, pile = [], {self.id}, list(self.enfants)
+        while pile:
+            noeud = pile.pop()
+            if noeud.id in vus:
+                continue
+            vus.add(noeud.id)
+            trouves.append(noeud)
+            pile.extend(noeud.enfants)
+        return trouves
+
+    @property
+    def chemin(self) -> str:
+        """« Centre social › Espace petite enfance › Dortoir »."""
+        return " › ".join([e.nom for e in reversed(self.ancetres())] + [self.nom])
+
+    @property
+    def profondeur(self) -> int:
+        return len(self.ancetres())
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Espace {self.id} {self.nom!r}>"
+
+
+class Occupation(db.Model):
+    """Un espace occupé, un jour, sur une plage horaire — quelle qu'en soit
+    la raison.
+
+    Table UNIQUE et volontairement : séances d'atelier, créneaux d'agenda,
+    mises à disposition et blocages atterrissent tous ici. La détection de
+    conflits n'interroge donc qu'une seule table, et une séance d'atelier
+    protège la salle d'une location exactement comme l'inverse.
+
+    Les horaires sont stockés en minutes depuis minuit (entiers) : les
+    séances existantes gardent leurs heures en texte libre, impossibles à
+    comparer de façon fiable.
+    """
+
+    __tablename__ = "occupation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    espace_id = db.Column(db.Integer, db.ForeignKey("espace.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    date_jour = db.Column(db.Date, nullable=False, index=True)
+    minute_debut = db.Column(db.Integer, nullable=False)
+    minute_fin = db.Column(db.Integer, nullable=False)
+
+    origine = db.Column(db.String(20), nullable=False, default="location", index=True)
+    statut = db.Column(db.String(20), nullable=False, default="confirme", index=True)
+
+    #: Séance d'atelier à l'origine de l'occupation. Clé étrangère avec
+    #: CASCADE : supprimer la séance libère la salle automatiquement.
+    session_id = db.Column(
+        db.Integer, db.ForeignKey("session_activite.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: Créneau d'agenda (réunion, préparation, formation). Vraie clé
+    #: étrangère, contrairement à ``GoogleAgendaLink`` qui doit survivre au
+    #: créneau pour faire le ménage côté Google : ici c'est l'inverse, un
+    #: créneau supprimé doit libérer la salle immédiatement.
+    creneau_id = db.Column(
+        db.Integer, db.ForeignKey("agenda_creneau.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    #: Libellé recopié pour que le planning s'affiche sans aller chercher
+    #: la séance, l'atelier et le secteur à chaque case de la grille.
+    titre = db.Column(db.String(200), nullable=True)
+    secteur = db.Column(db.String(80), nullable=True, index=True)
+    effectif_prevu = db.Column(db.Integer, nullable=True)
+    note = db.Column(db.String(500), nullable=True)
+
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    espace = db.relationship("Espace", back_populates="occupations")
+    session = db.relationship(
+        "SessionActivite",
+        backref=db.backref("occupations", cascade="all, delete-orphan"),
+    )
+    creneau = db.relationship(
+        "AgendaCreneau",
+        backref=db.backref("occupations", cascade="all, delete-orphan"),
+    )
+
+    __table_args__ = (
+        db.Index("ix_occupation_espace_jour", "espace_id", "date_jour"),
+        db.Index("ix_occupation_jour_plage", "date_jour", "minute_debut", "minute_fin"),
+    )
+
+    @property
+    def origine_label(self) -> str:
+        return ORIGINES_OCCUPATION_LABELS.get(self.origine, self.origine)
+
+    @property
+    def statut_label(self) -> str:
+        return STATUTS_OCCUPATION_LABELS.get(self.statut, self.statut)
+
+    @property
+    def heure_debut(self) -> str:
+        return texte_depuis_minutes(self.minute_debut)
+
+    @property
+    def heure_fin(self) -> str:
+        return texte_depuis_minutes(self.minute_fin)
+
+    @property
+    def plage(self) -> str:
+        return f"{self.heure_debut} – {self.heure_fin}"
+
+    @property
+    def duree_minutes(self) -> int:
+        return max(0, int(self.minute_fin or 0) - int(self.minute_debut or 0))
+
+    @property
+    def bloquante(self) -> bool:
+        """Une occupation annulée ne réserve plus rien."""
+        return self.statut != "annule"
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Occupation {self.date_jour} {self.plage} espace={self.espace_id}>"

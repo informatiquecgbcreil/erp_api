@@ -122,6 +122,7 @@ def create_app():
     from app.aide import bp as aide_bp
     from app.veille_financements import bp as veille_bp
     from app.inscriptions_annuelles import bp as inscriptions_annuelles_bp
+    from app.salles import bp as salles_bp
 
     app.register_blueprint(setup_bp)
     app.register_blueprint(aide_bp)
@@ -147,6 +148,15 @@ def create_app():
     app.register_blueprint(transitions_bp)
     app.register_blueprint(veille_bp)
     app.register_blueprint(inscriptions_annuelles_bp)
+    app.register_blueprint(salles_bp)
+
+    # Blocage automatique des salles : une séance ou un créneau d'agenda
+    # qui porte une salle crée son occupation tout seul, quel que soit le
+    # chemin d'écriture (saisie, grille hebdo, import Excel, reprise
+    # historique…). Un point d'écoute unique plutôt que sept appels
+    # dispersés qu'on finirait par oublier d'ajouter au huitième.
+    from app.services.salles import enregistrer_synchronisation_auto
+    enregistrer_synchronisation_auto()
 
     @app.before_request
     def _facade_kiosque_publique():

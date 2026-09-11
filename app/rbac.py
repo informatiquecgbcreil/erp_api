@@ -105,6 +105,10 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     ("questionnaires:respond", "Saisir des réponses aux questionnaires"),
     ("questionnaires:export", "Exporter les réponses questionnaires"),
 
+    # Salles & espaces
+    ("salles:view", "Voir le plan des salles et leur disponibilité"),
+    ("salles:edit", "Créer / modifier / supprimer les sites et les espaces"),
+
     # Inventaire
     ("inventaire:view", "Voir l’inventaire"),
     ("inventaire:edit", "Créer / modifier inventaire"),

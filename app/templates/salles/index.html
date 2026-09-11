@@ -1,0 +1,182 @@
+{% extends "layout.html" %}
+{% block title %}Salles et espaces{% endblock %}
+{% block body %}
+<style>
+  .plan-ligne{ display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:9px;
+               border:1px solid transparent; }
+  .plan-ligne:hover{ background:rgba(59,130,246,.07); border-color:rgba(59,130,246,.22); }
+  .plan-ligne.inactif{ opacity:.5; }
+  .plan-nom{ font-weight:650; }
+  .plan-nom.pas-reservable{ font-weight:500; opacity:.75; }
+  .plan-drapeaux{ display:flex; gap:5px; flex-wrap:wrap; }
+  .drapeau{ font-size:.7rem; font-weight:700; padding:2px 7px; border-radius:20px; white-space:nowrap; }
+  .d-louable{ background:rgba(16,185,129,.16); color:#047857; }
+  .d-stock{ background:rgba(245,158,11,.18); color:#92400e; }
+  .d-secu{ background:rgba(239,68,68,.15); color:#b91c1c; }
+  .d-pmr{ background:rgba(59,130,246,.15); color:#1d4ed8; }
+  .d-horsplan{ background:rgba(148,163,184,.2); color:#475569; }
+  .plan-meta{ margin-left:auto; display:flex; gap:12px; align-items:center;
+              font-size:.8rem; opacity:.8; white-space:nowrap; }
+  .plan-actions{ display:flex; gap:5px; opacity:0; transition:opacity .12s; }
+  .plan-ligne:hover .plan-actions, .plan-actions:focus-within{ opacity:1; }
+  .plan-actions .btn{ padding:3px 9px; font-size:.76rem; }
+  @media (max-width:760px){
+    .plan-meta{ margin-left:0; width:100%; }
+    .plan-ligne{ flex-wrap:wrap; }
+    .plan-actions{ opacity:1; }
+  }
+</style>
+
+<div class="stack">
+
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>🏢 Salles et espaces</h1>
+        <p class="muted">
+          Le plan de tes bâtiments. Chaque espace peut en contenir d'autres :
+          c'est ce qui permet à la grande salle de savoir que ses deux moitiés
+          sont prises, et à l'armoire sécurisée de vivre dans l'atelier sans
+          polluer la liste des salles.
+        </p>
+      </div>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        <a class="btn ok" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
+        {% if can('salles:edit') %}
+          <a class="btn" href="{{ url_for('salles.site_form') }}">➕ Nouveau site</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if localisations_a_reprendre and can('salles:edit') %}
+    <div class="card" style="border-left:4px solid #f59e0b;">
+      <h2>📦 {{ localisations_a_reprendre }} matériel(s) à replacer</h2>
+      <p class="muted">
+        Ces matériels ont une localisation tapée à la main (« Salle info », « salle info. »…)
+        mais aucun emplacement réel. On peut les rattacher par lot, sans rien ressaisir.
+      </p>
+      <a class="btn" href="{{ url_for('salles.inventaire_reprise') }}">Reprendre les localisations</a>
+    </div>
+  {% endif %}
+
+  {% if not sites %}
+    <div class="card">
+      <div class="ui-empty-state">
+        <h2>Aucun bâtiment enregistré</h2>
+        <p class="muted">
+          Commence par créer ton site principal. Ensuite, un bouton te proposera
+          d'installer un plan type de centre social — une trentaine d'espaces
+          prêts à corriger, plutôt qu'une page blanche.
+        </p>
+        {% if can('salles:edit') %}
+          <a class="btn ok" href="{{ url_for('salles.site_form') }}">➕ Créer le premier site</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% for site in sites %}
+    {% set arbre = arbres.get(site.id, []) %}
+    <div class="card" id="site-{{ site.id }}">
+      <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h2 style="margin-bottom:2px;">
+            {{ site.nom }}
+            {% if not site.actif %}<span class="tag">inactif</span>{% endif %}
+          </h2>
+          <p class="muted" style="margin:0;">
+            {{ site.type_label }}
+            {%- if site.proprietaire %} · {{ site.proprietaire }}{% endif %}
+            {%- if site.ville %} · {{ site.ville }}{% endif %}
+            · {{ arbre|length }} espace(s)
+          </p>
+        </div>
+        <div class="inline" style="gap:8px; flex-wrap:wrap;">
+          {% if can('salles:edit') %}
+            <a class="btn" href="{{ url_for('salles.espace_form', site_id=site.id) }}">➕ Espace</a>
+            <a class="btn" href="{{ url_for('salles.site_form', site_id=site.id) }}">✏️ Le site</a>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if site.alerte_sous_location %}
+        <p class="muted" style="margin:10px 0 0; padding:8px 11px; border-radius:9px;
+                                background:rgba(245,158,11,.13); border-left:3px solid #f59e0b;">
+          ⚠️ {{ site.alerte_sous_location }}
+        </p>
+      {% endif %}
+
+      {% if not arbre %}
+        <div class="ui-empty-state" style="margin-top:14px;">
+          <p class="muted">Ce site est vide.</p>
+          {% if can('salles:edit') %}
+            <form method="post" action="{{ url_for('salles.site_installer_plan', site_id=site.id) }}"
+                  style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn ok" type="submit">🏗️ Installer un plan type de centre social</button>
+            </form>
+            <p class="muted" style="margin-top:8px; font-size:.82rem;">
+              Une trentaine d'espaces d'un coup (salles, bureaux, petite enfance,
+              grande salle séparable, armoire sécurisée…), à renommer et ajuster ensuite.
+            </p>
+          {% endif %}
+        </div>
+      {% else %}
+        <div style="margin-top:12px;">
+          {% for espace, profondeur in arbre %}
+            <div class="plan-ligne {% if not espace.actif %}inactif{% endif %}"
+                 style="margin-left:{{ profondeur * 22 }}px;">
+              <span>{{ espace.icone }}</span>
+              <a class="plan-nom {% if not espace.reservable %}pas-reservable{% endif %}"
+                 href="{{ url_for('salles.espace_fiche', espace_id=espace.id) }}">{{ espace.nom }}</a>
+
+              <span class="plan-drapeaux">
+                {% if espace.louable %}<span class="drapeau d-louable">louable</span>{% endif %}
+                {% if not espace.reservable %}<span class="drapeau d-horsplan">hors planning</span>{% endif %}
+                {% if espace.stockage %}<span class="drapeau d-stock">stockage</span>{% endif %}
+                {% if espace.securise %}<span class="drapeau d-secu">🔒 sécurisé</span>{% endif %}
+                {% if espace.pmr %}<span class="drapeau d-pmr">PMR</span>{% endif %}
+              </span>
+
+              <span class="plan-meta">
+                {% if espace.capacite_affichee %}<span>👥 {{ espace.capacite_affichee }}</span>{% endif %}
+                {% if espace.battement_minutes %}<span>⏱️ {{ espace.battement_minutes }} min</span>{% endif %}
+                {% if can('salles:edit') %}
+                  <span class="plan-actions">
+                    <a class="btn" href="{{ url_for('salles.espace_form', site_id=site.id, parent_id=espace.id) }}"
+                       title="Ajouter un espace à l'intérieur">＋</a>
+                    <a class="btn" href="{{ url_for('salles.espace_form', espace_id=espace.id) }}">✏️</a>
+                    <form method="post" action="{{ url_for('salles.espace_supprimer', espace_id=espace.id) }}"
+                          style="display:inline;"
+                          onsubmit="return confirm('Supprimer « {{ espace.nom|e }} » ainsi que tout ce qu\'il contient ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn warn" type="submit">🗑️</button>
+                    </form>
+                  </span>
+                {% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  {% if sites and can('salles:edit') %}
+    <div class="card">
+      <h2>🧹 Filet de sécurité</h2>
+      <p class="muted">
+        Reconstruit les occupations à partir des séances et des créneaux d'agenda.
+        À lancer après un import en masse ou au moindre doute sur un planning :
+        l'opération est sans risque et peut se relancer autant de fois que voulu.
+      </p>
+      <form method="post" action="{{ url_for('salles.reconcilier') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit">Reconstruire les plannings</button>
+      </form>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
