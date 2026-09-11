@@ -9,6 +9,10 @@
         <p class="muted" style="margin:0;">{{ espace.chemin }} · {{ espace.type_label }}</p>
       </div>
       <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        {% if can('salles:edit') and espace.reservable %}
+          <a class="btn ok" href="{{ url_for('salles.occuper_form', espace_id=espace.id) }}">📌 Occuper</a>
+        {% endif %}
+        <a class="btn" href="{{ url_for('salles.planning_mensuel', espace_id=espace.id) }}">📅 Son planning</a>
         {% if can('salles:edit') %}
           <a class="btn" href="{{ url_for('salles.espace_form', espace_id=espace.id) }}">✏️ Modifier</a>
         {% endif %}
@@ -51,7 +55,7 @@
       <div class="tablewrap clean">
         <table>
           <thead>
-            <tr><th>Date</th><th>Horaire</th><th>Quoi</th><th>Où exactement</th><th>Origine</th></tr>
+            <tr><th>Date</th><th>Horaire</th><th>Quoi</th><th>Où exactement</th><th>Nature</th><th></th></tr>
           </thead>
           <tbody>
             {% for occ in occupations %}
@@ -63,6 +67,20 @@
                   {% if occ.espace_id == espace.id %}ici{% else %}{{ occ.espace.nom }}{% endif %}
                 </td>
                 <td class="muted">{{ occ.origine_label }}</td>
+                <td>
+                  {% if can('salles:edit') and not occ.pilotee %}
+                    <form method="post" style="display:inline;"
+                          action="{{ url_for('salles.occupation_supprimer', occupation_id=occ.id) }}"
+                          onsubmit="return confirm('Lever cette occupation ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="retour"
+                             value="{{ url_for('salles.espace_fiche', espace_id=espace.id) }}">
+                      <button class="btn warn" type="submit" style="padding:2px 8px; font-size:.76rem;">Lever</button>
+                    </form>
+                  {% else %}
+                    <span class="muted" style="font-size:.76rem;">à sa source</span>
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>

@@ -353,9 +353,10 @@ def test_salle_deja_prise_previent_sans_bloquer(admin_client, app, batiment):
 def test_blocage_sur_plusieurs_jours(admin_client, app, batiment):
     fin = MERCREDI + timedelta(days=4)
     reponse = admin_client.post(
-        "/salles/blocage",
+        "/salles/occuper",
         data={
-            "espace_id": str(batiment["grande"]), "motif": "Travaux peinture",
+            "espace_id": str(batiment["grande"]), "titre": "Travaux peinture",
+            "origine": "blocage",
             "date_debut": MERCREDI.isoformat(), "date_fin": fin.isoformat(),
             "journee_entiere": "1",
         },
@@ -380,9 +381,10 @@ def test_blocage_sur_plusieurs_jours(admin_client, app, batiment):
 
 def test_blocage_refuse_une_periode_absurde(admin_client, batiment):
     reponse = admin_client.post(
-        "/salles/blocage",
+        "/salles/occuper",
         data={
-            "espace_id": str(batiment["grande"]), "motif": "Erreur",
+            "espace_id": str(batiment["grande"]), "titre": "Erreur",
+            "origine": "blocage",
             "date_debut": "2026-01-01", "date_fin": "2030-01-01", "journee_entiere": "1",
         },
         follow_redirects=True,
@@ -427,7 +429,7 @@ def test_les_ecrans_du_lot2_repondent(admin_client, batiment):
         f"/salles/planning/mois?espace_id={batiment['grande']}",
         "/salles/aujourdhui",
         "/salles/aujourdhui?ecran=1",
-        "/salles/blocage",
+        "/salles/occuper",
         f"/salles/site/{batiment['site']}/horaires",
     ]
     for url in urls:
@@ -458,3 +460,173 @@ def test_filtre_louables_allege_la_grille_murale(app, admin_client, batiment):
     ).get_data(as_text=True)
     assert "Atelier numérique" not in page
     assert "Grande salle" in page
+
+
+# ---------------------------------------------------------------------------
+# Lot 2.5 : occuper une salle depuis le planning
+# ---------------------------------------------------------------------------
+
+def test_occuper_a_la_main_avec_sa_nature(admin_client, app, batiment):
+    """Le geste de base : « telle salle, tel jour, tel créneau, occupée par ça »."""
+    reponse = admin_client.post(
+        "/salles/occuper",
+        data={
+            "espace_id": str(batiment["demi_a"]), "titre": "Atelier couture",
+            "origine": "interne", "date_debut": MERCREDI.isoformat(),
+            "heure_debut": "14:00", "heure_fin": "16:00",
+        },
+        follow_redirects=True,
+    )
+    assert reponse.status_code == 200
+
+    with app.app_context():
+        occ = Occupation.query.filter_by(titre="Atelier couture").one()
+        assert occ.origine == "interne"
+        assert (occ.minute_debut, occ.minute_fin) == (840, 960)
+        assert occ.pilotee is False, "une saisie manuelle doit rester modifiable"
+
+        # Et elle bloque bien la grande salle, par la règle du lot 1.
+        from app.services.salles import est_disponible
+        assert not est_disponible(
+            db.session.get(Espace, batiment["grande"]), MERCREDI, "15:00", "17:00"
+        )
+        db.session.delete(occ)
+        db.session.commit()
+
+
+def test_nature_inconnue_retombe_sur_activite(admin_client, app, batiment):
+    """Un formulaire bricolé ne doit pas injecter une origine pilotée :
+    elle se ferait effacer à la première réconciliation."""
+    admin_client.post(
+        "/salles/occuper",
+        data={
+            "espace_id": str(batiment["atelier"]), "titre": "Bricolé",
+            "origine": "seance", "date_debut": MERCREDI.isoformat(),
+            "heure_debut": "09:00", "heure_fin": "10:00",
+        },
+        follow_redirects=True,
+    )
+    with app.app_context():
+        occ = Occupation.query.filter_by(titre="Bricolé").one()
+        assert occ.origine == "interne"
+        db.session.delete(occ)
+        db.session.commit()
+
+
+def test_reconciliation_epargne_les_saisies_manuelles(app, batiment):
+    """Le piège : la réconciliation nettoie les occupations pilotées
+    orphelines. Une saisie manuelle n'a évidemment ni séance ni créneau et
+    ne doit surtout pas être emportée."""
+    from app.services.salles import reconcilier_occupations
+
+    with app.app_context():
+        for origine in ("interne", "reunion", "location", "blocage"):
+            db.session.add(Occupation(
+                espace_id=batiment["atelier"], date_jour=MERCREDI,
+                minute_debut=540, minute_fin=600, origine=origine,
+                statut="confirme", titre=f"Manuel {origine}",
+            ))
+        db.session.commit()
+        avant = Occupation.query.count()
+
+        reconcilier_occupations()
+        reconcilier_occupations()
+
+        assert Occupation.query.count() == avant, "une saisie manuelle a été effacée"
+        for occ in Occupation.query.filter(Occupation.titre.like("Manuel %")).all():
+            db.session.delete(occ)
+        db.session.commit()
+
+
+def test_conflit_signale_mais_occupation_posee(admin_client, app, batiment):
+    with app.app_context():
+        _occuper(batiment["atelier"], debut=840, fin=960, titre="Déjà pris")
+
+    reponse = admin_client.post(
+        "/salles/occuper",
+        data={
+            "espace_id": str(batiment["atelier"]), "titre": "Par-dessus",
+            "origine": "reunion", "date_debut": MERCREDI.isoformat(),
+            "heure_debut": "15:00", "heure_fin": "17:00",
+        },
+        follow_redirects=True,
+    )
+    page = reponse.get_data(as_text=True)
+    assert "Chevauchement" in page
+
+    with app.app_context():
+        assert Occupation.query.filter_by(titre="Par-dessus").count() == 1
+        for t in ("Déjà pris", "Par-dessus"):
+            for occ in Occupation.query.filter_by(titre=t).all():
+                db.session.delete(occ)
+        db.session.commit()
+
+
+def test_le_planning_propose_le_clic_par_case(admin_client, batiment):
+    """Le geste naturel : voir une case vide, cliquer, remplir. Le lien doit
+    emporter la salle ET le jour, sinon on retape ce qu'on avait sous les yeux."""
+    page = admin_client.get(
+        f"/salles/planning?site_id={batiment['site']}&semaine={MERCREDI.isoformat()}"
+    ).get_data(as_text=True)
+    assert f"espace_id={batiment['demi_a']}" in page
+    assert f"jour={MERCREDI.isoformat()}" in page
+
+
+def test_formulaire_preremplit_depuis_le_planning(admin_client, batiment):
+    page = admin_client.get(
+        f"/salles/occuper?espace_id={batiment['grande']}&jour={MERCREDI.isoformat()}"
+    ).get_data(as_text=True)
+    assert f'value="{MERCREDI.isoformat()}"' in page
+    assert f'value="{batiment["grande"]}" selected' in page
+
+
+def test_ancienne_url_de_blocage_redirige(admin_client):
+    """Les liens déjà partagés doivent continuer de marcher, mais l'ancien
+    nom ne doit plus apparaître nulle part dans l'application."""
+    reponse = admin_client.get("/salles/blocage")
+    assert reponse.status_code == 302
+    assert "/salles/occuper" in reponse.headers["Location"]
+    assert admin_client.get("/salles/blocage", follow_redirects=True).status_code == 200
+
+
+def test_un_creneau_agenda_peut_occuper_une_salle(admin_client, app, batiment):
+    """Mon oubli du lot 2 : le moteur savait le faire, le formulaire ne le
+    proposait pas. Une réunion d'équipe doit protéger sa salle."""
+    from app.models import AgendaCreneau
+
+    # Le panneau de saisie ne s'ouvre qu'avec un jour ciblé.
+    page = admin_client.get(
+        f"/mon-agenda/calendrier?jour={MERCREDI.isoformat()}"
+    ).get_data(as_text=True)
+    assert 'name="espace_id"' in page, "le formulaire doit proposer une salle"
+
+    reponse = admin_client.post(
+        "/mon-agenda/creneau",
+        data={
+            "titre": "Réunion d'équipe", "type_creneau": "reunion",
+            "date_creneau": MERCREDI.isoformat(),
+            "heure_debut": "10:00", "heure_fin": "12:00",
+            "espace_id": str(batiment["demi_a"]),
+        },
+        follow_redirects=True,
+    )
+    assert reponse.status_code == 200
+
+    with app.app_context():
+        creneau = AgendaCreneau.query.filter_by(titre="Réunion d'équipe").one()
+        assert creneau.espace_id == batiment["demi_a"]
+        occ = Occupation.query.filter_by(creneau_id=creneau.id).one()
+        assert occ.origine == "creneau"
+
+        # La grande salle est protégée : l'accueil ne peut plus louer dessus.
+        from app.services.salles import est_disponible
+        assert not est_disponible(
+            db.session.get(Espace, batiment["grande"]), MERCREDI, "10:30", "11:30"
+        )
+        db.session.delete(creneau)
+        db.session.commit()
+
+
+def test_la_fiche_de_salle_propose_doccuper(admin_client, batiment):
+    page = admin_client.get(f"/salles/espace/{batiment['grande']}").get_data(as_text=True)
+    assert f"/salles/occuper?espace_id={batiment['grande']}" in page

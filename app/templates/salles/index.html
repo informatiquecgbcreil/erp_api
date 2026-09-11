@@ -42,6 +42,7 @@
       </div>
       <div class="inline" style="gap:8px; flex-wrap:wrap;">
         <a class="btn ok" href="{{ url_for('salles.planning') }}">🗓️ Planning</a>
+        <a class="btn" href="{{ url_for('salles.occuper_form') }}">📌 Occuper une salle</a>
         <a class="btn" href="{{ url_for('salles.disponibilite') }}">🔎 Qui est libre ?</a>
         <a class="btn" href="{{ url_for('salles.planning_jour') }}">📍 Aujourd'hui</a>
         {% if can('salles:edit') %}

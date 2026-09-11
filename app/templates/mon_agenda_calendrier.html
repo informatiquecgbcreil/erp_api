@@ -126,6 +126,21 @@
             </div>
           {% endif %}
           <div style="grid-column:span 2;">
+            <label>Salle (optionnel)</label>
+            <select name="espace_id">
+              <option value="">— Aucune salle —</option>
+              {% for salle in salles_occupables() %}
+                <option value="{{ salle.id }}" {% if c and c.espace_id == salle.id %}selected{% endif %}>
+                  {{ salle.chemin }}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted" style="font-size:.78rem; margin-top:3px;">
+              Renseignée, la salle est aussitôt occupée sur le planning : personne
+              ne pourra la louer par-dessus ta réunion.
+            </div>
+          </div>
+          <div style="grid-column:span 2;">
             <label>Compte sur le projet (optionnel)</label>
             <select name="subvention_id">
               <option value="">— Aucun —</option>

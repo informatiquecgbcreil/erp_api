@@ -17,6 +17,9 @@ from flask_login import current_user, login_required
 
 from app.extensions import db
 from app.models import (
+    ORIGINES_MANUELLES,
+    ORIGINES_MANUELLES_AIDE,
+    ORIGINES_OCCUPATION_LABELS,
     REGIMES_SOUS_LOCATION,
     REGIMES_SOUS_LOCATION_LABELS,
     TYPES_ESPACE,
@@ -31,8 +34,10 @@ from app.models import (
 from app.rbac import require_perm
 from app.services.audit import journaliser
 from app.services.salles import (
+    COULEURS_ORIGINE,
     SalleErreur,
     arbre_du_site,
+    conflits,
     espaces_reservables,
     espaces_stockage,
     normaliser_plage,
@@ -556,61 +561,118 @@ def planning_jour():
 @bp.route("/blocage", methods=["GET", "POST"])
 @login_required
 @require_perm("salles:edit")
-def blocage_form():
-    """Rendre une salle indisponible sans contrat ni facture.
+def blocage_redirection():
+    """Ancienne adresse de l'écran, conservée pour les liens déjà partagés.
 
-    Noël, des travaux, une chaudière en rade, la salle réquisitionnée pour
-    l'assemblée générale : ça n'a pas de preneur, pas de prix, et ça doit
-    quand même barrer le planning.
+    Une vraie redirection plutôt qu'une seconde règle sur le même endpoint :
+    avec deux règles, ``url_for`` choisit l'ancienne et tous les liens de
+    l'application continueraient d'afficher « blocage ».
+    """
+    return redirect(url_for("salles.occuper_form", **request.args))
+
+
+@bp.route("/occuper", methods=["GET", "POST"])
+@login_required
+@require_perm("salles:edit")
+def occuper_form():
+    """Poser une occupation à la main : « cette salle, ce jour, ce créneau ».
+
+    Le geste le plus courant du planning, et celui qu'on fait depuis une
+    case vide : une activité, une réunion, une association qui vient, ou
+    simplement une salle inutilisable. Les paramètres d'URL permettent
+    d'arriver ici avec la salle, le jour et l'horaire déjà remplis — pour
+    ne jamais retaper ce qu'on avait sous les yeux.
+
+    Ce n'est PAS une réservation : ni preneur, ni tarif, ni contrat. C'est
+    le geste « je note que c'est pris ».
     """
     salles = espaces_reservables()
+
+    def _afficher(**surcharges):
+        contexte = {
+            "salles": salles,
+            "aujourdhui": date.today(),
+            "origines": ORIGINES_MANUELLES,
+            "origines_labels": ORIGINES_OCCUPATION_LABELS,
+            "origines_aide": ORIGINES_MANUELLES_AIDE,
+            "couleurs": COULEURS_ORIGINE,
+            # Pré-remplissage depuis un clic sur le planning.
+            "espace_prefere": request.values.get("espace_id", type=int),
+            "jour_prefere": (_date_arg("jour") or date.today()).isoformat(),
+            "debut_prefere": request.values.get("debut") or "09:00",
+            "fin_prefere": request.values.get("fin") or "12:00",
+            "retour": request.values.get("retour") or "",
+        }
+        contexte.update(surcharges)
+        return render_template("salles/occuper_form.html", **contexte)
 
     if request.method == "POST":
         espace_id = _entier("espace_id")
         jour_debut = _date("date_debut")
         jour_fin = _date("date_fin") or jour_debut
-        motif = _texte("motif") or "Indisponible"
+        titre = _texte("titre") or "Occupé"
+        origine = _texte("origine", "interne")
+        if origine not in ORIGINES_MANUELLES:
+            origine = "interne"
         journee_entiere = _case("journee_entiere")
         debut = "00:00" if journee_entiere else _texte("heure_debut", "09:00")
         fin = "23:59" if journee_entiere else _texte("heure_fin", "18:00")
 
         espace = Espace.query.get(espace_id) if espace_id else None
         if espace is None:
-            flash("Choisis une salle à rendre indisponible.", "danger")
-        elif not jour_debut:
-            flash("Il faut au moins une date de début.", "danger")
-        elif jour_fin < jour_debut:
+            flash("Choisis la salle occupée.", "danger")
+            return _afficher()
+        if not jour_debut:
+            flash("Il faut au moins une date.", "danger")
+            return _afficher()
+        if jour_fin < jour_debut:
             flash("La date de fin doit être après la date de début.", "danger")
-        elif (jour_fin - jour_debut).days > 400:
-            flash("Une indisponibilité de plus d'un an, ça sent l'erreur de saisie.", "danger")
-        else:
-            try:
-                m_debut, m_fin = normaliser_plage(debut, fin)
-            except SalleErreur as exc:
-                flash(str(exc), "danger")
-                return render_template("salles/blocage_form.html", salles=salles, aujourdhui=date.today())
+            return _afficher()
+        if (jour_fin - jour_debut).days > 400:
+            flash("Une occupation de plus d'un an, ça sent l'erreur de saisie.", "danger")
+            return _afficher()
+        try:
+            m_debut, m_fin = normaliser_plage(debut, fin)
+        except SalleErreur as exc:
+            flash(str(exc), "danger")
+            return _afficher()
 
-            cree, jour = 0, jour_debut
-            while jour <= jour_fin:
-                db.session.add(Occupation(
-                    espace_id=espace.id, date_jour=jour,
-                    minute_debut=m_debut, minute_fin=m_fin,
-                    origine="blocage", statut="confirme", titre=motif[:200],
-                    note=_texte("note") or None,
-                    created_by_user_id=getattr(current_user, "id", None),
-                ))
-                cree += 1
-                jour += timedelta(days=1)
-            db.session.commit()
-            journaliser("salles.blocage", cible=espace.nom, details={"jours": cree, "motif": motif})
-            flash(
-                f"« {espace.nom} » indisponible sur {cree} jour(s) : {motif}."
-                + (" Les espaces qu'elle contient le sont aussi." if espace.enfants else ""),
-                "success",
-            )
-            return redirect(url_for("salles.planning", semaine=jour_debut.isoformat()))
+        # On prévient des chevauchements AVANT d'enregistrer, en nommant les
+        # jours concernés : sur une période longue, « il y a un conflit »
+        # sans dire où ne sert à rien.
+        genes, cree, jour = [], 0, jour_debut
+        while jour <= jour_fin:
+            if not _case("ignorer_conflits"):
+                for occ in conflits(espace, jour, debut, fin):
+                    genes.append(f"{jour.strftime('%d/%m')} ({occ.titre or occ.origine_label})")
+                    break
+            db.session.add(Occupation(
+                espace_id=espace.id, date_jour=jour,
+                minute_debut=m_debut, minute_fin=m_fin,
+                origine=origine, statut="confirme", titre=titre[:200],
+                note=_texte("note") or None,
+                effectif_prevu=_entier("effectif_prevu"),
+                created_by_user_id=getattr(current_user, "id", None),
+            ))
+            cree += 1
+            jour += timedelta(days=1)
 
-    return render_template("salles/blocage_form.html", salles=salles, aujourdhui=date.today())
+        db.session.commit()
+        journaliser("salles.occupation", cible=espace.nom,
+                    details={"jours": cree, "titre": titre, "origine": origine})
+
+        message = f"« {espace.nom} » occupée sur {cree} jour(s) : {titre}."
+        if espace.enfants:
+            message += " Les espaces qu'elle contient le sont aussi."
+        flash(message, "success")
+        if genes:
+            apercu = ", ".join(genes[:5]) + (" …" if len(genes) > 5 else "")
+            flash(f"⚠️ Chevauchement avec une occupation existante le {apercu}.", "warning")
+
+        retour = _texte("retour")
+        return redirect(retour or url_for("salles.planning", semaine=jour_debut.isoformat()))
+
+    return _afficher()
 
 
 @bp.route("/occupation/<int:occupation_id>/supprimer", methods=["POST"])
@@ -625,7 +687,7 @@ def occupation_supprimer(occupation_id: int):
     """
     occ = Occupation.query.get_or_404(occupation_id)
     retour = request.form.get("retour") or url_for("salles.planning")
-    if occ.origine in ("seance", "creneau"):
+    if occ.pilotee:
         flash(
             "Cette ligne vient d'une séance ou d'un créneau d'agenda : "
             "modifie-la à sa source, sinon elle reviendra toute seule.",

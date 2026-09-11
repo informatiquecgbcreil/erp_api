@@ -24,6 +24,7 @@ from datetime import date as Date, timedelta
 
 from app.extensions import db
 from app.models import (
+    ORIGINES_PILOTEES,
     AgendaCreneau,
     Espace,
     Occupation,
@@ -492,10 +493,12 @@ def reconcilier_occupations() -> dict[str, int]:
         synchroniser_creneau(db.session, creneau)
         compteurs["creneaux"] += 1
 
-    # Occupations dont la source a perdu sa salle entre-temps.
+    # Occupations dont la source a perdu sa salle entre-temps. Le filtre sur
+    # les origines PILOTÉES est essentiel : une occupation saisie à la main
+    # n'a évidemment ni séance ni créneau, et se ferait effacer sans lui.
     orphelines = (
         Occupation.query
-        .filter(Occupation.origine.in_(["seance", "creneau"]))
+        .filter(Occupation.origine.in_(ORIGINES_PILOTEES))
         .filter(Occupation.session_id.is_(None), Occupation.creneau_id.is_(None))
         .all()
     )
@@ -517,9 +520,17 @@ def reconcilier_occupations() -> dict[str, int]:
 
 #: Couleur de chaque origine, reprise à l'identique du calendrier existant
 #: pour que l'équipe n'ait pas deux codes couleur à retenir.
+#:
+#: Quatre couleurs seulement, pas six : sur une feuille affichée au mur, qui
+#: lit ne se demande pas si l'activité vient du module Activités ou a été
+#: tapée à la main. Seule la NATURE compte, d'où le partage de couleur entre
+#: une séance et une activité saisie, et entre un créneau d'agenda et une
+#: réunion posée sur le planning.
 COULEURS_ORIGINE = {
     "seance": "#3b82f6",     # bleu : activité avec du public
+    "interne": "#3b82f6",
     "creneau": "#10b981",    # vert : temps d'équipe
+    "reunion": "#10b981",
     "location": "#8b5cf6",   # violet : un tiers occupe les lieux
     "blocage": "#ef4444",    # rouge : indisponible
 }

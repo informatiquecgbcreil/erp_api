@@ -3907,15 +3907,38 @@ TYPES_ESPACE_ICONES = {
     "sanitaire": "🚻", "exterieur": "🌳", "circulation": "🚶", "stockage": "📦", "technique": "⚙️",
 }
 
-#: Origine d'une occupation. Une seule table pour les quatre, sinon la
-#: détection de conflits devrait interroger quatre tables différentes.
-ORIGINES_OCCUPATION = ["seance", "creneau", "location", "blocage"]
+#: Origine d'une occupation. Une seule table pour toutes, sinon la détection
+#: de conflits devrait interroger autant de tables qu'il y a de natures.
+#:
+#: Les deux premières sont PILOTÉES : elles naissent et meurent avec leur
+#: séance ou leur créneau d'agenda, et ne se modifient qu'à leur source. Les
+#: quatre suivantes sont saisies à la main directement sur le planning, et
+#: se suppriment librement. La distinction n'est pas cosmétique : la
+#: réconciliation reconstruit les premières et ne doit jamais toucher aux
+#: secondes.
+ORIGINES_OCCUPATION = ["seance", "creneau", "interne", "reunion", "location", "blocage"]
 ORIGINES_OCCUPATION_LABELS = {
     "seance": "Séance d'atelier",
     "creneau": "Créneau agenda (réunion, préparation…)",
+    "interne": "Activité / atelier",
+    "reunion": "Réunion, temps d'équipe",
     "location": "Mise à disposition / location",
     "blocage": "Indisponibilité (travaux, fermeture…)",
 }
+
+#: Natures posées à la main, dans les mots de l'accueil. L'ordre est celui
+#: de la liste à l'écran : du plus fréquent au plus rare.
+ORIGINES_MANUELLES = ["interne", "reunion", "location", "blocage"]
+ORIGINES_MANUELLES_AIDE = {
+    "interne": "Un atelier, une animation, un temps d'accueil du public.",
+    "reunion": "Une réunion d'équipe, une préparation, un rendez-vous partenaire.",
+    "location": "Une association, une entreprise ou un particulier occupe les lieux.",
+    "blocage": "Personne n'occupe la salle, mais elle n'est pas utilisable : travaux, fermeture, panne.",
+}
+
+#: Origines pilotées par une source : ni supprimables ni modifiables depuis
+#: le planning, elles reviendraient à la synchronisation suivante.
+ORIGINES_PILOTEES = ["seance", "creneau"]
 
 STATUTS_OCCUPATION = ["confirme", "option", "annule"]
 STATUTS_OCCUPATION_LABELS = {
@@ -4264,6 +4287,15 @@ class Occupation(db.Model):
     def bloquante(self) -> bool:
         """Une occupation annulée ne réserve plus rien."""
         return self.statut != "annule"
+
+    @property
+    def pilotee(self) -> bool:
+        """Vrai si elle est le reflet d'une séance ou d'un créneau d'agenda.
+
+        Une occupation pilotée se modifie à sa source : la supprimer depuis
+        le planning ne servirait à rien, elle reviendrait toute seule.
+        """
+        return self.origine in ORIGINES_PILOTEES
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Occupation {self.date_jour} {self.plage} espace={self.espace_id}>"
