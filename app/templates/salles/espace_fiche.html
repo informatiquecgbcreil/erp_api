@@ -1,0 +1,125 @@
+{% extends "layout.html" %}
+{% block title %}{{ espace.nom }}{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>{{ espace.icone }} {{ espace.nom }}</h1>
+        <p class="muted" style="margin:0;">{{ espace.chemin }} · {{ espace.type_label }}</p>
+      </div>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        {% if can('salles:edit') %}
+          <a class="btn" href="{{ url_for('salles.espace_form', espace_id=espace.id) }}">✏️ Modifier</a>
+        {% endif %}
+        <a class="btn" href="{{ url_for('salles.index') }}">← Le plan</a>
+      </div>
+    </div>
+
+    <div class="inline" style="gap:18px; flex-wrap:wrap; margin-top:12px; font-size:.86rem;">
+      {% if espace.capacite_usage %}<span>👥 {{ espace.capacite_usage }} en usage</span>{% endif %}
+      {% if espace.capacite_reglementaire %}
+        <span>🛡️ {{ espace.capacite_reglementaire }} maximum réglementaire</span>
+      {% endif %}
+      {% if espace.surface_m2 %}<span>📐 {{ espace.surface_m2 }} m²</span>{% endif %}
+      {% if espace.battement_minutes %}<span>⏱️ {{ espace.battement_minutes }} min de battement</span>{% endif %}
+      {% if espace.pmr %}<span>♿ Accessible PMR</span>{% endif %}
+      {% if espace.securise %}
+        <span>🔒 Sécurisé{% if espace.detenteur_cle %} — {{ espace.detenteur_cle }}{% endif %}</span>
+      {% endif %}
+    </div>
+
+    {% if espace.habilitation_requise %}
+      <p style="margin:12px 0 0; padding:8px 11px; border-radius:9px;
+                background:rgba(245,158,11,.13); border-left:3px solid #f59e0b;">
+        ⚠️ {{ espace.habilitation_requise }}
+      </p>
+    {% endif %}
+    {% if espace.notes %}<p class="muted" style="margin-top:10px;">{{ espace.notes }}</p>{% endif %}
+    {% if espace.equipements %}
+      <p class="muted" style="margin-top:6px;">🧰 {{ espace.equipements }}</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>📅 Ce qui occupe cet espace (60 prochains jours)</h2>
+    <p class="muted">
+      Y compris ce qui le rend indisponible sans l'occuper directement :
+      l'espace qui le contient, ou l'un de ceux qu'il contient.
+    </p>
+    {% if occupations %}
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Horaire</th><th>Quoi</th><th>Où exactement</th><th>Origine</th></tr>
+          </thead>
+          <tbody>
+            {% for occ in occupations %}
+              <tr>
+                <td>{{ occ.date_jour.strftime('%a %d/%m') }}</td>
+                <td>{{ occ.plage }}</td>
+                <td><strong>{{ occ.titre or occ.origine_label }}</strong></td>
+                <td class="{% if occ.espace_id != espace.id %}muted{% endif %}">
+                  {% if occ.espace_id == espace.id %}ici{% else %}{{ occ.espace.nom }}{% endif %}
+                </td>
+                <td class="muted">{{ occ.origine_label }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Rien de prévu. Salle libre comme l'air.</p>
+    {% endif %}
+  </div>
+
+  {% if espace.stockage or items %}
+    <div class="card">
+      <h2>📦 Matériel rangé ici</h2>
+      {% if items %}
+        <div class="tablewrap clean">
+          <table>
+            <thead>
+              <tr><th>Identifiant</th><th>Désignation</th><th>Qté</th><th>État</th></tr>
+            </thead>
+            <tbody>
+              {% for item in items %}
+                <tr>
+                  <td class="muted">{{ item.id_interne }}</td>
+                  <td><strong>{{ item.designation }}</strong>
+                      {% if item.marque %} <span class="muted">{{ item.marque }}</span>{% endif %}</td>
+                  <td>{{ item.quantite }}</td>
+                  <td>{{ item.etat }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">
+          Aucun matériel rattaché pour l'instant.
+          {% if can('salles:edit') %}
+            <a href="{{ url_for('salles.inventaire_reprise') }}">Reprendre les localisations existantes</a>.
+          {% endif %}
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if espace.enfants %}
+    <div class="card">
+      <h2>Espaces contenus</h2>
+      <p class="muted">
+        En occuper un rend celui-ci indisponible, et inversement.
+      </p>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        {% for enfant in espace.enfants %}
+          <a class="btn" href="{{ url_for('salles.espace_fiche', espace_id=enfant.id) }}">
+            {{ enfant.icone }} {{ enfant.nom }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

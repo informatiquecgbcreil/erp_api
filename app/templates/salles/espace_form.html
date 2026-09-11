@@ -1,0 +1,183 @@
+{% extends "layout.html" %}
+{% block title %}{{ "Modifier un espace" if espace else "Nouvel espace" }}{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>{{ "✏️ " + espace.nom if espace else "➕ Nouvel espace" }}</h1>
+    <p class="muted">
+      {{ site.nom }}{% if espace %} · {{ espace.chemin }}{% endif %}
+    </p>
+  </div>
+
+  <form method="post" class="stack" style="gap:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card">
+      <h2>Identité</h2>
+      <div class="stack" style="gap:10px;">
+        <div>
+          <label class="ui-label">Nom *</label>
+          <input class="in" name="nom" required style="width:100%;"
+                 value="{{ espace.nom if espace else '' }}" placeholder="Salle de cours 2">
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:200px;">
+            <label class="ui-label">Nature</label>
+            <select class="in" name="type_espace" style="width:100%;">
+              {% for code in types_espace %}
+                <option value="{{ code }}" {% if espace and espace.type_espace == code %}selected{% endif %}>
+                  {{ types_espace_labels[code] }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="width:130px;">
+            <label class="ui-label">Ordre</label>
+            <input class="in" name="ordre" inputmode="numeric" style="width:100%;"
+                   value="{{ espace.ordre if espace else 0 }}">
+          </div>
+        </div>
+        <div>
+          <label class="ui-label">Situé dans</label>
+          <select class="in" name="parent_id" style="width:100%;">
+            <option value="">— Directement dans le bâtiment —</option>
+            {% for parent, profondeur in parents_possibles %}
+              <option value="{{ parent.id }}"
+                {% if (espace and espace.parent_id == parent.id) or (not espace and parent_prefere == parent.id) %}selected{% endif %}>
+                {{ '— ' * profondeur }}{{ parent.nom }}
+              </option>
+            {% endfor %}
+          </select>
+          <p class="muted" style="margin:5px 0 0; font-size:.82rem;">
+            C'est ce rattachement qui fait tout le travail : occuper un espace
+            rend automatiquement indisponibles celui qui le contient et tous ceux
+            qu'il contient. Les deux moitiés d'une salle séparable se déclarent
+            donc <em>à l'intérieur</em> de la salle entière.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>À quoi il sert</h2>
+      <div class="stack" style="gap:9px;">
+        <label class="inline ui-checkline" style="gap:8px; align-items:flex-start;">
+          <input type="checkbox" name="reservable" value="1"
+                 {% if not espace or espace.reservable %}checked{% endif %}>
+          <span>
+            <strong>Occupable</strong> — apparaît dans les plannings et peut recevoir
+            une séance, une réunion ou une location.<br>
+            <span class="muted" style="font-size:.82rem;">Décoche pour les WC, vestiaires,
+            locaux techniques et armoires : ils existent sur le plan sans encombrer l'interface.</span>
+          </span>
+        </label>
+        <label class="inline ui-checkline" style="gap:8px; align-items:flex-start;">
+          <input type="checkbox" name="louable" value="1"
+                 {% if espace and espace.louable %}checked{% endif %}>
+          <span>
+            <strong>Mobilisable par un tiers</strong> — peut faire l'objet d'une mise à
+            disposition ou d'une location.<br>
+            <span class="muted" style="font-size:.82rem;">Différent d'occupable : un bureau
+            d'équipe se réserve en interne mais ne se loue jamais.</span>
+          </span>
+        </label>
+        <label class="inline ui-checkline" style="gap:8px; align-items:flex-start;">
+          <input type="checkbox" name="stockage" value="1"
+                 {% if espace and espace.stockage %}checked{% endif %}>
+          <span>
+            <strong>Point de stockage</strong> — proposé comme emplacement dans l'inventaire.<br>
+            <span class="muted" style="font-size:.82rem;">Une salle peut l'être, une armoire aussi :
+            crée l'armoire comme un espace <em>à l'intérieur</em> de la salle, non occupable
+            mais en stockage.</span>
+          </span>
+        </label>
+        <label class="inline ui-checkline" style="gap:8px; align-items:center;">
+          <input type="checkbox" name="securise" value="1"
+                 {% if espace and espace.securise %}checked{% endif %}>
+          <span><strong>🔒 Sécurisé</strong> — fermé à clé ou à code.</span>
+        </label>
+        <div>
+          <label class="ui-label">Qui détient la clé / le code</label>
+          <input class="in" name="detenteur_cle" style="width:100%;"
+                 value="{{ espace.detenteur_cle or '' if espace else '' }}"
+                 placeholder="Référent, trousseau, boîte à clés…">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Capacité et contraintes</h2>
+      <div class="stack" style="gap:10px;">
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:180px;">
+            <label class="ui-label">Capacité d'usage</label>
+            <input class="in" name="capacite_usage" inputmode="numeric" style="width:100%;"
+                   value="{{ espace.capacite_usage or '' if espace else '' }}">
+            <p class="muted" style="margin:4px 0 0; font-size:.8rem;">Effectif confortable en conditions réelles.</p>
+          </div>
+          <div style="flex:1; min-width:180px;">
+            <label class="ui-label">Capacité réglementaire</label>
+            <input class="in" name="capacite_reglementaire" inputmode="numeric" style="width:100%;"
+                   value="{{ espace.capacite_reglementaire or '' if espace else '' }}">
+            <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
+              Effectif maximal fixé par la commission de sécurité. Jamais dépassable.
+            </p>
+          </div>
+        </div>
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:150px;">
+            <label class="ui-label">Surface (m²)</label>
+            <input class="in" name="surface_m2" inputmode="decimal" style="width:100%;"
+                   value="{{ espace.surface_m2 or '' if espace else '' }}">
+          </div>
+          <div style="flex:1; min-width:180px;">
+            <label class="ui-label">Battement entre deux créneaux (min)</label>
+            <input class="in" name="battement_minutes" inputmode="numeric" style="width:100%;"
+                   value="{{ espace.battement_minutes if espace else 0 }}">
+            <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
+              Remise en état, ménage, aération. La salle ne sera pas proposée
+              si l'écart avec le créneau voisin est plus court.
+            </p>
+          </div>
+        </div>
+        <label class="inline" style="gap:7px; align-items:center;">
+          <input type="checkbox" name="pmr" value="1" {% if espace and espace.pmr %}checked{% endif %}>
+          <span>Accessible aux personnes à mobilité réduite</span>
+        </label>
+        <div>
+          <label class="ui-label">Habilitation requise</label>
+          <input class="in" name="habilitation_requise" style="width:100%;"
+                 value="{{ espace.habilitation_requise or '' if espace else '' }}"
+                 placeholder="Règles d'hygiène HACCP pour la cuisine professionnelle…">
+        </div>
+        <div>
+          <label class="ui-label">Équipements</label>
+          <textarea class="in" name="equipements" rows="2" style="width:100%;"
+            >{{ espace.equipements or '' if espace else '' }}</textarea>
+        </div>
+        <div>
+          <label class="ui-label">Valeur locative annuelle (€)</label>
+          <input class="in" name="valeur_locative_annuelle" inputmode="decimal" style="width:100%;"
+                 value="{{ espace.valeur_locative_annuelle or '' if espace else '' }}">
+        </div>
+        <div>
+          <label class="ui-label">Notes</label>
+          <textarea class="in" name="notes" rows="2" style="width:100%;"
+            >{{ espace.notes or '' if espace else '' }}</textarea>
+        </div>
+        <label class="inline" style="gap:7px; align-items:center;">
+          <input type="checkbox" name="actif" value="1" {% if not espace or espace.actif %}checked{% endif %}>
+          <span>Espace actif</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="inline" style="gap:10px; flex-wrap:wrap;">
+        <button class="btn ok" type="submit">💾 Enregistrer</button>
+        <a class="btn" href="{{ url_for('salles.index') }}">Annuler</a>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

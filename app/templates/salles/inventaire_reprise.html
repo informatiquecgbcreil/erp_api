@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block title %}Reprise des localisations{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>📦 Reprise des localisations d'inventaire</h1>
+    <p class="muted">
+      Jusqu'ici, l'emplacement du matériel était tapé à la main : « Salle info »,
+      « salle info. », « SALLE INFO » sont trois emplacements différents pour la
+      base, et un seul dans la vraie vie. On les regroupe par texte identique et
+      on les rattache d'un geste — rien à ressaisir, rien à perdre.
+    </p>
+  </div>
+
+  {% if not emplacements %}
+    <div class="card" style="border-left:4px solid #f59e0b;">
+      <p style="margin:0;">
+        Aucun espace n'est déclaré « point de stockage ». Coche la case sur les
+        salles et les armoires concernées, puis reviens ici.
+      </p>
+      <a class="btn" style="margin-top:10px;" href="{{ url_for('salles.index') }}">Aller au plan</a>
+    </div>
+  {% elif not groupes %}
+    <div class="card">
+      <div class="ui-empty-state">
+        <h2>Rien à reprendre 🎉</h2>
+        <p class="muted">Tout le matériel localisé pointe déjà vers un emplacement réel.</p>
+        <a class="btn" href="{{ url_for('salles.index') }}">Retour au plan</a>
+      </div>
+    </div>
+  {% else %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="card">
+        <div class="tablewrap clean">
+          <table>
+            <thead>
+              <tr>
+                <th>Localisation saisie</th>
+                <th style="width:110px;">Matériels</th>
+                <th>Emplacement réel</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for groupe in groupes %}
+                <tr>
+                  <td><strong>{{ groupe.libelle }}</strong></td>
+                  <td>{{ groupe.nb }}</td>
+                  <td>
+                    <select class="in" name="loc_{{ groupe.libelle }}" style="width:100%;">
+                      <option value="">— Laisser tel quel —</option>
+                      {% for emplacement in emplacements %}
+                        <option value="{{ emplacement.id }}">
+                          {{ emplacement.chemin }}{% if emplacement.securise %} 🔒{% endif %}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="inline" style="gap:10px; margin-top:14px; flex-wrap:wrap;">
+          <button class="btn ok" type="submit">💾 Rattacher</button>
+          <a class="btn" href="{{ url_for('salles.index') }}">Retour au plan</a>
+        </div>
+        <p class="muted" style="margin-top:10px; font-size:.83rem;">
+          Le texte d'origine est conservé dans chaque fiche : en cas de doute,
+          on retrouve toujours ce qui avait été saisi.
+        </p>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

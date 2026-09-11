@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% block title %}Disponibilité des salles{% endblock %}
+{% block body %}
+<style>
+  .dispo-ligne{ display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:10px;
+                border:1px solid var(--border,#e3e6ef); margin-bottom:7px; flex-wrap:wrap; }
+  .dispo-ligne.libre{ border-left:4px solid #10b981; }
+  .dispo-ligne.prise{ border-left:4px solid #ef4444; background:rgba(239,68,68,.04); }
+  .dispo-ligne.serree{ border-left:4px solid #f59e0b; }
+  .dispo-nom{ font-weight:700; min-width:200px; }
+  .dispo-verdict{ font-weight:800; font-size:.8rem; white-space:nowrap; }
+  .dispo-verdict.oui{ color:#047857; }
+  .dispo-verdict.non{ color:#b91c1c; }
+  .dispo-raison{ flex:1; min-width:240px; font-size:.83rem; opacity:.85; }
+</style>
+
+<div class="stack">
+  <div class="card">
+    <h1>🔎 Qui est libre ?</h1>
+    <p class="muted">
+      Une date, un créneau, un effectif — et la réponse. Inutile de se souvenir
+      que la grande salle est prise parce qu'on a réservé une de ses moitiés :
+      c'est calculé.
+    </p>
+  </div>
+
+  <div class="card">
+    <form method="get" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+      <div>
+        <label class="ui-label">Date</label>
+        <input class="in" type="date" name="jour" value="{{ jour.isoformat() }}">
+      </div>
+      <div>
+        <label class="ui-label">De</label>
+        <input class="in" type="time" name="debut" value="{{ debut }}" style="width:120px;">
+      </div>
+      <div>
+        <label class="ui-label">À</label>
+        <input class="in" type="time" name="fin" value="{{ fin }}" style="width:120px;">
+      </div>
+      <div>
+        <label class="ui-label">Effectif</label>
+        <input class="in" name="effectif" inputmode="numeric" style="width:100px;"
+               value="{{ effectif or '' }}" placeholder="—">
+      </div>
+      <label class="inline" style="gap:7px; align-items:center; padding-bottom:8px;">
+        <input type="checkbox" name="louables" value="1" {% if louables_seulement %}checked{% endif %}>
+        <span>Louables uniquement</span>
+      </label>
+      <button class="btn ok" type="submit">Chercher</button>
+    </form>
+  </div>
+
+  {% if erreur %}
+    <div class="card" style="border-left:4px solid #ef4444;">
+      <p style="margin:0;">⚠️ {{ erreur }}</p>
+    </div>
+  {% endif %}
+
+  {% if lignes %}
+    {% set libres = lignes | selectattr('libre') | list %}
+    <div class="card">
+      <h2>
+        {{ libres|length }} espace(s) libre(s) le {{ jour.strftime('%d/%m/%Y') }}
+        de {{ debut }} à {{ fin }}
+      </h2>
+
+      {% for ligne in lignes %}
+        {% set e = ligne.espace %}
+        <div class="dispo-ligne {% if not ligne.libre %}prise{% elif ligne.capacite_insuffisante %}serree{% else %}libre{% endif %}">
+          <span class="dispo-nom">
+            {{ e.icone }}
+            <a href="{{ url_for('salles.espace_fiche', espace_id=e.id) }}">{{ e.nom }}</a>
+          </span>
+
+          <span class="dispo-verdict {{ 'oui' if ligne.libre else 'non' }}">
+            {{ '✅ libre' if ligne.libre else '⛔ occupée' }}
+          </span>
+
+          <span class="dispo-raison">
+            {% if ligne.raison %}{{ ligne.raison }}{% endif %}
+            {% if ligne.depassement_reglementaire %}
+              <strong style="color:#b91c1c;">
+                ⚠️ Effectif supérieur à la capacité réglementaire
+                ({{ e.capacite_reglementaire }}) : interdit.
+              </strong>
+            {% elif ligne.capacite_insuffisante %}
+              <strong style="color:#92400e;">
+                Prévu pour {{ e.capacite_affichee }} personnes : ce sera serré.
+              </strong>
+            {% endif %}
+            {% if ligne.libre and e.habilitation_requise %}
+              <em>{{ e.habilitation_requise }}</em>
+            {% endif %}
+          </span>
+
+          <span class="muted" style="font-size:.8rem; white-space:nowrap;">
+            {% if e.capacite_affichee %}👥 {{ e.capacite_affichee }}{% endif %}
+            {% if e.pmr %} · ♿{% endif %}
+            {% if e.louable %} · louable{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  {% elif not erreur %}
+    <div class="card">
+      <div class="ui-empty-state">
+        <p class="muted">
+          Aucun espace occupable n'est enregistré. Commence par construire ton plan.
+        </p>
+        <a class="btn" href="{{ url_for('salles.index') }}">Aller au plan</a>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
