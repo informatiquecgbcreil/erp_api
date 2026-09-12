@@ -52,6 +52,9 @@
           <a class="btn" href="{{ url_for('salles.tarifs') }}">💶 Tarifs</a>
         {% endif %}
         {% if can('salles:edit') %}
+          <a class="btn" href="{{ url_for('salles.ressources') }}">📽️ Matériel partagé</a>
+        {% endif %}
+        {% if can('salles:edit') %}
           <a class="btn" href="{{ url_for('salles.site_form') }}">➕ Nouveau site</a>
         {% endif %}
       </div>

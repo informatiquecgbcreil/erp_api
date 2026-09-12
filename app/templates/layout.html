@@ -606,6 +606,7 @@
                   {% endif %}
                   {% if can('locations:view') %}
                     <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+                    <a class="pill {% if ep == 'salles.impayes' %}active{% endif %}" href="{{ url_for('salles.impayes') }}">💰 Impayés et cautions</a>
                   {% endif %}
                   {% if can('partenaires:view') %}
                     <a class="pill {% if ep.startswith('partenaires.') and ep != 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.index') }}">Partenaires</a>
@@ -766,6 +767,7 @@
                   {% endif %}
                   {% if can('locations:view') %}
                     <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+                    <a class="pill {% if ep == 'salles.impayes' %}active{% endif %}" href="{{ url_for('salles.impayes') }}">💰 Impayés et cautions</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
                   {% if can('partenaires:view') %}
@@ -850,6 +852,7 @@
                   {% endif %}
                   {% if can('locations:view') %}
                     <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+                    <a class="pill {% if ep == 'salles.impayes' %}active{% endif %}" href="{{ url_for('salles.impayes') }}">💰 Impayés et cautions</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
                 </div>

@@ -4023,6 +4023,19 @@ class Site(db.Model):
     #: repli quand les espaces n'ont pas de valeur individuelle.
     valeur_locative_annuelle = db.Column(db.Float, nullable=True)
 
+    # --- Identité pour les contrats ------------------------------------
+    #: Qui met à disposition, tel que ça doit figurer sur un contrat. Vide,
+    #: on reprend le nom de la structure défini dans les réglages.
+    bailleur_nom = db.Column(db.String(180), nullable=True)
+    bailleur_adresse = db.Column(db.String(255), nullable=True)
+    bailleur_siret = db.Column(db.String(20), nullable=True)
+    bailleur_representant = db.Column(db.String(160), nullable=True)
+    bailleur_qualite = db.Column(db.String(120), nullable=True)
+    #: Conditions générales imprimées au dos du contrat. Modifiables sans
+    #: toucher au code : une structure fait évoluer ses règles, et personne
+    #: ne devrait avoir à demander un développement pour ça.
+    conditions_generales = db.Column(db.Text, nullable=True)
+
     #: Assujettissement à la TVA sur les mises à disposition. La plupart
     #: des centres sociaux ne le sont pas et doivent porter la mention
     #: d'exonération sur leurs contrats et factures.
@@ -4054,6 +4067,18 @@ class Site(db.Model):
     @property
     def regime_label(self) -> str:
         return REGIMES_SOUS_LOCATION_LABELS.get(self.regime_sous_location, self.regime_sous_location)
+
+    def identite_bailleur(self, defaut_nom: str = "") -> dict:
+        """Le bloc « entre les soussignés » d'un contrat, côté structure."""
+        return {
+            "nom": (self.bailleur_nom or defaut_nom or "").strip(),
+            "adresse": (self.bailleur_adresse or self.adresse or "").strip(),
+            "code_postal": (self.code_postal or "").strip(),
+            "ville": (self.ville or "").strip(),
+            "siret": (self.bailleur_siret or "").strip(),
+            "representant": (self.bailleur_representant or "").strip(),
+            "qualite": (self.bailleur_qualite or "").strip(),
+        }
 
     @property
     def mention_tva_affichee(self) -> str:
@@ -4531,7 +4556,17 @@ class PrestationSalle(db.Model):
     unite = db.Column(db.String(20), nullable=False, default="forfait")
     ordre = db.Column(db.Integer, nullable=False, default=0)
     actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    #: Matériel partagé derrière la prestation, quand il y en a un. Le
+    #: vidéoprojecteur se facture ET n'existe qu'en un exemplaire : le
+    #: déclarer deux fois serait absurde. Retenir la prestation retient
+    #: donc le matériel, et sa disponibilité est vérifiée.
+    ressource_id = db.Column(
+        db.Integer, db.ForeignKey("ressource_mobile.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    ressource = db.relationship("RessourceMobile")
 
     @property
     def unite_label(self) -> str:
@@ -4629,6 +4664,18 @@ class Reservation(db.Model):
     conditions_particulieres = db.Column(db.Text, nullable=True)
     notes = db.Column(db.Text, nullable=True)
 
+    # --- Documents émis ---------------------------------------------------
+    #: On garde trace de ce qui est PARTI, pas du fichier lui-même : un
+    #: contrat se régénère à l'identique depuis les données, et un fichier
+    #: stocké finit toujours par diverger de la base.
+    contrat_edite_le = db.Column(db.Date, nullable=True)
+    contrat_signe_le = db.Column(db.Date, nullable=True)
+    facture_numero = db.Column(db.String(30), nullable=True, unique=True, index=True)
+    facture_emise_le = db.Column(db.Date, nullable=True)
+    etat_lieux_entree_le = db.Column(db.Date, nullable=True)
+    etat_lieux_sortie_le = db.Column(db.Date, nullable=True)
+    degradations_constatees = db.Column(db.Text, nullable=True)
+
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
@@ -4669,6 +4716,31 @@ class Reservation(db.Model):
     @property
     def reste_du(self) -> float:
         return round(max(0.0, self.montant_du - self.montant_regle), 2)
+
+    @property
+    def impayee(self) -> bool:
+        """Une mise à disposition terminée dont il reste quelque chose à
+        encaisser. C'est la définition de l'écran des impayés."""
+        if self.gratuite or self.statut == "annulee" or self.reste_du <= 0.009:
+            return False
+        derniere = max((o.date_jour for o in self.occupations or []), default=None)
+        return bool(derniere and derniere < date.today())
+
+    @property
+    def caution_a_restituer(self) -> bool:
+        """Caution encaissée, occupation terminée, rien rendu : c'est de
+        l'argent qui n'est pas à nous et qu'on oublie facilement."""
+        if not self.caution_encaissee or self.caution_restituee_le:
+            return False
+        derniere = max((o.date_jour for o in self.occupations or []), default=None)
+        return bool(derniere and derniere < date.today())
+
+    @property
+    def type_document(self) -> str:
+        """Une mise à disposition gratuite se formalise par une CONVENTION,
+        une location par un CONTRAT. Ce n'est pas cosmétique : on ne signe
+        pas la même chose."""
+        return "convention" if self.gratuite else "contrat"
 
     @property
     def ecart_au_bareme(self) -> float | None:
@@ -4722,3 +4794,63 @@ class ReservationPrestation(db.Model):
     @property
     def total(self) -> float:
         return round(float(self.montant_unitaire or 0) * float(self.quantite or 0), 2)
+
+
+# ---------------------------------------------------------------------
+# RESSOURCES MOBILES : le vidéoprojecteur unique pour quatre salles
+# ---------------------------------------------------------------------
+#
+# Deux salles libres et un seul vidéoprojecteur, c'est un conflit — mais
+# pas un conflit de SALLE. On le rattache donc à l'occupation, quelle que
+# soit son origine : une séance d'atelier, une réunion et une location se
+# disputent le même matériel avec les mêmes règles.
+
+
+class RessourceMobile(db.Model):
+    """Un matériel qui circule entre les salles, en quantité limitée."""
+
+    __tablename__ = "ressource_mobile"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(160), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    #: Combien on en possède. C'est ce nombre qui plafonne les réservations
+    #: simultanées.
+    quantite = db.Column(db.Integer, nullable=False, default=1)
+    #: Rattachement facultatif à l'inventaire, pour retrouver la fiche du
+    #: matériel, son numéro de série et son emplacement de rangement.
+    item_id = db.Column(
+        db.Integer, db.ForeignKey("inventaire_item.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    ordre = db.Column(db.Integer, nullable=False, default=0)
+    actif = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    item = db.relationship("InventaireItem")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<RessourceMobile {self.nom!r} ×{self.quantite}>"
+
+
+class OccupationRessource(db.Model):
+    """Du matériel mobile retenu sur une occupation précise."""
+
+    __tablename__ = "occupation_ressource"
+
+    id = db.Column(db.Integer, primary_key=True)
+    occupation_id = db.Column(
+        db.Integer, db.ForeignKey("occupation.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ressource_id = db.Column(
+        db.Integer, db.ForeignKey("ressource_mobile.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    quantite = db.Column(db.Integer, nullable=False, default=1)
+
+    occupation = db.relationship(
+        "Occupation", backref=db.backref("ressources", cascade="all, delete-orphan")
+    )
+    ressource = db.relationship("RessourceMobile")
+
+    __table_args__ = (
+        db.UniqueConstraint("occupation_id", "ressource_id", name="uq_occupation_ressource"),
+    )

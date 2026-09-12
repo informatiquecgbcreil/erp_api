@@ -5,10 +5,10 @@ métiers différents, et le fichier commençait à ressembler à un grenier.
 """
 from __future__ import annotations
 
-import json
+import os
 from datetime import date, timedelta
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.extensions import db
@@ -28,6 +28,7 @@ from app.models import (
     PrestationSalle,
     Reservation,
     ReservationPrestation,
+    RessourceMobile,
     TarifSalle,
 )
 from app.rbac import require_perm
@@ -42,7 +43,12 @@ from app.services.reservations import (
     reference_unique,
     synchroniser_statut_occupations,
 )
-from app.services.salles import SalleErreur, espaces_louables, normaliser_plage
+from app.services.salles import (
+    SalleErreur,
+    appliquer_ressources,
+    espaces_louables,
+    normaliser_plage,
+)
 from app.services.tarifs_salles import grille_en_vigueur
 from app.utils.delete_guard import commit_delete
 
@@ -263,6 +269,7 @@ def prestations():
                     libelle=libelle, description=_texte("description") or None,
                     montant=_decimal("montant") or 0.0,
                     unite=_texte("unite", "forfait"),
+                    ressource_id=_entier("ressource_id"),
                     ordre=(PrestationSalle.query.count() + 1) * 10,
                 ))
                 db.session.commit()
@@ -297,6 +304,9 @@ def prestations():
         majorations=MajorationSalle.query.order_by(MajorationSalle.condition).all(),
         unites=UNITES_PRESTATION, unites_labels=UNITES_PRESTATION_LABELS,
         conditions=CONDITIONS_MAJORATION, conditions_labels=CONDITIONS_MAJORATION_LABELS,
+        materiel=RessourceMobile.query.filter_by(actif=True).order_by(
+            RessourceMobile.ordre, RessourceMobile.nom
+        ).all(),
     )
 
 
@@ -514,7 +524,23 @@ def reservation_nouvelle():
         appliquer_dates(reservation, dates, debut, fin)
         db.session.flush()
         recalculer(reservation)
+
+        # Les prestations adossées à un matériel partagé le retiennent sur
+        # chacune des dates : sinon on facturerait un vidéoprojecteur déjà
+        # promis à quelqu'un d'autre.
+        besoins = {}
+        for ligne in reservation.prestations:
+            ressource_id = getattr(ligne.prestation, "ressource_id", None)
+            if ressource_id:
+                besoins[ressource_id] = besoins.get(ressource_id, 0) + max(1, int(ligne.quantite or 1))
+        alertes = []
+        if besoins:
+            for occupation in reservation.occupations:
+                alertes.extend(appliquer_ressources(occupation, besoins))
+
         db.session.commit()
+        for alerte in list(dict.fromkeys(alertes))[:3]:
+            flash(f"⚠️ {alerte}", "warning")
 
         journaliser("salles.reservation", cible=reservation.reference,
                     details={"preneur": preneur.nom, "dates": len(dates)})
@@ -622,3 +648,247 @@ def reservation_supprimer(reservation_id: int):
     if commit_delete("cette réservation", f"Réservation {reference} supprimée, dates comprises."):
         journaliser("salles.reservation_suppression", cible=reference)
     return redirect(url_for("salles.reservations"))
+
+
+# ---------------------------------------------------------------------------
+# Documents : contrat, convention, état des lieux, facture, attestation
+# ---------------------------------------------------------------------------
+
+#: Ce que chaque document exige avant d'être édité, et le verbe qui va avec.
+DOCUMENTS = {
+    "contrat": ("Contrat / convention", True),
+    "etat_lieux_entree": ("État des lieux d'entrée", False),
+    "etat_lieux_sortie": ("État des lieux de sortie", False),
+    "facture": ("Facture", True),
+    "attestation": ("Attestation d'occupation", False),
+}
+
+
+def _nom_structure() -> str:
+    from app.services.instance_settings import resolve_identity
+    from flask import current_app
+
+    try:
+        _, organisation, _, _ = resolve_identity(
+            current_app.config.get("APP_NAME", ""),
+            current_app.config.get("ORGANIZATION_NAME", "Votre structure"),
+        )
+        return organisation or ""
+    except Exception:  # noqa: BLE001 - un contrat ne doit pas tomber pour ça
+        return ""
+
+
+def _numero_facture(jour: date) -> str:
+    """Numérotation séquentielle par année, sans trou volontaire.
+
+    Une facture annulée garde son numéro : c'est la règle comptable, et
+    réutiliser un numéro est bien pire qu'en sauter un.
+    """
+    prefixe = f"FAC-{jour.year}-"
+    derniere = (
+        Reservation.query
+        .filter(Reservation.facture_numero.like(prefixe + "%"))
+        .order_by(Reservation.facture_numero.desc())
+        .first()
+    )
+    numero = 0
+    if derniere is not None and derniere.facture_numero:
+        try:
+            numero = int(derniere.facture_numero.rsplit("-", 1)[1])
+        except (IndexError, ValueError):
+            numero = 0
+    return f"{prefixe}{numero + 1:04d}"
+
+
+@bp.route("/reservation/<int:reservation_id>/document/<genre>")
+@login_required
+@require_perm("locations:view")
+def reservation_document(reservation_id: int, genre: str):
+    """Édite le document et le renvoie en téléchargement.
+
+    Rien n'est stocké : un document se régénère à l'identique depuis les
+    données. Un fichier archivé finirait par diverger de la base, et
+    personne ne saurait plus lequel fait foi.
+    """
+    from tempfile import mkdtemp
+
+    from flask import send_file
+
+    from app.services import documents_salles as docs
+
+    if genre not in DOCUMENTS:
+        abort(404)
+    reservation = Reservation.query.get_or_404(reservation_id)
+    libelle, exige_confirmation = DOCUMENTS[genre]
+
+    if exige_confirmation:
+        empechements = bloquants(reservation)
+        if empechements:
+            flash(
+                f"{libelle} non édité : {empechements[0]['message']}",
+                "danger",
+            )
+            return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+
+    structure = _nom_structure()
+    aujourdhui = date.today()
+
+    if genre == "contrat":
+        document = docs.contrat(reservation, structure)
+        reservation.contrat_edite_le = aujourdhui
+        suffixe = reservation.type_document
+    elif genre == "etat_lieux_entree":
+        document = docs.etat_des_lieux(reservation, sortie=False)
+        suffixe = "etat-des-lieux-entree"
+    elif genre == "etat_lieux_sortie":
+        document = docs.etat_des_lieux(reservation, sortie=True)
+        suffixe = "etat-des-lieux-sortie"
+    elif genre == "attestation":
+        document = docs.attestation(reservation, structure)
+        suffixe = "attestation"
+    else:  # facture
+        if reservation.gratuite:
+            flash("Une mise à disposition gratuite ne se facture pas.", "warning")
+            return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+        if not reservation.facture_numero:
+            reservation.facture_numero = _numero_facture(aujourdhui)
+            reservation.facture_emise_le = aujourdhui
+        document = docs.facture(reservation, reservation.facture_numero, structure)
+        suffixe = "facture"
+
+    db.session.commit()
+    journaliser("salles.document", cible=reservation.reference, details={"genre": genre})
+
+    dossier = mkdtemp(prefix="doc-salles-")
+    chemin_docx, chemin_pdf = docs.ecrire(
+        document, dossier, docs.nom_fichier(reservation, suffixe),
+    )
+    chemin = chemin_pdf or chemin_docx
+    return send_file(chemin, as_attachment=True, download_name=os.path.basename(chemin))
+
+
+@bp.route("/reservation/<int:reservation_id>/etat-lieux", methods=["POST"])
+@login_required
+@require_perm("locations:edit")
+def reservation_etat_lieux(reservation_id: int):
+    """Consigne les états des lieux réellement faits et les dégradations."""
+    reservation = Reservation.query.get_or_404(reservation_id)
+    reservation.etat_lieux_entree_le = _date("etat_lieux_entree_le")
+    reservation.etat_lieux_sortie_le = _date("etat_lieux_sortie_le")
+    reservation.degradations_constatees = _texte("degradations_constatees") or None
+    reservation.contrat_signe_le = _date("contrat_signe_le")
+    db.session.commit()
+    journaliser("salles.etat_lieux", cible=reservation.reference)
+
+    if reservation.degradations_constatees and not reservation.caution_restituee_le:
+        flash(
+            "Dégradations consignées : pense au sort du dépôt de garantie "
+            "avant de le restituer.",
+            "warning",
+        )
+    else:
+        flash("États des lieux enregistrés.", "success")
+    return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+
+
+# ---------------------------------------------------------------------------
+# Impayés et cautions à rendre
+# ---------------------------------------------------------------------------
+
+@bp.route("/impayes")
+@login_required
+@require_perm("locations:view")
+def impayes():
+    """Ce qui reste à encaisser, et l'argent qui n'est pas à nous.
+
+    Les deux colonnes vont ensemble : une caution qu'on garde alors que
+    tout est réglé, c'est une réclamation qui arrive ; un solde jamais
+    encaissé, c'est une recette perdue.
+    """
+    candidates = (
+        Reservation.query
+        .filter(Reservation.statut.in_(["confirmee", "realisee"]))
+        .filter(Reservation.gratuite.is_(False))
+        .order_by(Reservation.created_at.desc())
+        .limit(500).all()
+    )
+    a_encaisser = [r for r in candidates if r.impayee]
+    cautions = [
+        r for r in Reservation.query.filter(Reservation.caution_encaissee.is_(True)).all()
+        if r.caution_a_restituer
+    ]
+    return render_template(
+        "salles/impayes.html",
+        impayes=a_encaisser, cautions=cautions,
+        total=round(sum(r.reste_du for r in a_encaisser), 2),
+        total_cautions=round(sum(float(r.caution_montant or 0) for r in cautions), 2),
+        aujourdhui=date.today(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ressources mobiles
+# ---------------------------------------------------------------------------
+
+@bp.route("/ressources", methods=["GET", "POST"])
+@login_required
+@require_perm("salles:edit")
+def ressources():
+    """Le vidéoprojecteur unique pour quatre salles."""
+    from app.models import RessourceMobile
+    from app.services.salles import ressources_disponibles
+
+    if request.method == "POST":
+        nom = _texte("nom")
+        if not nom:
+            flash("Le nom du matériel est obligatoire.", "danger")
+        else:
+            db.session.add(RessourceMobile(
+                nom=nom, description=_texte("description") or None,
+                quantite=max(1, _entier("quantite") or 1),
+                ordre=(RessourceMobile.query.count() + 1) * 10,
+            ))
+            db.session.commit()
+            flash(f"« {nom} » ajouté au matériel partagé.", "success")
+        return redirect(url_for("salles.ressources"))
+
+    jour = _date_arg_local("jour") or date.today()
+    debut = (request.args.get("debut") or "09:00").strip()
+    fin = (request.args.get("fin") or "12:00").strip()
+    etats = []
+    try:
+        etats = ressources_disponibles(jour, debut, fin)
+    except SalleErreur as exc:
+        flash(str(exc), "warning")
+
+    return render_template(
+        "salles/ressources.html",
+        ressources=RessourceMobile.query.order_by(
+            RessourceMobile.ordre, RessourceMobile.nom
+        ).all(),
+        etats=etats, jour=jour, debut=debut, fin=fin,
+    )
+
+
+def _date_arg_local(nom: str):
+    brut = (request.args.get(nom) or "").strip()
+    if not brut:
+        return None
+    try:
+        return date.fromisoformat(brut)
+    except ValueError:
+        return None
+
+
+@bp.route("/ressource/<int:ressource_id>/supprimer", methods=["POST"])
+@login_required
+@require_perm("salles:edit")
+def ressource_supprimer(ressource_id: int):
+    from app.models import RessourceMobile
+
+    ressource = RessourceMobile.query.get_or_404(ressource_id)
+    nom = ressource.nom
+    db.session.delete(ressource)
+    db.session.commit()
+    flash(f"« {nom} » retiré du matériel partagé.", "success")
+    return redirect(url_for("salles.ressources"))

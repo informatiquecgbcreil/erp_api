@@ -22,7 +22,8 @@
               <tr>
                 <td><strong>{{ p.libelle }}</strong>
                   {% if p.description %}<br><span class="muted" style="font-size:.8rem;">{{ p.description }}</span>{% endif %}</td>
-                <td class="muted">{{ p.unite_label }}</td>
+                <td class="muted">{{ p.unite_label }}
+                  {%- if p.ressource %}<br><span style="font-size:.78rem;">📽️ {{ p.ressource.nom }}</span>{% endif %}</td>
                 <td style="font-variant-numeric:tabular-nums;">{{ '%.2f'|format(p.montant) }} €</td>
                 <td>
                   <form method="post" action="{{ url_for('salles.prestation_supprimer', prestation_id=p.id) }}"
@@ -58,7 +59,24 @@
             {% for u in unites %}<option value="{{ u }}">{{ unites_labels[u] }}</option>{% endfor %}
           </select>
         </div>
+        {% if materiel %}
+          <div style="min-width:220px;">
+            <label class="ui-label">Matériel partagé concerné</label>
+            <select class="in" name="ressource_id" style="width:100%;">
+              <option value="">— Aucun —</option>
+              {% for m in materiel %}
+                <option value="{{ m.id }}">{{ m.nom }} (×{{ m.quantite }})</option>
+              {% endfor %}
+            </select>
+          </div>
+        {% endif %}
       </div>
+      {% if materiel %}
+        <p class="muted" style="margin:0; font-size:.82rem;">
+          Rattacher un matériel évite de le déclarer deux fois : retenir la
+          prestation le réserve aussi, et prévient s'il est déjà promis ailleurs.
+        </p>
+      {% endif %}
       <div>
         <label class="ui-label">Description</label>
         <input class="in" name="description" style="width:100%;">

@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% block title %}Impayés et cautions{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>💰 Impayés et cautions</h1>
+    <p class="muted">
+      Deux colonnes qui vont ensemble : ce qui reste à encaisser, et l'argent
+      qui n'est pas à nous. Un solde jamais réclamé est une recette perdue ;
+      une caution gardée alors que tout est réglé est une réclamation qui arrive.
+    </p>
+  </div>
+
+  <div class="ui-kpi-grid">
+    <div class="ui-kpi-card">
+      <div class="ui-eyebrow">Reste à encaisser</div>
+      <div style="font-size:1.7rem; font-weight:900;">{{ '%.2f'|format(total) }} €</div>
+      <div class="muted">{{ impayes|length }} mise(s) à disposition</div>
+    </div>
+    <div class="ui-kpi-card">
+      <div class="ui-eyebrow">Cautions à restituer</div>
+      <div style="font-size:1.7rem; font-weight:900;">{{ '%.2f'|format(total_cautions) }} €</div>
+      <div class="muted">{{ cautions|length }} dépôt(s) de garantie</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Restes à encaisser</h2>
+    {% if impayes %}
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr><th>Référence</th><th>Preneur</th><th>Objet</th><th>Dernière date</th>
+                <th>Dû</th><th>Reste</th><th>Facture</th></tr>
+          </thead>
+          <tbody>
+            {% for r in impayes %}
+              {% set derniere = r.occupations | map(attribute='date_jour') | max %}
+              <tr>
+                <td><a href="{{ url_for('salles.reservation_fiche', reservation_id=r.id) }}">{{ r.reference }}</a></td>
+                <td>{{ r.preneur.nom }}
+                  {%- if r.preneur.telephone %}<br><span class="muted" style="font-size:.78rem;">{{ r.preneur.telephone }}</span>{% endif %}</td>
+                <td>{{ r.titre }}</td>
+                <td class="muted">
+                  {{ derniere.strftime('%d/%m/%Y') }}
+                  <br><span style="font-size:.76rem;">il y a {{ (aujourdhui - derniere).days }} jour(s)</span>
+                </td>
+                <td style="font-variant-numeric:tabular-nums;">{{ '%.2f'|format(r.montant_du) }} €</td>
+                <td style="font-variant-numeric:tabular-nums; font-weight:800; color:#b91c1c;">
+                  {{ '%.2f'|format(r.reste_du) }} €</td>
+                <td class="muted">
+                  {% if r.facture_numero %}{{ r.facture_numero }}
+                  {% else %}<span style="color:#92400e;">non émise</span>{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Rien à encaisser. 🎉</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Cautions à restituer</h2>
+    <p class="muted">
+      Encaissées, occupation terminée, rien rendu. À traiter après l'état des
+      lieux de sortie.
+    </p>
+    {% if cautions %}
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr><th>Référence</th><th>Preneur</th><th>Caution</th>
+                <th>État des lieux de sortie</th><th>Dégradations</th></tr>
+          </thead>
+          <tbody>
+            {% for r in cautions %}
+              <tr>
+                <td><a href="{{ url_for('salles.reservation_fiche', reservation_id=r.id) }}">{{ r.reference }}</a></td>
+                <td>{{ r.preneur.nom }}</td>
+                <td style="font-variant-numeric:tabular-nums;">{{ '%.2f'|format(r.caution_montant or 0) }} €</td>
+                <td class="muted">
+                  {% if r.etat_lieux_sortie_le %}fait le {{ r.etat_lieux_sortie_le.strftime('%d/%m/%Y') }}
+                  {% else %}<span style="color:#92400e;">à faire</span>{% endif %}
+                </td>
+                <td class="muted">
+                  {% if r.degradations_constatees %}
+                    <span style="color:#b91c1c; font-weight:700;">⚠️ constatées</span>
+                  {% else %}—{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Aucune caution en attente.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
