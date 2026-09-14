@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% import "_genre.html" as genre %}
 {% import "_ux_helpers.html" as ux %}
 
 {% block head_extra %}
@@ -1013,13 +1014,7 @@
           </div>
           <div>
             <label>Genre</label>
-            <select class="in" name="genre">
-              <option value="">—</option>
-              <option value="Femme">Femme</option>
-              <option value="Homme">Homme</option>
-              <option value="Autre">Autre</option>
-              <option value="Préférez ne pas répondre">Préférez ne pas répondre</option>
-            </select>
+            {{ genre.champ(none) }}
           </div>
         </div>
         <div class="spacer"></div>

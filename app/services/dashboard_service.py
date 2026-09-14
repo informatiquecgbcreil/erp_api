@@ -7,6 +7,8 @@ from flask import url_for
 from werkzeug.routing import BuildError
 from sqlalchemy import func, or_
 
+from app.services.genre import GROUPES as GENRE_GROUPES
+
 from app.models import (
     Subvention,
     Depense,
@@ -61,18 +63,17 @@ def _session_effective_date(session: SessionActivite):
     return session.rdv_date or session.date_session
 
 
-def _normalize_gender(value: str | None) -> str:
-    raw = (value or "").strip().lower()
-    if not raw:
-        return "Non renseigné"
-    raw = raw.replace("é", "e").replace("è", "e").replace("ê", "e").replace("à", "a")
-    if raw in {"f", "femme", "feminin", "feminin", "female", "woman"}:
-        return "Femmes"
-    if raw in {"h", "m", "homme", "masculin", "male", "man"}:
-        return "Hommes"
-    if raw in {"autre", "non binaire", "non-binaire", "nb", "x"}:
-        return "Autre"
-    return "Non renseigné"
+def _normalize_gender(value: str | None, age: int | None = None) -> str:
+    """Libellé pluriel du genre, filles et garçons distingués par l'âge.
+
+    Délègue au référentiel unique (``app.services.genre``) : c'est lui qui
+    décide, pour toute l'application, que « Fille » et « F » sont la même
+    chose. Avant, chaque écran avait sa propre table de correspondance et
+    « Fille » était comptée « Non renseigné » ici, « femme » ailleurs.
+    """
+    from app.services.genre import libelle
+
+    return libelle(value, age, pluriel=True)
 
 
 def _compute_age(dob: date | None, ref_date: date) -> int | None:
@@ -292,7 +293,10 @@ def build_dashboard_context(
             sess_by_month[mk] += 1
 
     pub_counts = {"H": 0, "S": 0, "B": 0, "A": 0, "P": 0, "?": 0}
-    gender_counts = {"Femmes": 0, "Hommes": 0, "Autre": 0, "Non renseigné": 0}
+    # Colonnes figées, vides comprises : un tableau où « Garçons » disparaît
+    # les mois sans garçon se lit mal d'une période à l'autre et laisse
+    # croire à un oubli de saisie.
+    gender_counts = {libelle: 0 for libelle in GENRE_GROUPES.values()}
     age_counts = {label: 0 for (label, _, _) in AGE_BUCKETS}
     unknown_age_count = 0
     city_counts: Dict[str, int] = {}
@@ -323,10 +327,13 @@ def build_dashboard_context(
             public_key = "?"
         pub_counts[public_key] += 1
 
-        gender_key = _normalize_gender(genre)
+        # L'âge d'abord : c'est lui qui décide entre « fille » et « femme ».
+        # Calculé à la date de FIN de période, pas à aujourd'hui — un tableau
+        # de bord d'une période passée ne doit pas dériver avec le temps.
+        age = _compute_age(dob, until_date)
+        gender_key = _normalize_gender(genre, age)
         gender_counts[gender_key] = gender_counts.get(gender_key, 0) + 1
 
-        age = _compute_age(dob, until_date)
         age_label = _age_bucket(age)
         if age_label:
             age_counts[age_label] += 1
@@ -360,12 +367,8 @@ def build_dashboard_context(
     }
 
     gender_urls = [
-        _safe(
-            "participants.list_participants",
-            **participant_base_args,
-            genre_group=("other" if label == "Autre" else "unknown" if label == "Non renseigné" else label.lower()),
-        )
-        for label in ["Femmes", "Hommes", "Autre", "Non renseigné"]
+        _safe("participants.list_participants", **participant_base_args, genre_group=cle)
+        for cle in GENRE_GROUPES
     ]
 
     age_labels = [label for (label, _, _) in AGE_BUCKETS] + ["Âge non renseigné"]
@@ -446,13 +449,8 @@ def build_dashboard_context(
             "urls": public_urls,
         },
         "gender": {
-            "labels": ["Femmes", "Hommes", "Autre", "Non renseigné"],
-            "values": [
-                gender_counts["Femmes"],
-                gender_counts["Hommes"],
-                gender_counts["Autre"],
-                gender_counts["Non renseigné"],
-            ],
+            "labels": list(GENRE_GROUPES.values()),
+            "values": [gender_counts.get(libelle, 0) for libelle in GENRE_GROUPES.values()],
             "money": False,
             "urls": gender_urls,
         },

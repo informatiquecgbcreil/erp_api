@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import "_genre.html" as genre %}
 {% block body %}
 
 <div class="stack">
@@ -40,7 +41,7 @@
 
       <div>
         <label>Genre</label>
-        <input class="in" name="genre" value="{{ p.genre or '' }}" placeholder="F / H / ...">
+        {{ genre.champ(p.genre, p.age_au() if p else none) }}
       </div>
       <div>
         <label>Date de naissance</label>

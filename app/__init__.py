@@ -81,6 +81,23 @@ def create_app():
 
     app.jinja_env.globals["safe_url_for"] = safe_url_for
 
+    # Référentiel du genre. Posé en GLOBALE et non en context_processor :
+    # une macro importée (« {% import "_genre.html" %} ») ne voit pas le
+    # contexte de la page, mais voit les globales. Le libellé dépend de
+    # l'âge (fille / femme, garçon / homme) : les gabarits ont besoin de la
+    # fonction, pas d'une liste figée.
+    from app.services.genre import (
+        choix as _genre_choix,
+        libelle as _genre_libelle,
+        libelle_participant as _genre_de,
+        normaliser as _genre_code,
+    )
+
+    app.jinja_env.globals["genre_choix"] = _genre_choix
+    app.jinja_env.globals["genre_code"] = _genre_code
+    app.jinja_env.globals["genre_libelle"] = _genre_libelle
+    app.jinja_env.globals["genre_de"] = _genre_de
+
     from app.services.storage import send_media_file
 
     @app.route("/media/<path:filename>")

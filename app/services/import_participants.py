@@ -64,12 +64,14 @@ def parse_annee(valeur) -> int | None:
 
 
 def normaliser_sexe(valeur) -> str | None:
-    c = normaliser(valeur)[:1]
-    if c == "f":
-        return "Femme"
-    if c in {"m", "h"}:  # M (masculin) ou H (homme) selon les feuilles
-        return "Homme"
-    return None
+    """Colonne « sexe » ou « genre » d'un fichier importé.
+
+    Délègue au référentiel unique : il connaît M, H, F, Femme, Fille,
+    Garçon, Masculin, Féminin et le reste, et rend le code enregistré.
+    """
+    from app.services.genre import normaliser as normaliser_genre
+
+    return normaliser_genre(valeur)
 
 
 @dataclass

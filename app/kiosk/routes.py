@@ -241,7 +241,9 @@ def kiosk_session(token: str):
             email = (request.form.get("email") or "").strip() or None
             telephone = (request.form.get("telephone") or "").strip() or None
             type_public = (request.form.get("type_public") or "").strip() or "H"
-            genre = (request.form.get("genre") or "").strip() or None
+            from app.services.genre import normaliser as normaliser_genre
+
+            genre = normaliser_genre(request.form.get("genre"))
             date_naissance = request.form.get("date_naissance") or None
             quartier_id = request.form.get("quartier_id") or None
 

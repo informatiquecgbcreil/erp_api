@@ -233,7 +233,9 @@ def dashboard():
             participant.ville = (request.form.get("ville") or "").strip() or None
             participant.email = (request.form.get("email") or "").strip() or None
             participant.telephone = (request.form.get("telephone") or "").strip() or None
-            participant.genre = (request.form.get("genre") or "").strip() or None
+            from app.services.genre import normaliser as normaliser_genre
+
+            participant.genre = normaliser_genre(request.form.get("genre"))
             participant.type_public = (request.form.get("type_public") or participant.type_public or "H").strip().upper()
 
             dn_raw = request.form.get("date_naissance") or None

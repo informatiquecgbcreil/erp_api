@@ -98,7 +98,7 @@
             </div>
             <div class="field-stack">
               <label>Genre</label>
-              <select name="genre" class="in"><option value="">Tous</option>{% for g in genres %}<option value="{{ g }}" {% if f_genre == g %}selected{% endif %}>{{ g }}</option>{% endfor %}</select>
+              <select name="genre" class="in"><option value="">Tous</option>{% for g in genres %}<option value="{{ g }}" {% if f_genre == g %}selected{% endif %}>{{ genre_libelle(g) }}</option>{% endfor %}</select>
             </div>
             <div class="field-stack">
               <label>Type de public</label>

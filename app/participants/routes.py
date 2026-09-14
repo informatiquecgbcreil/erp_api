@@ -177,18 +177,20 @@ def _active_reference_options(model, *, current_value: str | None = None, legacy
 
 
 
-def _normalize_gender_group(value: str | None) -> str:
-    raw = (value or "").strip().lower()
-    if not raw:
-        return "unknown"
-    raw = raw.replace("é", "e").replace("è", "e").replace("ê", "e").replace("à", "a")
-    if raw in {"f", "femme", "feminin", "female", "woman"}:
-        return "femmes"
-    if raw in {"h", "m", "homme", "masculin", "male", "man"}:
-        return "hommes"
-    if raw in {"autre", "non binaire", "non-binaire", "nb", "x"}:
-        return "other"
-    return "unknown"
+from app.services.genre import normaliser as normaliser_genre
+
+
+def _normalize_gender_group(participant, reference=None) -> str:
+    """Clé de filtre (« filles », « femmes », « inconnu »…) pour une fiche.
+
+    Prend la FICHE et non la seule chaîne : le groupe dépend de l'âge à la
+    date de référence, puisque c'est lui qui sépare « fille » de « femme ».
+    Cliquer sur la colonne « Filles » du tableau de bord doit donner
+    exactement les fiches comptées dans cette colonne.
+    """
+    from app.services.genre import groupe_participant
+
+    return groupe_participant(participant, reference)
 
 
 AGE_BUCKETS = [
@@ -498,7 +500,10 @@ def list_participants():
     items = participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc()).all()
 
     if genre_group:
-        items = [item for item in items if _normalize_gender_group(getattr(item, "genre", None)) == genre_group]
+        # Même date de référence que le tableau de bord qui a produit le
+        # lien, sans quoi la liste ne contiendrait pas le nombre annoncé.
+        ref_genre = dashboard_to or date.today()
+        items = [item for item in items if _normalize_gender_group(item, ref_genre) == genre_group]
 
     if age_bucket_label:
         ref_date = dashboard_to or date.today()
@@ -1142,7 +1147,7 @@ def new_participant():
             ville=(request.form.get("ville") or "").strip() or None,
             email=email,
             telephone=(request.form.get("telephone") or "").strip() or None,
-            genre=(request.form.get("genre") or "").strip() or None,
+            genre=normaliser_genre(request.form.get("genre")),
             type_public=(request.form.get("type_public") or "H").strip() or "H",
             created_by_user_id=getattr(current_user, "id", None),
             created_secteur=(
@@ -1222,7 +1227,7 @@ def edit_participant(participant_id: int):
             return redirect(url_for("participants.edit_participant", participant_id=p.id))
         p.email = email
         p.telephone = (request.form.get("telephone") or "").strip() or None
-        p.genre = (request.form.get("genre") or "").strip() or None
+        p.genre = normaliser_genre(request.form.get("genre"))
         p.type_public = (request.form.get("type_public") or p.type_public or "H").strip() or "H"
         quartier_id = request.form.get("quartier_id") or None
         p.quartier_id = normalize_quartier_for_ville(p.ville, quartier_id)
@@ -1781,10 +1786,15 @@ def _decouper_par_identite(items):
 
 
 def _contradiction(items):
-    """Naissances ou genres qui s'opposent : deux personnes, pas deux saisies."""
+    """Naissances ou genres qui s'opposent : deux personnes, pas deux saisies.
+
+    On compare le CODE du genre, pas son libellé : une fiche « Fille » et une
+    fiche « Femme » portent le même genre à deux âges différents, ce n'est
+    pas une contradiction. Seuls F contre H en sont une.
+    """
     naissances = {p.date_naissance for p in items if p.date_naissance}
-    genres = {_normalize_gender_group(p.genre) for p in items if p.genre}
-    genres.discard("unknown")
+    genres = {normaliser_genre(p.genre) for p in items}
+    genres.discard(None)
     return len(naissances) > 1 or len(genres) > 1
 
 

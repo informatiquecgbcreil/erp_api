@@ -34,6 +34,7 @@ from app.rbac import can, require_perm
 from app.secteurs import get_secteur_labels
 from app.services.audit import journaliser
 from app.services.cotisations import annee_scolaire_courante, libelle_annee_scolaire
+from app.services.genre import normaliser as normaliser_genre
 from app.services.inscriptions_annuelles import (
     InscriptionAnnuelleErreur,
     annees_disponibles,
@@ -199,7 +200,9 @@ def _appliquer_formulaire(inscription: InscriptionAnnuelle) -> list[str]:
     inscription.code_postal = _texte("code_postal", 10)
     inscription.ville = _texte("ville", 120)
     inscription.telephone = _texte("telephone", 60)
-    inscription.genre = _texte("genre", 20)
+    # Le référentiel décide : « F », « Fille », « Féminin » et « FEMME »
+    # sont la même chose, et c'est le code qui est enregistré.
+    inscription.genre = normaliser_genre(request.form.get("genre"))
     inscription.date_naissance = _date_form("date_naissance", None)
     inscription.secteur_orienteur = _texte("secteur_orienteur", 80)
 

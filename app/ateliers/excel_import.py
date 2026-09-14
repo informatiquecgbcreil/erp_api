@@ -88,20 +88,16 @@ def is_creil(ville: Optional[str]) -> bool:
 
 
 def normalize_genre(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    v = str(value).strip().lower()
-    if not v:
-        return None
+    """Reprise historique : le référentiel unique décide.
 
-    # enlève ponctuation/espaces/char spéciaux
-    v = re.sub(r"[^a-zàâäéèêëîïôöùûüç]", "", v)
+    Il y avait sept tables de correspondance du genre dans l'application,
+    chacune avec ses trous. Celle-ci traitait « fille » et « garçon », une
+    autre non ; une troisième rangeait « Garçon » dans « Autre ». Tout
+    passe désormais par app.services.genre.
+    """
+    from app.services.genre import normaliser
 
-    if v in ("f", "femme", "féminin", "feminin", "fille"):
-        return "Femme"
-    if v in ("h", "homme", "m", "masculin", "garcon", "garçon", "g"):
-        return "Homme"
-    return None
+    return normaliser(value)
 
 
 def _is_presence(v: Any) -> bool:

@@ -986,11 +986,22 @@ def _participant_age_bucket(participant: Participant, reference: date | None = N
     return "60+"
 
 
-def _participant_genre_bucket(participant: Participant) -> str:
-    raw = (getattr(participant, "genre", None) or "").strip().lower()
-    if raw.startswith("f") or "femme" in raw:
+def _participant_genre_bucket(participant: Participant, reference: date | None = None) -> str:
+    """Colonne du tableau QPV : femmes, hommes, ou le reste.
+
+    Les trois colonnes du tableau réglementaire ne distinguent pas les
+    mineurs — une fille y est comptée avec les femmes. Le classement passe
+    par le référentiel unique, qui reconnaît « Fille » comme féminin ;
+    l'ancienne version y arrivait par accident (elle testait la première
+    lettre) là où le tableau de bord, lui, rangeait « Fille » dans
+    « Non renseigné ».
+    """
+    from app.services.genre import FEMININ, MASCULIN, normaliser
+
+    code = normaliser(getattr(participant, "genre", None))
+    if code == FEMININ:
         return "Femmes"
-    if raw.startswith("h") or "homme" in raw or raw in {"m", "masculin", "male"}:
+    if code == MASCULIN:
         return "Hommes"
     return "Autre / non renseigné"
 

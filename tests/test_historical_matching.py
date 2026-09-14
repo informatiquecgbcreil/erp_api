@@ -253,7 +253,7 @@ def test_both_input_output_contract_aliases_are_supported():
     result = resolve_participants([{"id": "A", "raw": {"nom": "Dupont", "prenom": "Jean", "sexe": "H", "annee_naissance": 1985}}])
     assert result["entities"] == result["groups"]
     assert result["rows"][0]["source_id"] == result["rows"][0]["key"] == "A"
-    assert result["groups"][0]["values"]["genre"] == "Homme"
+    assert result["groups"][0]["values"]["genre"] == "H"
 
 
 def test_incomplete_identity_preserved_for_review_and_needs_correction_to_create():

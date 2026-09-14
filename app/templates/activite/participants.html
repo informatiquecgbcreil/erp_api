@@ -72,7 +72,7 @@
               <td><strong>{{ p.prenom }} {{ p.nom }}</strong><div class="muted" style="font-size:12px;">#{{ p.id }}</div></td>
               <td class="muted">{{ p.email or "—" }}<br>{{ p.telephone or "—" }}</td>
               <td class="muted">
-                {{ p.type_public or "—" }} · {{ p.genre or "—" }} ·
+                {{ p.type_public or "—" }} · {{ genre_de(p) }} ·
                 {% if p.date_naissance %}{{ p.date_naissance.strftime('%d/%m/%Y') }}{% else %}—{% endif %}
                 <br>
                 {% if p.quartier %}{{ p.quartier.ville }} — {{ p.quartier.nom }}{% else %}Quartier : —{% endif %}
@@ -118,7 +118,7 @@
           </header>
           <dl class="responsive-card__grid">
             <div><dt>Coordonnées</dt><dd class="muted">{{ p.email or "—" }}<br>{{ p.telephone or "—" }}</dd></div>
-            <div><dt>Profil</dt><dd class="muted">{{ p.type_public or "—" }} · {{ p.genre or "—" }}</dd></div>
+            <div><dt>Profil</dt><dd class="muted">{{ p.type_public or "—" }} · {{ genre_de(p) }}</dd></div>
             <div><dt>Visites</dt><dd><span class="status-badge {{ 'status-success' if st.get('visites', 0) > 0 else 'status-warning' }}">{{ st.get('visites', 0) }} visite(s)</span></dd></div>
             <div><dt>Dernière visite</dt><dd class="muted">{% if st.get('last_seen') %}{{ st.get('last_seen').strftime('%d/%m/%Y') }}{% else %}—{% endif %}</dd></div>
           </dl>

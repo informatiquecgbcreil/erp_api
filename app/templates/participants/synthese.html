@@ -176,7 +176,7 @@
           <h3>Identité</h3>
           <div class="person-list">
             <div><strong>Naissance</strong><div class="person-meta">{{ format_date(participant.date_naissance) }}{% if participant.age %} · {{ participant.age }} ans{% endif %}</div></div>
-            <div><strong>Genre</strong><div class="person-meta">{{ participant.genre or "Non renseigné" }}</div></div>
+            <div><strong>Genre</strong><div class="person-meta">{{ genre_de(participant) }}</div></div>
             <div><strong>Type de public</strong><div class="person-meta">{{ participant.type_public or "Non renseigné" }}</div></div>
             <div><strong>Secteur</strong><div class="person-meta">{{ participant.created_secteur or "Non renseigné" }}</div></div>
           </div>

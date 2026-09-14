@@ -276,7 +276,7 @@
               <td>
                 <strong>{{ participant_label(row.participant, row.demandeur_libre) }}</strong>
                 {% if row.participant %}
-                  <div class="muted">{{ "QPV" if row.participant.is_qpv else "Hors / inconnu" }} · {{ row.participant.genre or "Genre ?" }} · {{ row.participant.age or "Âge ?" }}</div>
+                  <div class="muted">{{ "QPV" if row.participant.is_qpv else "Hors / inconnu" }} · {{ genre_de(row.participant) }} · {{ row.participant.age or "Âge ?" }}</div>
                 {% endif %}
               </td>
               <td>

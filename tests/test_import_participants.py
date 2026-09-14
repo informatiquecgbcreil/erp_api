@@ -26,10 +26,21 @@ def test_parse_annee():
 
 
 def test_normaliser_sexe():
-    assert normaliser_sexe("F") == "Femme"
-    assert normaliser_sexe("M") == "Homme"
-    assert normaliser_sexe("H") == "Homme"  # certaines feuilles notent H
+    """La colonne « sexe » d'un fichier rend le code du référentiel.
+
+    Le libellé affiché (femme ou fille, homme ou garçon) n'est plus une
+    donnée enregistrée : il se calcule à la lecture, d'après l'âge.
+    """
+    from app.services.genre import FEMININ, MASCULIN
+
+    assert normaliser_sexe("F") == FEMININ
+    assert normaliser_sexe("M") == MASCULIN
+    assert normaliser_sexe("H") == MASCULIN  # certaines feuilles notent H
     assert normaliser_sexe("") is None
+    # Les feuilles de l'enfance écrivent « Fille » et « Garçon » : c'est le
+    # même genre, elles ne doivent plus tomber dans le vide.
+    assert normaliser_sexe("Fille") == FEMININ
+    assert normaliser_sexe("Garçon") == MASCULIN
 
 
 def _grille(header_row_index, lignes_data):
@@ -69,7 +80,7 @@ def test_parser_ignore_lignes_total_et_vides():
     personnes, raison = parser_feuille("ZUMBA", lignes)
     assert raison is None
     assert [p.nom for p in personnes] == ["DUPONT", "MARTIN"]
-    assert personnes[0].annee == 1980 and personnes[0].sexe == "Femme"
+    assert personnes[0].annee == 1980 and personnes[0].sexe == "F"
     assert personnes[1].annee is None  # "ADULTE"
 
 

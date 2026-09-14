@@ -1,4 +1,5 @@
 {% extends 'kiosk/base.html' %}
+{% import "_genre.html" as genre %}
 {% block wrap_class %}k-wrap--wide{% endblock %}
 {% block header_title %}{{ atelier.nom if atelier else 'Émargement' }}{% endblock %}
 {% block body %}
@@ -135,13 +136,7 @@
           </div>
           <div>
             <label class="k-label">Genre</label>
-            <select class="k-select" name="genre">
-              <option value="">—</option>
-              <option value="Femme">Femme</option>
-              <option value="Homme">Homme</option>
-              <option value="Autre">Autre</option>
-              <option value="Préférez ne pas répondre">Préfère ne pas répondre</option>
-            </select>
+            {{ genre.champ(none, none, classe="k-select") }}
           </div>
           <div><label class="k-label">Email (facultatif)</label><input class="k-input" type="email" name="email"></div>
           <div><label class="k-label">Téléphone (facultatif)</label><input class="k-input" name="telephone"></div>

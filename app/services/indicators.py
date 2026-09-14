@@ -624,16 +624,21 @@ def _add_demography_metrics(out: dict, participant_ids: list[int], reference: da
 
 
 def _gender_key(value: str | None) -> str:
-    raw = (value or "").strip().lower()
-    if raw.startswith("f") or "femme" in raw:
-        return "femme"
-    if raw.startswith("h") or "homme" in raw:
-        return "homme"
-    if raw in {"m", "masculin", "male"}:
-        return "homme"
-    if raw in {"autre", "non-binaire", "non binaire"}:
-        return "autre"
-    return "inconnu"
+    """« femme » / « homme » / « autre » / « inconnu ».
+
+    Indicateur agrégé : il ne distingue pas les mineurs (le financeur
+    demande des femmes et des hommes, pas des filles et des garçons). Le
+    classement lui-même vient du référentiel unique, pour que « Fille » et
+    « F » tombent enfin dans la même case ici comme ailleurs.
+    """
+    from app.services.genre import AUTRE, FEMININ, MASCULIN, SANS_REPONSE, normaliser
+
+    return {
+        FEMININ: "femme",
+        MASCULIN: "homme",
+        AUTRE: "autre",
+        SANS_REPONSE: "autre",
+    }.get(normaliser(value), "inconnu")
 
 
 def _pct_value(part, total):

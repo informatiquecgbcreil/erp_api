@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import "_genre.html" as genre %}
 {% import "_ux_helpers.html" as ux %}
 
 {% block body %}
@@ -739,13 +740,7 @@
                   </div>
                   <div>
                     <label>Genre</label>
-                    <select class="in" name="genre">
-                      <option value="">—</option>
-                      <option value="Femme" {% if p.genre == "Femme" %}selected{% endif %}>Femme</option>
-                      <option value="Homme" {% if p.genre == "Homme" %}selected{% endif %}>Homme</option>
-                      <option value="Autre" {% if p.genre == "Autre" %}selected{% endif %}>Autre</option>
-                      <option value="Préférez ne pas répondre" {% if p.genre == "Préférez ne pas répondre" %}selected{% endif %}>Préférez ne pas répondre</option>
-                    </select>
+                    {{ genre.champ(p.genre) }}
                   </div>
                   <div>
                     <label>Date de naissance</label>

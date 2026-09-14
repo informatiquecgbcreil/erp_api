@@ -268,7 +268,9 @@ def emargement(session_id: int):
             adresse = (request.form.get("adresse") or "").strip() or None
             email = (request.form.get("email") or "").strip() or None
             telephone = (request.form.get("telephone") or "").strip() or None
-            genre = (request.form.get("genre") or "").strip() or None
+            from app.services.genre import normaliser as normaliser_genre
+
+            genre = normaliser_genre(request.form.get("genre"))
             date_naissance = request.form.get("date_naissance") or None
             type_public = (request.form.get("type_public") or "H").strip().upper() or "H"
             quartier_id = request.form.get("quartier_id") or None
