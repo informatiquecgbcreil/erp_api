@@ -687,7 +687,17 @@
             {% if recents and recents.sessions and recents.sessions|length %}
               <div class="recent-list">
                 {% for s in recents.sessions[:4] %}
-                  <div class="recent-item"><strong>Atelier #{{ s.atelier_id }}</strong><span class="muted">{{ s.session_type }}{% if s.rdv_date or s.date_session %} · {{ s.rdv_date or s.date_session }}{% endif %}</span></div>
+                  {# Le nom de l'atelier et un lien direct vers l'émargement :
+                     annoncer qu'une séance existe sans permettre d'y aller
+                     faisait perdre le temps que ce bloc devait gagner. #}
+                  <a class="recent-item" href="{{ url_for('activite.emargement', session_id=s.id) }}">
+                    <strong>{{ s.atelier.nom if s.atelier else 'Séance' }}</strong>
+                    <span class="muted">
+                      {%- if s.date_session or s.rdv_date %}{{ (s.date_session or s.rdv_date).strftime('%a %d/%m') }}{% endif -%}
+                      {%- if s.heure_debut %} · {{ s.heure_debut }}{% endif -%}
+                      {%- if s.espace %} · {{ s.espace.nom }}{% endif -%}
+                    </span>
+                  </a>
                 {% endfor %}
               </div>
             {% else %}<div class="quick-empty">Aucune séance récente.</div>{% endif %}
@@ -698,7 +708,10 @@
               {% if recents and recents.participants and recents.participants|length %}
                 <div class="recent-list">
                   {% for p in recents.participants[:4] %}
-                    <div class="recent-item"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="muted">Ajout récent</span></div>
+                    <a class="recent-item" href="{{ url_for('participants.synthese_participant', participant_id=p.id) }}">
+                      <strong>{{ p.nom }} {{ p.prenom }}</strong>
+                      <span class="muted">Ouvrir la fiche</span>
+                    </a>
                   {% endfor %}
                 </div>
               {% else %}<div class="quick-empty">Aucune fiche récente.</div>{% endif %}
@@ -835,7 +848,10 @@
               {% if recents and recents.depenses and recents.depenses|length %}
                 <div class="recent-list">
                   {% for d in recents.depenses %}
-                    <div class="recent-item"><strong>{{ d.libelle }}</strong><span class="muted">{{ "%.2f"|format(d.montant or 0) }}€</span></div>
+                    <a class="recent-item" href="{{ url_for('budget.depense_edit', depense_id=d.id) }}">
+                      <strong>{{ d.libelle }}</strong>
+                      <span class="muted">{{ "%.2f"|format(d.montant or 0) }} €{% if d.fournisseur %} · {{ d.fournisseur }}{% endif %}</span>
+                    </a>
                   {% endfor %}
                 </div>
               {% else %}<div class="quick-empty">Aucune dépense récente.</div>{% endif %}
@@ -845,7 +861,14 @@
               {% if recents and recents.sessions and recents.sessions|length %}
                 <div class="recent-list">
                   {% for s in recents.sessions %}
-                    <div class="recent-item"><strong>Atelier #{{ s.atelier_id }}</strong><span class="muted">{{ s.session_type }}{% if s.rdv_date or s.date_session %} · {{ s.rdv_date or s.date_session }}{% endif %}</span></div>
+                    <a class="recent-item" href="{{ url_for('activite.emargement', session_id=s.id) }}">
+                      <strong>{{ s.atelier.nom if s.atelier else 'Séance' }}</strong>
+                      <span class="muted">
+                        {%- if s.date_session or s.rdv_date %}{{ (s.date_session or s.rdv_date).strftime('%a %d/%m') }}{% endif -%}
+                        {%- if s.heure_debut %} · {{ s.heure_debut }}{% endif -%}
+                        {%- if s.espace %} · {{ s.espace.nom }}{% endif -%}
+                      </span>
+                    </a>
                   {% endfor %}
                 </div>
               {% else %}<div class="quick-empty">Aucune session récente.</div>{% endif %}
@@ -855,7 +878,10 @@
               {% if recents and recents.participants and recents.participants|length %}
                 <div class="recent-list">
                   {% for p in recents.participants %}
-                    <div class="recent-item"><strong>{{ p.nom }} {{ p.prenom }}</strong><span class="muted">Ajout récent</span></div>
+                    <a class="recent-item" href="{{ url_for('participants.synthese_participant', participant_id=p.id) }}">
+                      <strong>{{ p.nom }} {{ p.prenom }}</strong>
+                      <span class="muted">Ouvrir la fiche</span>
+                    </a>
                   {% endfor %}
                 </div>
               {% else %}<div class="quick-empty">Aucun participant récent.</div>{% endif %}

@@ -2,6 +2,7 @@ from datetime import date
 
 from flask import render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required
+from app.services.contexte import annee_travail
 from app.rbac import require_perm, can, can_access_secteur
 
 from app.extensions import db
@@ -71,11 +72,11 @@ def projet_finance_action(projet_id):
         abort(403)
 
     action = request.form.get("action") or ""
-    year = request.form.get("year") or request.args.get("year") or date.today().year
+    year = request.form.get("year") or request.args.get("year") or annee_travail()
     try:
         year = int(year)
     except Exception:
-        year = date.today().year
+        year = annee_travail()
 
     if action == "quick_charge":
         if not can("aap:charges_edit"):

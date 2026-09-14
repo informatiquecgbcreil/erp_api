@@ -159,6 +159,25 @@ def create_app():
     enregistrer_synchronisation_auto()
 
     @app.before_request
+    def _memoriser_contexte_de_travail():
+        """Retient l'année et le secteur consultés, pour les proposer par
+        défaut à l'écran suivant.
+
+        Placé ici plutôt que dans chaque route : un écran qui ne parle ni
+        d'année ni de secteur laisse le contexte intact, et aucune route
+        n'a à s'en préoccuper. Le paramètre explicite gagne toujours — on
+        ne fait que remplacer « repartir de l'année courante » par
+        « reprendre là où on en était ».
+        """
+        from app.services.contexte import memoriser_depuis_la_requete
+
+        try:
+            memoriser_depuis_la_requete()
+        except Exception:  # noqa: BLE001 - un confort ne casse jamais une page
+            app.logger.debug("Contexte de travail : mémorisation ignorée", exc_info=True)
+        return None
+
+    @app.before_request
     def _facade_kiosque_publique():
         """Façade « hors les murs » : par l'hôte public (tunnel), SEUL le
         kiosque répond. Connexion, données et admin restent introuvables

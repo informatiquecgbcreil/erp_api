@@ -5,6 +5,7 @@ from datetime import date
 from flask import abort, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from app.services.contexte import annee_travail
 from app.extensions import db
 from app.main.common import bp
 from app.models import Subvention, SuiviRappel
@@ -99,9 +100,9 @@ def parcours_metier():
 
 def _assistant_year() -> int:
     try:
-        year = int((request.args.get("year") or request.args.get("annee") or date.today().year))
+        year = int((request.args.get("year") or request.args.get("annee") or annee_travail()))
     except Exception:
-        year = date.today().year
+        year = annee_travail()
     return max(2000, min(2100, year))
 
 

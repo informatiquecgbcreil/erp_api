@@ -11,6 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app.services.contexte import annee_travail
 from app.extensions import db
 from app.models import Partenaire, PartenaireSecteur, PartenaireIntervention, OrientationAccesDroit, Participant, Quartier
 from app.rbac import require_perm, can
@@ -120,7 +121,7 @@ def _orientation_year() -> int:
     try:
         year = int(raw)
     except Exception:
-        year = date.today().year
+        year = annee_travail()
     return max(2000, min(2100, year))
 
 

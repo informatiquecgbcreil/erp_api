@@ -10,6 +10,7 @@ from datetime import date
 from flask import render_template, request, redirect, url_for, flash, abort, current_app
 from flask_login import login_required, current_user
 
+from app.services.contexte import annee_travail
 from app.rbac import require_perm, can
 from app.extensions import db
 from app.models import Participant, HartEvaluation, HART_TYPES_EVALUATION, HART_TYPES_DICT
@@ -41,7 +42,7 @@ def _periode_depuis_requete(prefix=""):
     try:
         annee = int(annee_raw) if annee_raw else date.today().year
     except Exception:
-        annee = date.today().year
+        annee = annee_travail()
     return date(annee, 1, 1), date(annee, 12, 31), annee
 
 
