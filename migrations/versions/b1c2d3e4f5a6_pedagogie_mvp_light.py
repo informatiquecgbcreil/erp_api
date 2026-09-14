@@ -21,7 +21,7 @@ def upgrade():
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('nom', sa.String(length=160), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('actif', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('actif', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
@@ -61,7 +61,7 @@ def upgrade():
         sa.Column('objectif_id', sa.Integer(), nullable=False),
         sa.Column('competence_id', sa.Integer(), nullable=False),
         sa.Column('poids', sa.Float(), nullable=False, server_default='1.0'),
-        sa.Column('actif', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('actif', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(['competence_id'], ['competence.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['objectif_id'], ['objectif.id'], ondelete='CASCADE'),
@@ -76,7 +76,7 @@ def upgrade():
     op.execute(
         """
         INSERT INTO objectif_competence_map (objectif_id, competence_id, poids, actif, created_at)
-        SELECT objectif_id, competence_id, 1.0, 1, CURRENT_TIMESTAMP
+        SELECT objectif_id, competence_id, 1.0, TRUE, CURRENT_TIMESTAMP
         FROM objectif_competence
         """
     )
