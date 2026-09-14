@@ -126,7 +126,14 @@
         </div>
         <div class="field-stack">
           <label>Ville</label>
-          <input class="in" type="text" name="ville" value="{{ item.ville if item and item.ville else '' }}" data-ville-input {% if item and not is_editable %}disabled{% endif %}>
+          {#- Villes déjà enregistrées : on choisit au lieu de retaper, et
+              « Nogent sur Oise » cesse de cohabiter avec « Nogent-sur-Oise ». Posé
+              ici, DANS le bloc : hors bloc, un gabarit qui hérite de layout.html
+              n'affiche rien. -#}
+          <datalist id="villes-saisies">
+            {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
+          </datalist>
+          <input class="in" type="text" name="ville" list="villes-saisies" value="{{ item.ville if item and item.ville else '' }}" data-ville-input {% if item and not is_editable %}disabled{% endif %}>
           <div class="field-help">Exemple : Creil, Nogent-sur-Oise…</div>
         </div>
         <div class="field-stack">

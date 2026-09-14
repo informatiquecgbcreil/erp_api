@@ -178,6 +178,7 @@ def _active_reference_options(model, *, current_value: str | None = None, legacy
 
 
 from app.services.genre import normaliser as normaliser_genre
+from app.services.villes import normaliser as normaliser_ville
 
 
 def _normalize_gender_group(participant, reference=None) -> str:
@@ -1144,7 +1145,7 @@ def new_participant():
             nom=nom,
             prenom=prenom,
             adresse=(request.form.get("adresse") or "").strip() or None,
-            ville=(request.form.get("ville") or "").strip() or None,
+            ville=normaliser_ville(request.form.get("ville")),
             email=email,
             telephone=(request.form.get("telephone") or "").strip() or None,
             genre=normaliser_genre(request.form.get("genre")),
@@ -1220,7 +1221,7 @@ def edit_participant(participant_id: int):
         p.nom = (request.form.get("nom") or "").strip() or p.nom
         p.prenom = (request.form.get("prenom") or "").strip() or p.prenom
         p.adresse = (request.form.get("adresse") or "").strip() or None
-        p.ville = (request.form.get("ville") or "").strip() or None
+        p.ville = normaliser_ville(request.form.get("ville"))
         email = (request.form.get("email") or "").strip() or None
         if email and ("@" not in email or "." not in email.rsplit("@", 1)[-1]):
             flash("Adresse e-mail invalide (ex. nom@domaine.fr).", "err")

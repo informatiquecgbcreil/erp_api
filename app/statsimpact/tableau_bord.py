@@ -230,7 +230,9 @@ def dashboard():
 
             participant.nom = (request.form.get("nom") or participant.nom or "").strip() or participant.nom
             participant.prenom = (request.form.get("prenom") or participant.prenom or "").strip() or participant.prenom
-            participant.ville = (request.form.get("ville") or "").strip() or None
+            from app.services.villes import normaliser as normaliser_ville
+
+            participant.ville = normaliser_ville(request.form.get("ville"))
             participant.email = (request.form.get("email") or "").strip() or None
             participant.telephone = (request.form.get("telephone") or "").strip() or None
             from app.services.genre import normaliser as normaliser_genre

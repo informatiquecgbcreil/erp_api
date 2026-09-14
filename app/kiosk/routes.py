@@ -237,7 +237,9 @@ def kiosk_session(token: str):
         if action == "add_participant":
             nom = (request.form.get("nom") or "").strip()
             prenom = (request.form.get("prenom") or "").strip()
-            ville = (request.form.get("ville") or "").strip() or None
+            from app.services.villes import normaliser as normaliser_ville
+
+            ville = normaliser_ville(request.form.get("ville"))
             email = (request.form.get("email") or "").strip() or None
             telephone = (request.form.get("telephone") or "").strip() or None
             type_public = (request.form.get("type_public") or "").strip() or "H"

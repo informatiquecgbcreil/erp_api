@@ -1100,6 +1100,19 @@ class Quartier(db.Model):
     description = db.Column(db.Text, nullable=True)
     is_qpv = db.Column(db.Boolean, default=False)
 
+    #: Nom du QUARTIER PRIORITAIRE auquel ce quartier appartient — vide s'il
+    #: n'est dans aucun. Un QPV regroupe plusieurs quartiers d'usage : la
+    #: Cavée de Senlis et le Rouher sont deux quartiers distincts du même
+    #: QPV « Hauts de Creil », et il faut pouvoir les distinguer dans les
+    #: bilans tout en les additionnant quand le financeur demande le QPV.
+    #:
+    #: Sans ce champ, la seule façon d'exprimer l'appartenance était de la
+    #: coder dans le NOM (« Rouher (QPV Hauts de Creil) »), et les tableaux
+    #: la retrouvaient par recherche de sous-chaîne — deux heuristiques
+    #: différentes selon l'export, qui tombaient en panne dès qu'un quartier
+    #: s'appelait « Cavée de Senlis ».
+    qpv = db.Column(db.String(120), nullable=True, index=True)
+
     # Position du quartier sur la carte (centroïde). Renseignée par
     # géocodage automatique (BAN sur « nom, ville ») ou placement manuel.
     # geo_manuel=True protège un placement manuel d'un écrasement par l'auto.
@@ -1427,8 +1440,17 @@ class Participant(db.Model):
 
     @property
     def is_qpv(self):
+        """La personne habite-t-elle un quartier prioritaire ?
+
+        Le champ ``Quartier.qpv`` fait foi. Les recherches de sous-chaîne qui
+        suivent ne sont qu'un repli pour une base dont les quartiers n'ont
+        pas encore reçu leur QPV : elles ne reconnaissent pas un quartier
+        nommé « Cavée de Senlis », qui est pourtant aux Hauts de Creil.
+        """
         if not self.quartier:
             return False
+        if (getattr(self.quartier, "qpv", None) or "").strip():
+            return True
         if self.quartier.is_qpv:
             return True
         ville = (self.quartier.ville or "").strip().lower()

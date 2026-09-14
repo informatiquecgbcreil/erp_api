@@ -23,11 +23,22 @@
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         <input class="in" name="ville" value="{{ quartier.ville }}" required style="min-width:180px;">
         <input class="in" name="nom" value="{{ quartier.nom }}" required style="min-width:220px;">
+        <input class="in" name="qpv" list="qpv-connus" value="{{ quartier.qpv or '' }}"
+               placeholder="QPV de rattachement (facultatif)" style="min-width:230px;">
         <label class="inline" style="gap:6px; align-items:center;">
           <input type="checkbox" name="is_qpv" value="1" {% if quartier.is_qpv %}checked{% endif %}>
           <span>QPV</span>
         </label>
       </div>
+      <datalist id="qpv-connus">
+        {% for nom in qpv_connus %}<option value="{{ nom }}">{% endfor %}
+      </datalist>
+      <p class="muted" style="margin:0; font-size:.85rem;">
+        Renseigner un QPV coche la case toute seule. Deux quartiers du même QPV
+        gardent leurs vrais noms et restent comptés séparément — le total du QPV
+        se fait tout seul dans les bilans. Il n'y a plus à écrire « (QPV …) »
+        dans le nom du quartier pour que les exports le retrouvent.
+      </p>
       <textarea class="in" name="description" rows="4" placeholder="Description (optionnel)">{{ quartier.description or "" }}</textarea>
 
       <div>

@@ -264,7 +264,9 @@ def emargement(session_id: int):
         if action == "add_participant":
             nom = (request.form.get("nom") or "").strip()
             prenom = (request.form.get("prenom") or "").strip()
-            ville = (request.form.get("ville") or "").strip() or None
+            from app.services.villes import normaliser as normaliser_ville
+
+            ville = normaliser_ville(request.form.get("ville"))
             adresse = (request.form.get("adresse") or "").strip() or None
             email = (request.form.get("email") or "").strip() or None
             telephone = (request.form.get("telephone") or "").strip() or None

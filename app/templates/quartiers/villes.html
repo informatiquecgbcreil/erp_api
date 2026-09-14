@@ -1,0 +1,118 @@
+{% extends "layout.html" %}
+{% block title %}Nettoyer les villes{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1 style="margin:0;">Nettoyer les villes</h1>
+        <p class="muted" style="margin:6px 0 0;">
+          Le champ « ville » est saisi librement sur une dizaine d'écrans. Voici ce
+          qui existe réellement dans les fiches, et combien de personnes se cachent
+          derrière chaque écriture.
+        </p>
+      </div>
+      <a class="btn" href="{{ url_for('quartiers.index') }}">← Villes et quartiers</a>
+    </div>
+  </div>
+
+  <div class="card" style="border-left:4px solid var(--accent, #3b82f6);">
+    <p style="margin:0;">
+      <strong>Pourquoi ça compte&nbsp;:</strong> la liste déroulante des quartiers est
+      filtrée sur la ville tapée, au caractère près. Écrire « Nogent sur Oise » quand
+      les quartiers sont enregistrés sous « Nogent-sur-Oise » vide la liste
+      <em>sans aucun message</em> — et la personne à l'accueil en conclut qu'il n'y a
+      pas de quartier pour cette ville.
+    </p>
+  </div>
+
+  {% if groupes %}
+  <div class="card" style="border-left:4px solid var(--warn, #f59e0b);">
+    <h2 style="margin-top:0;">Même commune, plusieurs écritures</h2>
+    <p class="muted" style="margin-top:0;">
+      Ces écritures désignent la même commune : majuscules, tirets, accents ou code
+      postal près. Choisissez celle à conserver.
+    </p>
+    {% for groupe in groupes %}
+      <div class="inline" style="gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+        {% for v in groupe %}
+          <span class="chip">{{ v.nom }} · {{ v.participants }} fiche{{ 's' if v.participants != 1 }}</span>
+        {% endfor %}
+        {% if can('quartiers:edit') %}
+        <form method="post" action="{{ url_for('quartiers.villes_fusionner') }}"
+              class="inline" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select class="in" name="source" aria-label="Écriture à corriger">
+            {% for v in groupe %}<option value="{{ v.nom }}">{{ v.nom }}</option>{% endfor %}
+          </select>
+          <span>devient</span>
+          <select class="in" name="cible" aria-label="Écriture à conserver">
+            {% for v in groupe %}<option value="{{ v.nom }}" {% if v.forme_propre == v.nom %}selected{% endif %}>{{ v.nom }}</option>{% endfor %}
+          </select>
+          <button class="btn warn" type="submit">Fusionner</button>
+        </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2 style="margin-top:0;">Toutes les villes enregistrées</h2>
+    <p class="muted" style="margin-top:0;">
+      Une troncature (« Nogent » pour « Nogent-sur-Oise ») n'est jamais corrigée
+      automatiquement&nbsp;: « Villers » peut être Villers-Saint-Paul comme
+      Villers-sous-Saint-Leu, deux communes voisines. Le code ne devine pas — c'est
+      à vous de trancher.
+    </p>
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Écriture enregistrée</th>
+            <th>Fiches</th>
+            <th>Quartiers</th>
+            <th>Forme d'état civil</th>
+            {% if can('quartiers:edit') %}<th style="min-width:320px;">Remplacer par</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in villes %}
+            <tr>
+              <td><strong>{{ v.nom }}</strong></td>
+              <td>{{ v.participants }}</td>
+              <td>{{ v.quartiers }}</td>
+              <td class="muted">
+                {% if v.a_normaliser %}
+                  <span class="tag">{{ v.forme_propre }}</span>
+                {% else %}
+                  ✅ conforme
+                {% endif %}
+              </td>
+              {% if can('quartiers:edit') %}
+              <td>
+                <form method="post" action="{{ url_for('quartiers.villes_fusionner') }}"
+                      class="inline" style="gap:6px; flex-wrap:wrap;"
+                      onsubmit="return confirm('Remplacer « {{ v.nom }} » partout ? Les fiches et les quartiers concernés seront mis à jour.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="source" value="{{ v.nom }}">
+                  <input class="in" name="cible" list="villes-existantes" style="min-width:200px;"
+                         value="{{ v.forme_propre if v.a_normaliser else '' }}"
+                         placeholder="Écriture à conserver">
+                  <button class="btn" type="submit">Appliquer</button>
+                </form>
+              </td>
+              {% endif %}
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">Aucune ville enregistrée pour l'instant.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <datalist id="villes-existantes">
+      {% for v in villes %}<option value="{{ v.nom }}">{% endfor %}
+    </datalist>
+  </div>
+</div>
+{% endblock %}

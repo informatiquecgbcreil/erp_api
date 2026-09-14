@@ -35,6 +35,7 @@ from app.secteurs import get_secteur_labels
 from app.services.audit import journaliser
 from app.services.cotisations import annee_scolaire_courante, libelle_annee_scolaire
 from app.services.genre import normaliser as normaliser_genre
+from app.services.villes import normaliser as normaliser_ville
 from app.services.inscriptions_annuelles import (
     InscriptionAnnuelleErreur,
     annees_disponibles,
@@ -198,7 +199,9 @@ def _appliquer_formulaire(inscription: InscriptionAnnuelle) -> list[str]:
 
     inscription.adresse = _texte("adresse", 255)
     inscription.code_postal = _texte("code_postal", 10)
-    inscription.ville = _texte("ville", 120)
+    # Forme d'état civil à la saisie : la liste des quartiers est filtrée
+    # par égalité de chaîne avec la ville, et une variante la vide en silence.
+    inscription.ville = normaliser_ville(request.form.get("ville"))
     inscription.telephone = _texte("telephone", 60)
     # Le référentiel décide : « F », « Fille », « Féminin » et « FEMME »
     # sont la même chose, et c'est le code qui est enregistré.

@@ -70,15 +70,16 @@ def normalize_secteur(value: Any) -> str:
 
 
 def normalize_ville(value: Any) -> Optional[str]:
-    v = _norm(value)
-    if not v:
-        return None
-    v = v.replace("(60)", "")
-    v = re.sub(r"\s+", " ", v).strip()
+    """Reprise historique : le référentiel unique décide de la forme.
 
-    # Quelques homogénéisations courantes (optionnel)
-    # ex: "Nogent sur oise" => "Nogent Sur Oise"
-    return v[:120].title()
+    Cette fonction produisait « Nogent Sur Oise » (title case), là où la
+    saisie manuelle donnait « Nogent-sur-Oise » : l'import fabriquait donc
+    méthodiquement une variante de plus à chaque fichier repris.
+    """
+    from app.services.villes import normaliser
+
+    propre = normaliser(value)
+    return propre[:120] if propre else None
 
 
 def is_creil(ville: Optional[str]) -> bool:

@@ -115,7 +115,14 @@
         <div class="k-grid2">
           <div><label class="k-label">Nom</label><input class="k-input" name="nom" required></div>
           <div><label class="k-label">Prénom</label><input class="k-input" name="prenom" required></div>
-          <div><label class="k-label">Ville</label><input class="k-input" name="ville" placeholder="Creil" data-ville-input></div>
+          <div><label class="k-label">Ville</label>{#- Villes déjà enregistrées : on choisit au lieu de retaper, et
+          <div><label class="k-label">Ville</label>    « Nogent sur Oise » cesse de cohabiter avec « Nogent-sur-Oise ». Posé
+          <div><label class="k-label">Ville</label>    ici, DANS le bloc : hors bloc, un gabarit qui hérite de layout.html
+          <div><label class="k-label">Ville</label>    n'affiche rien. -#}
+          <div><label class="k-label">Ville</label><datalist id="villes-saisies">
+          <div><label class="k-label">Ville</label>  {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
+          <div><label class="k-label">Ville</label></datalist>
+          <div><label class="k-label">Ville</label><input class="k-input" name="ville" list="villes-saisies" placeholder="Creil" data-ville-input></div>
           <div>
             <label class="k-label">Quartier</label>
             <select class="k-select" name="quartier_id" data-quartier-select>

@@ -92,7 +92,14 @@
           <input class="in" name="code_postal" inputmode="numeric" value="{{ val('code_postal', inscription.code_postal if inscription else '') }}">
         </label>
         <label class="field-stack"><span>Ville</span>
-          <input class="in" name="ville" value="{{ val('ville', inscription.ville if inscription else '') }}">
+          {#- Villes déjà enregistrées : on choisit au lieu de retaper, et
+              « Nogent sur Oise » cesse de cohabiter avec « Nogent-sur-Oise ». Posé
+              ici, DANS le bloc : hors bloc, un gabarit qui hérite de layout.html
+              n'affiche rien. -#}
+          <datalist id="villes-saisies">
+            {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
+          </datalist>
+          <input class="in" name="ville" list="villes-saisies" value="{{ val('ville', inscription.ville if inscription else '') }}">
         </label>
         <label class="field-stack"><span>Date de naissance</span>
           <input class="in" type="date" name="date_naissance"

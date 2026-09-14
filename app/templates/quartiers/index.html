@@ -10,6 +10,7 @@
         <p class="muted">Retrouve les quartiers utilisés dans les fiches et les statistiques, puis mets-les à jour si besoin.</p>
       </div>
       <div class="inline" style="gap:8px;">
+        <a class="btn" href="{{ url_for('quartiers.villes') }}">🏙️ Nettoyer les villes</a>
         <a class="btn" href="{{ url_for('quartiers.carte') }}">🗺️ Carte des habitants</a>
         <a class="btn" href="{{ url_for('quartiers.stats') }}">📊 Voir les statistiques</a>
       </div>
@@ -22,18 +23,57 @@
     <form method="post" action="{{ url_for('quartiers.create') }}" class="stack" style="gap:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
-        <input class="in" name="ville" placeholder="Ville" style="min-width:180px;" required>
+        <input class="in" name="ville" list="villes-connues" placeholder="Ville" style="min-width:180px;" required>
         <input class="in" name="nom" placeholder="Nom du quartier" style="min-width:220px;" required>
+        <input class="in" name="qpv" list="qpv-connus" placeholder="QPV de rattachement (facultatif)" style="min-width:230px;">
         <label class="inline" style="gap:6px; align-items:center;">
           <input type="checkbox" name="is_qpv" value="1">
-          <span>QPV {{ ux.tooltip("Quartier Prioritaire de la politique de la Ville : zone classée par l'État ouvrant droit à des financements spécifiques. Cochez si le quartier figure sur la liste officielle des QPV. C'est un indicateur clé pour la CAF et la Ville.") }}</span>
+          <span>QPV {{ ux.tooltip("Quartier Prioritaire de la politique de la Ville : zone classée par l'État ouvrant droit à des financements spécifiques. Renseignez plutôt le QPV de rattachement juste à gauche : la case se coche alors toute seule, et les bilans peuvent à la fois distinguer ce quartier et l'additionner à son QPV.") }}</span>
         </label>
       </div>
+      <datalist id="qpv-connus">
+        {% for nom in qpv_connus %}<option value="{{ nom }}">{% endfor %}
+      </datalist>
+      <datalist id="villes-connues">
+        {% for nom in villes_connues %}<option value="{{ nom }}">{% endfor %}
+      </datalist>
+      <p class="muted" style="margin:0; font-size:.85rem;">
+        Un QPV regroupe plusieurs quartiers. Le Rouher et la Cavée de Senlis sont
+        deux quartiers distincts des <em>Hauts de Creil</em> : renseignez le même QPV
+        sur les deux, gardez leurs vrais noms, et les bilans sauront à la fois les
+        séparer et les additionner. Plus besoin d'écrire le QPV dans le nom.
+      </p>
       <textarea class="in" name="description" placeholder="Description (optionnel)" rows="3"></textarea>
       <div>
         <button class="btn" type="submit">➕ Ajouter</button>
       </div>
     </form>
+  </div>
+  {% endif %}
+
+  {% if doublons and can('quartiers:edit') %}
+  <div class="card" style="border-left:4px solid var(--warn, #f59e0b);">
+    <h2 style="margin-top:0;">Quartiers en double</h2>
+    <p class="muted" style="margin-top:0;">
+      Ces quartiers désignent visiblement le même endroit. Fusionner déplace les
+      fiches puis supprime le doublon — jusqu'ici c'était impossible : la
+      suppression était refusée dès qu'une fiche y était rattachée.
+    </p>
+    {% for groupe in doublons %}
+      <form method="post" action="{{ url_for('quartiers.fusionner') }}"
+            class="inline" style="gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;"
+            onsubmit="return confirm('Fusionner ces deux quartiers ? Les fiches du premier seront rattachées au second, puis le premier sera supprimé.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select class="in" name="source_id" aria-label="Quartier à absorber">
+          {% for q in groupe %}<option value="{{ q.id }}">{{ q.nom }} · {{ q.ville }} (#{{ q.id }})</option>{% endfor %}
+        </select>
+        <span>devient</span>
+        <select class="in" name="cible_id" aria-label="Quartier à conserver">
+          {% for q in groupe %}<option value="{{ q.id }}" {% if loop.last %}selected{% endif %}>{{ q.nom }} · {{ q.ville }} (#{{ q.id }})</option>{% endfor %}
+        </select>
+        <button class="btn warn" type="submit">Fusionner</button>
+      </form>
+    {% endfor %}
   </div>
   {% endif %}
 
@@ -54,7 +94,7 @@
             <tr>
               <td>{{ q.ville }}</td>
               <td><strong>{{ q.nom }}</strong></td>
-              <td>{% if q.is_qpv %}<span class="tag">QPV</span>{% else %}—{% endif %}</td>
+              <td>{% if q.qpv %}<span class="tag">{{ q.qpv }}</span>{% elif q.is_qpv %}<span class="tag">QPV</span>{% else %}—{% endif %}</td>
               <td class="muted">{{ q.description or "—" }}</td>
               <td>
                 <div class="inline" style="gap:8px; flex-wrap:wrap;">
@@ -85,7 +125,7 @@
             <span class="chip">{{ q.ville }}</span>
           </header>
           <dl class="responsive-card__grid">
-            <div><dt>QPV</dt><dd>{% if q.is_qpv %}<span class="tag">QPV</span>{% else %}—{% endif %}</dd></div>
+            <div><dt>QPV</dt><dd>{% if q.qpv %}<span class="tag">{{ q.qpv }}</span>{% elif q.is_qpv %}<span class="tag">QPV</span>{% else %}—{% endif %}</dd></div>
             <div><dt>Description</dt><dd class="muted">{{ q.description or "—" }}</dd></div>
           </dl>
           <div class="inline-actions">

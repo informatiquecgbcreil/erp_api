@@ -1397,7 +1397,20 @@
   <script>
   (function(){
     function normalize(value){
-      return (value || "").trim().toLowerCase();
+      // Même règle de comparaison que app/services/villes.py : sans accents,
+      // sans ponctuation, sans casse. Avant, la comparaison se faisait au
+      // caractère près : taper « Nogent sur Oise » alors que les quartiers
+      // sont enregistrés sous « Nogent-sur-Oise » vidait la liste des
+      // quartiers SANS AUCUN MESSAGE, et l'accueil en concluait qu'il n'y
+      // avait pas de quartier pour cette ville.
+      return (value || "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\(\d{2,5}\)/g, " ")
+        .replace(/\b\d{5}\b/g, " ")
+        .replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
     }
 
     function applyFilter(select, villeValue){
