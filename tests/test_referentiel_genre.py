@@ -1,8 +1,8 @@
 """Le genre : une valeur enregistrée, un libellé qui suit l'âge.
 
-Constat de départ, mesuré sur le code existant : SEPT fonctions différentes
-décidaient de ce qu'est un genre, et le même mot ne donnait pas le même
-comptage selon l'écran.
+Constat de départ, mesuré sur le code existant : HUIT endroits classaient
+le genre — six tables de correspondance et deux comptages bruts — et le même
+mot ne donnait pas le même comptage selon l'écran.
 
     saisi       tableau de bord   indicateurs   stats impact            SENACS
     Fille       Non renseigné     femme         Femmes                  Fille
@@ -225,7 +225,7 @@ def test_choix_du_formulaire_suivent_lage():
 
 
 # ---------------------------------------------------------------------------
-# Les sept classificateurs disent enfin la même chose
+# Les huit classements disent enfin la même chose
 # ---------------------------------------------------------------------------
 
 def test_les_moteurs_statistiques_saccordent(app):

@@ -91,10 +91,11 @@ def is_creil(ville: Optional[str]) -> bool:
 def normalize_genre(value: Any) -> Optional[str]:
     """Reprise historique : le référentiel unique décide.
 
-    Il y avait sept tables de correspondance du genre dans l'application,
-    chacune avec ses trous. Celle-ci traitait « fille » et « garçon », une
-    autre non ; une troisième rangeait « Garçon » dans « Autre ». Tout
-    passe désormais par app.services.genre.
+    Huit endroits classaient le genre — six tables de correspondance et
+    deux comptages bruts — chacun avec ses trous. Celle-ci traitait
+    « fille » et « garçon », une autre non ; une troisième rangeait
+    « Garçon » dans « Autre ». Tout passe désormais par
+    app.services.genre.
     """
     from app.services.genre import normaliser
 

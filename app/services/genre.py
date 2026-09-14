@@ -4,8 +4,10 @@
 
 Trois écrans, trois vocabulaires de saisie — « Femme / Homme / Autre /
 Préférez ne pas répondre » sur le tableau de bord d'impact, un champ libre
-« F / H / … » sur la fiche d'émargement, une liste ailleurs — et QUATRE
-fonctions de classement différentes en aval. Le même mot ne donnait pas le
+« F / H / … » sur la fiche d'émargement, une liste ailleurs — et HUIT
+endroits qui classaient le genre en aval : six tables de correspondance
+(tableau de bord, indicateurs, stats d'impact, filtre de l'annuaire, import
+Excel, import annuaire) et deux comptages bruts (SENACS, orientations). Le même mot ne donnait pas le
 même comptage selon l'écran :
 
     saisi       tableau de bord   indicateurs   stats impact            SENACS
