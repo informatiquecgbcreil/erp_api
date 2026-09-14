@@ -1,0 +1,114 @@
+{#- Sélection multiple réutilisable.
+
+    Le mécanisme existait déjà dans l'annuaire des participants, écrit à la
+    main dans le gabarit. Plutôt que de le recopier une troisième puis une
+    quatrième fois, il est posé ici une bonne fois : coches, case « tout
+    cocher », barre d'actions collante, compteur, décochage global.
+
+    Usage type :
+
+      {% import "_selection_multiple.html" as sel %}
+      {{ sel.formulaire("dep", url_for('budget.depenses_actions')) }}
+      {% call sel.barre("dep", "dépense", "dépenses") %}
+        <button class="btn" type="submit" form="dep" name="action" value="x">…</button>
+      {% endcall %}
+      <th>{{ sel.tout_cocher("dep") }}</th>
+      <td>{{ sel.case("dep", "did", d.id, "Sélectionner " ~ d.libelle) }}</td>
+      …
+      {{ sel.script() }}
+
+    « groupe » isole plusieurs sélections sur une même page et sert d'id du
+    formulaire cible : les coches vivent DANS le tableau et se rattachent au
+    formulaire par l'attribut ``form=`` — imbriquer un formulaire dans un
+    autre est invalide en HTML et le navigateur le désimbrique en silence.
+-#}
+
+{% macro formulaire(groupe, action) -%}
+  <form method="post" action="{{ action }}" id="{{ groupe }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {#- Où revenir après l'action : la liste telle qu'elle était, filtres compris. -#}
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+  </form>
+{%- endmacro %}
+
+{% macro tout_cocher(groupe) -%}
+  <input type="checkbox" class="js-sel-all" data-groupe="{{ groupe }}"
+         title="Tout cocher / décocher" aria-label="Tout cocher">
+{%- endmacro %}
+
+{% macro case(groupe, nom, valeur, libelle) -%}
+  <input type="checkbox" class="js-sel" data-groupe="{{ groupe }}"
+         name="{{ nom }}" value="{{ valeur }}" form="{{ groupe }}"
+         aria-label="{{ libelle }}">
+{%- endmacro %}
+
+{% macro barre(groupe, singulier, pluriel) -%}
+  <div class="section-card compact js-sel-bar" id="sel-bar-{{ groupe }}" data-groupe="{{ groupe }}"
+       style="display:none; position:sticky; top:8px; z-index:30; border:2px solid rgba(59,130,246,.45);">
+    <div class="inline-actions" style="flex-wrap:wrap; gap:10px; align-items:center;">
+      <strong><span id="sel-count-{{ groupe }}">0</span>
+        <span data-singulier="{{ singulier }}" data-pluriel="{{ pluriel }}">{{ pluriel }}</span>
+        cochée{{ 's' if pluriel.endswith('s') else '' }}</strong>
+      {{ caller() }}
+      <button class="btn js-sel-clear" type="button" data-groupe="{{ groupe }}">Tout décocher</button>
+    </div>
+  </div>
+{%- endmacro %}
+
+{% macro script() -%}
+<script>
+(function(){
+  // Une seule mécanique pour toutes les sélections de la page, repérées par
+  // leur attribut data-groupe. Les coches peuvent exister en double (vue
+  // tableau + vue cartes sur mobile) : on compte des valeurs distinctes, pas
+  // des cases, sinon le compteur annonce le double.
+  function cases(groupe){
+    return Array.from(document.querySelectorAll('.js-sel[data-groupe="' + groupe + '"]'));
+  }
+  function rafraichir(groupe){
+    const toutes = cases(groupe);
+    const cochees = new Set(toutes.filter(c => c.checked).map(c => c.value));
+    const total = new Set(toutes.map(c => c.value)).size;
+    const n = cochees.size;
+
+    const compteur = document.getElementById('sel-count-' + groupe);
+    if(compteur) compteur.textContent = n;
+
+    const mot = document.querySelector('#sel-bar-' + groupe + ' [data-singulier]');
+    if(mot) mot.textContent = (n === 1) ? mot.dataset.singulier : mot.dataset.pluriel;
+
+    const barre = document.getElementById('sel-bar-' + groupe);
+    if(barre) barre.style.display = n > 0 ? '' : 'none';
+
+    document.querySelectorAll('.js-sel-all[data-groupe="' + groupe + '"]').forEach(g => {
+      g.checked = total > 0 && n === total;
+      g.indeterminate = n > 0 && n < total;
+    });
+  }
+  function groupes(){
+    return Array.from(new Set(
+      Array.from(document.querySelectorAll('.js-sel')).map(c => c.dataset.groupe)
+    ));
+  }
+  // Délégué sur le document : les lignes peuvent être filtrées ou rechargées
+  // sans qu'il faille reposer les écouteurs une par une.
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    if(!el || !el.classList) return;
+    if(el.classList.contains('js-sel')) rafraichir(el.dataset.groupe);
+    if(el.classList.contains('js-sel-all')){
+      cases(el.dataset.groupe).forEach(c => { c.checked = el.checked; });
+      rafraichir(el.dataset.groupe);
+    }
+  });
+  document.addEventListener('click', (e) => {
+    const el = e.target;
+    if(el && el.classList && el.classList.contains('js-sel-clear')){
+      cases(el.dataset.groupe).forEach(c => { c.checked = false; });
+      rafraichir(el.dataset.groupe);
+    }
+  });
+  groupes().forEach(rafraichir);
+})();
+</script>
+{%- endmacro %}

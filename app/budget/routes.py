@@ -587,6 +587,36 @@ def depense_edit(depense_id):
     )
 
 # ✅ NOUVEL ENDPOINT : suppression dépense (fiable)
+@bp.route("/depense/<int:depense_id>/dupliquer", methods=["POST"])
+@login_required
+@require_perm("depenses:create")
+def depense_dupliquer(depense_id):
+    """Reconduit une charge récurrente au mois suivant.
+
+    Ce qu'on ne retape plus : le libellé, le montant, le fournisseur, le mode
+    de paiement, la ligne de budget et surtout la répartition entre
+    financeurs. Ce qui n'est PAS recopié : la référence de pièce et les
+    justificatifs — la facture de janvier ne prouve pas la dépense de février.
+
+    On atterrit sur la copie en édition : la date est à vérifier, le montant
+    d'un loyer indexé aussi.
+    """
+    from app.services.duplication import dupliquer_depense
+
+    dep = db.get_or_404(Depense, depense_id)
+    if not depense_visible(dep):
+        abort(403)
+
+    copie = dupliquer_depense(dep)
+    db.session.commit()
+    flash(
+        "Dépense reconduite au mois suivant, avec sa répartition entre financeurs. "
+        "Vérifie la date et le montant, puis ajoute le justificatif.",
+        "warning",
+    )
+    return redirect(url_for("budget.depense_edit", depense_id=copie.id))
+
+
 @bp.route("/depense/<int:depense_id>/delete", methods=["POST"])
 @login_required
 @require_perm("depenses:delete")
@@ -663,6 +693,122 @@ def depense_doc_delete(doc_id):
             pass
 
     return redirect(url_for("budget.depense_edit", depense_id=dep.id))
+
+@bp.route("/depenses/actions", methods=["POST"])
+@login_required
+@require_perm("depenses:create")
+def depenses_actions():
+    """Agit sur les dépenses cochées.
+
+    Deux gestes de fin de mois, jusqu'ici faits une dépense à la fois :
+    imputer un lot de factures au même financeur, et reconduire les charges
+    récurrentes. Chaque dépense est revérifiée individuellement : une coche
+    ne contourne pas le cloisonnement par secteur.
+    """
+    from app.services.duplication import dupliquer_depense
+
+    action = (request.form.get("action") or "").strip()
+    retour = request.form.get("retour") or url_for("budget.depenses_list")
+
+    ids = []
+    for brut in request.form.getlist("did"):
+        try:
+            valeur = int(brut)
+        except (TypeError, ValueError):
+            continue
+        if valeur not in ids:
+            ids.append(valeur)
+
+    depenses = [d for d in (db.session.get(Depense, i) for i in ids) if d is not None and depense_visible(d)]
+    if not depenses:
+        flash("Coche d'abord au moins une dépense dans la liste.", "warning")
+        return redirect(retour)
+
+    if action == "reconduire":
+        for dep in depenses:
+            dupliquer_depense(dep)
+        db.session.commit()
+        flash(
+            f"{len(depenses)} dépense(s) reconduite(s) au mois suivant, avec leur répartition "
+            "entre financeurs. Vérifie les dates et les montants, puis ajoute les justificatifs.",
+            "warning",
+        )
+        return redirect(retour)
+
+    if action == "imputer":
+        ligne = db.session.get(LigneBudget, request.form.get("ligne_budget_id", type=int) or 0)
+        if ligne is None:
+            flash("Choisis la ligne de financement avant de valider.", "danger")
+            return redirect(retour)
+        if getattr(ligne, "nature", "charge") != "charge":
+            flash("Une dépense s'impute sur une ligne de charge, pas sur un produit.", "danger")
+            return redirect(retour)
+        sub = ligne.source_sub
+        if sub is None:
+            flash("Cette ligne n'est rattachée à aucune enveloppe.", "danger")
+            return redirect(retour)
+        if not can_see_secteur(sub.secteur):
+            abort(403)
+
+        # On n'impute QUE ce qui n'est pas déjà financé : re-imputer le total
+        # d'une dépense déjà répartie la compterait deux fois dans le bilan.
+        a_imputer = [(d, d.reste_a_affecter) for d in depenses if d.reste_a_affecter > 0.01]
+        deja = len(depenses) - len(a_imputer)
+        if not a_imputer:
+            flash(
+                "Toutes les dépenses cochées sont déjà entièrement financées : rien à imputer.",
+                "info",
+            )
+            return redirect(retour)
+
+        # Le budget de la ligne est vérifié pour le LOT entier avant d'écrire
+        # quoi que ce soit : imputer la moitié d'une sélection puis s'arrêter
+        # faute de crédits laisserait un travail à moitié fait, invisible.
+        #
+        # On raisonne sur l'engagement APRÈS coup, et non sur le reste
+        # disponible : une dépense sans aucune affectation pèse déjà 100 %
+        # sur sa ligne (compatibilité « legacy » de LigneBudget.engage).
+        # L'imputer sur cette même ligne ne consomme donc rien de plus —
+        # comparer bêtement son montant au reste disponible refuserait une
+        # régularisation qui ne coûte pas un centime.
+        engage_apres = float(ligne.engage or 0)
+        for dep, montant in a_imputer:
+            if not dep.affectations and dep.ligne_budget_id == ligne.id:
+                engage_apres -= float(dep.montant or 0)
+            engage_apres += montant
+        budget = float(ligne.montant_reel or 0)
+        if round(engage_apres, 2) > round(budget, 2) + 0.01:
+            flash(
+                f"Budget insuffisant sur {sub.nom} — {ligne.compte} {ligne.libelle} : "
+                f"l'imputation porterait l'engagement à {engage_apres:.2f} € "
+                f"pour un budget de {budget:.2f} €.",
+                "danger",
+            )
+            return redirect(retour)
+
+        total = 0.0
+        for dep, montant in a_imputer:
+            db.session.add(DepenseAffectation(
+                depense_id=dep.id,
+                source_type="subvention",
+                subvention_id=sub.id,
+                ligne_budget_id=ligne.id,
+                montant=montant,
+                commentaire="Imputation groupée",
+            ))
+            total += montant
+        db.session.commit()
+        flash(
+            f"{len(a_imputer)} dépense(s) imputée(s) à {sub.nom} — {ligne.compte} {ligne.libelle}, "
+            f"pour {total:.2f} €."
+            + (f" {deja} dépense(s) déjà financée(s) ont été laissées de côté." if deja else ""),
+            "ok",
+        )
+        return redirect(retour)
+
+    flash("Action inconnue.", "warning")
+    return redirect(retour)
+
 
 @bp.route("/depenses")
 @login_required
@@ -770,6 +916,10 @@ def depenses_list():
         "depenses_list.html",
         subs=subs,
         lignes=lignes,
+        # Toutes les lignes de charge visibles : cible de l'imputation groupée,
+        # indépendante du filtre affiché (on impute souvent un lot filtré par
+        # fournisseur sur une enveloppe qui n'est pas celle du filtre).
+        lignes_imputables=_visible_charge_lines_for_depense(),
         years=years,
         selected_sub_id=sub_id,
         selected_ligne_id=ligne_id,

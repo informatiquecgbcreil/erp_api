@@ -420,6 +420,36 @@ def export_csat_sessions(atelier_id: int):
 # ------------------ Suppression / Restauration (soft-delete) ------------------
 
 
+@bp.route("/atelier/<int:atelier_id>/dupliquer", methods=["POST"])
+@login_required
+def atelier_dupliquer(atelier_id: int):
+    """Reconduit un atelier à l'identique — le geste de la rentrée.
+
+    On repart sur le formulaire d'édition de la copie : il ne reste qu'à
+    corriger le nom et, si c'est bien la suite du même atelier, à le déclarer
+    dans « continuité statistique ». Ce lien n'est jamais posé tout seul : il
+    additionne les chiffres des deux ateliers.
+    """
+    require_perm("ateliers:edit")(lambda: None)()
+    from app.services.duplication import dupliquer_atelier
+
+    atelier = db.get_or_404(AtelierActivite, atelier_id)
+    if not _can_access_activity_secteur(atelier.secteur):
+        return _deny_activity_access()
+    if atelier.is_deleted:
+        flash("Cet atelier est dans la corbeille : restaure-le avant de le dupliquer.", "warning")
+        return redirect(url_for("activite.index", corbeille=1))
+
+    copie = dupliquer_atelier(atelier)
+    db.session.commit()
+    flash(
+        "Copie créée avec le même paramétrage (sans les séances ni les présences). "
+        "Renomme-la, et déclare la continuité statistique si c'est la suite du même atelier.",
+        "success",
+    )
+    return redirect(url_for("activite.atelier_edit", atelier_id=copie.id))
+
+
 @bp.route("/atelier/<int:atelier_id>/delete", methods=["POST"])
 @login_required
 @require_perm("activite:delete")
@@ -470,6 +500,153 @@ def atelier_restore(atelier_id: int):
     db.session.commit()
     flash("L'activité a bien été restaurée.", "success")
     return redirect(url_for("activite.index"))
+
+
+@bp.route("/atelier/<int:atelier_id>/sessions/actions", methods=["POST"])
+@login_required
+def sessions_actions(atelier_id: int):
+    """Agit sur les séances cochées : annuler une semaine de vacances d'un
+    coup, remettre la salle à jour après un déménagement, vider un lot.
+
+    L'annulation écrit ``statut = "annulee"``. C'est le champ que le reste de
+    l'application respectait DÉJÀ — flux iCal, synchro Google Agenda, saisie
+    en grille, indicateurs, consommation, transitions — mais qu'aucun écran
+    ne savait poser : on ne pouvait que jeter la séance à la corbeille, ce
+    qui efface sa trace au lieu de dire qu'elle n'a pas eu lieu.
+
+    Chaque action revérifie sa permission et son secteur, séance par séance :
+    une coche ne contourne pas un cloisonnement.
+    """
+    _require_any_perm("ateliers:view", "emargement:view")
+    atelier = db.get_or_404(AtelierActivite, atelier_id)
+    from app.activite.helpers import _atelier_est_accessible
+
+    if not _atelier_est_accessible(atelier):
+        return _deny_activity_access()
+
+    action = (request.form.get("action") or "").strip()
+    retour = request.form.get("retour") or url_for("activite.sessions", atelier_id=atelier.id)
+
+    ids: list[int] = []
+    for brut in request.form.getlist("sid"):
+        try:
+            valeur = int(brut)
+        except (TypeError, ValueError):
+            continue
+        if valeur not in ids:
+            ids.append(valeur)
+
+    seances = [
+        s for s in SessionActivite.query.filter(
+            SessionActivite.id.in_(ids), SessionActivite.atelier_id == atelier.id
+        ).all()
+        if _can_access_activity_secteur(s.secteur)
+    ] if ids else []
+
+    if not seances:
+        flash("Coche d'abord au moins une séance dans la liste.", "warning")
+        return redirect(retour)
+
+    if action in {"annuler", "retablir"}:
+        require_perm("ateliers:edit")(lambda: None)()
+        vise = "annulee" if action == "annuler" else "realisee"
+        touchees = [s for s in seances if (s.statut or "realisee") != vise]
+        for s in touchees:
+            s.statut = vise
+            if vise == "annulee":
+                # Le kiosque d'une séance annulée n'a plus lieu d'être ouvert.
+                s.kiosk_open = False
+        db.session.commit()
+        if action == "annuler":
+            flash(
+                f"{len(touchees)} séance(s) annulée(s). Elles restent visibles avec leur "
+                "trace, sortent des statistiques et de l'agenda, et libèrent leur salle."
+                if touchees else "Ces séances étaient déjà annulées.",
+                "success" if touchees else "info",
+            )
+        else:
+            flash(
+                f"{len(touchees)} séance(s) remise(s) au programme."
+                if touchees else "Ces séances n'étaient pas annulées.",
+                "success" if touchees else "info",
+            )
+        return redirect(retour)
+
+    if action == "corbeille":
+        require_perm("activite:delete")(lambda: None)()
+        touchees = [s for s in seances if not s.is_deleted]
+        for s in touchees:
+            s.is_deleted = True
+            s.deleted_at = utcnow()
+            s.kiosk_open = False
+            s.kiosk_pin = None
+            s.kiosk_token = None
+        db.session.commit()
+        flash(
+            f"{len(touchees)} séance(s) placée(s) dans la corbeille (restaurables)."
+            if touchees else "Ces séances étaient déjà dans la corbeille.",
+            "success" if touchees else "info",
+        )
+        return redirect(retour)
+
+    if action == "restaurer":
+        require_perm("activite:restore")(lambda: None)()
+        if atelier.is_deleted:
+            flash("Restaure d'abord l'atelier.", "warning")
+            return redirect(url_for("activite.index", corbeille=1))
+        touchees = [s for s in seances if s.is_deleted]
+        for s in touchees:
+            s.is_deleted = False
+            s.deleted_at = None
+        db.session.commit()
+        flash(
+            f"{len(touchees)} séance(s) restaurée(s)." if touchees else "Ces séances étaient déjà actives.",
+            "success" if touchees else "info",
+        )
+        return redirect(retour)
+
+    if action == "salle":
+        require_perm("ateliers:edit")(lambda: None)()
+        from app.services.salles import avertissement_occupation
+
+        brut = (request.form.get("espace_id") or "").strip()
+        # « — Aucune salle » est une réponse valable : hors les murs, sortie,
+        # visite. On la distingue d'un champ laissé vide par mégarde.
+        if brut == "":
+            flash("Choisis une salle (ou « Aucune ») avant de valider.", "warning")
+            return redirect(retour)
+        # « 0 » est le code de « aucune salle » : il doit devenir NULL, pas
+        # une clé étrangère qui vaut zéro.
+        espace_id = (int(brut) or None) if brut.isdigit() else None
+
+        for s in seances:
+            s.espace_id = espace_id
+        db.session.commit()
+
+        # Les conflits n'empêchent rien — ils se voient en rouge sur le
+        # planning — mais on les annonce une fois pour toutes ici plutôt que
+        # de les laisser découvrir le jour même.
+        if espace_id:
+            conflits = []
+            for s in seances:
+                message = avertissement_occupation(
+                    espace_id,
+                    s.date_session or s.rdv_date,
+                    s.heure_debut or s.rdv_debut,
+                    s.heure_fin or s.rdv_fin,
+                    exclure_occupation_id=(s.occupations[0].id if s.occupations else None),
+                )
+                if message:
+                    conflits.append(message)
+            for message in conflits[:5]:
+                flash(message, "warning")
+            if len(conflits) > 5:
+                flash(f"… et {len(conflits) - 5} autre(s) chevauchement(s) sur ce lot.", "warning")
+        flash(f"Salle mise à jour sur {len(seances)} séance(s).", "success")
+        return redirect(retour)
+
+    flash("Action inconnue.", "warning")
+    return redirect(retour)
 
 
 @bp.route("/session/<int:session_id>/delete", methods=["POST"])

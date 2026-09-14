@@ -1052,10 +1052,19 @@ def synthese_participant(participant_id: int):
         # pour qu'elle ne soit jamais « à jour » ici et « impayée » ailleurs.
         etat_reglement = etat_reglement_participant(participant)
 
+    # Campagne de rentrée : le bouton « Inscrire pour 2026-2027 » ouvre un
+    # bulletin prérempli avec ce que la fiche sait déjà — ou le bulletin
+    # existant si la personne est passée cette année.
+    from app.services.cotisations import annee_scolaire_courante, libelle_annee_scolaire
+
+    annee_inscription = annee_scolaire_courante()
+
     return render_template(
         "participants/synthese.html",
         participant=participant,
         quality_flags=_quality_flags_for_participant(participant),
+        annee_inscription=annee_inscription,
+        libelle_annee_inscription=libelle_annee_scolaire(annee_inscription),
         show_cotisations=show_cotisations,
         etat_reglement=etat_reglement,
         can_edit_cotisations=can("cotisations:edit"),

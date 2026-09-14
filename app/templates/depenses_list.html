@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 {% import "_ux_helpers.html" as ux %}
 {% import "_ux_macros.html" as ui %}
+{% import "_selection_multiple.html" as sel %}
 {% block body %}
 
 <style>
@@ -150,10 +151,30 @@
       </div>
     </div>
 
+    {{ sel.formulaire("depenses", url_for('budget.depenses_actions')) }}
+    {% call sel.barre("depenses", "dépense", "dépenses") %}
+      <span class="inline" style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <select class="in" name="ligne_budget_id" form="depenses" aria-label="Ligne de financement">
+          <option value="">Imputer à…</option>
+          {% for ligne in lignes_imputables %}
+            <option value="{{ ligne.id }}">
+              {{ ligne.source_sub.nom }} · {{ ligne.compte }} {{ ligne.libelle }} ({{ ligne.source_sub.annee_exercice }})
+            </option>
+          {% endfor %}
+        </select>
+        <button class="btn ok" type="submit" form="depenses" name="action" value="imputer"
+                title="N'impute que la part non encore financée de chaque dépense cochée. Le budget de la ligne est vérifié pour le lot entier avant d'écrire quoi que ce soit.">💶 Imputer la sélection</button>
+      </span>
+      <button class="btn" type="submit" form="depenses" name="action" value="reconduire"
+              title="Recrée chaque dépense au mois suivant avec sa répartition entre financeurs (sans la référence de pièce ni les justificatifs)."
+              onclick="return confirm('Reconduire les dépenses cochées au mois suivant ?');">🔁 Reconduire au mois suivant</button>
+    {% endcall %}
+
     <div class="tablewrap clean">
       <table class="js-sortable">
         <thead>
           <tr>
+            <th style="width:34px;">{{ sel.tout_cocher("depenses") }}</th>
             <th>Enveloppe</th>
             <th>Ligne</th>
             <th>Dépense</th>
@@ -173,9 +194,10 @@
               {% set month_label = d.date_paiement.strftime('%m/%Y') if d.date_paiement else 'Sans date' %}
               {% if ns.current_month != month_key %}
                 {% set ns.current_month = month_key %}
-                <tr class="expense-month-row"><td colspan="7">📅 {{ month_label }}</td></tr>
+                <tr class="expense-month-row"><td colspan="8">📅 {{ month_label }}</td></tr>
               {% endif %}
               <tr>
+                <td>{{ sel.case("depenses", "did", d.id, "Sélectionner " ~ d.libelle) }}</td>
                 <td><strong>{{ s.nom }}</strong><div class="expense-sub">{{ s.secteur }} · {{ s.annee_exercice }}</div></td>
                 <td>{{ l.compte }} · <span class="expense-sub">{{ l.libelle }}</span></td>
                 <td>
@@ -189,6 +211,13 @@
                 <td class="muted">{{ d.type_depense or "" }}</td>
                 <td class="inline">
                   <a class="btn" href="{{ url_for('budget.depense_edit', depense_id=d.id) }}">Ouvrir</a>
+                  {% if can("depenses:create") %}
+                    <form method="POST" action="{{ url_for('budget.depense_dupliquer', depense_id=d.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn" type="submit"
+                              title="Recrée la même dépense au mois suivant, avec sa répartition entre financeurs (sans la référence de pièce ni les justificatifs)">Reconduire</button>
+                    </form>
+                  {% endif %}
                   {% if can("depenses:delete") %}
                     <form method="POST" action="{{ url_for('budget.depense_delete', depense_id=d.id) }}" onsubmit="return confirm('Supprimer cette dépense ?');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -199,7 +228,7 @@
               </tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="7">{{ ui.empty_state(
+            <tr><td colspan="8">{{ ui.empty_state(
               "Aucune dépense à afficher",
               "Aucune dépense ne correspond à l’exercice ou aux filtres choisis. Réinitialisez la recherche, ou créez une dépense avec le bouton en haut de page.",
               url_for('budget.depenses_list'),
@@ -224,4 +253,5 @@
     </div>
   </div>
 </div>
+{{ sel.script() }}
 {% endblock %}

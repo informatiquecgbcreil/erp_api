@@ -244,6 +244,64 @@ def _copier_coordonnees(inscription: InscriptionAnnuelle, participant: Participa
             setattr(participant, champ, valeur)
 
 
+def bulletin_existant(participant: Participant, annee: int) -> InscriptionAnnuelle | None:
+    """Le bulletin de cette personne pour cette année scolaire, s'il existe.
+
+    L'accueil a la personne devant lui et ne sait pas si elle est déjà passée
+    en septembre. Plutôt que de resaisir puis découvrir le doublon, on regarde
+    d'abord le rattachement à la fiche (certain), puis le nom complet — un
+    bulletin saisi avant la fiche n'a pas encore de ``participant_id``.
+    """
+    deja = (
+        InscriptionAnnuelle.query
+        .filter(InscriptionAnnuelle.annee_scolaire == annee)
+        .filter(InscriptionAnnuelle.participant_id == participant.id)
+        .order_by(InscriptionAnnuelle.id.desc())
+        .first()
+    )
+    if deja is not None:
+        return deja
+
+    nom = (participant.nom or "").strip()
+    prenom = (participant.prenom or "").strip()
+    if not nom or not prenom:
+        return None
+    return (
+        InscriptionAnnuelle.query
+        .filter(InscriptionAnnuelle.annee_scolaire == annee)
+        .filter(db.func.lower(InscriptionAnnuelle.nom) == nom.lower())
+        .filter(db.func.lower(InscriptionAnnuelle.prenom) == prenom.lower())
+        .order_by(InscriptionAnnuelle.id.desc())
+        .first()
+    )
+
+
+def prefill_depuis_participant(participant: Participant) -> dict[str, str]:
+    """Ce que l'application sait déjà de la personne, au format du formulaire.
+
+    Sens inverse de ``creer_participant`` : le bulletin alimentait la fiche,
+    la fiche peut maintenant préremplir le bulletin. Une fiche connue depuis
+    trois ans ne redemande pas son adresse à son propriétaire.
+
+    Les valeurs vides ne sont pas posées : le gabarit retombe alors sur son
+    propre défaut au lieu d'afficher une chaîne vide qui a l'air renseignée.
+    Le code postal est absent — la fiche participant ne le porte pas.
+    """
+    valeurs = {
+        "nom": (participant.nom or "").strip(),
+        "prenom": (participant.prenom or "").strip(),
+        "adresse": (participant.adresse or "").strip(),
+        "ville": (participant.ville or "").strip(),
+        "email": (participant.email or "").strip(),
+        "telephone": (participant.telephone or "").strip(),
+        "genre": (participant.genre or "").strip(),
+        "secteur_orienteur": (participant.created_secteur or "").strip(),
+    }
+    if participant.date_naissance:
+        valeurs["date_naissance"] = participant.date_naissance.isoformat()
+    return {champ: valeur for champ, valeur in valeurs.items() if valeur}
+
+
 def _inscrire_aux_ateliers(inscription: InscriptionAnnuelle, participant: Participant, user_id: int | None) -> tuple[int, list[str]]:
     """Crée les inscriptions d'activité pour les ateliers cochés.
 

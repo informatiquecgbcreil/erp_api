@@ -54,6 +54,16 @@
   <form method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="annee" value="{{ annee }}">
+    {% if participant_source %}
+      <input type="hidden" name="participant_id" value="{{ participant_source.id }}">
+      <div class="ui-card" style="border-left:4px solid var(--ok, #16a34a);">
+        <strong>Prérempli depuis la fiche de {{ participant_source.prenom }} {{ participant_source.nom }}.</strong>
+        <div class="muted" style="margin-top:4px; font-size:.86rem;">
+          Vérifiez ce qui a changé (adresse, téléphone) et complétez les ateliers souhaités.
+          À l'enregistrement, le bulletin est rattaché tout seul à sa fiche : pas de doublon à créer.
+        </div>
+      </div>
+    {% endif %}
 
     <div class="ui-card">
       <h2 style="margin-top:0; font-size:1.05rem;">Qui s'inscrit ?</h2>

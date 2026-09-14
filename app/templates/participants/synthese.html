@@ -87,6 +87,12 @@
         {% if show_passeport %}
           <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id) }}">Passeport</a>
         {% endif %}
+        {% if can('inscriptions_annuelles:edit') %}
+          <a class="btn" href="{{ url_for('inscriptions_annuelles.nouvelle', participant_id=participant.id, annee=annee_inscription) }}"
+             title="Bulletin prérempli avec ce que l'application sait déjà — ou son bulletin de l'année s'il existe déjà">
+            📝 Inscrire pour {{ libelle_annee_inscription }}
+          </a>
+        {% endif %}
       </div>
     </div>
     <div class="spacer"></div>
