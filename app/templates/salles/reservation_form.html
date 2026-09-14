@@ -194,7 +194,10 @@
           </div>
           <div style="flex:1; min-width:190px;">
             <label class="ui-label">Référent (ouverture / fermeture)</label>
-            <input class="in" name="referent" style="width:100%;">
+            <input class="in" name="referent" style="width:100%;" list="liste-referents">
+            <datalist id="liste-referents">
+              {% for v in valeurs_deja_saisies('Reservation', 'referent') %}<option value="{{ v }}">{% endfor %}
+            </datalist>
           </div>
         </div>
 

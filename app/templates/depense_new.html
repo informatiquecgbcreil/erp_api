@@ -147,7 +147,10 @@
       {% call bloc_avance("Détails de paiement",
                           "Fournisseur, référence de la facture, mode et date de paiement.") %}
       <div class="row three">
-        <div><label>Fournisseur</label><input name="fournisseur"></div>
+        <div><label>Fournisseur</label><input name="fournisseur" list="liste-fournisseurs">
+            <datalist id="liste-fournisseurs">
+              {% for v in valeurs_deja_saisies('Depense', 'fournisseur') %}<option value="{{ v }}">{% endfor %}
+            </datalist></div>
         <div><label>Référence facture ou reçu</label><input name="reference"></div>
         <div>
           <label>Mode de paiement</label>

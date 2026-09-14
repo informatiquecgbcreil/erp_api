@@ -37,7 +37,7 @@
   {% if total %}
     <div class="helper-banner" style="margin-top:10px;">
       <strong>{{ total }} séance{{ 's' if total > 1 else '' }} sans présence</strong>
-      <span class="muted">Sur les 12 derniers mois. Une séance qui n'a réellement accueilli personne peut être annulée depuis sa page.</span>
+      <span class="muted">Sur les 12 derniers mois. Une séance qui n'a réellement accueilli personne se coche dans la liste des séances de son atelier, puis « Annuler » : elle garde sa trace, sort des statistiques et libère sa salle.</span>
     </div>
 
     {% for g in groupes %}

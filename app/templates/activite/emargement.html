@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% import "_genre.html" as genre %}
 {% import "_ux_helpers.html" as ux %}
 
 {% block head_extra %}
@@ -978,7 +979,14 @@
           </div>
           <div>
             <label>Ville</label>
-            <input class="in" name="ville" placeholder="Creil" data-ville-input>
+            {#- Villes déjà enregistrées : on choisit au lieu de retaper, et
+                « Nogent sur Oise » cesse de cohabiter avec « Nogent-sur-Oise ». Posé
+                ici, DANS le bloc : hors bloc, un gabarit qui hérite de layout.html
+                n'affiche rien. -#}
+            <datalist id="villes-saisies">
+              {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
+            </datalist>
+            <input class="in" name="ville" list="villes-saisies" placeholder="Creil" data-ville-input>
           </div>
           <div>
             <label>Quartier</label>
@@ -1013,13 +1021,7 @@
           </div>
           <div>
             <label>Genre</label>
-            <select class="in" name="genre">
-              <option value="">—</option>
-              <option value="Femme">Femme</option>
-              <option value="Homme">Homme</option>
-              <option value="Autre">Autre</option>
-              <option value="Préférez ne pas répondre">Préférez ne pas répondre</option>
-            </select>
+            {{ genre.champ(none) }}
           </div>
         </div>
         <div class="spacer"></div>

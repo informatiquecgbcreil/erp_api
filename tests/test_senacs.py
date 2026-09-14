@@ -101,10 +101,58 @@ def test_genres_et_quartiers(app, donnees_senacs):
         from app.services.senacs import publics_annee
 
         publics = publics_annee(ANNEE)
-        assert publics["genres"]["Femme"] == 1
-        assert publics["genres"]["Homme"] == 1
+        # Colonnes du référentiel, au pluriel, comptées à l'âge du 31/12.
+        # Amina a 25 ans, Bruno 75 : deux adultes. Chloé n'a pas de genre.
+        assert publics["genres"]["Femmes"] == 1
+        assert publics["genres"]["Hommes"] == 1
         assert publics["genres"]["Non renseigné"] == 1
+        # Les colonnes vides existent quand même : un tableau où « Filles »
+        # disparaît une année se lit mal d'une année sur l'autre.
+        assert publics["genres"]["Filles"] == 0
         assert publics["quartiers"]["Rouher"] == 1
+
+
+def test_un_mineur_est_compte_comme_fille_ou_garcon(app, donnees_senacs):
+    """La convention du centre : avant 18 ans, on dit fille et garçon.
+
+    Et elle est calculée à la date du bilan — pas à aujourd'hui. Une jeune
+    de 17 ans au 31/12/2025 reste une « fille » dans le bilan 2025, même
+    consulté des années plus tard.
+    """
+    import uuid
+    from datetime import date as _date
+
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant, PresenceActivite, SessionActivite
+        from app.services.senacs import publics_annee
+
+        seance = SessionActivite.query.filter(
+            SessionActivite.date_session.between(_date(ANNEE, 1, 1), _date(ANNEE, 12, 31))
+        ).first()
+        assert seance is not None
+
+        jeune = Participant(
+            nom=f"Senacs-D-{uuid.uuid4().hex[:6]}", prenom="Inès",
+            genre="F", date_naissance=_date(ANNEE - 17, 6, 1),
+        )
+        db.session.add(jeune)
+        db.session.flush()
+        presence = PresenceActivite(session_id=seance.id, participant_id=jeune.id)
+        db.session.add(presence)
+        db.session.commit()
+
+        genres = publics_annee(ANNEE)["genres"]
+        assert genres["Filles"] == 1, "17 ans au 31/12 : c'est une fille"
+        assert genres["Femmes"] == 1, "Amina, 25 ans, reste une femme"
+
+        # La présence D'ABORD : SQLite (base par défaut) n'applique pas les
+        # ON DELETE CASCADE sans PRAGMA foreign_keys. Supprimer la fiche
+        # seule laisserait une présence orpheline, qui continuerait de
+        # compter dans les autres tests de ce fichier.
+        db.session.delete(presence)
+        db.session.delete(jeune)
+        db.session.commit()
 
 
 def test_tableau_actions(app, donnees_senacs):

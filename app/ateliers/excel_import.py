@@ -70,15 +70,16 @@ def normalize_secteur(value: Any) -> str:
 
 
 def normalize_ville(value: Any) -> Optional[str]:
-    v = _norm(value)
-    if not v:
-        return None
-    v = v.replace("(60)", "")
-    v = re.sub(r"\s+", " ", v).strip()
+    """Reprise historique : le référentiel unique décide de la forme.
 
-    # Quelques homogénéisations courantes (optionnel)
-    # ex: "Nogent sur oise" => "Nogent Sur Oise"
-    return v[:120].title()
+    Cette fonction produisait « Nogent Sur Oise » (title case), là où la
+    saisie manuelle donnait « Nogent-sur-Oise » : l'import fabriquait donc
+    méthodiquement une variante de plus à chaque fichier repris.
+    """
+    from app.services.villes import normaliser
+
+    propre = normaliser(value)
+    return propre[:120] if propre else None
 
 
 def is_creil(ville: Optional[str]) -> bool:
@@ -88,20 +89,17 @@ def is_creil(ville: Optional[str]) -> bool:
 
 
 def normalize_genre(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    v = str(value).strip().lower()
-    if not v:
-        return None
+    """Reprise historique : le référentiel unique décide.
 
-    # enlève ponctuation/espaces/char spéciaux
-    v = re.sub(r"[^a-zàâäéèêëîïôöùûüç]", "", v)
+    Huit endroits classaient le genre — six tables de correspondance et
+    deux comptages bruts — chacun avec ses trous. Celle-ci traitait
+    « fille » et « garçon », une autre non ; une troisième rangeait
+    « Garçon » dans « Autre ». Tout passe désormais par
+    app.services.genre.
+    """
+    from app.services.genre import normaliser
 
-    if v in ("f", "femme", "féminin", "feminin", "fille"):
-        return "Femme"
-    if v in ("h", "homme", "m", "masculin", "garcon", "garçon", "g"):
-        return "Homme"
-    return None
+    return normaliser(value)
 
 
 def _is_presence(v: Any) -> bool:

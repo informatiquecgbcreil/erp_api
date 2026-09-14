@@ -98,17 +98,46 @@ def _tranche_age(age: int | None) -> str:
     return NON_RENSEIGNE
 
 
+#: Le quartier que la grille SENACS de ce centre distingue à l'intérieur de
+#: son QPV, et le QPV de rattachement. Ce sont les libellés du formulaire,
+#: pas une règle de code : ils vivent ici, en un seul endroit.
+QUARTIER_DISTINGUE = "Rouher"
+QPV_DE_REFERENCE = "Hauts de Creil"
+
+
 def _bucket_quartier(p: Participant) -> str:
+    """Ligne du tableau SENACS : Rouher / Hauts de Creil / autre QPV / hors QPV.
+
+    Lit d'abord le CHAMP ``qpv`` du quartier. Avant qu'il existe, cette
+    fonction cherchait « rouher » puis « hauts de creil » dans le NOM — ce
+    qui obligeait à coder l'appartenance dans le nom (« Cavée de Senlis
+    (QPV Hauts de Creil) ») et rangeait dans « Hors QPV » tout quartier
+    nommé simplement « Cavée de Senlis ».
+
+    La lecture du nom reste en second recours, pour les quartiers d'une
+    base pas encore reprise.
+    """
+    from app.services.recherche_texte import sans_accent
+
     quartier = p.quartier
-    nom = (quartier.nom if quartier else "").strip().lower()
-    ville = ((quartier.ville if quartier else None) or p.ville or "").strip().lower()
-    if "rouher" in nom:
-        return "Rouher"
-    if "hauts de creil" in nom or "hauts-de-creil" in nom:
-        return "Hauts de Creil"
-    if quartier is not None and (getattr(quartier, "is_qpv", False) or "qpv" in nom):
+    if quartier is None:
+        return NON_RENSEIGNE if not (p.ville or "").strip() else "Hors QPV"
+
+    nom = sans_accent(quartier.nom) or ""
+    qpv = (getattr(quartier, "qpv", None) or "").strip()
+
+    if sans_accent(QUARTIER_DISTINGUE) in nom:
+        return QUARTIER_DISTINGUE
+    if qpv:
+        return QPV_DE_REFERENCE if sans_accent(qpv) == sans_accent(QPV_DE_REFERENCE) else "Autre QPV"
+
+    # Repli sur le nom, pour une base dont les quartiers n'ont pas encore
+    # reçu leur QPV.
+    if sans_accent(QPV_DE_REFERENCE) in nom or "hauts-de-creil" in nom:
+        return QPV_DE_REFERENCE
+    if getattr(quartier, "is_qpv", False) or "qpv" in nom:
         return "Autre QPV"
-    if ville:
+    if ((quartier.ville or "") or (p.ville or "")).strip():
         return "Hors QPV"
     return NON_RENSEIGNE
 
@@ -123,14 +152,25 @@ def publics_annee(annee: int) -> dict:
         if presence.participant_id and presence.participant is not None:
             participants[presence.participant_id] = presence.participant
 
+    from app.services.genre import libelle_participant, ordre_pluriels
+
+    # Le 31 décembre : convention SENACS pour l'âge, et donc aussi pour
+    # décider entre « fille » et « femme ». Un bilan retiré deux ans plus
+    # tard doit rendre exactement les mêmes chiffres.
+    reference = date(annee, 12, 31)
+
     ages = {libelle: 0 for libelle, _, _ in TRANCHES_AGE}
     ages[NON_RENSEIGNE] = 0
-    genres: dict[str, int] = {}
+    # Colonnes figées et ordonnées : l'export comptait auparavant les mots
+    # BRUTS de la base, si bien qu'une fiche « F », une fiche « Femme » et
+    # une fiche « FEMME » produisaient trois lignes distinctes dans le
+    # tableau remis au financeur.
+    genres = {libelle: 0 for libelle in ordre_pluriels()}
     quartiers: dict[str, int] = {}
     for p in participants.values():
-        ages[_tranche_age(p.age_au(date(annee, 12, 31)))] += 1
-        genre = (p.genre or NON_RENSEIGNE).strip() or NON_RENSEIGNE
-        genres[genre] = genres.get(genre, 0) + 1
+        ages[_tranche_age(p.age_au(reference))] += 1
+        mot = libelle_participant(p, reference, pluriel=True)
+        genres[mot] = genres.get(mot, 0) + 1
         bucket = _bucket_quartier(p)
         quartiers[bucket] = quartiers.get(bucket, 0) + 1
 
@@ -139,7 +179,7 @@ def publics_annee(annee: int) -> dict:
         "participants_uniques": len(participants),
         "participations": participations,
         "ages": ages,
-        "genres": dict(sorted(genres.items())),
+        "genres": genres,
         "quartiers": dict(sorted(quartiers.items())),
     }
 

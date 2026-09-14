@@ -12,6 +12,14 @@ from app.models import Quartier, Participant, PresenceActivite, SessionActivite,
 from app.utils.delete_guard import commit_delete
 from app.rbac import require_perm
 from app.statsimpact.engine import _session_date_expr
+from app.services.referentiels import (
+    doublons_de_quartiers,
+    fusionner_quartiers,
+    fusionner_villes,
+    qpv_utilises,
+    villes_utilisees,
+)
+from app.services.villes import normaliser as normaliser_ville
 
 from . import bp
 
@@ -25,17 +33,32 @@ def _load_quartiers():
 @require_perm("quartiers:view")
 def index():
     quartiers = _load_quartiers()
-    return render_template("quartiers/index.html", quartiers=quartiers)
+    return render_template(
+        "quartiers/index.html",
+        quartiers=quartiers,
+        qpv_connus=qpv_utilises(),
+        # Doublons visibles d'emblée : c'est le nettoyage qu'on ne pouvait
+        # pas faire, puisque supprimer un quartier lié à des fiches était
+        # refusé sans proposer d'autre chemin.
+        doublons=doublons_de_quartiers(),
+        villes_connues=[v["nom"] for v in villes_utilisees()],
+    )
 
 
 @bp.route("/new", methods=["POST"])
 @login_required
 @require_perm("quartiers:edit")
 def create():
-    ville = (request.form.get("ville") or "").strip() or None
+    # La ville est ramenée à sa forme d'état civil À LA SAISIE : la liste
+    # déroulante des quartiers est filtrée par égalité de chaîne avec la
+    # ville tapée ailleurs, et une variante d'écriture la vide en silence.
+    ville = normaliser_ville(request.form.get("ville"))
     nom = (request.form.get("nom") or "").strip() or None
     description = (request.form.get("description") or "").strip() or None
-    is_qpv = request.form.get("is_qpv") == "1"
+    qpv = (request.form.get("qpv") or "").strip() or None
+    # Un quartier rattaché à un QPV EST en QPV : la case suit le champ,
+    # personne n'a à cocher deux fois la même information.
+    is_qpv = bool(qpv) or request.form.get("is_qpv") == "1"
 
     if not ville or not nom:
         flash("Ville et nom sont obligatoires.", "danger")
@@ -46,7 +69,8 @@ def create():
         flash("Ce quartier existe déjà pour cette ville.", "warning")
         return redirect(url_for("quartiers.index"))
 
-    db.session.add(Quartier(ville=ville, nom=nom, description=description, is_qpv=is_qpv))
+    db.session.add(Quartier(ville=ville, nom=nom, description=description,
+                            is_qpv=is_qpv, qpv=qpv))
     db.session.commit()
     flash("Quartier ajouté.", "success")
     return redirect(url_for("quartiers.index"))
@@ -58,10 +82,11 @@ def create():
 def edit(quartier_id: int):
     quartier = db.get_or_404(Quartier, quartier_id)
     if request.method == "POST":
-        ville = (request.form.get("ville") or "").strip() or None
+        ville = normaliser_ville(request.form.get("ville"))
         nom = (request.form.get("nom") or "").strip() or None
         description = (request.form.get("description") or "").strip() or None
-        is_qpv = request.form.get("is_qpv") == "1"
+        qpv = (request.form.get("qpv") or "").strip() or None
+        is_qpv = bool(qpv) or request.form.get("is_qpv") == "1"
 
         if not ville or not nom:
             flash("Ville et nom sont obligatoires.", "danger")
@@ -80,6 +105,7 @@ def edit(quartier_id: int):
         quartier.nom = nom
         quartier.description = description
         quartier.is_qpv = is_qpv
+        quartier.qpv = qpv
 
         # Placement manuel sur la carte (prioritaire, protégé du géocodage auto).
         lat_raw = (request.form.get("latitude") or "").strip().replace(",", ".")
@@ -103,6 +129,7 @@ def edit(quartier_id: int):
     return render_template(
         "quartiers/edit.html",
         quartier=quartier,
+        qpv_connus=qpv_utilises(),
         tile_url=current_app.config.get("CARTO_TILE_URL")
         or "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
         tile_attribution=current_app.config.get("CARTO_TILE_ATTRIBUTION")
@@ -127,6 +154,92 @@ def delete(quartier_id: int):
         blocked_message=f"Impossible de supprimer le quartier « {quartier.nom} » : il est encore utilisé ailleurs.",
     )
     return redirect(url_for("quartiers.index"))
+
+
+@bp.route("/fusionner", methods=["POST"])
+@login_required
+@require_perm("quartiers:edit")
+def fusionner():
+    """Rabat un quartier doublonné sur un autre, fiches comprises.
+
+    C'est le geste qui manquait. Supprimer un quartier était refusé dès
+    qu'une fiche y était rattachée : un doublon créé un jour de rush restait
+    là pour toujours, et les bilans comptaient le même quartier deux fois.
+    """
+    source = db.session.get(Quartier, request.form.get("source_id", type=int) or 0)
+    cible = db.session.get(Quartier, request.form.get("cible_id", type=int) or 0)
+    if source is None or cible is None:
+        flash("Choisis le quartier à absorber et celui qui le remplace.", "danger")
+        return redirect(url_for("quartiers.index"))
+    if source.id == cible.id:
+        flash("Un quartier ne peut pas se fusionner avec lui-même.", "warning")
+        return redirect(url_for("quartiers.index"))
+
+    nom_source = f"{source.nom} ({source.ville})"
+    deplaces = fusionner_quartiers(source, cible)
+    flash(
+        f"« {nom_source} » a été fusionné dans « {cible.nom} » : "
+        f"{deplaces} fiche(s) déplacée(s). Le QPV, la position sur la carte et "
+        "la description du quartier absorbé ont été repris si l'autre ne les avait pas.",
+        "ok",
+    )
+    return redirect(url_for("quartiers.index"))
+
+
+@bp.route("/villes")
+@login_required
+@require_perm("quartiers:view")
+def villes():
+    """Les villes réellement présentes, et ce qu'il y a à y nettoyer.
+
+    Le champ est libre sur onze écrans. On montre ici combien de fiches
+    portent chaque écriture, laquelle n'est pas à la forme d'état civil, et
+    lesquelles se ressemblent au point d'être probablement la même commune.
+    """
+    liste = villes_utilisees()
+
+    # Deux écritures d'une même commune partagent leur clé de comparaison :
+    # on les présente côte à côte plutôt que de laisser quelqu'un les
+    # repérer à l'œil dans une liste de cinquante lignes.
+    par_cle: dict[str, list[dict]] = {}
+    for entree in liste:
+        par_cle.setdefault(entree["cle"], []).append(entree)
+    groupes = [g for g in par_cle.values() if len(g) > 1]
+
+    return render_template(
+        "quartiers/villes.html",
+        villes=liste,
+        groupes=groupes,
+        a_normaliser=[v for v in liste if v["a_normaliser"]],
+    )
+
+
+@bp.route("/villes/fusionner", methods=["POST"])
+@login_required
+@require_perm("quartiers:edit")
+def villes_fusionner():
+    """« Nogent » -> « Nogent-sur-Oise », sur toutes les fiches d'un coup.
+
+    On ne le fait PAS automatiquement : « Villers » peut être
+    Villers-Saint-Paul comme Villers-sous-Saint-Leu, deux communes voisines.
+    Le code ne devine pas ; la personne qui connaît le territoire tranche.
+    """
+    source = (request.form.get("source") or "").strip()
+    cible = (request.form.get("cible") or "").strip()
+    if not source or not cible:
+        flash("Indique l'écriture à corriger et celle à conserver.", "danger")
+        return redirect(url_for("quartiers.villes"))
+    if source == cible:
+        flash("Ces deux écritures sont identiques.", "warning")
+        return redirect(url_for("quartiers.villes"))
+
+    compte = fusionner_villes(source, cible)
+    flash(
+        f"« {source} » devient « {cible} » : {compte['participants']} fiche(s) "
+        f"et {compte['quartiers']} quartier(s) mis à jour.",
+        "ok",
+    )
+    return redirect(url_for("quartiers.villes"))
 
 
 @bp.route("/stats")

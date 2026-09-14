@@ -729,3 +729,106 @@ def avertissement_ouverture(espace_id, jour, debut, fin) -> str | None:
         return None
     message = hors_ouverture(espace.site, jour, m_debut, m_fin)
     return f"⚠️ {message}" if message else None
+
+
+# ---------------------------------------------------------------------------
+# Ressources mobiles : le vidéoprojecteur unique pour quatre salles
+# ---------------------------------------------------------------------------
+#
+# Deux salles libres et un seul vidéoprojecteur, c'est un conflit — mais pas
+# un conflit de salle. On raisonne donc sur les QUANTITÉS retenues au même
+# moment, indépendamment du lieu. Et comme le rattachement se fait à
+# l'occupation, une séance d'atelier, une réunion et une location se
+# disputent le matériel avec exactement les mêmes règles.
+
+def quantite_retenue(ressource_id: int, jour: Date, minute_debut: int, minute_fin: int,
+                     *, exclure_occupation_id: int | None = None) -> int:
+    """Combien d'exemplaires sont déjà pris sur ce créneau."""
+    from app.models import OccupationRessource
+
+    lignes = (
+        db.session.query(OccupationRessource, Occupation)
+        .join(Occupation, OccupationRessource.occupation_id == Occupation.id)
+        .filter(OccupationRessource.ressource_id == ressource_id)
+        .filter(Occupation.date_jour == jour)
+        .filter(Occupation.statut != "annule")
+        .filter(Occupation.minute_debut < minute_fin)
+        .filter(Occupation.minute_fin > minute_debut)
+        .all()
+    )
+    return sum(
+        int(ligne.quantite or 0)
+        for ligne, occ in lignes
+        if exclure_occupation_id is None or occ.id != exclure_occupation_id
+    )
+
+
+def disponibilite_ressource(ressource, jour: Date, debut, fin,
+                            *, exclure_occupation_id: int | None = None) -> dict:
+    """Ce qu'il reste de ce matériel sur un créneau, et pourquoi."""
+    m_debut, m_fin = normaliser_plage(debut, fin)
+    prise = quantite_retenue(
+        ressource.id, jour, m_debut, m_fin, exclure_occupation_id=exclure_occupation_id
+    )
+    stock = int(ressource.quantite or 0)
+    return {
+        "ressource": ressource,
+        "stock": stock,
+        "retenue": prise,
+        "restante": max(0, stock - prise),
+        "epuisee": prise >= stock,
+    }
+
+
+def ressources_disponibles(jour: Date, debut, fin, *, exclure_occupation_id: int | None = None) -> list[dict]:
+    """L'état de tout le matériel mobile sur un créneau donné."""
+    from app.models import RessourceMobile
+
+    actives = (
+        RessourceMobile.query
+        .filter(RessourceMobile.actif.is_(True))
+        .order_by(RessourceMobile.ordre, RessourceMobile.nom)
+        .all()
+    )
+    return [
+        disponibilite_ressource(r, jour, debut, fin, exclure_occupation_id=exclure_occupation_id)
+        for r in actives
+    ]
+
+
+def appliquer_ressources(occupation, demandes: dict[int, int]) -> list[str]:
+    """Retient du matériel sur une occupation. Retourne les avertissements.
+
+    Comme pour les salles, un dépassement PRÉVIENT sans interdire : il
+    arrive qu'on emprunte un vidéoprojecteur à côté, et l'application n'a
+    pas à trancher à la place de l'équipe. Mais elle doit le dire.
+    """
+    from app.models import OccupationRessource, RessourceMobile
+
+    avertissements: list[str] = []
+    for ligne in list(occupation.ressources or []):
+        db.session.delete(ligne)
+    occupation.ressources = []
+
+    for ressource_id, quantite in (demandes or {}).items():
+        quantite = int(quantite or 0)
+        if quantite <= 0:
+            continue
+        ressource = db.session.get(RessourceMobile, ressource_id)
+        if ressource is None or not ressource.actif:
+            continue
+
+        etat = disponibilite_ressource(
+            ressource, occupation.date_jour, occupation.heure_debut, occupation.heure_fin,
+            exclure_occupation_id=occupation.id,
+        )
+        if quantite > etat["restante"]:
+            avertissements.append(
+                f"{ressource.nom} : {quantite} demandé(s), "
+                f"{etat['restante']} disponible(s) sur {etat['stock']} le "
+                f"{occupation.date_jour.strftime('%d/%m/%Y')}."
+            )
+        db.session.add(OccupationRessource(
+            occupation=occupation, ressource_id=ressource.id, quantite=quantite,
+        ))
+    return avertissements

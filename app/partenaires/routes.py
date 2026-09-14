@@ -11,6 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app.services.contexte import annee_travail
 from app.extensions import db
 from app.models import Partenaire, PartenaireSecteur, PartenaireIntervention, OrientationAccesDroit, Participant, Quartier
 from app.rbac import require_perm, can
@@ -120,7 +121,7 @@ def _orientation_year() -> int:
     try:
         year = int(raw)
     except Exception:
-        year = date.today().year
+        year = annee_travail()
     return max(2000, min(2100, year))
 
 
@@ -257,7 +258,14 @@ def _orientation_dashboard_payload(rows: list[OrientationAccesDroit]) -> dict:
     by_ville = Counter(_orientation_ville(row) for row in rows)
     by_quartier = Counter(_orientation_quartier_label(row) for row in rows)
     by_qpv = Counter(_qpv_bucket(row.participant, _orientation_quartier(row)) for row in rows)
-    by_genre = Counter((getattr(row.participant, "genre", None) or "Inconnu") for row in rows)
+    # Le libellé du référentiel, pas le mot brut : sans ça « F », « Femme »
+    # et « FEMME » comptaient pour trois colonnes différentes.
+    from app.services.genre import libelle_participant
+
+    by_genre = Counter(
+        libelle_participant(row.participant, pluriel=True) if row.participant else "Non renseigné"
+        for row in rows
+    )
     by_age = Counter(_age_bucket(row.participant) for row in rows)
     partnerless = sum(1 for row in rows if not row.partenaire_id)
     unique_participants = {row.participant_id for row in rows if row.participant_id}

@@ -1,5 +1,6 @@
 {% extends 'layout.html' %}
 {% import "_ux_macros.html" as ui %}
+{% import "_selection_multiple.html" as sel %}
 
 {% block body %}
   <div class="stack">
@@ -28,6 +29,35 @@
       </div>
     </div>
 
+    {{ sel.formulaire("seances", url_for('activite.sessions_actions', atelier_id=atelier.id)) }}
+    {% call sel.barre("seances", "séance", "séances") %}
+      {% if not corbeille %}
+        <button class="btn warn" type="submit" form="seances" name="action" value="annuler"
+                title="Marque les séances comme non tenues : elles gardent leur trace, sortent des statistiques et de l'agenda, et libèrent leur salle."
+                onclick="return confirm('Annuler les séances cochées ? Elles restent visibles, mais ne comptent plus dans les statistiques et libèrent leur salle.');">🚫 Annuler (vacances, fermeture)</button>
+        <button class="btn" type="submit" form="seances" name="action" value="retablir"
+                title="Remet les séances annulées au programme.">↩ Remettre au programme</button>
+        <span class="inline" style="display:inline-flex; align-items:center; gap:6px;">
+          <select class="in" name="espace_id" form="seances" aria-label="Salle à appliquer">
+            <option value="">Changer la salle…</option>
+            <option value="0">— Aucune salle (hors les murs)</option>
+            {% for espace in salles_occupables() %}
+              <option value="{{ espace.id }}">{{ espace.chemin }}{% if espace.capacite_affichee %} ({{ espace.capacite_affichee }} pl.){% endif %}</option>
+            {% endfor %}
+          </select>
+          <button class="btn" type="submit" form="seances" name="action" value="salle">Appliquer</button>
+        </span>
+        {% if can('activite:delete') %}
+          <button class="btn danger" type="submit" form="seances" name="action" value="corbeille"
+                  onclick="return confirm('Mettre les séances cochées à la corbeille ? (restaurables)');">🗑️ Mettre à la corbeille</button>
+        {% endif %}
+      {% else %}
+        {% if can('activite:restore') %}
+          <button class="btn ok" type="submit" form="seances" name="action" value="restaurer">↩ Restaurer la sélection</button>
+        {% endif %}
+      {% endif %}
+    {% endcall %}
+
     <div class="card">
       <h2 style="margin-top:0;">Historique</h2>
       {% if not corbeille %}
@@ -40,6 +70,7 @@
         <table>
           <thead>
             <tr>
+              <th style="width:34px;">{{ sel.tout_cocher("seances") }}</th>
               <th>Date</th>
               <th>Type</th>
               <th>Présences</th>
@@ -50,8 +81,12 @@
           </thead>
           <tbody>
             {% for s, nb, cap, taux in sessions %}
-              <tr>
+              <tr {% if (s.statut or '') == 'annulee' %}style="opacity:.55;"{% endif %}>
+                <td>{{ sel.case("seances", "sid", s.id, "Sélectionner la séance du " ~ (s.date_session or s.rdv_date or '')) }}</td>
                 <td>
+                  {% if (s.statut or '') == 'annulee' %}
+                    <span class="pill" style="font-size:.72rem; font-weight:700; padding:1px 8px; border-radius:999px; background:rgba(220,38,38,.16);">🚫 Annulée</span>
+                  {% endif %}
                   {% if s.session_type == 'COLLECTIF' %}
                     {{ s.date_session }} {{ s.heure_debut or '' }}{% if s.heure_fin %}-{{ s.heure_fin }}{% endif %}
                   {% else %}
@@ -102,9 +137,9 @@
               </tr>
             {% else %}
               {% if corbeille %}
-                <tr><td colspan="6">{{ ui.empty_state("La corbeille est vide", "Aucune séance supprimée n’attend d’être restaurée.", url_for('activite.sessions', atelier_id=atelier.id), "Voir les séances actives", "🗑️") }}</td></tr>
+                <tr><td colspan="7">{{ ui.empty_state("La corbeille est vide", "Aucune séance supprimée n’attend d’être restaurée.", url_for('activite.sessions', atelier_id=atelier.id), "Voir les séances actives", "🗑️") }}</td></tr>
               {% else %}
-                <tr><td colspan="6">{{ ui.empty_state("Aucune séance planifiée", "Créez une première séance, ou utilisez « Créer en série » pour programmer plusieurs dates régulières.", url_for('activite.session_new', atelier_id=atelier.id), "Planifier une séance", "📅") }}</td></tr>
+                <tr><td colspan="7">{{ ui.empty_state("Aucune séance planifiée", "Créez une première séance, ou utilisez « Créer en série » pour programmer plusieurs dates régulières.", url_for('activite.session_new', atelier_id=atelier.id), "Planifier une séance", "📅") }}</td></tr>
               {% endif %}
             {% endfor %}
           </tbody>
@@ -115,6 +150,10 @@
         <article class="responsive-card">
           <header class="responsive-card__head">
             <strong>
+              <label style="display:inline-flex; align-items:center; gap:8px;">
+                {{ sel.case("seances", "sid", s.id, "Sélectionner la séance") }}
+              </label>
+              {% if (s.statut or '') == 'annulee' %}🚫 {% endif %}
               {% if s.session_type == 'COLLECTIF' %}
                 {{ s.date_session }} {{ s.heure_debut or '' }}{% if s.heure_fin %}-{{ s.heure_fin }}{% endif %}
               {% else %}
@@ -247,4 +286,5 @@
       {% endif %}
     </div>
   </div>
+  {{ sel.script() }}
 {% endblock %}

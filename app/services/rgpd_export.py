@@ -55,11 +55,18 @@ def construire_export_rgpd(participant: Participant) -> Workbook:
     wb.remove(wb.active)
 
     # --- Identité ---
+    def _genre_lisible(fiche):
+        """Le mot, pas le code : un export remis à la personne concernée
+        doit se lire sans dictionnaire."""
+        from app.services.genre import libelle_participant
+
+        return libelle_participant(fiche)
+
     identite = [
         ("Nom", participant.nom),
         ("Prénom", participant.prenom),
         ("Date de naissance", participant.date_naissance),
-        ("Genre", participant.genre),
+        ("Genre", _genre_lisible(participant)),
         ("Adresse", participant.adresse),
         ("Ville", participant.ville),
         ("Quartier", participant.quartier.nom if participant.quartier else ""),

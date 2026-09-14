@@ -5,6 +5,7 @@ from flask import (
     render_template, request, url_for, abort, current_app, Response, flash, redirect
 )
 from flask_login import login_required, current_user
+from app.services.contexte import annee_travail
 from app.rbac import can, require_perm
 
 from app.extensions import db
@@ -263,7 +264,9 @@ def _documents_selected_year() -> int:
     try:
         year = int((request.args.get("year") or "").strip())
     except Exception:
-        year = date.today().year
+        # Repli sur l'année de travail plutôt que sur l'année courante :
+        # on reprend là où on en était au lieu de tout rechoisir.
+        year = annee_travail()
     return max(2000, min(2100, year))
 
 
@@ -580,7 +583,7 @@ def _direction_year() -> int:
     try:
         year = int((request.args.get("year") or request.args.get("annee") or "").strip())
     except Exception:
-        year = date.today().year
+        year = annee_travail()
     return max(2000, min(2100, year))
 
 

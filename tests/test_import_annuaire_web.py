@@ -113,7 +113,7 @@ def test_creation_reelle_et_idempotence(app, admin_client, fichier_demo):
         marie = Participant.query.filter(Participant.nom.ilike(f"DUPONT{pref}")).all()
         assert len(marie) == 1, "Marie ne doit exister qu'une fois malgré 2 lignes"
         assert marie[0].date_naissance is not None and marie[0].date_naissance.year == 1980
-        assert marie[0].genre == "Femme"
+        assert marie[0].genre == "F", "le référentiel enregistre le code, pas le libellé"
 
     # 3) Idempotence : ré-importer le MÊME fichier ne crée aucun doublon
     r = admin_client.post(

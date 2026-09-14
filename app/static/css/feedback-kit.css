@@ -406,6 +406,11 @@ input.in:hover,select.in:hover,textarea.in:hover,
 .recent-list{display:grid;gap:8px;}
 .recent-item{padding:10px 12px;border-radius:12px;background:var(--surface-soft);border:1px solid color-mix(in srgb, var(--border-soft) 90%, transparent);}
 .recent-item strong{display:block;}
+/* Ces éléments sont devenus des liens : ils doivent se comporter comme tels
+   sans changer d'apparence au repos. */
+a.recent-item{display:block;text-decoration:none;color:inherit;transition:border-color .12s,background .12s;}
+a.recent-item:hover{border-color:var(--accent,#3b82f6);background:var(--panel,#fff);}
+a.recent-item:focus-visible{outline:2px solid var(--accent,#3b82f6);outline-offset:2px;}
 
 .copy-feedback{position:relative;}
 .copy-feedback.is-copied::after{content:"Copié";position:absolute;top:-10px;right:0;transform:translateY(-100%);padding:4px 8px;border-radius:999px;background:var(--fk-success-bg);color:var(--fk-success);border:1px solid color-mix(in srgb, var(--ok) 40%, var(--border));font-size:12px;font-weight:800;white-space:nowrap;}

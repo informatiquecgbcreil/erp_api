@@ -139,6 +139,52 @@ def list_items():
     )
 
 
+@bp.route("/deplacer", methods=["POST"])
+@login_required
+@require_perm("inventaire:edit")
+def deplacer_en_masse():
+    """Déplace plusieurs matériels d'un coup vers un emplacement.
+
+    Ranger quinze tablettes dans une autre armoire demandait d'ouvrir
+    quinze fiches, changer un champ et revenir : une soixantaine de clics
+    pour une information qui tient en une phrase.
+    """
+    from app.models import Espace
+
+    ids = [int(i) for i in request.form.getlist("item_ids") if str(i).isdigit()]
+    espace_id = request.form.get("espace_id", type=int)
+    retour = request.form.get("retour") or url_for("inventaire_materiel.list_items")
+
+    if not ids:
+        flash("Coche au moins un matériel à déplacer.", "warning")
+        return redirect(retour)
+
+    espace = db.session.get(Espace, espace_id) if espace_id else None
+    if espace_id and espace is None:
+        flash("Emplacement inconnu.", "danger")
+        return redirect(retour)
+
+    deplaces = 0
+    for item in InventaireItem.query.filter(InventaireItem.id.in_(ids)).all():
+        # Le contrôle de secteur s'applique item par item : une sélection
+        # large ne doit pas devenir un moyen de toucher à ce qu'on ne voit pas.
+        if not can_see_secteur(item.secteur):
+            continue
+        item.espace_id = espace.id if espace else None
+        item.localisation = espace.chemin[:255] if espace else item.localisation
+        deplaces += 1
+    db.session.commit()
+
+    ignores = len(ids) - deplaces
+    if espace:
+        flash(f"{deplaces} matériel(s) rangé(s) dans « {espace.nom} ».", "success")
+    else:
+        flash(f"{deplaces} matériel(s) détaché(s) de leur emplacement.", "success")
+    if ignores:
+        flash(f"{ignores} matériel(s) ignoré(s) : hors de ton périmètre de secteur.", "warning")
+    return redirect(retour)
+
+
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 @require_perm("inventaire:edit")
@@ -166,6 +212,16 @@ def new_item():
         modele = (request.form.get("modele") or "").strip() or None
         numero_serie = (request.form.get("numero_serie") or "").strip() or None
         localisation = (request.form.get("localisation") or "").strip() or None
+        # Emplacement structuré : le pont vers le plan des salles. Sans lui à
+        # la saisie, chaque nouveau matériel repart en texte libre et le
+        # référentiel se redégrade aussitôt qu'on l'a repris.
+        espace_id = request.form.get("espace_id", type=int) or None
+        if espace_id and not localisation:
+            from app.models import Espace as _Espace
+
+            espace = db.session.get(_Espace, espace_id)
+            if espace is not None:
+                localisation = espace.chemin[:255]
         etat = (request.form.get("etat") or "OK").strip() or "OK"
         notes = (request.form.get("notes") or "").strip() or None
 
@@ -197,6 +253,7 @@ def new_item():
         item = InventaireItem(
             secteur=secteur,
             id_interne=id_interne,
+            espace_id=espace_id,
             categorie=categorie,
             designation=designation,
             marque=marque,
@@ -241,6 +298,8 @@ def edit_item(item_id: int):
         item.modele = (request.form.get("modele") or "").strip() or None
         item.numero_serie = (request.form.get("numero_serie") or "").strip() or None
         item.localisation = (request.form.get("localisation") or "").strip() or None
+        if "espace_id" in request.form:
+            item.espace_id = request.form.get("espace_id", type=int) or None
         item.etat = (request.form.get("etat") or "OK").strip() or "OK"
         item.notes = (request.form.get("notes") or "").strip() or None
 

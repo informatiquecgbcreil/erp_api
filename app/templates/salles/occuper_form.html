@@ -111,6 +111,29 @@
                     placeholder="Contact, consignes, matériel à prévoir…"></textarea>
         </div>
 
+        {% if materiel %}
+          <div style="border-top:1px solid var(--border,#eef1f7); padding-top:11px;">
+            <label class="ui-label">Matériel partagé à retenir</label>
+            {% for e in materiel %}
+              <div class="inline" style="gap:10px; align-items:center; padding:5px 0; flex-wrap:wrap;">
+                <span style="flex:1; min-width:180px;">
+                  <strong>{{ e.ressource.nom }}</strong>
+                  <span class="muted" style="font-size:.8rem;">
+                    — {{ e.restante }} disponible(s) sur {{ e.stock }}
+                    {%- if e.epuisee %} <strong style="color:#b91c1c;">· déjà tout pris</strong>{% endif %}
+                  </span>
+                </span>
+                <input class="in" name="ressource_{{ e.ressource.id }}" inputmode="numeric"
+                       style="width:80px;" placeholder="0">
+              </div>
+            {% endfor %}
+            <p class="muted" style="margin:5px 0 0; font-size:.8rem;">
+              La disponibilité affichée vaut pour le créneau ci-dessus. Dépasser
+              le stock reste possible — on emprunte parfois ailleurs — mais te sera signalé.
+            </p>
+          </div>
+        {% endif %}
+
         <label class="inline" style="gap:7px; align-items:center;">
           <input type="checkbox" name="ignorer_conflits" value="1">
           <span class="muted" style="font-size:.85rem;">

@@ -10,6 +10,7 @@ from io import BytesIO
 from flask import render_template, request, redirect, url_for, flash, current_app, Response
 from flask_login import login_required, current_user
 
+from app.services.contexte import annee_travail
 from app.rbac import require_perm, can
 from app.extensions import db
 from app.models import Participant, BenevoleHeures
@@ -21,7 +22,7 @@ from app.main.common import bp
 
 def _annee_demandee() -> int:
     try:
-        return int(request.args.get("annee") or date.today().year)
+        return int(request.args.get("annee") or annee_travail())
     except Exception:
         return date.today().year
 

@@ -44,7 +44,8 @@
         {% endif %}
       </div>
       <div class="inline no-print" style="gap:8px; flex-wrap:wrap;">
-        <button class="btn" type="button" onclick="window.print()">🖨️ Imprimer</button>
+        <a class="btn ok" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='contrat') }}">
+          📄 {{ 'Convention' if r.gratuite else 'Contrat' }}</a>
         <a class="btn" href="{{ url_for('salles.reservations') }}">← Les réservations</a>
       </div>
     </div>
@@ -137,7 +138,73 @@
     </div>
   </div>
 
+  <div class="card no-print">
+    <h2 style="margin-top:0;">Documents</h2>
+    <p class="muted">
+      Édités à la demande depuis les données : rien n'est stocké, un document
+      se régénère toujours à l'identique. En PDF si LibreOffice est installé
+      sur le serveur, en Word sinon — qui reste modifiable avant signature.
+    </p>
+    <div class="inline" style="gap:8px; flex-wrap:wrap;">
+      <a class="btn ok" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='contrat') }}">
+        📄 {{ 'Convention de mise à disposition' if r.gratuite else 'Contrat de mise à disposition' }}</a>
+      <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='etat_lieux_entree') }}">
+        📋 État des lieux — entrée</a>
+      <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='etat_lieux_sortie') }}">
+        📋 État des lieux — sortie</a>
+      {% if not r.gratuite %}
+        <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='facture') }}">
+          🧾 Facture{% if r.facture_numero %} ({{ r.facture_numero }}){% endif %}</a>
+      {% endif %}
+      <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='attestation') }}">
+        ✅ Attestation d'occupation</a>
+    </div>
+    <p class="muted" style="margin-top:10px; font-size:.83rem;">
+      {% if r.gratuite %}
+        Une mise à disposition gratuite se formalise par une <strong>convention</strong>,
+        pas par un contrat de location : on ne signe pas la même chose.
+      {% else %}
+        Le contrat et la facture ne s'éditent que si aucun point bloquant ne subsiste.
+      {% endif %}
+    </p>
+  </div>
+
   {% if can('locations:edit') %}
+    <div class="card no-print">
+      <h2 style="margin-top:0;">États des lieux et signature</h2>
+      <form method="post" action="{{ url_for('salles.reservation_etat_lieux', reservation_id=r.id) }}"
+            class="stack" style="gap:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="inline" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:175px;">
+            <label class="ui-label">Contrat signé le</label>
+            <input class="in" type="date" name="contrat_signe_le" style="width:100%;"
+                   value="{{ r.contrat_signe_le.isoformat() if r.contrat_signe_le else '' }}">
+          </div>
+          <div style="flex:1; min-width:175px;">
+            <label class="ui-label">État des lieux d'entrée</label>
+            <input class="in" type="date" name="etat_lieux_entree_le" style="width:100%;"
+                   value="{{ r.etat_lieux_entree_le.isoformat() if r.etat_lieux_entree_le else '' }}">
+          </div>
+          <div style="flex:1; min-width:175px;">
+            <label class="ui-label">État des lieux de sortie</label>
+            <input class="in" type="date" name="etat_lieux_sortie_le" style="width:100%;"
+                   value="{{ r.etat_lieux_sortie_le.isoformat() if r.etat_lieux_sortie_le else '' }}">
+          </div>
+        </div>
+        <div>
+          <label class="ui-label">Dégradations constatées</label>
+          <textarea class="in" name="degradations_constatees" rows="2" style="width:100%;"
+            >{{ r.degradations_constatees or '' }}</textarea>
+          <p class="muted" style="margin:4px 0 0; font-size:.82rem;">
+            Renseignées, elles rappellent de statuer sur le dépôt de garantie
+            avant de le restituer.
+          </p>
+        </div>
+        <div><button class="btn ok" type="submit">💾 Enregistrer</button></div>
+      </form>
+    </div>
+
     <div class="card no-print">
       <h2 style="margin-top:0;">Suivi</h2>
       <form method="post" action="{{ url_for('salles.reservation_reglements', reservation_id=r.id) }}"

@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import "_genre.html" as genre %}
 {% block title %}{{ "Modifier l'inscription" if inscription and inscription.id else "Nouvelle inscription" }}{% endblock %}
 {% block body %}
 <style>
@@ -54,6 +55,16 @@
   <form method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="annee" value="{{ annee }}">
+    {% if participant_source %}
+      <input type="hidden" name="participant_id" value="{{ participant_source.id }}">
+      <div class="ui-card" style="border-left:4px solid var(--ok, #16a34a);">
+        <strong>Prérempli depuis la fiche de {{ participant_source.prenom }} {{ participant_source.nom }}.</strong>
+        <div class="muted" style="margin-top:4px; font-size:.86rem;">
+          Vérifiez ce qui a changé (adresse, téléphone) et complétez les ateliers souhaités.
+          À l'enregistrement, le bulletin est rattaché tout seul à sa fiche : pas de doublon à créer.
+        </div>
+      </div>
+    {% endif %}
 
     <div class="ui-card">
       <h2 style="margin-top:0; font-size:1.05rem;">Qui s'inscrit ?</h2>
@@ -81,7 +92,14 @@
           <input class="in" name="code_postal" inputmode="numeric" value="{{ val('code_postal', inscription.code_postal if inscription else '') }}">
         </label>
         <label class="field-stack"><span>Ville</span>
-          <input class="in" name="ville" value="{{ val('ville', inscription.ville if inscription else '') }}">
+          {#- Villes déjà enregistrées : on choisit au lieu de retaper, et
+              « Nogent sur Oise » cesse de cohabiter avec « Nogent-sur-Oise ». Posé
+              ici, DANS le bloc : hors bloc, un gabarit qui hérite de layout.html
+              n'affiche rien. -#}
+          <datalist id="villes-saisies">
+            {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
+          </datalist>
+          <input class="in" name="ville" list="villes-saisies" value="{{ val('ville', inscription.ville if inscription else '') }}">
         </label>
         <label class="field-stack"><span>Date de naissance</span>
           <input class="in" type="date" name="date_naissance"
@@ -91,12 +109,7 @@
       <div class="ia-row" style="margin-top:12px;">
         <label class="field-stack"><span>Genre</span>
           {% set genre_actuel = p.get('genre') if p.get('genre') is not none else (inscription.genre if inscription else '') %}
-          <select class="in" name="genre">
-            <option value="">Non précisé</option>
-            {% for g in ['F', 'H', 'Autre'] %}
-              <option value="{{ g }}" {% if genre_actuel == g %}selected{% endif %}>{{ g }}</option>
-            {% endfor %}
-          </select>
+          {{ genre.champ(genre_actuel) }}
         </label>
         <label class="field-stack"><span>Date d'inscription</span>
           <input class="in" type="date" name="date_inscription"

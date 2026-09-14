@@ -87,6 +87,12 @@
         {% if show_passeport %}
           <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=participant.id) }}">Passeport</a>
         {% endif %}
+        {% if can('inscriptions_annuelles:edit') %}
+          <a class="btn" href="{{ url_for('inscriptions_annuelles.nouvelle', participant_id=participant.id, annee=annee_inscription) }}"
+             title="Bulletin prérempli avec ce que l'application sait déjà — ou son bulletin de l'année s'il existe déjà">
+            📝 Inscrire pour {{ libelle_annee_inscription }}
+          </a>
+        {% endif %}
       </div>
     </div>
     <div class="spacer"></div>
@@ -170,7 +176,7 @@
           <h3>Identité</h3>
           <div class="person-list">
             <div><strong>Naissance</strong><div class="person-meta">{{ format_date(participant.date_naissance) }}{% if participant.age %} · {{ participant.age }} ans{% endif %}</div></div>
-            <div><strong>Genre</strong><div class="person-meta">{{ participant.genre or "Non renseigné" }}</div></div>
+            <div><strong>Genre</strong><div class="person-meta">{{ genre_de(participant) }}</div></div>
             <div><strong>Type de public</strong><div class="person-meta">{{ participant.type_public or "Non renseigné" }}</div></div>
             <div><strong>Secteur</strong><div class="person-meta">{{ participant.created_secteur or "Non renseigné" }}</div></div>
           </div>

@@ -81,6 +81,23 @@ def create_app():
 
     app.jinja_env.globals["safe_url_for"] = safe_url_for
 
+    # Référentiel du genre. Posé en GLOBALE et non en context_processor :
+    # une macro importée (« {% import "_genre.html" %} ») ne voit pas le
+    # contexte de la page, mais voit les globales. Le libellé dépend de
+    # l'âge (fille / femme, garçon / homme) : les gabarits ont besoin de la
+    # fonction, pas d'une liste figée.
+    from app.services.genre import (
+        choix as _genre_choix,
+        libelle as _genre_libelle,
+        libelle_participant as _genre_de,
+        normaliser as _genre_code,
+    )
+
+    app.jinja_env.globals["genre_choix"] = _genre_choix
+    app.jinja_env.globals["genre_code"] = _genre_code
+    app.jinja_env.globals["genre_libelle"] = _genre_libelle
+    app.jinja_env.globals["genre_de"] = _genre_de
+
     from app.services.storage import send_media_file
 
     @app.route("/media/<path:filename>")
@@ -157,6 +174,31 @@ def create_app():
     # dispersés qu'on finirait par oublier d'ajouter au huitième.
     from app.services.salles import enregistrer_synchronisation_auto
     enregistrer_synchronisation_auto()
+
+    # Recherche accent-insensible : le « lower() » de SQLite ne connaît que
+    # l'ASCII, si bien qu'« Étienne » ne se trouvait pas lui-même. On donne
+    # à la base la même normalisation que celle appliquée à ce qu'on tape.
+    from app.services.recherche_texte import installer as installer_recherche_texte
+    installer_recherche_texte()
+
+    @app.before_request
+    def _memoriser_contexte_de_travail():
+        """Retient l'année et le secteur consultés, pour les proposer par
+        défaut à l'écran suivant.
+
+        Placé ici plutôt que dans chaque route : un écran qui ne parle ni
+        d'année ni de secteur laisse le contexte intact, et aucune route
+        n'a à s'en préoccuper. Le paramètre explicite gagne toujours — on
+        ne fait que remplacer « repartir de l'année courante » par
+        « reprendre là où on en était ».
+        """
+        from app.services.contexte import memoriser_depuis_la_requete
+
+        try:
+            memoriser_depuis_la_requete()
+        except Exception:  # noqa: BLE001 - un confort ne casse jamais une page
+            app.logger.debug("Contexte de travail : mémorisation ignorée", exc_info=True)
+        return None
 
     @app.before_request
     def _facade_kiosque_publique():
@@ -367,7 +409,43 @@ def create_app():
             except Exception:  # noqa: BLE001 - un formulaire ne doit jamais tomber pour ça
                 return []
 
-        return {"salles_occupables": salles_occupables}
+        def emplacements_stockage():
+            """Les lieux où l'on range du matériel : salles ET armoires."""
+            try:
+                from app.services.salles import espaces_stockage
+
+                return espaces_stockage()
+            except Exception:  # noqa: BLE001
+                return []
+
+        def valeurs_deja_saisies(modele: str, champ: str, limite: int = 200):
+            """Les valeurs distinctes déjà enregistrées dans une colonne.
+
+            Sert à proposer une liste au lieu de laisser retaper. Un champ
+            libre sans suggestion, c'est « MAIF », « Maif » et « maif » dans
+            la même base, et trois lignes dans le moindre regroupement.
+            """
+            from app import models as _modeles
+
+            try:
+                classe = getattr(_modeles, modele, None)
+                colonne = getattr(classe, champ, None)
+                if colonne is None:
+                    return []
+                lignes = (
+                    db.session.query(colonne)
+                    .filter(colonne.isnot(None), colonne != "")
+                    .distinct().order_by(colonne).limit(limite).all()
+                )
+                return [v for (v,) in lignes]
+            except Exception:  # noqa: BLE001 - une suggestion n'empêche pas de saisir
+                return []
+
+        return {
+            "salles_occupables": salles_occupables,
+            "emplacements_stockage": emplacements_stockage,
+            "valeurs_deja_saisies": valeurs_deja_saisies,
+        }
 
     @app.context_processor
     def _inject_aide_contextuelle():

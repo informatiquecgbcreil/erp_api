@@ -208,10 +208,14 @@ def participant_edit(participant_id: int):
         p.nom = (request.form.get("nom") or p.nom).strip()
         p.prenom = (request.form.get("prenom") or p.prenom).strip()
         p.adresse = (request.form.get("adresse") or "").strip() or None
-        p.ville = (request.form.get("ville") or "").strip() or None
+        from app.services.villes import normaliser as normaliser_ville
+
+        p.ville = normaliser_ville(request.form.get("ville"))
         p.email = (request.form.get("email") or "").strip() or None
         p.telephone = (request.form.get("telephone") or "").strip() or None
-        p.genre = (request.form.get("genre") or "").strip() or None
+        from app.services.genre import normaliser as normaliser_genre
+
+        p.genre = normaliser_genre(request.form.get("genre"))
         p.type_public = (request.form.get("type_public") or p.type_public or "H").strip()[:2]
 
         dn = (request.form.get("date_naissance") or "").strip()

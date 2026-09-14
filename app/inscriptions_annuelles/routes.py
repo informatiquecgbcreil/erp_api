@@ -12,6 +12,7 @@ from datetime import date, datetime
 
 from flask import abort, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
+from werkzeug.datastructures import MultiDict
 
 from app.extensions import db
 from app.models import (
@@ -33,6 +34,8 @@ from app.rbac import can, require_perm
 from app.secteurs import get_secteur_labels
 from app.services.audit import journaliser
 from app.services.cotisations import annee_scolaire_courante, libelle_annee_scolaire
+from app.services.genre import normaliser as normaliser_genre
+from app.services.villes import normaliser as normaliser_ville
 from app.services.inscriptions_annuelles import (
     InscriptionAnnuelleErreur,
     annees_disponibles,
@@ -41,6 +44,7 @@ from app.services.inscriptions_annuelles import (
     appliquer_disponibilites,
     appliquer_membres,
     ateliers_proposables,
+    bulletin_existant,
     calculer_cout,
     creer_participant,
     doublons_possibles,
@@ -49,6 +53,7 @@ from app.services.inscriptions_annuelles import (
     export_xlsx,
     generer_cotisations,
     personnes_couvertes,
+    prefill_depuis_participant,
     rafraichir_reglements,
     rafraichir_statuts,
     rattacher_participant,
@@ -194,9 +199,13 @@ def _appliquer_formulaire(inscription: InscriptionAnnuelle) -> list[str]:
 
     inscription.adresse = _texte("adresse", 255)
     inscription.code_postal = _texte("code_postal", 10)
-    inscription.ville = _texte("ville", 120)
+    # Forme d'état civil à la saisie : la liste des quartiers est filtrée
+    # par égalité de chaîne avec la ville, et une variante la vide en silence.
+    inscription.ville = normaliser_ville(request.form.get("ville"))
     inscription.telephone = _texte("telephone", 60)
-    inscription.genre = _texte("genre", 20)
+    # Le référentiel décide : « F », « Fille », « Féminin » et « FEMME »
+    # sont la même chose, et c'est le code qui est enregistré.
+    inscription.genre = normaliser_genre(request.form.get("genre"))
     inscription.date_naissance = _date_form("date_naissance", None)
     inscription.secteur_orienteur = _texte("secteur_orienteur", 80)
 
@@ -243,11 +252,20 @@ def _tarifs_annee(annee: int, a_la_date: date | None = None) -> dict:
     return tarifs
 
 
-def _contexte_formulaire(inscription: InscriptionAnnuelle | None, annee: int) -> dict:
+def _contexte_formulaire(
+    inscription: InscriptionAnnuelle | None,
+    annee: int,
+    *,
+    participant: Participant | None = None,
+) -> dict:
     secteur = None if _portee_globale() else (_secteur_utilisateur() or None)
     return {
         "inscription": inscription,
         "pending": None,
+        # Fiche d'origine quand le bulletin part d'une personne déjà connue :
+        # le gabarit la rappelle et la repasse en champ caché pour que le
+        # rattachement soit fait tout seul à l'enregistrement.
+        "participant_source": participant,
         "annee": annee,
         "libelle_annee": libelle_annee_scolaire(annee),
         "annees": annees_disponibles(),
@@ -362,6 +380,10 @@ def index():
 @require_perm("inscriptions_annuelles:edit")
 def nouvelle():
     annee = _annee_demandee()
+    # Bulletin ouvert depuis une fiche participant (« Inscrire pour 2026-2027 ») :
+    # tout ce que l'application sait déjà est prérempli, et la fiche est
+    # rattachée au bulletin dès l'enregistrement.
+    participant = db.session.get(Participant, request.values.get("participant_id", type=int) or 0)
 
     if request.method == "POST":
         inscription = InscriptionAnnuelle(
@@ -380,16 +402,54 @@ def nouvelle():
             db.session.rollback()
             for message in erreurs:
                 flash(message, "err")
-            contexte = _contexte_formulaire(None, annee)
+            contexte = _contexte_formulaire(None, annee, participant=participant)
             contexte["pending"] = request.form
             return render_template("inscriptions_annuelles/form.html", **contexte)
 
         db.session.commit()
         journaliser("inscription_annuelle.create", cible=f"{inscription.nom_complet} ({inscription.libelle_annee})")
         flash(f"Inscription de {inscription.nom_complet} enregistrée.", "ok")
+
+        if participant is not None:
+            # Le rattachement fait le reste tout seul : statut, foyer,
+            # inscriptions aux ateliers cochés, adhésion. Un échec métier ne
+            # perd pas le bulletin — il est enregistré, on le dit et on
+            # renvoie sur sa fiche où le rattachement reste proposé.
+            try:
+                avertissements = rattacher_participant(
+                    inscription, participant, user_id=getattr(current_user, "id", None)
+                )
+            except InscriptionAnnuelleErreur as exc:
+                flash(str(exc), "err")
+            else:
+                flash(
+                    f"Bulletin rattaché à la fiche de {participant.prenom} {participant.nom}.",
+                    "ok",
+                )
+                for message in avertissements:
+                    flash(message, "warn")
+
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
-    return render_template("inscriptions_annuelles/form.html", **_contexte_formulaire(None, annee))
+    if participant is not None:
+        # Déjà inscrit cette année ? On ouvre son bulletin au lieu d'en créer
+        # un second : à l'accueil on ne sait pas toujours si la personne est
+        # passée en septembre, et le doublon se paie au moment du bilan.
+        deja = bulletin_existant(participant, annee)
+        if deja is not None and _accessible(deja):
+            flash(
+                f"{participant.prenom} {participant.nom} a déjà un bulletin pour "
+                f"{libelle_annee_scolaire(annee)} — le voici.",
+                "warn",
+            )
+            return redirect(url_for("inscriptions_annuelles.detail", inscription_id=deja.id))
+
+    contexte = _contexte_formulaire(None, annee, participant=participant)
+    if participant is not None:
+        # MultiDict et non dict : le gabarit interroge « pending » comme un
+        # formulaire posté, ``getlist`` compris (ateliers cochés, créneaux).
+        contexte["pending"] = MultiDict(prefill_depuis_participant(participant))
+    return render_template("inscriptions_annuelles/form.html", **contexte)
 
 
 @bp.route("/<int:inscription_id>/modifier", methods=["GET", "POST"])

@@ -44,8 +44,10 @@ from app.services.salles import (
     planning_du_jour,
     planning_mois,
     planning_semaine,
+    appliquer_ressources,
     recherche_disponibilite,
     reconcilier_occupations,
+    ressources_disponibles,
     zone_conflit_ids,
 )
 from app.services.temps_ouverture import (
@@ -104,6 +106,33 @@ def _date(champ: str):
         return date.fromisoformat(brut)
     except ValueError:
         return None
+
+
+def _materiel_demande() -> dict[int, int]:
+    """Les quantités de matériel mobile saisies dans un formulaire."""
+    demandes = {}
+    for cle, valeur in request.form.items():
+        if not cle.startswith("ressource_"):
+            continue
+        try:
+            identifiant, quantite = int(cle[10:]), int(valeur or 0)
+        except (TypeError, ValueError):
+            continue
+        if quantite > 0:
+            demandes[identifiant] = quantite
+    return demandes
+
+
+def _etat_materiel():
+    """Ce qu'il reste de matériel mobile sur le créneau visé : la
+    disponibilité s'affiche AVANT de cocher, pas après avoir validé."""
+    jour = _date_arg("jour") or date.today()
+    debut = request.values.get("debut") or "09:00"
+    fin = request.values.get("fin") or "12:00"
+    try:
+        return ressources_disponibles(jour, debut, fin)
+    except SalleErreur:
+        return []
 
 
 def _date_arg(nom: str):
@@ -602,6 +631,9 @@ def occuper_form():
             "debut_prefere": request.values.get("debut") or "09:00",
             "fin_prefere": request.values.get("fin") or "12:00",
             "retour": request.values.get("retour") or "",
+            # Le matériel qui circule entre les salles : deux salles libres
+            # et un seul vidéoprojecteur, c'est un conflit quand même.
+            "materiel": _etat_materiel(),
         }
         contexte.update(surcharges)
         return render_template("salles/occuper_form.html", **contexte)
@@ -640,20 +672,28 @@ def occuper_form():
         # On prévient des chevauchements AVANT d'enregistrer, en nommant les
         # jours concernés : sur une période longue, « il y a un conflit »
         # sans dire où ne sert à rien.
+        demandes = _materiel_demande()
+        alertes_materiel: list[str] = []
         genes, cree, jour = [], 0, jour_debut
         while jour <= jour_fin:
             if not _case("ignorer_conflits"):
                 for occ in conflits(espace, jour, debut, fin):
                     genes.append(f"{jour.strftime('%d/%m')} ({occ.titre or occ.origine_label})")
                     break
-            db.session.add(Occupation(
+            occupation = Occupation(
                 espace_id=espace.id, date_jour=jour,
                 minute_debut=m_debut, minute_fin=m_fin,
                 origine=origine, statut="confirme", titre=titre[:200],
                 note=_texte("note") or None,
                 effectif_prevu=_entier("effectif_prevu"),
                 created_by_user_id=getattr(current_user, "id", None),
-            ))
+            )
+            db.session.add(occupation)
+            if demandes:
+                # L'identifiant est nécessaire pour rattacher le matériel :
+                # on pousse en base sans valider la transaction.
+                db.session.flush()
+                alertes_materiel.extend(appliquer_ressources(occupation, demandes))
             cree += 1
             jour += timedelta(days=1)
 
@@ -668,6 +708,8 @@ def occuper_form():
         if genes:
             apercu = ", ".join(genes[:5]) + (" …" if len(genes) > 5 else "")
             flash(f"⚠️ Chevauchement avec une occupation existante le {apercu}.", "warning")
+        for alerte in dict.fromkeys(alertes_materiel):  # sans répéter les doublons
+            flash(f"⚠️ {alerte}", "warning")
 
         retour = _texte("retour")
         return redirect(retour or url_for("salles.planning", semaine=jour_debut.isoformat()))

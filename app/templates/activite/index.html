@@ -108,6 +108,10 @@
                   {% if not corbeille %}
                     <a class="btn" href="{{ url_for('activite.sessions', atelier_id=a.id) }}">Ouvrir les séances</a>
                     <a class="btn" href="{{ url_for('activite.atelier_edit', atelier_id=a.id) }}">Modifier l’atelier</a>
+                    <form method="post" action="{{ url_for('activite.atelier_dupliquer', atelier_id=a.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn" title="Recrée le même atelier (type, capacité, durée, salle, compétences) sans ses séances — le geste de la rentrée">Dupliquer</button>
+                    </form>
                     <form method="post" action="{{ url_for('activite.atelier_delete', atelier_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Placer cette activité dans la corbeille ? Elle pourra être restaurée ensuite.');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <button type="submit" class="btn danger">Archiver</button>
@@ -160,6 +164,10 @@
             {% if not corbeille %}
               <a class="btn" href="{{ url_for('activite.sessions', atelier_id=a.id) }}">Ouvrir les séances</a>
               <a class="btn" href="{{ url_for('activite.atelier_edit', atelier_id=a.id) }}">Modifier l’atelier</a>
+              <form method="post" action="{{ url_for('activite.atelier_dupliquer', atelier_id=a.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn" title="Recrée le même atelier (type, capacité, durée, salle, compétences) sans ses séances — le geste de la rentrée">Dupliquer</button>
+              </form>
               <form method="post" action="{{ url_for('activite.atelier_delete', atelier_id=a.id) }}" onsubmit="return confirm('Placer cette activité dans la corbeille ? Elle pourra être restaurée ensuite.');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn danger">Archiver</button>

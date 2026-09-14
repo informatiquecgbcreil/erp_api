@@ -23,6 +23,8 @@ from app.models import (
 
 from app.services.consumption import aggregate_sessions_consumption, calculate_session_consumption, aggregate_individual_consumption
 
+from app.services.genre import libelle as genre_libelle
+
 from .engine import (
     _has_atelier_filter,
     _apply_common_filters,
@@ -118,7 +120,13 @@ CSV_FIELD_MAP = {
         "label": "Quartier",
         "getter": lambda ctx: ctx["quartier"].nom if ctx["quartier"] else "",
     },
-    "participant_genre": {"label": "Genre", "getter": lambda ctx: ctx["participant"].genre or ""},
+    # Libellé et non code : une colonne « F » dans un tableur remis à un
+    # financeur ne veut rien dire. L'âge n'est pas connu du contexte
+    # d'export, on reste donc sur la forme adulte.
+    "participant_genre": {
+        "label": "Genre",
+        "getter": lambda ctx: genre_libelle(ctx["participant"].genre),
+    },
     "participant_type_public": {"label": "Type public", "getter": lambda ctx: ctx["participant"].type_public or ""},
     "participant_date_naissance": {
         "label": "Date naissance",

@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import "_genre.html" as genre %}
 {% from "_ui.html" import bloc_avance with context %}
 {% import "_ux_helpers.html" as ux %}
 {% block body %}
@@ -107,14 +108,10 @@
         </div>
         <div class="field-stack">
           <label>Genre</label>
-          {% set g = (item.genre if item and item.genre else '') %}
-          <select class="in" name="genre" {% if item and not is_editable %}disabled{% endif %}>
-            <option value="" {% if not g %}selected{% endif %}>—</option>
-            <option value="Homme" {% if g == 'Homme' %}selected{% endif %}>Homme</option>
-            <option value="Femme" {% if g == 'Femme' %}selected{% endif %}>Femme</option>
-            <option value="Autre" {% if g == 'Autre' %}selected{% endif %}>Autre</option>
-          </select>
-          <div class="field-help">Utilisé uniquement pour les statistiques agrégées.</div>
+          {{ genre.champ(item.genre if item else none,
+                         item.age_au() if item else none,
+                         attributs=('disabled' if item and not is_editable else '')) }}
+          {{ genre.aide() }}
         </div>
       </div>
     </section>
@@ -129,7 +126,14 @@
         </div>
         <div class="field-stack">
           <label>Ville</label>
-          <input class="in" type="text" name="ville" value="{{ item.ville if item and item.ville else '' }}" data-ville-input {% if item and not is_editable %}disabled{% endif %}>
+          {#- Villes déjà enregistrées : on choisit au lieu de retaper, et
+              « Nogent sur Oise » cesse de cohabiter avec « Nogent-sur-Oise ». Posé
+              ici, DANS le bloc : hors bloc, un gabarit qui hérite de layout.html
+              n'affiche rien. -#}
+          <datalist id="villes-saisies">
+            {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
+          </datalist>
+          <input class="in" type="text" name="ville" list="villes-saisies" value="{{ item.ville if item and item.ville else '' }}" data-ville-input {% if item and not is_editable %}disabled{% endif %}>
           <div class="field-help">Exemple : Creil, Nogent-sur-Oise…</div>
         </div>
         <div class="field-stack">

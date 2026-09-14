@@ -1,0 +1,38 @@
+{#- Le champ « genre », partout le même.
+
+    Il existait cinq vocabulaires de saisie dans l'application : « Homme /
+    Femme / Autre » sur la fiche participant, la même liste plus « Préférez
+    ne pas répondre » au kiosque et à l'émargement, « F / H / Autre » sur le
+    bulletin d'inscription (qui affichait littéralement les lettres), et un
+    champ de texte libre sur la fiche d'activité. Cinq saisies, quatre
+    classements différents en aval, et des comptages qui ne tombaient pas
+    juste d'un écran à l'autre.
+
+    Le libellé proposé suit l'âge quand on le connaît : sur la fiche d'un
+    enfant de huit ans, on choisit entre « Fille » et « Garçon » ; sur celle
+    d'un adulte, entre « Femme » et « Homme ». C'est la même donnée
+    enregistrée — seul le mot proposé change, pour que la personne à
+    l'accueil n'ait pas à se demander si elle coche la bonne case.
+
+    Usage :
+      {% import "_genre.html" as genre %}
+      {{ genre.champ(item.genre, item.age_au() if item else none) }}
+      {{ genre.champ(p.get('genre'), none, classe="k-select") }}
+-#}
+
+{% macro champ(valeur, age=none, nom="genre", classe="in", attributs="", vide="—") -%}
+  <select class="{{ classe }}" name="{{ nom }}" {{ attributs|safe }}>
+    <option value="" {% if not genre_code(valeur) %}selected{% endif %}>{{ vide }}</option>
+    {% for code, libelle in genre_choix(age) %}
+      <option value="{{ code }}" {% if genre_code(valeur) == code %}selected{% endif %}>{{ libelle }}</option>
+    {% endfor %}
+  </select>
+{%- endmacro %}
+
+{% macro aide() -%}
+  <div class="field-help">
+    Statistiques uniquement. Avant 18 ans révolus, l'application écrit
+    d'elle-même « fille » et « garçon » ; à partir de 18 ans, « femme » et
+    « homme ». Rien à repasser le jour de l'anniversaire.
+  </div>
+{%- endmacro %}

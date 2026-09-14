@@ -606,6 +606,8 @@
                   {% endif %}
                   {% if can('locations:view') %}
                     <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+                    <a class="pill {% if ep == 'salles.impayes' %}active{% endif %}" href="{{ url_for('salles.impayes') }}">💰 Impayés et cautions</a>
+                    <a class="pill {% if ep.startswith('salles.bilan') %}active{% endif %}" href="{{ url_for('salles.bilan') }}">📊 Bilan d'occupation</a>
                   {% endif %}
                   {% if can('partenaires:view') %}
                     <a class="pill {% if ep.startswith('partenaires.') and ep != 'partenaires.carte' %}active{% endif %}" href="{{ url_for('partenaires.index') }}">Partenaires</a>
@@ -766,6 +768,8 @@
                   {% endif %}
                   {% if can('locations:view') %}
                     <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+                    <a class="pill {% if ep == 'salles.impayes' %}active{% endif %}" href="{{ url_for('salles.impayes') }}">💰 Impayés et cautions</a>
+                    <a class="pill {% if ep.startswith('salles.bilan') %}active{% endif %}" href="{{ url_for('salles.bilan') }}">📊 Bilan d'occupation</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
                   {% if can('partenaires:view') %}
@@ -850,6 +854,8 @@
                   {% endif %}
                   {% if can('locations:view') %}
                     <a class="pill {% if ep.startswith('salles.reservation') or ep.startswith('salles.preneur') %}active{% endif %}" href="{{ url_for('salles.reservations') }}">🤝 Mises à disposition</a>
+                    <a class="pill {% if ep == 'salles.impayes' %}active{% endif %}" href="{{ url_for('salles.impayes') }}">💰 Impayés et cautions</a>
+                    <a class="pill {% if ep.startswith('salles.bilan') %}active{% endif %}" href="{{ url_for('salles.bilan') }}">📊 Bilan d'occupation</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
                 </div>
@@ -862,7 +868,7 @@
           <div class="right">
             <div class="global-search">
               <label for="global-search-input" class="sr-only">Recherche globale</label>
-              <input id="global-search-input" type="search" placeholder="Rechercher une personne, un atelier, un quartier…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="global-search-results" />
+              <input id="global-search-input" type="search" placeholder="Rechercher (Ctrl+K) : personne, séance, atelier, dépense…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="global-search-results" />
               <div id="global-search-results" class="global-search__panel" role="listbox" aria-label="Résultats de recherche"></div>
             </div>
             <form method="post" action="{{ url_for('main.set_ui_mode') }}" class="mode-switch">
@@ -1391,7 +1397,20 @@
   <script>
   (function(){
     function normalize(value){
-      return (value || "").trim().toLowerCase();
+      // Même règle de comparaison que app/services/villes.py : sans accents,
+      // sans ponctuation, sans casse. Avant, la comparaison se faisait au
+      // caractère près : taper « Nogent sur Oise » alors que les quartiers
+      // sont enregistrés sous « Nogent-sur-Oise » vidait la liste des
+      // quartiers SANS AUCUN MESSAGE, et l'accueil en concluait qu'il n'y
+      // avait pas de quartier pour cette ville.
+      return (value || "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\(\d{2,5}\)/g, " ")
+        .replace(/\b\d{5}\b/g, " ")
+        .replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
     }
 
     function applyFilter(select, villeValue){

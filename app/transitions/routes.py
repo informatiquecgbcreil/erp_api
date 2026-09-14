@@ -12,6 +12,7 @@ from io import BytesIO
 from flask import flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 
+from app.services.contexte import annee_travail
 from app.extensions import db
 from app.models import (
     STATUTS_DEFI,
@@ -39,7 +40,7 @@ def _annee_demandee() -> int:
     try:
         annee = int((request.args.get("annee") or "").strip())
     except (TypeError, ValueError):
-        annee = date.today().year
+        annee = annee_travail()
     return max(2000, min(2100, annee))
 
 

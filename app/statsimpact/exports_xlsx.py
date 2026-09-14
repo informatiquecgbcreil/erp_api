@@ -245,23 +245,44 @@ def _genre_individuel(participant) -> str:
     return _GENRE_INDIVIDUEL.get(_participant_genre_bucket(participant), "Non renseigné")
 
 
-def _quartier_bucket(name: str | None) -> str:
-    """Regroupe les quartiers en 4 grandes catégories + Inconnu."""
-    if not name:
+def _quartier_bucket(quartier) -> str:
+    """Regroupe les quartiers en 4 grandes catégories + Inconnu.
+
+    Lit d'abord le CHAMP ``qpv`` du quartier. Cette fonction ne recevait
+    auparavant que le NOM, et cherchait dedans « hors rouher », puis
+    « rouher », puis « bas », puis « haut » — une règle qui ne ressemblait
+    même pas à celle de l'export SENACS, et qui classait dans « Autres »
+    tout quartier nommé « Cavée de Senlis » alors qu'il est aux Hauts de
+    Creil. C'est ce qui obligeait à coder le QPV dans le nom du quartier.
+
+    Accepte encore une simple chaîne, pour les appels qui n'ont que le nom.
+    """
+    from app.services.recherche_texte import sans_accent
+
+    if quartier is None:
         return "Inconnu"
-    s = str(name).strip().lower()
-    if not s:
+    if isinstance(quartier, str):
+        nom, qpv = quartier, ""
+    else:
+        nom = getattr(quartier, "nom", "") or ""
+        qpv = (getattr(quartier, "qpv", None) or "").strip()
+
+    s = sans_accent(nom) or ""
+    if not s.strip() and not qpv:
         return "Inconnu"
-    # règles simples : on privilégie le 'contains' (les noms dans ta DB peuvent varier)
+
+    if "rouher" in s and "hors rouher" not in s:
+        return "Rouher"
+    if qpv:
+        return "Hauts de Creil" if "hauts de creil" in (sans_accent(qpv) or "") else "Autres"
+    # Repli sur le nom, pour une base dont les quartiers n'ont pas encore
+    # reçu leur QPV.
     if "hors rouher" in s:
         return "Hauts de Creil"
-    if "rouher" in s:
-        return "Rouher"
     if "bas" in s:
         return "Bas de Creil"
-    if "haut" in s or "hauts" in s:
+    if "haut" in s:
         return "Hauts de Creil"
-    # tout le reste
     return "Autres"
 
 
@@ -633,8 +654,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
 
         prov = {"Bas de Creil": 0, "Hauts de Creil": 0, "Rouher": 0, "Autres": 0, "Inconnu": 0}
         for p in participants:
-            qname = p.quartier.nom if getattr(p, "quartier", None) is not None else None
-            b = _quartier_bucket(qname)
+            b = _quartier_bucket(getattr(p, "quartier", None))
             prov[b] = prov.get(b, 0) + 1
         for k in global_prov:
             global_prov[k] += prov.get(k, 0)

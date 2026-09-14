@@ -117,7 +117,10 @@
         <label class="field-stack">Date<input class="in" type="date" name="date_paiement"></label>
       </div>
       <div class="row three">
-        <label class="field-stack">Fournisseur<input class="in" name="fournisseur"></label>
+        <label class="field-stack">Fournisseur<input class="in" name="fournisseur" list="liste-fournisseurs-s">
+            <datalist id="liste-fournisseurs-s">
+              {% for v in valeurs_deja_saisies('Depense', 'fournisseur') %}<option value="{{ v }}">{% endfor %}
+            </datalist></label>
         <label class="field-stack">Référence<input class="in" name="reference_piece"></label>
         <label class="field-stack">Type<select class="in" name="type_depense"><option>Fonctionnement</option><option>Investissement</option><option>Prestations</option><option>Déplacements</option><option>Autre</option></select></label>
       </div>

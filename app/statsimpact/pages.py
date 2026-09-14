@@ -31,6 +31,7 @@ from .engine import (
 )
 
 
+from app.services.genre import normaliser as genre_normaliser
 from app.statsimpact.common import bp
 from app.statsimpact.common import (
     _apply_atelier_lifecycle_filters,
@@ -97,7 +98,7 @@ def _statsimpact_quality_payload(flt) -> dict:
             "participant_no_genre",
             "Participants sans genre",
             "Fragilise les répartitions femmes / hommes / autre dans les bilans.",
-            [p for p in participants if not (p.genre or "").strip()],
+            [p for p in participants if genre_normaliser(p.genre) is None],
             "warn",
         ),
         participant_issue(

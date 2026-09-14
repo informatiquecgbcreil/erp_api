@@ -16,6 +16,7 @@
           <a class="btn ok" href="{{ url_for('salles.reservation_nouvelle') }}">➕ Nouvelle</a>
         {% endif %}
         <a class="btn" href="{{ url_for('salles.preneurs') }}">👥 Preneurs</a>
+        <a class="btn" href="{{ url_for('salles.impayes') }}">💰 Impayés</a>
         {% if can('salles:tarifs') %}
           <a class="btn" href="{{ url_for('salles.tarifs') }}">💶 Tarifs</a>
         {% endif %}

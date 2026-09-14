@@ -1,0 +1,102 @@
+{% extends "layout.html" %}
+{% block title %}Matériel partagé{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>📽️ Matériel partagé entre les salles</h1>
+    <p class="muted">
+      Deux salles libres et un seul vidéoprojecteur, c'est un conflit — mais
+      pas un conflit de salle. Ce matériel se réserve indépendamment du lieu,
+      et une séance d'atelier, une réunion et une location se le disputent
+      avec les mêmes règles.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Disponibilité sur un créneau</h2>
+    <form method="get" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+      <div>
+        <label class="ui-label">Date</label>
+        <input class="in" type="date" name="jour" value="{{ jour.isoformat() }}">
+      </div>
+      <div><label class="ui-label">De</label>
+        <input class="in" type="time" name="debut" value="{{ debut }}" style="width:120px;"></div>
+      <div><label class="ui-label">À</label>
+        <input class="in" type="time" name="fin" value="{{ fin }}" style="width:120px;"></div>
+      <button class="btn ok" type="submit">Vérifier</button>
+    </form>
+
+    {% if etats %}
+      <div class="tablewrap clean" style="margin-top:14px;">
+        <table>
+          <thead><tr><th>Matériel</th><th>En stock</th><th>Déjà retenu</th><th>Disponible</th></tr></thead>
+          <tbody>
+            {% for e in etats %}
+              <tr>
+                <td><strong>{{ e.ressource.nom }}</strong>
+                  {% if e.ressource.description %}<br><span class="muted" style="font-size:.8rem;">{{ e.ressource.description }}</span>{% endif %}</td>
+                <td>{{ e.stock }}</td>
+                <td>{{ e.retenue }}</td>
+                <td>
+                  {% if e.epuisee %}
+                    <span style="color:#b91c1c; font-weight:800;">⛔ épuisé</span>
+                  {% else %}
+                    <span style="color:#047857; font-weight:800;">✅ {{ e.restante }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin-top:12px;">Aucun matériel partagé déclaré.</p>
+    {% endif %}
+  </div>
+
+  {% if can('salles:edit') %}
+    <div class="card">
+      <h2 style="margin-top:0;">Ajouter un matériel</h2>
+      <form method="post" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="flex:1; min-width:200px;">
+          <label class="ui-label">Nom *</label>
+          <input class="in" name="nom" required style="width:100%;" placeholder="Vidéoprojecteur">
+        </div>
+        <div style="flex:2; min-width:220px;">
+          <label class="ui-label">Description</label>
+          <input class="in" name="description" style="width:100%;">
+        </div>
+        <div style="width:110px;">
+          <label class="ui-label">Quantité</label>
+          <input class="in" name="quantite" inputmode="numeric" value="1" style="width:100%;">
+        </div>
+        <button class="btn ok" type="submit">➕ Ajouter</button>
+      </form>
+
+      {% if ressources %}
+        <div class="tablewrap clean" style="margin-top:14px;">
+          <table>
+            <thead><tr><th>Matériel</th><th>Quantité</th><th></th></tr></thead>
+            <tbody>
+              {% for r in ressources %}
+                <tr {% if not r.actif %}class="muted"{% endif %}>
+                  <td><strong>{{ r.nom }}</strong></td>
+                  <td>{{ r.quantite }}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('salles.ressource_supprimer', ressource_id=r.id) }}"
+                          style="display:inline;" onsubmit="return confirm('Retirer « {{ r.nom|e }} » ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;">🗑️</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
