@@ -36,7 +36,10 @@
           </div>
           <div>
             <label>Catégorie</label>
-            <input type="text" name="categorie" value="{{ item.categorie or '' }}">
+            <input type="text" name="categorie" value="{{ item.categorie or '' }}" list="liste-categories-inv">
+            <datalist id="liste-categories-inv">
+              {% for v in valeurs_deja_saisies('InventaireItem', 'categorie') %}<option value="{{ v }}">{% endfor %}
+            </datalist>
           </div>
         </div>
 
@@ -64,7 +67,10 @@
         <div class="grid2">
           <div>
             <label>Marque</label>
-            <input type="text" name="marque" value="{{ item.marque or '' }}">
+            <input type="text" name="marque" value="{{ item.marque or '' }}" list="liste-marques-inv">
+            <datalist id="liste-marques-inv">
+              {% for v in valeurs_deja_saisies('InventaireItem', 'marque') %}<option value="{{ v }}">{% endfor %}
+            </datalist>
           </div>
           <div>
             <label>Modèle</label>
@@ -80,6 +86,22 @@
           <div>
             <label>Localisation</label>
             <input type="text" name="localisation" value="{{ item.localisation or '' }}">
+          <div class="field-stack">
+            <label>Emplacement</label>
+            <select class="in" name="espace_id" style="width:100%;">
+              <option value="">— Non rangé —</option>
+              {% for e in emplacements_stockage() %}
+                <option value="{{ e.id }}" {% if item.espace_id == e.id %}selected{% endif %}>
+                  {{ e.chemin }}{% if e.securise %} 🔒{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="muted" style="font-size:12px">
+              Salles et armoires déclarées « point de stockage » dans le plan.
+              Le texte ci-dessous ne sert plus qu'aux précisions libres.
+            </div>
+          </div>
+
           </div>
         </div>
 

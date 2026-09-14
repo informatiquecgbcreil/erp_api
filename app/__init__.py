@@ -367,7 +367,43 @@ def create_app():
             except Exception:  # noqa: BLE001 - un formulaire ne doit jamais tomber pour ça
                 return []
 
-        return {"salles_occupables": salles_occupables}
+        def emplacements_stockage():
+            """Les lieux où l'on range du matériel : salles ET armoires."""
+            try:
+                from app.services.salles import espaces_stockage
+
+                return espaces_stockage()
+            except Exception:  # noqa: BLE001
+                return []
+
+        def valeurs_deja_saisies(modele: str, champ: str, limite: int = 200):
+            """Les valeurs distinctes déjà enregistrées dans une colonne.
+
+            Sert à proposer une liste au lieu de laisser retaper. Un champ
+            libre sans suggestion, c'est « MAIF », « Maif » et « maif » dans
+            la même base, et trois lignes dans le moindre regroupement.
+            """
+            from app import models as _modeles
+
+            try:
+                classe = getattr(_modeles, modele, None)
+                colonne = getattr(classe, champ, None)
+                if colonne is None:
+                    return []
+                lignes = (
+                    db.session.query(colonne)
+                    .filter(colonne.isnot(None), colonne != "")
+                    .distinct().order_by(colonne).limit(limite).all()
+                )
+                return [v for (v,) in lignes]
+            except Exception:  # noqa: BLE001 - une suggestion n'empêche pas de saisir
+                return []
+
+        return {
+            "salles_occupables": salles_occupables,
+            "emplacements_stockage": emplacements_stockage,
+            "valeurs_deja_saisies": valeurs_deja_saisies,
+        }
 
     @app.context_processor
     def _inject_aide_contextuelle():
