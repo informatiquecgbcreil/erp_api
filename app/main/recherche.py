@@ -4,7 +4,6 @@ from time import perf_counter
 from flask import (
     render_template, request, url_for, current_app, jsonify
 )
-import unicodedata
 from flask_login import login_required, current_user
 from app.rbac import can
 
@@ -18,19 +17,28 @@ from app.models import (
     Participant,
     Partenaire,
     Quartier,
+    Depense,
+    LigneBudget,
+    Espace,
+    Preneur,
+    Reservation,
 )
 
 
 from app.main.common import bp
+from app.services.recherche_texte import NOM_FONCTION_SQL, sans_accent
 
 
 SEARCH_TYPE_PRIORITY = {
     "Participant": 0,
-    "Quartier": 1,
-    "Projet": 2,
-    "Subvention": 3,
-    "Atelier": 4,
-    "Partenaire": 5,
+    "Séance": 1,
+    "Quartier": 2,
+    "Projet": 3,
+    "Subvention": 4,
+    "Atelier": 5,
+    "Partenaire": 6,
+    "Dépense": 7,
+    "Réservation": 8,
 }
 
 SEARCH_TYPE_ALIASES = {
@@ -56,14 +64,38 @@ SEARCH_TYPE_ALIASES = {
     "activites": "Atelier",
     "partenaire": "Partenaire",
     "partenaires": "Partenaire",
+    "séance": "Séance",
+    "seance": "Séance",
+    "séances": "Séance",
+    "seances": "Séance",
+    "cours": "Séance",
+    "dépense": "Dépense",
+    "depense": "Dépense",
+    "dépenses": "Dépense",
+    "depenses": "Dépense",
+    "facture": "Dépense",
+    "factures": "Dépense",
+    "réservation": "Réservation",
+    "reservation": "Réservation",
+    "réservations": "Réservation",
+    "reservations": "Réservation",
+    "location": "Réservation",
+    "locations": "Réservation",
+    "salle": "Réservation",
+    "salles": "Réservation",
 }
 
 
 def _normalize_search_text(value: str | None) -> str:
-    raw = (value or "").strip().lower()
+    """Minuscules sans accents, EXACTEMENT comme la fonction SQL homonyme.
+
+    La symétrie des deux côtés de la comparaison est la condition du bon
+    fonctionnement : c'est sa rupture qui rendait « Étienne » introuvable.
+    """
+    raw = (value or "").strip()
     if not raw:
         return ""
-    return "".join(ch for ch in unicodedata.normalize("NFKD", raw) if not unicodedata.combining(ch))
+    return sans_accent(raw) or ""
 
 
 def _parse_search_query(term: str) -> dict:
@@ -123,8 +155,12 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
 
     def _like(column, pattern: str):
         if dialect_name == "postgresql":
+            # ilike() y est déjà unicode : « Étienne » s'y trouve.
             return db.func.coalesce(column, "").ilike(pattern)
-        return db.func.lower(db.func.coalesce(column, "")).like(pattern.lower())
+        # SQLite : sa fonction lower() ne descend que l'ASCII, « É » restait
+        # « É » côté base alors que Python l'avait mis en « é ». On compare
+        # donc des deux côtés avec la même normalisation sans accents.
+        return getattr(db.func, NOM_FONCTION_SQL)(db.func.coalesce(column, "")).like(pattern)
 
     def _token_mode_clause(columns, token: str, mode: str):
         if mode == "exact":
@@ -135,7 +171,10 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
         return db.or_(*[_like(col, f"%{token}%") for col in columns])
 
     def _filter_for_tokens(columns, *, mode: str):
-        source_tokens = sql_tokens if mode in {"exact", "prefix", "contains"} else tokens
+        # Les motifs doivent être normalisés comme les colonnes : sans accents
+        # sur SQLite, simplement en minuscules sur PostgreSQL dont le ilike
+        # gère déjà la casse unicode.
+        source_tokens = sql_tokens if dialect_name == "postgresql" else tokens
         return db.and_(*[_token_mode_clause(columns, token, mode) for token in source_tokens])
 
     def _run_ranked_rows(base_query, columns, order_by, *, row_id_attr="id"):
@@ -343,6 +382,157 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
                 "secteur": "",
                 "url": url_for("partenaires.edit", partenaire_id=row.id),
                 "score": _score_item(label, meta, row.description, row.contact_nom, row.contact_prenom, row.adresse),
+            })
+
+    # --- Séances ------------------------------------------------------------
+    # L'objet le plus manipulé de l'application, et le seul grand absent de
+    # la recherche jusqu'ici : on cherchait l'atelier, puis on déroulait sa
+    # liste pour retrouver la date. On cherche désormais la date elle-même
+    # (« informatique 12/03 »), rendue en texte côté base pour rester
+    # comparable aux autres colonnes.
+    if (wanted_type in {None, "Séance"}) and can("emargement:view"):
+        def _date_texte(colonne):
+            if dialect_name == "postgresql":
+                return db.func.to_char(colonne, "DD/MM/YYYY")
+            return db.func.strftime("%d/%m/%Y", colonne)
+
+        seances_q = (
+            SessionActivite.query
+            .join(AtelierActivite, AtelierActivite.id == SessionActivite.atelier_id)
+            .filter(SessionActivite.is_deleted.is_(False))
+            .filter(AtelierActivite.is_deleted.is_(False))
+        )
+        if active_secteur_filter:
+            seances_q = seances_q.filter(SessionActivite.secteur == active_secteur_filter)
+        rows = _run_ranked_rows(
+            seances_q,
+            [
+                AtelierActivite.nom,
+                SessionActivite.secteur,
+                SessionActivite.intention_seance,
+                SessionActivite.creneau_source,
+                _date_texte(SessionActivite.date_session),
+                _date_texte(SessionActivite.rdv_date),
+            ],
+            [
+                db.func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date).desc().nullslast(),
+                SessionActivite.id.desc(),
+            ],
+        )
+        for row in rows:
+            jour = row.date_session or row.rdv_date
+            jour_texte = jour.strftime("%d/%m/%Y") if jour else "date à préciser"
+            atelier_nom = (row.atelier.nom if row.atelier else "") or "Séance"
+            label = f"{atelier_nom} — {jour_texte}"
+            heures = " ".join(x for x in [row.heure_debut or row.rdv_debut or "", row.heure_fin or row.rdv_fin or ""] if x)
+            meta_bits = [
+                row.secteur or "",
+                heures,
+                "🚫 annulée" if (row.statut or "").lower() == "annulee" else "",
+                f"{len(row.presences)} présent(s)" if row.presences else "",
+            ]
+            meta = " · ".join([bit for bit in meta_bits if bit]) or "Séance"
+            results.append({
+                "type": "Séance",
+                "label": label,
+                "meta": meta,
+                "secteur": row.secteur or "",
+                "url": url_for("activite.emargement", session_id=row.id),
+                "score": _score_item(label, meta, atelier_nom, row.intention_seance, jour_texte),
+            })
+
+    # --- Dépenses -----------------------------------------------------------
+    # Retrouver « la facture EDF de mars » supposait de connaître son
+    # enveloppe et son exercice pour arriver jusqu'à la liste filtrée.
+    if (wanted_type in {None, "Dépense"}) and can("depenses:view"):
+        depenses_q = (
+            Depense.query
+            .outerjoin(LigneBudget, LigneBudget.id == Depense.ligne_budget_id)
+            .outerjoin(Subvention, Subvention.id == LigneBudget.subvention_id)
+            .filter(db.or_(Depense.est_supprimee.is_(False), Depense.est_supprimee.is_(None)))
+        )
+        if active_secteur_filter:
+            # Une dépense sans enveloppe sort du périmètre d'un compte
+            # cloisonné : on ne sait pas à quel secteur la rattacher.
+            depenses_q = depenses_q.filter(Subvention.secteur == active_secteur_filter)
+        rows = _run_ranked_rows(
+            depenses_q,
+            [
+                Depense.libelle,
+                Depense.fournisseur,
+                Depense.reference_piece,
+                Depense.type_depense,
+                Subvention.nom,
+                LigneBudget.compte,
+                LigneBudget.libelle,
+            ],
+            [Depense.date_paiement.desc().nullslast(), Depense.id.desc()],
+        )
+        for row in rows:
+            ligne = row.budget_source
+            sub = ligne.source_sub if ligne else None
+            label = row.libelle or f"Dépense #{row.id}"
+            meta_bits = [
+                f"{float(row.montant or 0):.2f} €",
+                row.date_paiement.strftime("%d/%m/%Y") if row.date_paiement else "",
+                row.fournisseur or "",
+                sub.nom if sub else "",
+            ]
+            meta = " · ".join([bit for bit in meta_bits if bit])
+            results.append({
+                "type": "Dépense",
+                "label": label,
+                "meta": meta,
+                "secteur": (sub.secteur if sub else "") or "",
+                "url": url_for("budget.depense_edit", depense_id=row.id),
+                "score": _score_item(label, meta, row.fournisseur, row.reference_piece, row.type_depense),
+            })
+
+    # --- Réservations -------------------------------------------------------
+    # Au téléphone, on a une référence de contrat ou un nom d'association,
+    # rarement les deux — et jamais la date exacte.
+    if (wanted_type in {None, "Réservation"}) and can("locations:view"):
+        reservations_q = (
+            Reservation.query
+            .join(Preneur, Preneur.id == Reservation.preneur_id)
+            .outerjoin(Espace, Espace.id == Reservation.espace_id)
+        )
+        rows = _run_ranked_rows(
+            reservations_q,
+            [
+                Reservation.reference,
+                Reservation.titre,
+                Preneur.nom,
+                Preneur.contact_nom,
+                Preneur.email,
+                Preneur.telephone,
+                Espace.nom,
+            ],
+            [Reservation.id.desc()],
+        )
+        for row in rows:
+            dates = sorted(o.date_jour for o in (row.occupations or []) if o.date_jour)
+            periode = ""
+            if dates:
+                periode = dates[0].strftime("%d/%m/%Y")
+                if dates[-1] != dates[0]:
+                    periode += f" → {dates[-1].strftime('%d/%m/%Y')}"
+            label = f"{row.titre} — {row.preneur.nom}" if row.preneur else row.titre
+            meta_bits = [
+                row.reference or "",
+                periode,
+                row.espace.nom if row.espace else "",
+                (row.statut or "").replace("_", " "),
+            ]
+            meta = " · ".join([bit for bit in meta_bits if bit])
+            results.append({
+                "type": "Réservation",
+                "label": label,
+                "meta": meta,
+                "secteur": "",
+                "url": url_for("salles.reservation_fiche", reservation_id=row.id),
+                "score": _score_item(label, meta, row.reference, row.preneur.nom if row.preneur else "",
+                                     row.preneur.contact_nom if row.preneur else ""),
             })
 
     results_sorted = sorted(

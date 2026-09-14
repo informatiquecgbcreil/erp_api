@@ -51,7 +51,22 @@ def semaine(app):
             db.session.flush()
             ids.append(s.id)
         db.session.commit()
-        return {"atelier_id": a.id, "seances": ids}
+        contexte = {"atelier_id": a.id, "seances": ids, "nom": a.nom}
+
+    yield contexte
+
+    # Voir test_duplication : la liste d'étiquetage Transitions plafonne à
+    # 200 ateliers, et une fixture qui s'accumule casse un test d'ailleurs.
+    with app.app_context():
+        from app.extensions import db
+        from app.models import AtelierActivite
+
+        for atelier in AtelierActivite.query.filter(
+            db.or_(AtelierActivite.nom == contexte["nom"],
+                   AtelierActivite.nom.like("Ailleurs %"))
+        ).all():
+            db.session.delete(atelier)
+        db.session.commit()
 
 
 def test_annuler_une_semaine_en_un_geste(admin_client, app, semaine):

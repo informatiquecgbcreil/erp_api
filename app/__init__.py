@@ -158,6 +158,12 @@ def create_app():
     from app.services.salles import enregistrer_synchronisation_auto
     enregistrer_synchronisation_auto()
 
+    # Recherche accent-insensible : le « lower() » de SQLite ne connaît que
+    # l'ASCII, si bien qu'« Étienne » ne se trouvait pas lui-même. On donne
+    # à la base la même normalisation que celle appliquée à ce qu'on tape.
+    from app.services.recherche_texte import installer as installer_recherche_texte
+    installer_recherche_texte()
+
     @app.before_request
     def _memoriser_contexte_de_travail():
         """Retient l'année et le secteur consultés, pour les proposer par

@@ -55,7 +55,22 @@ def atelier_source(app):
             atelier_id=a.id, secteur="Adultes", date_session=date(2025, 6, 10),
         ))
         db.session.commit()
-        return {"id": a.id, "nom": a.nom, "competence_id": comp.id}
+        contexte = {"id": a.id, "nom": a.nom, "competence_id": comp.id}
+
+    yield contexte
+
+    # Nettoyage : la page d'étiquetage Transitions ne liste que 200 ateliers.
+    # Des fixtures qui s'accumulent finiraient par en pousser un hors liste
+    # et feraient rougir un test d'un autre module, très loin d'ici.
+    with app.app_context():
+        from app.extensions import db
+        from app.models import AtelierActivite
+
+        for atelier in AtelierActivite.query.filter(
+            AtelierActivite.nom.like(f"{contexte['nom']}%")
+        ).all():
+            db.session.delete(atelier)
+        db.session.commit()
 
 
 def test_duplication_atelier_reprend_le_parametrage(app, atelier_source):
@@ -137,6 +152,10 @@ def test_nom_tres_long_ne_deborde_pas_de_la_colonne(app):
         db.session.commit()
         assert len(copie.nom) <= 200
         assert copie.nom.endswith("(copie)")
+
+        db.session.delete(copie)
+        db.session.delete(a)
+        db.session.commit()
 
 
 def test_route_duplication_atelier(admin_client, app, atelier_source):
