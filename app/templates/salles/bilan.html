@@ -1,0 +1,260 @@
+{% extends "layout.html" %}
+{% block title %}Bilan d'occupation{% endblock %}
+{% block body %}
+<style>
+  /* Jauges : marques fines, extrémités arrondies ancrées à la base,
+     2 px de fond entre les segments empilés pour qu'ils ne se touchent pas. */
+  .bl-jauge{ display:flex; height:13px; border-radius:4px; overflow:hidden;
+             background:var(--surface-soft,#eef1f7); gap:2px; }
+  .bl-part{ height:100%; }
+  .bl-part:first-child{ border-radius:4px 0 0 4px; }
+  .bl-part:last-child{ border-radius:0 4px 4px 0; }
+  .bl-part:only-child{ border-radius:4px; }
+  .bl-taux{ font-variant-numeric:tabular-nums; font-weight:800; white-space:nowrap; }
+  .bl-legende{ display:flex; gap:15px; flex-wrap:wrap; font-size:.82rem;
+               align-items:center; margin-top:12px; }
+  .bl-legende i{ display:inline-block; width:11px; height:11px; border-radius:3px;
+                 margin-right:6px; vertical-align:middle; font-style:normal; }
+  .bl-phrase{ padding:13px 16px; border-radius:10px; background:var(--surface-soft,#f4f7fd);
+              border-left:4px solid #3b82f6; font-size:.95rem; line-height:1.55; }
+  .bl-vide{ opacity:.55; }
+  @media print{
+    .no-print{ display:none !important; }
+    .card{ border:none !important; box-shadow:none !important; }
+  }
+</style>
+
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>📊 Bilan d'occupation et valorisation</h1>
+        <p class="muted" style="margin:0;">
+          Les deux chiffres que les financeurs réclament et que personne n'a
+          jamais sous la main : à quel point les locaux servent, et ce que vaut
+          ce qu'on reçoit comme ce qu'on donne.
+        </p>
+      </div>
+      <div class="inline no-print" style="gap:8px; flex-wrap:wrap;">
+        <a class="btn ok" href="{{ url_for('salles.bilan_export', site_id=site.id,
+                                           debut=debut.isoformat(), fin=fin.isoformat()) }}">
+          📥 Export tableur</a>
+        <button class="btn" type="button" onclick="window.print()">🖨️ Imprimer</button>
+      </div>
+    </div>
+
+    <form method="get" class="inline no-print"
+          style="gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:14px;">
+      {% if sites|length > 1 %}
+        <div>
+          <label class="ui-label">Site</label>
+          <select class="in" name="site_id" onchange="this.form.submit()">
+            {% for s in sites %}
+              <option value="{{ s.id }}" {% if s.id == site.id %}selected{% endif %}>{{ s.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <div><label class="ui-label">Du</label>
+        <input class="in" type="date" name="debut" value="{{ debut.isoformat() }}"></div>
+      <div><label class="ui-label">Au</label>
+        <input class="in" type="date" name="fin" value="{{ fin.isoformat() }}"></div>
+      <div>
+        <label class="ui-label">Périmètre</label>
+        <select class="in" name="perimetre" onchange="this.form.submit()">
+          {% for code in perimetres %}
+            <option value="{{ code }}" {% if perimetre == code %}selected{% endif %}>
+              {{ perimetres_labels[code] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn" type="submit">Recalculer</button>
+      <span class="muted" style="font-size:.82rem;">
+        Par défaut : l'année scolaire en cours.
+      </span>
+    </form>
+  </div>
+
+  {# Le chiffre principal se lit seul, sans graphique : c'est un titre, pas une courbe. #}
+  <div class="ui-kpi-grid">
+    <div class="ui-kpi-card">
+      <div class="ui-eyebrow">Taux d'occupation</div>
+      <div style="font-size:2.1rem; font-weight:900; line-height:1.1;">{{ taux_global }} %</div>
+      <div class="muted">
+        {{ total_heures }} h occupées sur {{ total_potentiel }} h ouvrables,
+        {{ nb_salles }} espace(s)
+      </div>
+    </div>
+    <div class="ui-kpi-card">
+      <div class="ui-eyebrow">Structures accueillies</div>
+      <div style="font-size:2.1rem; font-weight:900; line-height:1.1;">
+        {{ valorisation.structures_accueillies or 0 }}</div>
+      <div class="muted">{{ valorisation.heures_gratuites or 0 }} h à titre gratuit</div>
+    </div>
+    <div class="ui-kpi-card">
+      <div class="ui-eyebrow">Contribution reçue</div>
+      <div style="font-size:2.1rem; font-weight:900; line-height:1.1;">
+        {{ '%.0f'|format(valorisation.recu_periode or 0) }} €</div>
+      <div class="muted">Locaux mis à disposition, au prorata</div>
+    </div>
+    <div class="ui-kpi-card">
+      <div class="ui-eyebrow">Contribution donnée</div>
+      <div style="font-size:2.1rem; font-weight:900; line-height:1.1;">
+        {{ '%.0f'|format(valorisation.donne or 0) }} €</div>
+      <div class="muted">Gratuités et rabais au tissu associatif</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Salle par salle</h2>
+    <p class="muted" style="margin-top:0;">
+      <strong>{{ perimetre_label }}</strong> — {{ perimetres_aide[perimetre] }}
+      {% if perimetre == 'tous' %}
+        <br><span style="color:#92400e;">
+          ⚠️ Diviser par les bureaux et les locaux d'équipe écrase le taux global :
+          ce périmètre sert à vérifier une salle précise, pas à communiquer un chiffre.
+        </span>
+      {% endif %}
+    </p>
+    {% if lignes %}
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th style="min-width:170px;">Salle</th>
+              <th style="width:74px; text-align:right;">Taux</th>
+              <th style="min-width:210px;">Répartition</th>
+              {% for code, libelle in familles_labels.items() %}
+                {% if code in familles_occupantes %}
+                  <th style="text-align:right; white-space:nowrap;">{{ libelle }}</th>
+                {% endif %}
+              {% endfor %}
+              <th style="text-align:right;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in lignes %}
+              <tr class="{% if l.heures == 0 %}bl-vide{% endif %}">
+                <td>
+                  <strong>{{ l.espace.nom }}</strong>
+                  {% if l.indisponible %}
+                    <br><span class="muted" style="font-size:.74rem;">
+                      {{ l.indisponible }} h indisponible, déduites du potentiel</span>
+                  {% endif %}
+                </td>
+                <td class="bl-taux" style="text-align:right;">{{ l.taux }} %</td>
+                <td>
+                  <div class="bl-jauge">
+                    {% for code in familles_occupantes %}
+                      {% set heures = l.familles.get(code, 0) %}
+                      {% if heures and l.potentiel %}
+                        <span class="bl-part"
+                              style="width:{{ (100 * heures / l.potentiel) | round(1) }}%;
+                                     background:{{ couleurs[code] }};"
+                              title="{{ familles_labels[code] }} : {{ heures }} h"></span>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                </td>
+                {% for code in familles_occupantes %}
+                  <td style="text-align:right; font-variant-numeric:tabular-nums;">
+                    {% if l.familles.get(code) %}{{ l.familles[code] }} h{% else %}
+                      <span class="muted">—</span>{% endif %}
+                  </td>
+                {% endfor %}
+                <td style="text-align:right; font-weight:800; font-variant-numeric:tabular-nums;">
+                  {{ l.heures }} h</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>Ensemble du site</th>
+              <th class="bl-taux" style="text-align:right;">{{ taux_global }} %</th>
+              <th></th>
+              {% for code in familles_occupantes %}
+                <th style="text-align:right; font-variant-numeric:tabular-nums;">
+                  {{ par_famille.get(code, 0) }} h</th>
+              {% endfor %}
+              <th style="text-align:right; font-variant-numeric:tabular-nums;">{{ total_heures }} h</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="bl-legende">
+        {% for code in familles_occupantes %}
+          <span><i style="background:{{ couleurs[code] }};"></i>{{ familles_labels[code] }}</span>
+        {% endfor %}
+        <span class="muted">Les chiffres du tableau donnent le détail exact de chaque barre.</span>
+      </div>
+
+      {% if salles_jamais_utilisees %}
+        <p class="muted" style="margin-top:14px; padding:9px 12px; border-radius:9px;
+                                background:rgba(245,158,11,.1); border-left:3px solid #f59e0b;">
+          {{ salles_jamais_utilisees|length }} salle(s) sans aucune occupation sur la période :
+          {{ salles_jamais_utilisees | map(attribute='espace') | map(attribute='nom') | join(', ') }}.
+          Soit elles servent sans être déclarées, soit il y a là un potentiel à mobiliser.
+        </p>
+      {% endif %}
+    {% else %}
+      <p class="muted">Aucune salle occupable sur ce site.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Contributions volontaires en nature</h2>
+    <p class="muted">
+      Une mise à disposition gratuite n'est pas rien : elle a sa place au compte
+      de résultat (comptes 86/87 du plan comptable associatif), dans les deux
+      sens. Ce que la collectivité apporte à la structure, et ce que la structure
+      apporte au territoire.
+    </p>
+    <div class="tablewrap clean">
+      <table>
+        <tbody>
+          <tr>
+            <td><strong>Reçu</strong> — locaux mis à disposition
+              <br><span class="muted" style="font-size:.8rem;">
+                {% if valorisation.source_valeur == 'espaces' %}
+                  Somme des valeurs locatives saisies par espace
+                {% elif valorisation.source_valeur == 'site' %}
+                  Valeur locative annuelle du site
+                {% else %}
+                  <span style="color:#92400e;">Aucune valeur locative renseignée :
+                  le chiffre reste à zéro tant que l'estimation n'est pas saisie.</span>
+                {% endif %}
+                — {{ '%.0f'|format(valorisation.recu_annuel or 0) }} € par an,
+                proratisé sur {{ valorisation.jours }} jours</span></td>
+            <td style="text-align:right; font-weight:800; font-variant-numeric:tabular-nums;
+                       white-space:nowrap;">{{ '%.2f'|format(valorisation.recu_periode or 0) }} €</td>
+          </tr>
+          <tr>
+            <td><strong>Donné</strong> — gratuités et rabais consentis
+              <br><span class="muted" style="font-size:.8rem;">
+                Valeur au barème des mises à disposition gratuites, plus les écarts
+                consentis sur les locations payantes</span></td>
+            <td style="text-align:right; font-weight:800; font-variant-numeric:tabular-nums;
+                       white-space:nowrap;">{{ '%.2f'|format(valorisation.donne or 0) }} €</td>
+          </tr>
+          <tr>
+            <td><strong>Encaissé</strong> — mises à disposition payantes
+              <br><span class="muted" style="font-size:.8rem;">Recette réelle sur la période</span></td>
+            <td style="text-align:right; font-weight:800; font-variant-numeric:tabular-nums;
+                       white-space:nowrap;">{{ '%.2f'|format(valorisation.encaisse or 0) }} €</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">À recopier dans un dossier</h2>
+    <p class="muted">
+      Parce que c'est exactement ce qu'on cherche à 23 h la veille du dépôt,
+      et qu'on finit par l'inventer faute de le trouver.
+    </p>
+    <p class="bl-phrase">{{ phrase }}</p>
+  </div>
+</div>
+{% endblock %}

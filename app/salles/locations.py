@@ -29,6 +29,7 @@ from app.models import (
     Reservation,
     ReservationPrestation,
     RessourceMobile,
+    Site,
     TarifSalle,
 )
 from app.rbac import require_perm
@@ -892,3 +893,146 @@ def ressource_supprimer(ressource_id: int):
     db.session.commit()
     flash(f"« {nom} » retiré du matériel partagé.", "success")
     return redirect(url_for("salles.ressources"))
+
+
+# ---------------------------------------------------------------------------
+# Bilan : taux d'occupation et valorisation
+# ---------------------------------------------------------------------------
+
+def _periode_demandee():
+    """La période analysée : l'année scolaire en cours par défaut.
+
+    Un centre social raisonne en année scolaire, pas en année civile — un
+    bilan de septembre à juin parle à tout le monde, un bilan de janvier à
+    décembre coupe les activités en deux.
+    """
+    aujourdhui = date.today()
+    debut = _date_arg_local("debut")
+    fin = _date_arg_local("fin")
+    if debut and fin:
+        return (debut, fin) if debut <= fin else (fin, debut)
+    rentree = aujourdhui.year if aujourdhui.month >= 9 else aujourdhui.year - 1
+    return date(rentree, 9, 1), date(rentree + 1, 8, 31)
+
+
+@bp.route("/bilan")
+@login_required
+@require_perm("salles:view")
+def bilan():
+    """« Vos locaux sont-ils utilisés ? » et « que valent-ils ? »"""
+    from app.services.bilan_salles import (
+        FAMILLES_LABELS,
+        FAMILLES_OCCUPANTES,
+        PERIMETRES,
+        PERIMETRES_AIDE,
+        PERIMETRES_LABELS,
+        phrase_pour_dossier,
+        synthese,
+    )
+
+    sites = Site.query.filter(Site.actif.is_(True)).order_by(Site.nom).all()
+    site_id = request.args.get("site_id", type=int) or (sites[0].id if sites else None)
+    site = Site.query.get(site_id) if site_id else None
+    if site is None:
+        flash("Crée d'abord un site pour établir un bilan.", "warning")
+        return redirect(url_for("salles.index"))
+
+    debut, fin = _periode_demandee()
+    donnees = synthese(site.id, debut, fin, _texte_arg("perimetre", "activite"))
+
+    return render_template(
+        "salles/bilan.html",
+        site=site, sites=sites, **donnees,
+        familles_labels=FAMILLES_LABELS,
+        familles_occupantes=FAMILLES_OCCUPANTES,
+        couleurs=COULEURS_FAMILLES,
+        perimetres=PERIMETRES, perimetres_labels=PERIMETRES_LABELS,
+        perimetres_aide=PERIMETRES_AIDE,
+        phrase=phrase_pour_dossier(site, donnees),
+    )
+
+
+def _texte_arg(nom: str, defaut: str = "") -> str:
+    return (request.args.get(nom) or defaut).strip()
+
+
+#: Mêmes couleurs que le planning : l'équipe n'a pas deux codes à retenir.
+#: Validées pour les daltonismes (écart minimal 25,2 en deutan), avec
+#: libellés chiffrés systématiques pour compenser le faible contraste du
+#: vert sur fond clair.
+COULEURS_FAMILLES = {
+    "activites": "#3b82f6",
+    "equipe": "#10b981",
+    "tiers": "#8b5cf6",
+    "indisponible": "#ef4444",
+}
+
+
+@bp.route("/bilan/export.xlsx")
+@login_required
+@require_perm("salles:view")
+def bilan_export():
+    """Le même bilan en tableur, pour le coller dans un dossier."""
+    from io import BytesIO
+
+    from flask import send_file
+    from openpyxl import Workbook
+
+    from app.services.bilan_salles import FAMILLES_LABELS, phrase_pour_dossier, synthese
+
+    site_id = request.args.get("site_id", type=int)
+    site = (
+        Site.query.get_or_404(site_id) if site_id
+        else Site.query.filter(Site.actif.is_(True)).order_by(Site.id).first()
+    )
+    if site is None:
+        abort(404)
+    debut, fin = _periode_demandee()
+    donnees = synthese(site.id, debut, fin, _texte_arg("perimetre", "activite"))
+
+    classeur = Workbook()
+    feuille = classeur.active
+    feuille.title = "Occupation"
+    feuille.append([f"{site.nom} — du {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"])
+    feuille.append([f"Périmètre : {donnees['perimetre_label']} ({donnees['nb_salles']} espace(s))"])
+    feuille.append([])
+    feuille.append(["Salle", "Heures occupées", "Potentiel (h)", "Taux (%)"]
+                   + list(FAMILLES_LABELS.values()))
+    for ligne in donnees["lignes"]:
+        feuille.append(
+            [ligne["espace"].nom, ligne["heures"], ligne["potentiel"], ligne["taux"]]
+            + [ligne["familles"].get(f, 0) for f in FAMILLES_LABELS]
+        )
+    feuille.append([])
+    feuille.append(["TOTAL", donnees["total_heures"], donnees["total_potentiel"],
+                    donnees["taux_global"]])
+
+    valeurs = donnees["valorisation"]
+    bilan_feuille = classeur.create_sheet("Valorisation")
+    bilan_feuille.append(["Contributions volontaires en nature", "Montant (€)"])
+    bilan_feuille.append(["Reçu — locaux mis à disposition (prorata période)",
+                          valeurs.get("recu_periode", 0)])
+    bilan_feuille.append(["Donné — gratuités et rabais consentis", valeurs.get("donne", 0)])
+    bilan_feuille.append(["Encaissé — mises à disposition payantes", valeurs.get("encaisse", 0)])
+    bilan_feuille.append([])
+    bilan_feuille.append(["Structures accueillies", valeurs.get("structures_accueillies", 0)])
+    bilan_feuille.append(["Heures mises à disposition gratuitement",
+                          valeurs.get("heures_gratuites", 0)])
+    bilan_feuille.append([])
+    bilan_feuille.append(["Phrase pour un dossier de subvention"])
+    bilan_feuille.append([phrase_pour_dossier(site, donnees)])
+
+    for f in (feuille, bilan_feuille):
+        for colonne in f.columns:
+            largeur = max((len(str(c.value or "")) for c in colonne), default=10)
+            f.column_dimensions[colonne[0].column_letter].width = min(60, max(12, largeur + 2))
+
+    tampon = BytesIO()
+    classeur.save(tampon)
+    tampon.seek(0)
+    journaliser("salles.bilan_export", cible=site.code)
+    return send_file(
+        tampon, as_attachment=True,
+        download_name=f"occupation_{site.code}_{debut.year}-{fin.year}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
