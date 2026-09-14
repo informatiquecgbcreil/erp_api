@@ -57,9 +57,13 @@ def upgrade():
     ).fetchall():
         qpv = deduire_qpv_depuis_le_nom(nom, bool(is_qpv))
         if qpv:
+            # « is_qpv = :vrai » et non « is_qpv = 1 » : PostgreSQL a un
+            # vrai type booléen et refuse l'entier (DatatypeMismatch), là
+            # où SQLite l'accepte. On lie la valeur Python et c'est le
+            # pilote qui traduit — vrai pour les deux bases.
             bind.execute(
-                sa.text("UPDATE quartier SET qpv = :qpv, is_qpv = 1 WHERE id = :id"),
-                {"qpv": qpv, "id": identifiant},
+                sa.text("UPDATE quartier SET qpv = :qpv, is_qpv = :vrai WHERE id = :id"),
+                {"qpv": qpv, "vrai": True, "id": identifiant},
             )
 
     # 2. Uniformiser l'écriture des villes, sans jamais rapprocher deux

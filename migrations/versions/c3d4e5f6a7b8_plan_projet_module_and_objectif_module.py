@@ -25,7 +25,7 @@ def upgrade():
         sa.Column('projet_id', sa.Integer(), nullable=False),
         sa.Column('atelier_id', sa.Integer(), nullable=False),
         sa.Column('module_id', sa.Integer(), nullable=False),
-        sa.Column('actif', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('actif', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(['atelier_id'], ['atelier_activite.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['module_id'], ['pedagogie_module.id'], ondelete='CASCADE'),
