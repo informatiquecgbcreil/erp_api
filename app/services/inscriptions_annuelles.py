@@ -244,6 +244,24 @@ def _copier_coordonnees(inscription: InscriptionAnnuelle, participant: Participa
             setattr(participant, champ, valeur)
 
 
+def _libelle_genre(code, naissance=None) -> str:
+    """« F » -> « Fille » ou « Femme », selon l'âge à la date de naissance.
+
+    Un bulletin est un document papier : il porte le mot, pas le code.
+    """
+    from datetime import date as _date
+
+    from app.services.genre import libelle
+
+    age = None
+    if naissance:
+        aujourdhui = _date.today()
+        age = aujourdhui.year - naissance.year
+        if (aujourdhui.month, aujourdhui.day) < (naissance.month, naissance.day):
+            age -= 1
+    return libelle(code, age)
+
+
 def bulletin_existant(participant: Participant, annee: int) -> InscriptionAnnuelle | None:
     """Le bulletin de cette personne pour cette année scolaire, s'il existe.
 
@@ -1177,7 +1195,9 @@ def _ligne_export(inscription: InscriptionAnnuelle, utilisateurs: dict[int, str]
         inscription.nom or "",
         inscription.prenom or "",
         inscription.date_naissance.isoformat() if inscription.date_naissance else "",
-        inscription.genre or "",
+        # Le libelle et non le code : une colonne « F » dans un tableur
+        # remis a un financeur ne veut rien dire.
+        _libelle_genre(inscription.genre, inscription.date_naissance),
         inscription.adresse or "",
         inscription.code_postal or "",
         inscription.ville or "",

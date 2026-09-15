@@ -404,6 +404,21 @@ def _generate_collectif_dispositif_bw(
 # Generation: COLLECTIF
 # ---------------------------------------------------------------------
 
+def _genre_lisible(participant, a_la_date=None) -> str:
+    """Le mot a imprimer sur une feuille d'emargement.
+
+    La colonne « sexe » affichait la valeur BRUTE de la fiche. Depuis que le
+    genre est enregistre sous forme de code (F / H / A / N), cela revenait a
+    imprimer « F » sur un justificatif remis a un financeur.
+
+    L'age est pris au jour de la seance et non a aujourd'hui : une feuille
+    reimprimee deux ans plus tard doit dire ce qu'elle disait le jour meme.
+    """
+    from app.services.genre import libelle_participant
+
+    return libelle_participant(participant, a_la_date)
+
+
 def generate_collectif_docx_pdf(
     app,
     atelier,
@@ -480,7 +495,11 @@ def generate_collectif_docx_pdf(
                     "nom": f"{(p.nom or '').upper()} {(p.prenom or '')}",
                     "email": p.email or "",
                     "ddn": _format_date_fr(p.date_naissance),
-                    "sexe": p.genre or "",
+                    # Le LIBELLE, pas le code enregistre : une feuille remise
+                    # a un financeur ne peut pas porter « F ». Age pris au
+                    # jour de la seance, donc « Fille » ou « Femme » selon
+                    # l'age qu'avait la personne CE jour-la.
+                    "sexe": _genre_lisible(p, dt),
                     "type": getattr(p, "type_public", None) or "H",
                     "ville": p.ville or "",
                     "motif": motif,
@@ -537,7 +556,7 @@ def generate_collectif_docx_pdf(
             row[0].text = f"{(p.nom or '').upper()} {(p.prenom or '')}"
             row[1].text = p.email or ""
             row[2].text = _format_date_fr(p.date_naissance)
-            row[3].text = p.genre or ""
+            row[3].text = _genre_lisible(p, dt)
             row[4].text = getattr(p, "type_public", None) or "H"
             row[5].text = p.ville or ""
             row[6].text = motif
@@ -631,7 +650,7 @@ def generate_individuel_mensuel_docx(app, atelier, annee: int, mois: int) -> str
                 "nom": f"{(p.nom or '').upper()} {(p.prenom or '')}",
                 "email": p.email or "",
                 "ddn": _format_date_fr(p.date_naissance),
-                "sexe": p.genre or "",
+                "sexe": _genre_lisible(p, s.rdv_date),
                 "type": getattr(p, "type_public", None) or "H",
                 "da": _format_date_fr(s.rdv_date),
                 "heures": heures,
