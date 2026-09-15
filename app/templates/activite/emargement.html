@@ -109,6 +109,25 @@
   .regl-danger{ background:rgba(239,68,68,.18); color:#7f1d1d; border-color:rgba(239,68,68,.35); }
   .regl-neutre{ background:rgba(148,163,184,.16); color:#475569; border-color:rgba(148,163,184,.30); }
 
+  /* État de signature. Une case vide sur la feuille imprimée est la
+     première chose qu'un financeur regarde : elle doit se voir ici AVANT,
+     et sur la ligne de la personne concernée — pas seulement dans un
+     compteur en haut de page, qui ne dit pas qui. */
+  .sig-etat{ display:inline-block; padding:1px 8px; border-radius:999px; font-size:.74rem;
+             font-weight:700; white-space:nowrap; border:1px solid transparent; }
+  .sig-etat--ok{ background:rgba(34,197,94,.16); color:#166534; border-color:rgba(34,197,94,.30); }
+  .sig-etat--manque{ background:rgba(245,158,11,.22); color:#78350f; border-color:rgba(245,158,11,.40); }
+  .sig-etat--sans{ background:rgba(148,163,184,.14); color:#475569; border-color:rgba(148,163,184,.26); }
+  /* Liseré discret sur la ligne : on la repère en descendant la liste,
+     sans que la page vire au sapin de Noël. */
+  .ligne-sans-signature > td:first-child{ box-shadow: inset 3px 0 0 rgba(245,158,11,.75); }
+
+  @media (prefers-color-scheme: dark){
+    .sig-etat--ok{ color:#86efac; }
+    .sig-etat--manque{ color:#fcd34d; }
+    .sig-etat--sans{ color:#cbd5e1; }
+  }
+
   /* Repliage des blocs secondaires (voir static/js/emargement-ui.js) */
   /* Fenêtres (notes rapides, évaluation) : le gabarit suit le protocole
      Bootstrap, chargé depuis un CDN. En réseau local sans Internet la
@@ -179,7 +198,10 @@
           </button>
         </form>
         {% if session.session_type == 'COLLECTIF' %}
-          <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=session.id) }}">Générer la feuille PDF</a>
+          <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=session.id) }}"
+             {% if nb_signature_manquante %}title="{{ nb_signature_manquante }} présence(s) ne sont pas signées : l'application te le redemandera avant d'imprimer"{% endif %}>
+            Générer la feuille PDF{% if nb_signature_manquante %} <span class="sig-etat sig-etat--manque">⚠ {{ nb_signature_manquante }}</span>{% endif %}
+          </a>
         {% endif %}
         {# KIOSQUE PUBLIC #}
         {% if session.kiosk_open %}
@@ -784,7 +806,9 @@
           </thead>
           <tbody>
             {% for pr in presences %}
-              <tr>
+              {# Une présence en attente de signature se repère sur la LIGNE :
+                 un compteur en haut de page ne dit pas QUI. #}
+              <tr {% if not pr.signature_path and pr.presence_type != 'absent_excuse' %}class="ligne-sans-signature"{% endif %}>
                 <td>
                   {# FIX CRITIQUE: on envoie participant_id (pas pr.participant.id) #}
                   <input type="checkbox" class="presenceCheck" value="{{ pr.participant_id }}" />
@@ -833,7 +857,16 @@
                   </div>
                 </td>
                 <td>
-                  {% if pr.signature_path %}<span class="muted">OK</span>{% else %}<span class="muted">—</span>{% endif %}
+                  {% if pr.signature_path %}
+                    <span class="sig-etat sig-etat--ok" title="Signature recueillie">✅ Signée</span>
+                  {% elif pr.presence_type == 'absent_excuse' %}
+                    {# Une absence excusée n'a pas à être signée : sa ligne
+                       documente justement le fait de ne pas être venu. #}
+                    <span class="sig-etat sig-etat--sans" title="Une absence excusée n'a pas à être signée">— sans objet</span>
+                  {% else %}
+                    <span class="sig-etat sig-etat--manque"
+                          title="Cette ligne sortira sur la feuille imprimée avec une case de signature vide">⚠ Pas signée</span>
+                  {% endif %}
                 </td>
                 {% set pr_conso = presence_conso_map.get(pr.id, {}) %}
                 {% set cumul_conso = participant_conso_cumul_map.get(pr.participant_id, {}) %}

@@ -5,6 +5,7 @@ from app.utils.dates import utcnow
 from flask import (
     request,
     redirect,
+    render_template,
     url_for,
     flash,
     current_app,
@@ -20,6 +21,11 @@ from app.models import (
     SessionActivite,
     AtelierCapaciteMois,
     ArchiveEmargement,
+)
+from app.services.emargement import (
+    presences_sans_signature,
+    resume_signatures,
+    retirer_les_non_signees,
 )
 
 from ..rbac import require_perm
@@ -55,6 +61,25 @@ def generate_collectif(session_id: int):
     if not _can_access_activity_secteur(s.secteur):
         return _deny_activity_access()
 
+    # Garde-fou du pré-émargement. On pointe les inscrits avant la séance,
+    # puis on fait signer — au kiosque ou par lien personnel. Si quelqu'un
+    # n'est pas venu, sa ligne reste et ressort sur la feuille avec une
+    # case de signature VIDE : c'est la première chose qu'un financeur
+    # regarde. On s'arrête donc pour demander, plutôt que d'imprimer en
+    # silence une feuille trouée.
+    #
+    # « confirme=1 » veut dire que la question a été posée et tranchée.
+    manquantes = presences_sans_signature(s)
+    if manquantes and request.args.get("confirme") != "1":
+        return render_template(
+            "activite/emargement_avant_impression.html",
+            session=s,
+            atelier=atelier,
+            manquantes=manquantes,
+            resume=resume_signatures(s),
+            conso_args=_consumption_period_request_args(),
+        )
+
     conso_period_args = _consumption_period_request_args()
     out_docx, out_pdf = generate_collectif_docx_pdf(
         app=current_app,
@@ -81,6 +106,44 @@ def generate_collectif(session_id: int):
     if out_docx and os.path.exists(out_docx):
         return send_file(out_docx, as_attachment=True)
     flash("Génération échouée.", "danger")
+    return _redirect_emargement_with_period(session_id)
+
+
+@bp.route("/session/<int:session_id>/retirer-non-signees", methods=["POST"])
+@login_required
+def retirer_presences_non_signees(session_id: int):
+    """Retire d'un coup les personnes pré-émargées qui ne sont pas venues.
+
+    Proposé juste avant l'impression, quand la feuille allait sortir avec
+    des cases de signature vides. Chaque retrait est tracé au journal —
+    supprimer une ligne d'émargement n'est pas anodin.
+    """
+    require_perm("emargement:edit")(lambda: None)()
+    from app.services.audit import journaliser
+
+    s = db.get_or_404(SessionActivite, session_id)
+    if not _can_access_activity_secteur(s.secteur):
+        return _deny_activity_access()
+
+    retires = retirer_les_non_signees(
+        s,
+        journaliser_action=lambda nom: journaliser(
+            "presence.delete", cible=f"session #{session_id} · {nom} (non signée, avant impression)"
+        ),
+    )
+    if not retires:
+        flash("Aucune présence à retirer : tout est signé.", "info")
+        return _redirect_emargement_with_period(session_id)
+
+    flash(
+        f"{len(retires)} présence(s) retirée(s) : {', '.join(retires[:5])}"
+        + (f" et {len(retires) - 5} autre(s)." if len(retires) > 5 else "."),
+        "success",
+    )
+    # On enchaîne sur la génération : c'est le geste que la personne venait
+    # faire, la question de la signature est réglée.
+    if (request.form.get("puis_generer") or "") == "1":
+        return redirect(url_for("activite.generate_collectif", session_id=session_id, confirme=1))
     return _redirect_emargement_with_period(session_id)
 
 

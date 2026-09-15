@@ -1,0 +1,100 @@
+{% extends 'layout.html' %}
+{% block title %}Avant d'imprimer la feuille{% endblock %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    <h1 style="margin:0 0 6px;">Avant d'imprimer la feuille</h1>
+    <div class="muted">{{ atelier.nom }} · {{ session.date_session }}{% if session.heure_debut %} · {{ session.heure_debut }}{% if session.heure_fin %}-{{ session.heure_fin }}{% endif %}{% endif %}</div>
+  </div>
+
+  <div class="card" style="border-left:4px solid var(--warn, #f59e0b);">
+    <h2 style="margin-top:0;">
+      {{ resume.manquantes }} personne{{ 's' if resume.manquantes > 1 }}
+      n'{{ 'ont' if resume.manquantes > 1 else 'a' }} pas signé
+    </h2>
+    <p style="margin-top:0;">
+      Ces lignes sortiront sur la feuille avec une <strong>case de signature vide</strong>.
+      C'est la première chose qu'un financeur regarde. Si ces personnes ne sont
+      finalement pas venues, retire-les maintenant : après génération, la feuille
+      archivée ne bougera plus.
+    </p>
+
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr><th>Personne</th><th>Statut pointé</th></tr>
+        </thead>
+        <tbody>
+          {% for pr in manquantes %}
+            <tr>
+              <td><strong>{{ pr.participant.nom }} {{ pr.participant.prenom }}</strong></td>
+              <td class="muted">{{ 'En retard' if pr.presence_type == 'retard' else 'Présent·e' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="muted" style="font-size:.88rem; margin-bottom:0;">
+      Sur {{ resume.total }} ligne{{ 's' if resume.total > 1 }} au total :
+      {{ resume.signees }} signée{{ 's' if resume.signees > 1 }}.
+      {% if resume.excusees %}
+        {{ resume.excusees }} absence{{ 's' if resume.excusees > 1 }} excusée{{ 's' if resume.excusees > 1 }}
+        — elles n'ont pas à signer et restent sur la feuille, c'est leur rôle.
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Que veux-tu faire&nbsp;?</h2>
+    <div class="stack" style="gap:14px;">
+
+      <div>
+        <form method="post" action="{{ url_for('activite.retirer_presences_non_signees', session_id=session.id) }}"
+              onsubmit="return confirm('Retirer ces {{ resume.manquantes }} présence(s) puis générer la feuille ? Le retrait est tracé dans le journal.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="puis_generer" value="1">
+          <input type="hidden" name="conso_period_mode" value="{{ conso_args.period_mode }}">
+          <input type="hidden" name="conso_period_start" value="{{ conso_args.period_start }}">
+          <input type="hidden" name="conso_period_end" value="{{ conso_args.period_end }}">
+          <button class="btn ok" type="submit">
+            🗑 Retirer ces {{ resume.manquantes }} personne{{ 's' if resume.manquantes > 1 }} et générer la feuille
+          </button>
+        </form>
+        <div class="muted" style="font-size:.86rem; margin-top:4px;">
+          Le cas courant : on avait pointé les inscrits d'avance, certains ne sont pas venus.
+        </div>
+      </div>
+
+      <div>
+        <a class="btn" href="{{ url_for('activite.emargement', session_id=session.id) }}#signature-distance">
+          🔗 Leur envoyer un lien de signature
+        </a>
+        <div class="muted" style="font-size:.86rem; margin-top:4px;">
+          Elles étaient bien là mais n'ont pas signé&nbsp;? Chacune reçoit son lien
+          personnel et signe depuis son téléphone. Tu imprimeras après.
+        </div>
+      </div>
+
+      <div>
+        <a class="btn warn" href="{{ url_for('activite.generate_collectif', session_id=session.id, confirme=1,
+                                             conso_period_mode=conso_args.period_mode,
+                                             conso_period_start=conso_args.period_start,
+                                             conso_period_end=conso_args.period_end) }}">
+          Générer quand même, avec les cases vides
+        </a>
+        <div class="muted" style="font-size:.86rem; margin-top:4px;">
+          Les signatures seront recueillies sur le papier, à la main.
+        </div>
+      </div>
+
+      <div>
+        <a class="btn" href="{{ url_for('activite.emargement', session_id=session.id) }}">← Revenir à l'émargement</a>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

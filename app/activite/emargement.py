@@ -51,6 +51,7 @@ from app.services.consumption import (
     build_presence_consumption_maps,
     resolve_consumption_period,
 )
+from app.services.emargement import presences_sans_signature
 from app.activite.helpers import (
     _can_access_activity_secteur,
     _session_est_accessible,
@@ -609,6 +610,10 @@ def emargement(session_id: int):
             for pr in presences if pr.signature_token and not pr.signature_path
         ],
         nb_sans_signature=sum(1 for pr in presences if not pr.signature_path),
+        # Celles qui appellent une décision AVANT impression : une absence
+        # excusée n'a pas à être signée, la compter ferait sonner
+        # l'avertissement à chaque séance.
+        nb_signature_manquante=len(presences_sans_signature(s)),
         presence_conso_map=presence_conso_map,
         participant_conso_cumul_map=participant_conso_cumul_map,
         conso_period_start=conso_period_start,
