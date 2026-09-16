@@ -417,9 +417,19 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
     # comparable aux autres colonnes.
     if (wanted_type in {None, "Séance"}) and can("emargement:view"):
         def _date_texte(colonne):
+            """La date rendue en « 12/03/2026 », pour qu'on puisse la taper.
+
+            Aucune écriture portable : chaque base a sa fonction. Sur un
+            dialecte qu'on ne connaît pas on ne cherche PAS par date —
+            mieux vaut une recherche incomplète qu'une erreur. Même
+            raisonnement que pour ``_like`` : « pas PostgreSQL » ne veut
+            pas dire « SQLite ».
+            """
+            if dialect_name == "sqlite":
+                return db.func.strftime("%d/%m/%Y", colonne)
             if dialect_name == "postgresql":
                 return db.func.to_char(colonne, "DD/MM/YYYY")
-            return db.func.strftime("%d/%m/%Y", colonne)
+            return None
 
         seances_q = (
             SessionActivite.query
@@ -432,12 +442,14 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
         rows = _run_ranked_rows(
             seances_q,
             [
-                AtelierActivite.nom,
-                SessionActivite.secteur,
-                SessionActivite.intention_seance,
-                SessionActivite.creneau_source,
-                _date_texte(SessionActivite.date_session),
-                _date_texte(SessionActivite.rdv_date),
+                colonne for colonne in (
+                    AtelierActivite.nom,
+                    SessionActivite.secteur,
+                    SessionActivite.intention_seance,
+                    SessionActivite.creneau_source,
+                    _date_texte(SessionActivite.date_session),
+                    _date_texte(SessionActivite.rdv_date),
+                ) if colonne is not None
             ],
             [
                 db.func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date).desc().nullslast(),

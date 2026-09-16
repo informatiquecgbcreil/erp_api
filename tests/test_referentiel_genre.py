@@ -278,8 +278,12 @@ def test_normalisation_dune_colonne_existante(app):
         from app.services.genre import normaliser_colonne
 
         suf = _suffixe()
+        # Toutes ces valeurs tiennent dans la colonne (String(20)).
+        # « Préférez ne pas répondre » fait 24 caractères : SQLite l'aurait
+        # stockée quand même, PostgreSQL la refuse — et c'est lui qui a
+        # raison. Sa reconnaissance est vérifiée sans base, plus haut.
         anciennes = ["Femme", "F", "Fille", "Homme", "Garçon", "Autre",
-                     "Préférez ne pas répondre", "n'importe quoi"]
+                     "nsp", "n'importe quoi"]
         for i, valeur in enumerate(anciennes):
             db.session.add(Participant(nom=f"Reprise{suf}", prenom=f"P{i}", genre=valeur))
         db.session.commit()

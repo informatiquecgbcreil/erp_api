@@ -250,6 +250,10 @@ def test_un_prenom_accentue_se_trouve_lui_meme(admin_client, app):
     SQLite ne descend que l'ASCII. Les deux côtés ne se rencontraient
     jamais. Tout prénom commençant par une majuscule accentuée était donc
     invisible : Étienne, Émilie, Éric, Élodie, Ünal…
+
+    Vrai sur les deux moteurs : la casse d'une lettre accentuée est gérée
+    par SQLite via sans_accent(), par PostgreSQL via ILIKE — à condition
+    que la base porte une locale UTF-8 et non la locale C.
     """
     suf = _suffixe()
     with app.app_context():
@@ -259,13 +263,26 @@ def test_un_prenom_accentue_se_trouve_lui_meme(admin_client, app):
         db.session.add(Participant(nom=f"Étienne{suf}", prenom="Amélie"))
         db.session.commit()
 
-    for terme in (f"Étienne{suf}", f"étienne{suf}", f"ETIENNE{suf}", f"Etienne{suf}"):
+    # Les trois casses du MÊME mot — accents compris. « ETIENNE » sans
+    # accent est un autre mot pour PostgreSQL : c'est l'objet du test
+    # suivant, pas de celui-ci.
+    for terme in (f"Étienne{suf}", f"étienne{suf}", f"ÉTIENNE{suf}"):
         trouves = _chercher(admin_client, terme, "Participant")
         assert trouves, f"« {terme} » devrait retrouver la fiche"
 
 
-def test_chercher_sans_accent_trouve_avec_accent(admin_client, app):
-    """Personne ne tape les accents dans une barre de recherche."""
+def test_chercher_sans_accent_trouve_avec_accent(admin_client, app, dialecte):
+    """Personne ne tape les accents dans une barre de recherche.
+
+    Acquis sur SQLite, où la comparaison passe par une fonction maison qui
+    retire les diacritiques des DEUX côtés.
+
+    Pas sur PostgreSQL : son ILIKE gère la casse, pas les accents. « É » et
+    « E » y restent deux lettres différentes. Y parvenir demanderait
+    l'extension ``unaccent``, donc une intervention sur le serveur — un
+    choix d'exploitation, pas une ligne de code. Le test dit la vérité du
+    moteur au lieu de faire semblant.
+    """
     suf = _suffixe()
     with app.app_context():
         from app.extensions import db
@@ -274,8 +291,18 @@ def test_chercher_sans_accent_trouve_avec_accent(admin_client, app):
         db.session.add(Participant(nom=f"Küçük{suf}", prenom="Amélie"))
         db.session.commit()
 
-    assert _chercher(admin_client, f"kucuk{suf}", "Participant")
-    assert _chercher(admin_client, f"Kucuk{suf}", "Participant")
+    trouve_sans_accent = bool(_chercher(admin_client, f"kucuk{suf}", "Participant"))
+    if dialecte == "postgresql":
+        assert not trouve_sans_accent, (
+            "si cela se met à marcher sur PostgreSQL, c'est que l'extension "
+            "unaccent a été installée : ce test doit alors devenir une "
+            "assertion positive"
+        )
+        # Ce qui reste vrai partout : tapé avec ses accents, ça se trouve.
+        assert _chercher(admin_client, f"Küçük{suf}", "Participant")
+    else:
+        assert trouve_sans_accent
+        assert _chercher(admin_client, f"Kucuk{suf}", "Participant")
 
 
 def test_normalisation_identique_des_deux_cotes():
