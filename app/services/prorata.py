@@ -147,6 +147,16 @@ def venues_par_secteur(annee: int, participant_ids=None,
     debut, fin = bornes_annee_scolaire(annee)
     if a_la_date is not None and a_la_date < fin:
         fin = a_la_date
+    return venues_entre(debut, fin, participant_ids)
+
+
+def venues_entre(debut: date, fin: date, participant_ids=None) -> dict[int, dict[str, int]]:
+    """Les venues comptées entre deux dates, quelles qu'elles soient.
+
+    Le même comptage sert l'année scolaire et une période libre : c'est
+    volontaire. Deux comptages pour une même notion finiraient par ne plus
+    dire la même chose, et personne ne saurait lequel croire.
+    """
     jour = db.func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date)
 
     requete = (
@@ -280,99 +290,83 @@ def periode_couverte(annee: int, a_la_date: date | None = None) -> tuple[date, d
     return debut, min(fin, butoir) if butoir < fin else fin
 
 
-def repartition(annee: int, a_la_date: date | None = None) -> dict:
-    """La répartition complète de l'année : par personne et par secteur.
+def _titulaires(lignes):
+    """Qui porte chaque participation, et quelles fiches il faut charger.
 
-    Retourne ``{annee_scolaire, a_la_date, personnes, secteurs, totaux}``.
-
-    ``a_la_date`` rejoue l'année telle qu'elle était connue ce jour-là —
-    venues et versements compris. Sans elle, c'est l'état du jour, qui
-    continuera de bouger jusqu'au 31 août.
-
-    ``personnes`` détaille CHAQUE participation : combien de venues dans
-    quel secteur, et quelle part de son dû et de son encaissé y revient.
-    C'est ce détail qui permet de répondre à « pourquoi le Numérique a-t-il
-    420 € ? » sans ouvrir trente fiches.
-
-    ``secteurs`` en est la somme, et rien d'autre : les totaux ne sont
-    jamais calculés séparément du détail, sinon les deux finissent par
-    diverger et plus personne ne sait lequel croire.
+    Une participation est individuelle par construction — même sur un
+    bulletin familial, chaque personne paye la sienne. Mais une reprise de
+    données peut en avoir rattaché une à un foyer : on mutualise alors les
+    venues de ses membres plutôt que de perdre la somme.
     """
-    from app.services.cotisations import libelle_annee_scolaire
+    ids_directs = {c.participant_id for c, _, _ in lignes if c.participant_id}
+    foyers = {c.foyer_id for c, _, _ in lignes if c.foyer_id and not c.participant_id}
 
-    lignes = _participations_avec_reglement(annee, a_la_date)
-    if not lignes:
-        debut_vide, fin_vide = periode_couverte(annee, a_la_date)
-        return {
-            "annee_scolaire": annee,
-            "a_la_date": a_la_date,
-            "periode": {"debut": debut_vide, "fin": fin_vide},
-            "libelle_annee": libelle_annee_scolaire(annee),
-            "personnes": [],
-            "secteurs": {},
-            "totaux": {"du": 0.0, "regle": 0.0, "nb_personnes": 0, "nb_repli": 0, "venues": 0},
-        }
-
-    table = table_de_canonisation()
-
-    # Qui porte chaque participation. Elle est individuelle par construction
-    # (même sur un bulletin familial, chaque personne paye la sienne), mais
-    # une reprise de données peut en avoir rattaché une à un foyer : on
-    # mutualise alors les venues des membres plutôt que de perdre la somme.
-    ids_directs = {c.participant_id for c, _ in lignes if c.participant_id}
-    foyers = {c.foyer_id for c, _ in lignes if c.foyer_id and not c.participant_id}
     membres_par_foyer: dict[int, list[Participant]] = {}
     if foyers:
-        for membre in Participant.query.filter(Participant.foyer_id.in_(list(foyers))).all():
+        for membre in Participant.query.filter(
+                Participant.foyer_id.in_(list(foyers))).all():
             membres_par_foyer.setdefault(membre.foyer_id, []).append(membre)
 
-    ids_a_compter = set(ids_directs)
+    ids = set(ids_directs)
     for membres in membres_par_foyer.values():
-        ids_a_compter.update(m.id for m in membres)
+        ids.update(m.id for m in membres)
 
-    venues = venues_par_secteur(annee, ids_a_compter, a_la_date)
     fiches = {
-        p.id: p for p in Participant.query.filter(Participant.id.in_(list(ids_a_compter))).all()
-    } if ids_a_compter else {}
+        p.id: p for p in Participant.query.filter(Participant.id.in_(list(ids))).all()
+    } if ids else {}
+    return membres_par_foyer, fiches, ids
+
+
+def _composer(lignes, venues, table) -> dict:
+    """Le moteur, commun à l'année scolaire et à la période libre.
+
+    ``lignes`` : des triplets ``(cotisation, du, encaisse)`` déjà bornés par
+    l'appelant — c'est LUI qui décide ce qui entre dans le périmètre, ici on
+    ne fait que découper et additionner.
+
+    Un seul moteur pour les deux modes : deux calculs de la même chose
+    finissent par diverger, et c'est la comptabilité qui découvre l'écart.
+    """
+    membres_par_foyer, fiches, _ = _titulaires(lignes)
 
     personnes: list[dict] = []
     secteurs: dict[str, dict] = {}
     total_du = total_regle = 0.0
     nb_repli = 0
 
-    for cotisation, regle in lignes:
+    for cotisation, du, encaisse in lignes:
         if cotisation.participant_id:
-            titulaires = [fiches.get(cotisation.participant_id)]
+            porteurs = [fiches.get(cotisation.participant_id)]
         else:
-            titulaires = membres_par_foyer.get(cotisation.foyer_id, [])
-        titulaires = [t for t in titulaires if t is not None]
-        if not titulaires:
+            porteurs = membres_par_foyer.get(cotisation.foyer_id, [])
+        porteurs = [t for t in porteurs if t is not None]
+        if not porteurs:
             continue
-        principal = titulaires[0]
+        principal = porteurs[0]
 
         # Les venues de la personne (ou, pour un foyer, celles de tous ses
         # membres additionnées), ramenées aux libellés officiels.
         compte: dict[str, int] = {}
-        for titulaire in titulaires:
-            for secteur_brut, nb in venues.get(titulaire.id, {}).items():
+        for porteur in porteurs:
+            for secteur_brut, nb in venues.get(porteur.id, {}).items():
                 nom = canoniser(secteur_brut, table)
                 if nom:
                     compte[nom] = compte.get(nom, 0) + nb
 
         repli = not compte
         if repli:
-            # Aucune venue cette année : tout revient au secteur qui a fait
-            # venir la personne — l'ancienne règle, conservée pour ce cas.
+            # Aucune venue sur la période : tout revient au secteur qui a
+            # fait venir la personne — l'ancienne règle, gardée pour ce cas.
             orienteur = ""
-            for titulaire in titulaires:
-                orienteur = canoniser(titulaire.created_secteur, table)
+            for porteur in porteurs:
+                orienteur = canoniser(porteur.created_secteur, table)
                 if orienteur:
                     break
             compte = {orienteur or SANS_SECTEUR: 1}
             nb_repli += 1
 
-        du = round(float(cotisation.montant_du or 0), 2)
-        encaisse = round(float(regle or 0), 2)
+        du = round(float(du or 0), 2)
+        encaisse = round(float(encaisse or 0), 2)
         parts_du = decouper(du, compte)
         parts_regle = decouper(encaisse, compte)
 
@@ -395,11 +389,11 @@ def repartition(annee: int, a_la_date: date | None = None) -> dict:
         total_regle = round(total_regle + encaisse, 2)
         personnes.append({
             "participant": principal,
-            "titulaires": titulaires,
+            "titulaires": porteurs,
             "cotisation": cotisation,
             "du": du,
             "regle": encaisse,
-            "total_venues": sum(compte.values()) if not repli else 0,
+            "total_venues": 0 if repli else sum(compte.values()),
             "repli": repli,
             "secteur_orienteur": canoniser(principal.created_secteur, table),
             "parts": detail,
@@ -408,13 +402,7 @@ def repartition(annee: int, a_la_date: date | None = None) -> dict:
     personnes.sort(key=lambda p: (
         (p["participant"].nom or "").lower(), (p["participant"].prenom or "").lower()
     ))
-
-    debut_couvert, fin_couverte = periode_couverte(annee, a_la_date)
     return {
-        "annee_scolaire": annee,
-        "a_la_date": a_la_date,
-        "periode": {"debut": debut_couvert, "fin": fin_couverte},
-        "libelle_annee": libelle_annee_scolaire(annee),
         "personnes": personnes,
         "secteurs": dict(sorted(secteurs.items(), key=lambda kv: (-kv[1]["regle"], kv[0]))),
         "totaux": {
@@ -425,6 +413,140 @@ def repartition(annee: int, a_la_date: date | None = None) -> dict:
             "venues": sum(case["venues"] for case in secteurs.values()),
         },
     }
+
+
+def repartition(annee: int, a_la_date: date | None = None) -> dict:
+    """La répartition de l'ANNÉE SCOLAIRE : par personne et par secteur.
+
+    Retourne ``{mode, annee_scolaire, a_la_date, periode, personnes,
+    secteurs, totaux}``.
+
+    ``a_la_date`` rejoue l'année telle qu'elle était connue ce jour-là —
+    venues et versements compris. Sans elle, c'est l'état du jour, qui
+    continuera de bouger jusqu'au 31 août.
+
+    ``personnes`` détaille CHAQUE participation : combien de venues dans
+    quel secteur, et quelle part de son dû et de son encaissé y revient.
+    C'est ce détail qui permet de répondre à « pourquoi le Numérique a-t-il
+    420 € ? » sans ouvrir trente fiches.
+
+    ``secteurs`` en est la somme, et rien d'autre : les totaux ne sont
+    jamais calculés séparément du détail, sinon les deux finissent par
+    diverger et plus personne ne sait lequel croire.
+    """
+    from app.services.cotisations import libelle_annee_scolaire
+
+    debut, fin = periode_couverte(annee, a_la_date)
+    enveloppe = {
+        "mode": "annee_scolaire",
+        "annee_scolaire": annee,
+        "a_la_date": a_la_date,
+        "periode": {"debut": debut, "fin": fin},
+        "libelle_annee": libelle_annee_scolaire(annee),
+    }
+
+    brutes = _participations_avec_reglement(annee, a_la_date)
+    if not brutes:
+        return {**enveloppe, "personnes": [], "secteurs": {},
+                "totaux": {"du": 0.0, "regle": 0.0, "nb_personnes": 0,
+                           "nb_repli": 0, "venues": 0}}
+
+    lignes = [(cotisation, cotisation.montant_du, regle) for cotisation, regle in brutes]
+    _, _, ids = _titulaires(lignes)
+    venues = venues_entre(debut, fin, ids)
+    return {**enveloppe, **_composer(lignes, venues, table_de_canonisation())}
+
+
+# ---------------------------------------------------------------------------
+# La période libre : quand l'exercice comptable ne suit pas l'année scolaire
+# ---------------------------------------------------------------------------
+
+def _participations_de_la_periode(debut: date, fin: date):
+    """Les participations qui touchent la fenêtre, dû et encaissé bornés.
+
+    Ici, on ne raisonne plus par année scolaire mais par DATES, parce que
+    l'exercice comptable peut suivre l'année civile. Deux notions,
+    volontairement distinctes, qu'on ne mélange jamais dans la même colonne :
+
+    - **l'encaissé** est la somme des versements REÇUS dans la fenêtre.
+      C'est l'argent réellement entré, celui d'une comptabilité de
+      trésorerie ;
+    - **le dû** est le montant des participations ENREGISTRÉES dans la
+      fenêtre (date de référence du tarif). C'est ce qui a été facturé sur
+      la période.
+
+    Une participation peut n'avoir que l'un des deux : facturée en
+    septembre et payée en janvier, elle apporte son dû à un exercice et son
+    encaissement à l'autre. C'est le comportement voulu — et c'est
+    précisément pour ça qu'on ne pro-rate pas une cotisation annuelle au
+    temps, ce qui ne voudrait rien dire.
+    """
+    versements = (
+        db.session.query(
+            Paiement.cotisation_id,
+            db.func.coalesce(db.func.sum(Paiement.montant), 0.0),
+        )
+        .join(Cotisation, Cotisation.id == Paiement.cotisation_id)
+        .filter(Cotisation.type_cotisation == "participation")
+        .filter(Paiement.date_paiement >= debut, Paiement.date_paiement <= fin)
+        .group_by(Paiement.cotisation_id)
+        .all()
+    )
+    encaisse = {cid: round(float(montant or 0), 2) for cid, montant in versements}
+
+    facturees = (
+        Cotisation.query
+        .filter(Cotisation.type_cotisation == "participation")
+        .filter(Cotisation.date_reference >= debut, Cotisation.date_reference <= fin)
+        .all()
+    )
+    du = {c.id: round(float(c.montant_du or 0), 2) for c in facturees}
+
+    identifiants = set(encaisse) | set(du)
+    if not identifiants:
+        return []
+    cotisations = Cotisation.query.filter(
+        Cotisation.id.in_(list(identifiants))).all()
+    return [(c, du.get(c.id, 0.0), encaisse.get(c.id, 0.0)) for c in cotisations]
+
+
+def repartition_periode(debut: date, fin: date) -> dict:
+    """La répartition sur une fenêtre de dates libre.
+
+    Existe parce que les cotisations vivent en année SCOLAIRE tandis qu'un
+    exercice comptable peut suivre l'année CIVILE. Sans ça, la comptabilité
+    devrait recomposer son 1er janvier - 31 décembre à la main depuis deux
+    années scolaires, et personne ne le ferait deux fois.
+
+    Les venues qui découpent les montants sont celles de la MÊME fenêtre :
+    « sur l'année civile, cette personne est venue tant de fois ici et tant
+    de fois là, ses versements de l'année s'y répartissent ». Aucune venue
+    dans la fenêtre : on retombe sur le secteur orienteur, comme partout
+    ailleurs.
+
+    Même moteur de découpe et même arrondi que l'année scolaire : les
+    colonnes bouclent au centime ici aussi.
+    """
+    if fin < debut:
+        debut, fin = fin, debut
+
+    enveloppe = {
+        "mode": "periode",
+        "annee_scolaire": None,
+        "a_la_date": fin,
+        "periode": {"debut": debut, "fin": fin},
+        "libelle_annee": f"du {debut:%d/%m/%Y} au {fin:%d/%m/%Y}",
+    }
+
+    lignes = _participations_de_la_periode(debut, fin)
+    if not lignes:
+        return {**enveloppe, "personnes": [], "secteurs": {},
+                "totaux": {"du": 0.0, "regle": 0.0, "nb_personnes": 0,
+                           "nb_repli": 0, "venues": 0}}
+
+    _, _, ids = _titulaires(lignes)
+    venues = venues_entre(debut, fin, ids)
+    return {**enveloppe, **_composer(lignes, venues, table_de_canonisation())}
 
 
 # ---------------------------------------------------------------------------
@@ -604,6 +726,15 @@ def export_xlsx(vue: dict, *, arrete=None):
         nature = f"ARRÊTÉ FIGÉ au {arrete.date_arrete:%d/%m/%Y} — ces montants ne bougeront plus"
         if arrete.libelle:
             nature = f"{arrete.libelle} — {nature}"
+    elif vue.get("mode") == "periode":
+        bornes_libres = vue["periode"]
+        nature = (
+            f"PÉRIODE LIBRE du {bornes_libres['debut']:%d/%m/%Y} au "
+            f"{bornes_libres['fin']:%d/%m/%Y} — encaissements reçus et venues "
+            "constatées dans cette fenêtre. Une saisie rétroactive (présence "
+            "pointée après coup, règlement enregistré en retard) peut encore "
+            "la modifier : pour un chiffre définitif, figer un arrêté."
+        )
     else:
         nature = (
             f"RÉPARTITION PROVISOIRE au {date.today():%d/%m/%Y} — "
@@ -615,7 +746,13 @@ def export_xlsx(vue: dict, *, arrete=None):
     # d'un du-tel-jour-au-tel-jour. Et le classeur circulera loin de l'écran
     # qui l'a produit — il doit porter ses bornes lui-même.
     bornes = vue.get("periode") or {}
-    if bornes.get("debut") and bornes.get("fin"):
+    if bornes.get("debut") and bornes.get("fin") and vue.get("mode") == "periode":
+        couverture = (
+            f"Période couverte : du {bornes['debut']:%d/%m/%Y} au "
+            f"{bornes['fin']:%d/%m/%Y} (fenêtre choisie, indépendante de "
+            "l'année scolaire)."
+        )
+    elif bornes.get("debut") and bornes.get("fin"):
         couverture = (
             f"Période couverte : du {bornes['debut']:%d/%m/%Y} au {bornes['fin']:%d/%m/%Y} "
             "(année scolaire de septembre à août — à ne pas confondre avec "
@@ -630,7 +767,8 @@ def export_xlsx(vue: dict, *, arrete=None):
     # --- Onglet 1 : par secteur -------------------------------------------
     feuille = wb.active
     feuille.title = "Par secteur"
-    feuille.append([f"Répartition de la participation — {vue['libelle_annee']}"])
+    titre = vue.get("libelle_annee") or ""
+    feuille.append([f"Répartition de la participation — {titre}"])
     feuille["A1"].font = Font(bold=True, size=13)
     feuille.append([nature])
     feuille.append([couverture])
@@ -641,8 +779,17 @@ def export_xlsx(vue: dict, *, arrete=None):
     ])
     feuille.append([])
 
-    entetes = ["Secteur", "Venues", "Personnes", "Part de l'encaissé",
-               "Dû (€)", "Encaissé (€)"]
+    if vue.get("mode") == "periode":
+        # « Dû » et « Encaissé » ne comptent pas la même chose sur une
+        # fenêtre libre : l'un est ce qui a été facturé dans la période,
+        # l'autre ce qui y est rentré. Une participation facturée en
+        # septembre et payée en janvier apporte l'un à un exercice et
+        # l'autre au suivant. Les intituler pareil serait un piège.
+        entetes = ["Secteur", "Venues", "Personnes", "Part de l'encaissé",
+                   "Facturé dans la période (€)", "Encaissé dans la période (€)"]
+    else:
+        entetes = ["Secteur", "Venues", "Personnes", "Part de l'encaissé",
+                   "Dû (€)", "Encaissé (€)"]
     feuille.append(entetes)
     ligne_entetes = feuille.max_row
     for cellule in feuille[ligne_entetes]:

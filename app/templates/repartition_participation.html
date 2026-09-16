@@ -12,6 +12,10 @@
   .rp-nature .det{ font-size:.87rem; opacity:.9; }
   .rp-vivant{ background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.38); color:#6b3d05; }
   .rp-fige{ background:rgba(34,197,94,.13); border-color:rgba(34,197,94,.34); color:#14532d; }
+  /* Ni provisoire ni figé : une fenêtre choisie, qu'une saisie rétroactive
+     peut encore bouger. Sa propre couleur, pour qu'on ne la confonde ni
+     avec l'un ni avec l'autre. */
+  .rp-periode{ background:rgba(90,120,255,.12); border-color:rgba(90,120,255,.34); color:#1e3a8a; }
 
   .rp-cartes{ display:flex; flex-wrap:wrap; gap:14px; margin-top:14px; }
   .rp-cartes .carte{ border:1px solid var(--border, #e3e6ef); border-radius:12px; padding:14px 18px;
@@ -80,16 +84,55 @@
     <div class="ui-actions inline-actions" style="margin-top:6px;">
       <a class="btn" href="{{ url_for('main.repartition_participation_xlsx', annee=annee,
                                       arrete=(arrete_affiche.id if arrete_affiche else 'vivant'),
-                                      secteur=(secteur_filtre or '')) }}">
+                                      secteur=(secteur_filtre or ''),
+                                      debut=debut_libre, fin=fin_libre) }}">
         📊 Exporter en Excel
       </a>
     </div>
+
+    {# Les cotisations vivent en année SCOLAIRE, un exercice comptable peut
+       suivre l'année CIVILE. Sans cette fenêtre libre, la comptabilité
+       recomposerait son 1er janvier - 31 décembre à la main depuis deux
+       années scolaires — et ne le ferait pas deux fois. #}
+    <form method="get" action="{{ url_for('main.repartition_participation') }}"
+          class="ui-actions inline-actions" style="margin-top:6px; align-items:flex-end; gap:8px;">
+      {% if secteur_filtre and peut_choisir_secteur %}
+        <input type="hidden" name="secteur" value="{{ secteur_filtre }}">
+      {% endif %}
+      <label class="field-stack slim"><span>Ou une période libre — du</span>
+        <input class="in" type="date" name="debut" value="{{ debut_libre }}">
+      </label>
+      <label class="field-stack slim"><span>au</span>
+        <input class="in" type="date" name="fin" value="{{ fin_libre }}">
+      </label>
+      <button class="btn" type="submit">Calculer sur cette période</button>
+      {% if vue.mode == 'periode' %}
+        <a class="mini-link" href="{{ url_for('main.repartition_participation', annee=annee) }}">Revenir à l'année scolaire</a>
+      {% endif %}
+    </form>
   </section>
 
   {# ------------------------------------------------------------------ #}
   {# Provisoire ou définitif : impossible à manquer.                     #}
   {# ------------------------------------------------------------------ #}
-  {% if arrete_affiche %}
+  {% if vue.mode == 'periode' %}
+    <div class="rp-nature rp-periode">
+      <span class="ico">📅</span>
+      <div>
+        <strong>Période libre : du {{ vue.periode.debut.strftime('%d/%m/%Y') }}
+        au {{ vue.periode.fin.strftime('%d/%m/%Y') }}</strong>
+        <span class="det">
+          Fenêtre choisie, indépendante de l'année scolaire — pour un exercice
+          comptable qui suit l'année civile. Sont comptés les
+          <strong>encaissements reçus</strong> et les <strong>venues constatées</strong>
+          dans cette fenêtre.
+          <br>Une saisie rétroactive (présence pointée après coup, règlement
+          enregistré en retard) peut encore modifier ces montants.
+          <strong>Pour un chiffre définitif, figez un arrêté.</strong>
+        </span>
+      </div>
+    </div>
+  {% elif arrete_affiche %}
     <div class="rp-nature rp-fige">
       <span class="ico">🔒</span>
       <div>
@@ -132,14 +175,22 @@
   {# ------------------------------------------------------------------ #}
   <div class="rp-cartes">
     <div class="carte principale">
-      <div class="lib">Encaissé à répartir{% if secteur_filtre %} · {{ secteur_filtre }}{% endif %}</div>
+      <div class="lib">{{ 'Encaissé dans la période' if vue.mode == 'periode' else 'Encaissé à répartir' }}{% if secteur_filtre %} · {{ secteur_filtre }}{% endif %}</div>
       <div class="val">{{ "%.2f"|format(vue.totaux.regle) }} €</div>
       <div class="sous">Ce qui est réellement rentré</div>
     </div>
     <div class="carte">
-      <div class="lib">Dû (facturé)</div>
+      <div class="lib">{{ 'Facturé dans la période' if vue.mode == 'periode' else 'Dû (facturé)' }}</div>
       <div class="val">{{ "%.2f"|format(vue.totaux.du) }} €</div>
-      <div class="sous">Budget théorique, règlements compris ou non</div>
+      <div class="sous">
+        {% if vue.mode == 'periode' %}
+          Participations enregistrées dans la fenêtre — une participation
+          facturée en septembre et payée en janvier compte ici pour l'une,
+          là pour l'autre
+        {% else %}
+          Budget théorique, règlements compris ou non
+        {% endif %}
+      </div>
     </div>
     <div class="carte">
       <div class="lib">Participations</div>
@@ -171,7 +222,7 @@
               <th class="m">Venues</th>
               <th class="m">Personnes</th>
               <th style="width:22%;">Part</th>
-              <th class="m">Dû</th>
+              <th class="m">{{ 'Facturé' if vue.mode == 'periode' else 'Dû' }}</th>
               <th class="m">Encaissé</th>
             </tr>
           </thead>
@@ -261,7 +312,7 @@
   {% else %}
     <div class="quick-empty" style="margin-top:14px;">
       <strong>Aucune participation à répartir</strong>
-      Rien n'est enregistré pour {{ libelle_annee }}{% if secteur_filtre %} sur le secteur {{ secteur_filtre }}{% endif %}.
+      Rien n'est enregistré pour {{ vue.libelle_annee or libelle_annee }}{% if secteur_filtre %} sur le secteur {{ secteur_filtre }}{% endif %}.
     </div>
   {% endif %}
 
