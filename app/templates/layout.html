@@ -749,6 +749,7 @@
                   {% endif %}
                   {% if can('cotisations:view') %}
                     <a class="pill {% if ep == 'main.impayes' %}active{% endif %}" href="{{ url_for('main.impayes') }}">Impayés (adhésions &amp; participation)</a>
+                    <a class="pill {% if ep.startswith('main.repartition') %}active{% endif %}" href="{{ url_for('main.repartition_participation') }}">Répartition de la participation</a>
                   {% endif %}
                   {% if can('cotisations:tarifs') %}
                     <a class="pill {% if ep == 'main.tarifs_cotisations' %}active{% endif %}" href="{{ url_for('main.tarifs_cotisations') }}">Tarifs adhésions &amp; participation</a>

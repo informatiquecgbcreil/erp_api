@@ -786,3 +786,320 @@ def test_le_dernier_arrete_est_le_plus_recent(app, annee_type, sans_arretes):
         arreter(2025, date(2025, 12, 31))
         arreter(2025, date(2026, 3, 31))
         assert dernier_arrete(2025).date_arrete == date(2026, 3, 31)
+
+
+# ---------------------------------------------------------------------------
+# L'écran : quatre métiers doivent y lire la même chose
+# ---------------------------------------------------------------------------
+
+def _page(admin_client, **params):
+    from urllib.parse import urlencode
+
+    r = admin_client.get("/repartition-participation?" + urlencode(params))
+    assert r.status_code == 200, r.status_code
+    return r.get_data(as_text=True)
+
+
+def test_lecran_montre_la_repartition_par_secteur(admin_client, annee_type, sans_arretes):
+    page = _page(admin_client, annee=2025)
+    for secteur, _ in SCENARIO:
+        assert secteur in page
+    assert "Encaissé à répartir" in page
+    assert "20.00 €" in page
+
+
+def test_lecran_dit_que_le_chiffre_vivant_est_provisoire(admin_client, annee_type, sans_arretes):
+    """LA mention qui évite d'engager un budget sur un chiffre qui bouge."""
+    page = _page(admin_client, annee=2025)
+    assert "Répartition provisoire" in page
+    assert "bougera à chaque séance pointée" in page
+    assert "arrêté figé" in page
+
+
+def test_lecran_dun_arrete_dit_quil_ne_bouge_plus(admin_client, app, annee_type, sans_arretes):
+    with app.app_context():
+        from app.services.prorata import arreter
+
+        arrete, message = arreter(2025, date(2026, 8, 31), libelle="Clôture d'année")
+        assert arrete is not None, message
+        arrete_id = arrete.id
+
+    page = _page(admin_client, annee=2025, arrete=arrete_id)
+    assert "Arrêté figé au 31/08/2026" in page
+    assert "ne bougeront plus" in page
+    # Et surtout : pas le bandeau du provisoire en même temps.
+    assert "Répartition provisoire" not in page
+
+
+def test_lecran_montre_le_detail_par_personne(admin_client, annee_type, sans_arretes):
+    """« Pourquoi le Numérique a-t-il ce montant ? » doit se répondre ici,
+    sans ouvrir trente fiches."""
+    page = _page(admin_client, annee=2025)
+    assert annee_type["nom"] in page
+    assert "Détail par personne" in page
+    # La part d'un secteur est affichée avec les venues qui la justifient.
+    assert "Numérique × 20" in page
+
+
+def test_le_filtre_secteur_ne_montre_que_ce_secteur(admin_client, annee_type, sans_arretes):
+    page = _page(admin_client, annee=2025, secteur="EPE")
+    assert "EPE" in page
+    # Le tableau par secteur ne doit plus lister les autres.
+    debut = page.index("Par secteur")
+    tableau = page[debut:page.index("Détail par personne")]
+    assert "Insertion Sociale et Professionnelle" not in tableau
+
+
+def test_arreter_depuis_lecran(admin_client, app, annee_type, sans_arretes):
+    r = admin_client.post("/repartition-participation/arreter", data={
+        "annee": "2025", "date_arrete": "2026-08-31", "libelle": "Clôture",
+    }, follow_redirects=True)
+    assert r.status_code == 200
+    assert "Répartition arrêtée au 31/08/2026" in r.get_data(as_text=True)
+
+    with app.app_context():
+        from app.models import RepartitionArretee
+
+        assert RepartitionArretee.query.filter_by(annee_scolaire=2025).count() == 1
+
+
+def test_une_date_darrete_invalide_ne_casse_pas_lecran(admin_client, sans_arretes):
+    r = admin_client.post("/repartition-participation/arreter", data={
+        "annee": "2025", "date_arrete": "pas une date",
+    }, follow_redirects=True)
+    assert r.status_code == 200
+    assert "invalide" in r.get_data(as_text=True)
+
+
+def test_supprimer_un_arrete_permet_de_le_refaire(admin_client, app, annee_type, sans_arretes):
+    with app.app_context():
+        from app.services.prorata import arreter
+
+        arrete, _ = arreter(2025, date(2026, 8, 31))
+        arrete_id = arrete.id
+
+    r = admin_client.post(
+        f"/repartition-participation/arrete/{arrete_id}/supprimer", follow_redirects=True)
+    assert r.status_code == 200
+    assert "Arrêté supprimé" in r.get_data(as_text=True)
+
+    with app.app_context():
+        from app.extensions import db
+        from app.models import RepartitionArretee, RepartitionArreteeLigne
+        from app.services.prorata import arreter
+
+        assert db.session.get(RepartitionArretee, arrete_id) is None
+        # Les lignes partent avec : une cascade ORM, parce que SQLite
+        # n'applique pas ON DELETE CASCADE tout seul.
+        assert RepartitionArreteeLigne.query.filter_by(arrete_id=arrete_id).count() == 0
+        refait, message = arreter(2025, date(2026, 8, 31))
+        assert refait is not None, message
+
+
+def test_lecran_est_ferme_sans_le_droit_cotisations(client):
+    """Un visiteur non connecté ne voit pas la comptabilité des secteurs."""
+    r = client.get("/repartition-participation")
+    assert r.status_code in (302, 401, 403)
+
+
+# ---------------------------------------------------------------------------
+# La fiche participant : ce que l'accueil a sous les yeux
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def cette_annee(app):
+    """Un décor dans l'année scolaire EN COURS.
+
+    La fiche participant n'affiche que la cotisation de l'année courante —
+    c'est son travail. Un décor daté d'une année révolue n'y apparaîtrait
+    pas, et le test passerait à côté de ce qu'il croit vérifier.
+    """
+    from app.services.cotisations import annee_scolaire_courante
+
+    suf = _suffixe()
+    with app.app_context():
+        from app.extensions import db
+        from app.models import (
+            AtelierActivite, Cotisation, Paiement, Participant,
+            PresenceActivite, SessionActivite,
+        )
+
+        annee = annee_scolaire_courante()
+        jour = date(annee, 9, 5)
+        personne = Participant(nom=f"Fiche{suf}", prenom="Sam",
+                               created_secteur="Numérique")
+        db.session.add(personne)
+        db.session.flush()
+
+        ateliers = []
+        for secteur, nombre in (("Numérique", 3), ("Familles", 1)):
+            atelier = AtelierActivite(secteur=secteur, nom=f"Fi{suf}{secteur[:4]}")
+            db.session.add(atelier)
+            db.session.flush()
+            ateliers.append(atelier.id)
+            for i in range(nombre):
+                s = SessionActivite(atelier_id=atelier.id, secteur=secteur,
+                                    session_type="COLLECTIF", date_session=jour,
+                                    heure_debut="14:00", heure_fin="16:00")
+                db.session.add(s)
+                db.session.flush()
+                db.session.add(PresenceActivite(session_id=s.id,
+                                                participant_id=personne.id))
+
+        cot = Cotisation(annee_scolaire=annee, type_cotisation="participation",
+                         participant_id=personne.id, montant_du=20.0,
+                         date_reference=jour)
+        db.session.add(cot)
+        db.session.flush()
+        db.session.add(Paiement(cotisation_id=cot.id, montant=20.0,
+                                date_paiement=jour, mode="especes"))
+        db.session.commit()
+        contexte = {"participant_id": personne.id, "ateliers": ateliers, "annee": annee}
+
+    yield contexte
+
+    with app.app_context():
+        from app.extensions import db
+        from app.models import (
+            ArchiveEmargement, AtelierActivite, Participant, PresenceActivite,
+        )
+
+        for pr in PresenceActivite.query.filter_by(
+                participant_id=contexte["participant_id"]).all():
+            db.session.delete(pr)
+        for aid in contexte["ateliers"]:
+            for archive in ArchiveEmargement.query.filter_by(atelier_id=aid).all():
+                db.session.delete(archive)
+        db.session.flush()
+        for aid in contexte["ateliers"]:
+            a = db.session.get(AtelierActivite, aid)
+            if a is not None:
+                db.session.delete(a)
+        p = db.session.get(Participant, contexte["participant_id"])
+        if p is not None:
+            db.session.delete(p)
+        db.session.commit()
+
+
+def test_la_fiche_dit_ou_part_la_participation(admin_client, cette_annee):
+    """« Et mes 20 €, ils vont où ? » doit se répondre sur la fiche, sans
+    aller chercher un tableau de bord."""
+    r = admin_client.get(f"/participants/{cette_annee['participant_id']}/synthese")
+    assert r.status_code == 200
+    page = r.get_data(as_text=True)
+    assert "Réparti entre les secteurs" in page
+    # Trois venues en Numérique sur quatre : 15,00 € des 20 €.
+    assert "15.00 €" in page
+    assert "5.00 €" in page
+
+
+def test_lencart_de_la_fiche_dit_la_meme_chose_que_le_tableau(app, annee_type):
+    """Deux calculs de la même chose finissent par diverger, et c'est
+    l'accueil qui se fait contredire par le tableau de la direction."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant
+        from app.services.prorata import repartition, repartition_personne
+
+        fiche = db.session.get(Participant, annee_type["participant_id"])
+        encart = repartition_personne(fiche, 2025)
+        tableau = next(p for p in repartition(2025)["personnes"]
+                       if p["participant"].id == fiche.id)
+        assert encart["parts"] == tableau["parts"]
+
+
+def test_sans_participation_pas_dencart(app, annee_type):
+    """Afficher un bloc vide ferait croire à un bug."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Cotisation, Participant
+        from app.services.prorata import repartition_personne
+
+        cot = db.session.get(Cotisation, annee_type["cotisation_id"])
+        db.session.delete(cot)
+        db.session.commit()
+
+        fiche = db.session.get(Participant, annee_type["participant_id"])
+        assert repartition_personne(fiche, 2025) is None
+
+
+# ---------------------------------------------------------------------------
+# L'export : un classeur qui se défend tout seul
+# ---------------------------------------------------------------------------
+
+def _classeur(admin_client, **params):
+    from io import BytesIO
+    from urllib.parse import urlencode
+
+    from openpyxl import load_workbook
+
+    r = admin_client.get("/repartition-participation.xlsx?" + urlencode(params))
+    assert r.status_code == 200, r.status_code
+    assert "spreadsheetml" in r.headers["Content-Type"]
+    return load_workbook(BytesIO(r.data))
+
+
+def test_lexport_a_les_trois_onglets(admin_client, annee_type, sans_arretes):
+    wb = _classeur(admin_client, annee=2025)
+    assert wb.sheetnames == ["Par secteur", "Détail par personne", "Contrôle"]
+
+
+def test_lexport_boucle_et_le_dit(admin_client, annee_type, sans_arretes):
+    """L'onglet Contrôle fait le rapprochement que la comptabilité ferait à
+    la main. L'écart doit être nul, et visible."""
+    wb = _classeur(admin_client, annee=2025)
+    controle = wb["Contrôle"]
+    lignes = {controle.cell(row=r, column=1).value: (
+        controle.cell(row=r, column=2).value, controle.cell(row=r, column=3).value)
+        for r in range(5, 8)}
+    assert lignes["Somme des parts par secteur"] == (20.0, 20.0)
+    assert lignes["Somme des participations"] == (20.0, 20.0)
+    assert lignes["Écart"] == (0.0, 0.0)
+
+
+def test_lexport_dit_sil_est_provisoire(admin_client, annee_type, sans_arretes):
+    """Un tableur circule par courriel, détaché de l'écran qui l'a produit.
+    Trois mois plus tard, personne ne saura dire ce qu'il portait."""
+    wb = _classeur(admin_client, annee=2025)
+    for onglet in wb.sheetnames:
+        nature = wb[onglet]["A2"].value or ""
+        assert "PROVISOIRE" in nature, onglet
+
+
+def test_lexport_dun_arrete_dit_quil_est_fige(admin_client, app, annee_type, sans_arretes):
+    with app.app_context():
+        from app.services.prorata import arreter
+
+        arrete, message = arreter(2025, date(2026, 8, 31), libelle="Clôture d'année")
+        assert arrete is not None, message
+        arrete_id = arrete.id
+
+    wb = _classeur(admin_client, annee=2025, arrete=arrete_id)
+    for onglet in wb.sheetnames:
+        nature = wb[onglet]["A2"].value or ""
+        assert "ARRÊTÉ FIGÉ au 31/08/2026" in nature, onglet
+        assert "PROVISOIRE" not in nature, onglet
+    assert "Clôture d'année" in wb["Par secteur"]["A2"].value
+
+
+def test_lexport_detaille_chaque_part(admin_client, annee_type, sans_arretes):
+    wb = _classeur(admin_client, annee=2025)
+    detail = wb["Détail par personne"]
+    lignes = [
+        [detail.cell(row=r, column=c).value for c in range(1, 8)]
+        for r in range(5, detail.max_row + 1)
+    ]
+    par_secteur = {ligne[1]: ligne for ligne in lignes if ligne[0]}
+    assert set(par_secteur) == {nom for nom, _ in SCENARIO}
+    assert par_secteur["Numérique"][2] == 20          # venues dans ce secteur
+    assert par_secteur["Numérique"][3] == 28          # total des venues
+    # Et la somme des parts refait la participation.
+    assert round(sum(ligne[5] for ligne in lignes if ligne[0]), 2) == 20.0
+
+
+def test_le_nom_du_fichier_dit_ce_quil_contient(admin_client, annee_type, sans_arretes):
+    r = admin_client.get("/repartition-participation.xlsx?annee=2025")
+    entete = r.headers["Content-Disposition"]
+    assert "repartition_participation" in entete
+    assert "2025-2026" in entete
+    assert "provisoire" in entete

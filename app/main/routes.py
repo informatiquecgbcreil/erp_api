@@ -23,6 +23,7 @@ from app.main import (  # noqa: F401
     qualite_donnees,
     parcours,
     recherche,
+    repartition,
     rh,
     stats,
     subventions,

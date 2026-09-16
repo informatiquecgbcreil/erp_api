@@ -511,3 +511,205 @@ def dernier_arrete(annee: int):
     """Le dernier arrêté de l'année, s'il y en a un."""
     liste = arretes(annee)
     return liste[0] if liste else None
+
+
+# ---------------------------------------------------------------------------
+# Une seule personne : ce que l'accueil a sous les yeux
+# ---------------------------------------------------------------------------
+
+def repartition_personne(participant, annee: int) -> dict | None:
+    """Comment la participation de CETTE personne se répartit, cette année.
+
+    Pensé pour la fiche participant : à l'accueil, la question arrive de
+    face — « et mes 20 €, ils vont où ? ». Y répondre en ouvrant un
+    tableau de bord global serait absurde.
+
+    Rend ``None`` s'il n'y a pas de participation enregistrée : il n'y a
+    alors rien à répartir, et afficher un bloc vide ferait croire à un
+    bug.
+
+    Le calcul est celui de l'année entière, borné à une personne — jamais
+    une seconde formule. Deux calculs de la même chose finissent par
+    diverger, et c'est l'accueil qui se fait contredire par le tableau de
+    la direction.
+    """
+    fiche_id = getattr(participant, "id", None)
+    if not fiche_id:
+        return None
+
+    lignes = _participations_avec_reglement(annee)
+    concernee = None
+    for cotisation, regle in lignes:
+        if cotisation.participant_id == fiche_id:
+            concernee = (cotisation, regle)
+            break
+        if cotisation.foyer_id and not cotisation.participant_id:
+            if getattr(participant, "foyer_id", None) == cotisation.foyer_id:
+                concernee = (cotisation, regle)
+                break
+    if concernee is None:
+        return None
+
+    vue = repartition(annee)
+    for personne in vue["personnes"]:
+        if personne["participant"].id == fiche_id:
+            return personne
+        if any(t.id == fiche_id for t in personne["titulaires"]):
+            return personne
+    return None
+
+
+# ---------------------------------------------------------------------------
+# L'export : un classeur qui se défend tout seul
+# ---------------------------------------------------------------------------
+
+def export_xlsx(vue: dict, *, arrete=None):
+    """Le classeur de la répartition. Deux onglets et un contrôle.
+
+    Un tableur circule par courriel, détaché de l'écran qui l'a produit.
+    Trois mois plus tard, personne ne saura dire s'il portait un chiffre
+    provisoire ou un arrêté. **L'en-tête le dit donc en toutes lettres**,
+    sur chaque onglet.
+
+    L'onglet « Contrôle » est là pour la comptabilité : il rapproche la
+    somme des colonnes de la somme des participations et affiche l'écart.
+    C'est la première chose qu'elle vérifiera — autant la lui donner
+    plutôt que de la laisser la refaire à la main.
+    """
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    if arrete is not None:
+        nature = f"ARRÊTÉ FIGÉ au {arrete.date_arrete:%d/%m/%Y} — ces montants ne bougeront plus"
+        if arrete.libelle:
+            nature = f"{arrete.libelle} — {nature}"
+    else:
+        nature = (
+            f"RÉPARTITION PROVISOIRE au {date.today():%d/%m/%Y} — "
+            "elle bougera à chaque séance pointée. Pour engager un budget, "
+            "utiliser un arrêté figé."
+        )
+
+    gras = Font(bold=True)
+    wb = Workbook()
+
+    # --- Onglet 1 : par secteur -------------------------------------------
+    feuille = wb.active
+    feuille.title = "Par secteur"
+    feuille.append([f"Répartition de la participation — {vue['libelle_annee']}"])
+    feuille["A1"].font = Font(bold=True, size=13)
+    feuille.append([nature])
+    feuille.append([
+        "Au prorata des venues réelles (présent, retard). Les absences excusées "
+        "ne comptent pas. Qui n'est venu nulle part est rattaché au secteur "
+        "qui l'a fait venir."
+    ])
+    feuille.append([])
+
+    entetes = ["Secteur", "Venues", "Personnes", "Part de l'encaissé",
+               "Dû (€)", "Encaissé (€)"]
+    feuille.append(entetes)
+    for cellule in feuille[5]:
+        cellule.font = gras
+
+    total_regle = vue["totaux"]["regle"] or 0.0
+    for nom, case in vue["secteurs"].items():
+        feuille.append([
+            nom, case["venues"], case["nb_personnes"],
+            round(case["regle"] / total_regle, 4) if total_regle else 0,
+            case["du"], case["regle"],
+        ])
+    premiere, derniere = 6, 5 + len(vue["secteurs"])
+    for ligne in range(premiere, derniere + 1):
+        feuille.cell(row=ligne, column=4).number_format = "0.0%"
+        feuille.cell(row=ligne, column=5).number_format = "#,##0.00"
+        feuille.cell(row=ligne, column=6).number_format = "#,##0.00"
+
+    feuille.append([])
+    feuille.append(["TOTAL", vue["totaux"]["venues"], vue["totaux"]["nb_personnes"],
+                    1 if total_regle else 0, vue["totaux"]["du"], vue["totaux"]["regle"]])
+    ligne_total = feuille.max_row
+    for cellule in feuille[ligne_total]:
+        cellule.font = gras
+    feuille.cell(row=ligne_total, column=4).number_format = "0.0%"
+    feuille.cell(row=ligne_total, column=5).number_format = "#,##0.00"
+    feuille.cell(row=ligne_total, column=6).number_format = "#,##0.00"
+
+    feuille.freeze_panes = "A6"
+    for index, largeur in enumerate((38, 10, 12, 18, 14, 14), start=1):
+        feuille.column_dimensions[get_column_letter(index)].width = largeur
+    feuille["A2"].alignment = Alignment(wrap_text=False)
+
+    # --- Onglet 2 : le détail qui justifie chaque part ---------------------
+    detail = wb.create_sheet("Détail par personne")
+    detail.append([f"Détail de la répartition — {vue['libelle_annee']}"])
+    detail["A1"].font = Font(bold=True, size=13)
+    detail.append([nature])
+    detail.append([])
+    colonnes = ["Personne", "Secteur", "Venues dans ce secteur",
+                "Total venues de la personne", "Dû réparti (€)",
+                "Encaissé réparti (€)", "Sans venue (repli)"]
+    detail.append(colonnes)
+    for cellule in detail[4]:
+        cellule.font = gras
+
+    nb_lignes = 0
+    for personne in vue["personnes"]:
+        fiche = personne.get("participant")
+        nom = personne.get("nom") or (
+            f"{fiche.nom or ''} {fiche.prenom or ''}".strip() if fiche else "")
+        for secteur, part in personne["parts"].items():
+            detail.append([
+                nom, secteur, part["venues"], personne["total_venues"],
+                part["du"], part["regle"],
+                "oui" if personne["repli"] else "",
+            ])
+            nb_lignes += 1
+    for ligne in range(5, 5 + nb_lignes):
+        detail.cell(row=ligne, column=5).number_format = "#,##0.00"
+        detail.cell(row=ligne, column=6).number_format = "#,##0.00"
+
+    detail.freeze_panes = "A5"
+    if nb_lignes:
+        detail.auto_filter.ref = f"A4:{get_column_letter(len(colonnes))}{4 + nb_lignes}"
+    for index, largeur in enumerate((32, 38, 22, 26, 16, 18, 16), start=1):
+        detail.column_dimensions[get_column_letter(index)].width = largeur
+
+    # --- Onglet 3 : le contrôle que la comptabilité ferait à la main -------
+    controle = wb.create_sheet("Contrôle")
+    controle.append(["Contrôle de bouclage"])
+    controle["A1"].font = Font(bold=True, size=13)
+    controle.append([nature])
+    controle.append([])
+    controle.append(["Vérification", "Dû (€)", "Encaissé (€)"])
+    for cellule in controle[4]:
+        cellule.font = gras
+
+    somme_secteurs_du = round(sum(c["du"] for c in vue["secteurs"].values()), 2)
+    somme_secteurs_regle = round(sum(c["regle"] for c in vue["secteurs"].values()), 2)
+    controle.append(["Somme des parts par secteur", somme_secteurs_du, somme_secteurs_regle])
+    controle.append(["Somme des participations", vue["totaux"]["du"], vue["totaux"]["regle"]])
+    controle.append(["Écart",
+                     round(somme_secteurs_du - vue["totaux"]["du"], 2),
+                     round(somme_secteurs_regle - vue["totaux"]["regle"], 2)])
+    for ligne in range(5, 8):
+        for colonne in (2, 3):
+            controle.cell(row=ligne, column=colonne).number_format = "#,##0.00"
+    for cellule in controle[7]:
+        cellule.font = gras
+    controle.append([])
+    controle.append([
+        "Un écart non nul signalerait un arrondi perdu. La répartition "
+        "distribue les centimes restants au plus fort reste : l'écart doit "
+        "toujours être de 0,00 €."
+    ])
+    for index, largeur in enumerate((44, 16, 18), start=1):
+        controle.column_dimensions[get_column_letter(index)].width = largeur
+
+    sortie = BytesIO()
+    wb.save(sortie)
+    sortie.seek(0)
+    return sortie
