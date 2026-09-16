@@ -95,6 +95,8 @@
       <div>
         <strong>Arrêté figé au {{ arrete_affiche.date_arrete.strftime('%d/%m/%Y') }}</strong>
         <span class="det">
+          <strong>Période couverte : du {{ vue.periode.debut.strftime('%d/%m/%Y') }}
+          au {{ vue.periode.fin.strftime('%d/%m/%Y') }}</strong> (année scolaire).
           Ces montants ne bougeront plus. Ils rejouent l'année telle qu'elle était connue
           ce jour-là — venues et règlements compris.
           {% if arrete_affiche.cree_par %}Établi par {{ arrete_affiche.cree_par.email }}.{% endif %}
@@ -108,6 +110,9 @@
       <div>
         <strong>Répartition provisoire, au {{ aujourdhui.strftime('%d/%m/%Y') }}</strong>
         <span class="det">
+          <strong>Période couverte : du {{ vue.periode.debut.strftime('%d/%m/%Y') }}
+          au {{ vue.periode.fin.strftime('%d/%m/%Y') }}</strong> (année scolaire —
+          à ne pas confondre avec l'exercice comptable, qui peut suivre l'année civile).
           Elle bougera à chaque séance pointée jusqu'au 31 août {{ annee + 1 }} :
           une personne qui fréquentera davantage un autre secteur déplacera sa part.
           <strong>Pour engager un budget, appuyez-vous sur un arrêté figé.</strong>
