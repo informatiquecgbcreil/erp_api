@@ -88,6 +88,21 @@ class Config:
     if _db_url.startswith("postgres://"):
         _db_url = _db_url.replace("postgres://", "postgresql://", 1)
 
+    # Un « postgresql:// » sans pilote explicite fait chercher psycopg2 à
+    # SQLAlchemy — c'est son défaut historique. Or nous tournons sur
+    # psycopg 3. Sans cette bascule, une installation neuve démarre sur
+    # « ModuleNotFoundError: No module named 'psycopg2' » alors que le
+    # pilote est bien installé, simplement pas celui qu'on lui demande.
+    # On ne touche à rien si l'URL nomme déjà son pilote (« +psycopg »,
+    # « +psycopg2 », « +pg8000 »…) : le choix explicite gagne toujours.
+    if _db_url.startswith("postgresql://"):
+        try:
+            import psycopg  # noqa: F401  (psycopg 3)
+        except ImportError:
+            pass
+        else:
+            _db_url = _db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
     SQLALCHEMY_DATABASE_URI = _db_url
 
     # --- Domaines / constantes ----------------------------------------------

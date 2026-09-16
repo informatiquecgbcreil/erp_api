@@ -11,5 +11,8 @@ docxtpl==0.20.2
 segno==1.6.6
 Flask-Migrate==4.1.0
 alembic==1.18.4
-psycopg2-binary==2.9.12
+# Pilote PostgreSQL. La production tourne sur psycopg 3 : déclarer
+# psycopg2 ici installait un pilote que l'application n'utilise pas, et
+# laissait le vrai pilote absent d'une installation neuve.
+psycopg[binary]==3.3.5
 certifi==2026.7.22
