@@ -109,6 +109,17 @@
   .regl-danger{ background:rgba(239,68,68,.18); color:#7f1d1d; border-color:rgba(239,68,68,.35); }
   .regl-neutre{ background:rgba(148,163,184,.16); color:#475569; border-color:rgba(148,163,184,.30); }
 
+  /* « Elle est inscrite, celle-là ? elle a payé ? » — la question de
+     l'accueil. Les trois réponses (inscription à l'atelier, bulletin de
+     l'année, règlement) sont toujours affichées, toujours dans le même
+     ordre : l'œil apprend les positions et balaie la colonne. Une pastille
+     qui n'apparaît qu'en cas de problème oblige à se demander, quand elle
+     manque, si l'info est bonne ou simplement absente. */
+  .situ-ligne{ display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+  .situ-ligne .regl-badge{ margin-top:0; font-size:.69rem; padding:1px 6px; }
+  .pointage-item{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; max-width:280px; }
+  .pointage-item .situ-ligne{ margin-top:0; }
+
   /* État de signature. Une case vide sur la feuille imprimée est la
      première chose qu'un financeur regarde : elle doit se voir ici AVANT,
      et sur la ligne de la personne concernée — pas seulement dans un
@@ -170,6 +181,38 @@
 {% endblock %}
 
 {% block body %}
+{# Où en est cette personne : inscription à l'atelier, bulletin de l'année
+   scolaire de la SÉANCE, règlement. Un seul endroit pour le rendu, utilisé
+   par la liste des présents et par le bloc « pas encore pointé·e·s » : deux
+   rendus divergents pour la même information, c'est deux vérités. #}
+{% macro situation(situ, premiere_venue=false) %}
+  {% if situ or premiere_venue %}
+  <div class="situ-ligne">
+    {% if premiere_venue %}
+      <span class="regl-badge regl-neutre" title="Inscrit·e cette année, jamais encore venu·e">🕓 1re venue</span>
+    {% endif %}
+    {% if situ %}
+    {% set a = situ.atelier %}
+    <span class="regl-badge regl-{{ 'ok' if a == 'inscrit' else ('warn' if a == 'attente' else 'neutre') }}"
+          title="{% if a == 'inscrit' %}Inscrit·e à l'atelier avant la séance{% elif a == 'attente' %}Sur la liste d'attente de l'atelier — la place n'est pas acquise{% else %}Aucune inscription préalable à cet atelier (accueil libre){% endif %}">
+      {%- if a == 'inscrit' %}✅ Inscrit·e{% elif a == 'attente' %}🕒 Liste d'attente{% else %}➖ Sans inscription{% endif -%}
+    </span>
+    <span class="regl-badge regl-{{ 'ok' if situ.bulletin else 'neutre' }}"
+          title="Bulletin d'inscription {{ situ.libelle_annee }}{% if not situ.bulletin %} — à faire remplir{% endif %}">
+      {%- if situ.bulletin %}📄 Bulletin{% else %}📄 Pas de bulletin{% endif -%}
+    </span>
+    {% set etat = situ.reglement %}
+    {% if etat %}
+      <span class="regl-badge regl-{{ etat.ton }}"
+            title="Adhésion &amp; participation {{ etat.libelle_annee }} — réglé {{ "%.2f"|format(etat.regle) }} € sur {{ "%.2f"|format(etat.du) }} €">
+        {{- '✅' if etat.statut == 'complet' else ('🟠' if etat.statut == 'partiel' else ('🔴' if etat.statut == 'rien' else '➖')) }}
+        {{ etat.libelle }}{% if etat.reste > 0 %} — {{ "%.2f"|format(etat.reste) }} €{% endif -%}
+      </span>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+{% endmacro %}
 <div class="emargement-shell stack-lg">
   <section class="page-hero">
     <div class="hero-top">
@@ -639,17 +682,18 @@
     </p>
     <div class="inline" style="gap:8px; flex-wrap:wrap;">
       {% for i in inscrits_a_pointer %}
-        <form method="post" action="{{ url_for('activite.inscription_pointer', session_id=session.id) }}" style="display:inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="participant_id" value="{{ i.participant_id }}">
-          <input type="hidden" name="retour" value="emargement">
-          {% set etat = etats_reglement.get(i.participant_id) %}
-          <button class="btn" type="submit"
-                  title="Créer la ligne d'émargement pour cette personne{% if etat and etat.statut != 'aucune' %} · {{ etat.libelle }} ({{ etat.libelle_annee }}){% endif %}">
-            ✔ {{ i.participant.nom }} {{ i.participant.prenom }}
-            {% if etat and etat.statut == 'rien' %} 🔴{% elif etat and etat.statut == 'partiel' %} 🟠{% endif %}
-          </button>
-        </form>
+        <div class="pointage-item">
+          <form method="post" action="{{ url_for('activite.inscription_pointer', session_id=session.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="participant_id" value="{{ i.participant_id }}">
+            <input type="hidden" name="retour" value="emargement">
+            <button class="btn" type="submit" title="Créer la ligne d'émargement pour cette personne">
+              ✔ {{ i.participant.nom }} {{ i.participant.prenom }}
+            </button>
+          </form>
+          {{ situation(situations.get(i.participant_id),
+                       premiere_venue=i.participant.attend_premiere_participation) }}
+        </div>
       {% endfor %}
     </div>
   </section>
@@ -816,17 +860,8 @@
                 <td>
                   <strong>{{ pr.participant.nom }} {{ pr.participant.prenom }}</strong>
                   {% if pr.participant.ville %}<br><span class="muted">{{ pr.participant.ville }}</span>{% endif %}
-                  {% set etat = etats_reglement.get(pr.participant_id) %}
-                  {% if etat and etat.statut != 'aucune' %}
-                    <br><span class="regl-badge regl-{{ etat.ton }}"
-                              title="Adhésion &amp; participation {{ etat.libelle_annee }} — réglé {{ "%.2f"|format(etat.regle) }} € sur {{ "%.2f"|format(etat.du) }} €">
-                      {{ '✅' if etat.statut == 'complet' else ('🟠' if etat.statut == 'partiel' else '🔴') }}
-                      {{ etat.libelle }}{% if etat.reste > 0 %} — {{ "%.2f"|format(etat.reste) }} €{% endif %}
-                    </span>
-                  {% endif %}
-                  {% if pr.participant.attend_premiere_participation %}
-                    <br><span class="regl-badge regl-neutre" title="Inscrit·e cette année, jamais encore venu·e">🕓 1re venue</span>
-                  {% endif %}
+                  {{ situation(situations.get(pr.participant_id),
+                               premiere_venue=pr.participant.attend_premiere_participation) }}
                 </td>
                 <td>
                   {{ pr.motif or '' }}
