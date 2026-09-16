@@ -243,6 +243,56 @@ def _copier_coordonnees(inscription: InscriptionAnnuelle, participant: Participa
         if ecraser or not getattr(participant, champ, None):
             setattr(participant, champ, valeur)
 
+    uniformiser_la_fiche(participant)
+
+
+def uniformiser_la_fiche(participant: Participant) -> list[str]:
+    """Nettoie l'ÉCRITURE des valeurs déjà présentes sur la fiche.
+
+    Ne change JAMAIS le sens, seulement la façon d'écrire : « nogent sur
+    OISE » devient « Nogent-sur-Oise », « Femme » devient le code du
+    référentiel. Une commune n'est jamais remplacée par une autre — la
+    troncature « Nogent » reste « Nogent », c'est à la fusion de trancher.
+
+    Sans ça, un bulletin propre et une fiche sale coexistent : la ville
+    apparaît sous deux écritures dans la base, et c'est précisément le
+    geste censé ranger — inscrire depuis une fiche existante — qui vient
+    de fabriquer le doublon.
+
+    Retourne la liste des champs touchés, pour pouvoir le dire.
+    """
+    from app.services.genre import normaliser as normaliser_genre
+    from app.services.villes import normaliser as normaliser_ville
+
+    touches: list[str] = []
+    for champ, normaliser in (("ville", normaliser_ville), ("genre", normaliser_genre)):
+        actuel = getattr(participant, champ, None)
+        if not actuel:
+            continue
+        propre = normaliser(actuel)
+        if propre and propre != actuel:
+            setattr(participant, champ, propre)
+            touches.append(champ)
+    return touches
+
+
+def _libelle_genre(code, naissance=None) -> str:
+    """« F » -> « Fille » ou « Femme », selon l'âge à la date de naissance.
+
+    Un bulletin est un document papier : il porte le mot, pas le code.
+    """
+    from datetime import date as _date
+
+    from app.services.genre import libelle
+
+    age = None
+    if naissance:
+        aujourdhui = _date.today()
+        age = aujourdhui.year - naissance.year
+        if (aujourdhui.month, aujourdhui.day) < (naissance.month, naissance.day):
+            age -= 1
+    return libelle(code, age)
+
 
 def bulletin_existant(participant: Participant, annee: int) -> InscriptionAnnuelle | None:
     """Le bulletin de cette personne pour cette année scolaire, s'il existe.
@@ -1177,7 +1227,9 @@ def _ligne_export(inscription: InscriptionAnnuelle, utilisateurs: dict[int, str]
         inscription.nom or "",
         inscription.prenom or "",
         inscription.date_naissance.isoformat() if inscription.date_naissance else "",
-        inscription.genre or "",
+        # Le libelle et non le code : une colonne « F » dans un tableur
+        # remis a un financeur ne veut rien dire.
+        _libelle_genre(inscription.genre, inscription.date_naissance),
         inscription.adresse or "",
         inscription.code_postal or "",
         inscription.ville or "",
