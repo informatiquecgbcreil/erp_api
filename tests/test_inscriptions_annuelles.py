@@ -113,6 +113,25 @@ def _creer_bulletin(admin_client, app, atelier_id, annee: int = ANNEE, **extra):
         return inscription.id, suf
 
 
+def _client_responsable(app, *, secteur, suffixe=None):
+    """Compte sectoriel jetable pour vérifier le cloisonnement du module."""
+    suffixe = suffixe or _suffixe()
+    email = f"resp-inscriptions-{suffixe}@example.org"
+    mot_de_passe = "motdepasse-tests"
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Role, User
+
+        utilisateur = User(email=email, nom="Responsable inscriptions", secteur_assigne=secteur)
+        utilisateur.set_password(mot_de_passe)
+        utilisateur.roles.append(Role.query.filter_by(code="responsable_secteur").first())
+        db.session.add(utilisateur)
+        db.session.commit()
+    client = app.test_client()
+    assert client.post("/", data={"email": email, "password": mot_de_passe}).status_code == 302
+    return client
+
+
 # ---------------------------------------------------------------------------
 # Saisie du bulletin
 # ---------------------------------------------------------------------------
@@ -1307,6 +1326,104 @@ def test_pages_protegees(client):
                 "/inscriptions-annuelles/export.xlsx"):
         r = client.get(url)
         assert r.status_code in (302, 401), url
+
+
+def test_compte_sectoriel_sans_secteur_est_refuse_explicitement(app):
+    client = _client_responsable(app, secteur=None)
+
+    reponse = client.get(f"/inscriptions-annuelles/?annee={ANNEE}")
+
+    assert reponse.status_code == 403
+    assert "aucun secteur" in reponse.get_data(as_text=True).lower()
+
+
+def test_bulletins_sans_secteur_sont_dans_la_file_direction_seulement(
+    admin_client, app, atelier
+):
+    inscription_id, suffixe = _creer_bulletin(admin_client, app, atelier["id"], annee=2043)
+    with app.app_context():
+        from app.extensions import db
+        from app.models import InscriptionAnnuelle
+
+        inscription = db.session.get(InscriptionAnnuelle, inscription_id)
+        inscription.created_secteur = None
+        inscription.secteur_orienteur = None
+        db.session.commit()
+
+    direction = admin_client.get(
+        "/inscriptions-annuelles/?annee=2043&secteur=__sans_secteur__"
+    ).get_data(as_text=True)
+    responsable = _client_responsable(app, secteur="Adultes").get(
+        "/inscriptions-annuelles/?annee=2043"
+    ).get_data(as_text=True)
+
+    assert "À affecter (sans secteur)" in direction
+    assert f"Rentree{suffixe}" in direction
+    assert f"Rentree{suffixe}" not in responsable
+
+
+def test_rattachement_refuse_une_fiche_hors_perimetre(app, atelier):
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant
+
+        participant = Participant(
+            nom=f"HorsPerimetre{_suffixe()}", prenom="Test", created_secteur="Familles"
+        )
+        db.session.add(participant)
+        db.session.commit()
+        participant_id = participant.id
+
+    client = _client_responsable(app, secteur="Adultes")
+    reponse = client.get(
+        f"/inscriptions-annuelles/nouvelle?annee=2044&participant_id={participant_id}"
+    )
+
+    assert reponse.status_code == 403
+    assert "pas accessible depuis votre secteur" in reponse.get_data(as_text=True)
+
+
+def test_fiche_avec_presence_dans_le_secteur_reste_rattachable(app, atelier):
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant, PresenceActivite, SessionActivite
+
+        participant = Participant(
+            nom=f"InterSecteur{_suffixe()}", prenom="Test", created_secteur="Familles"
+        )
+        session = SessionActivite(
+            atelier_id=atelier["id"], secteur="Adultes", session_type="COLLECTIF",
+            date_session=date.today(), heure_debut="10:00", heure_fin="11:00",
+        )
+        db.session.add_all([participant, session])
+        db.session.flush()
+        db.session.add(PresenceActivite(session_id=session.id, participant_id=participant.id))
+        db.session.commit()
+        participant_id = participant.id
+
+    client = _client_responsable(app, secteur="Adultes")
+    reponse = client.get(
+        f"/inscriptions-annuelles/nouvelle?annee=2045&participant_id={participant_id}"
+    )
+
+    assert reponse.status_code == 200
+    assert "Prérempli depuis la fiche" in reponse.get_data(as_text=True)
+
+
+def test_echec_de_synchronisation_est_visible_et_journalise(
+    admin_client, monkeypatch, caplog
+):
+    from app.inscriptions_annuelles import routes
+
+    def panne(_annee):
+        raise RuntimeError("panne de test")
+
+    monkeypatch.setattr(routes, "rafraichir_statuts", panne)
+    reponse = admin_client.get(f"/inscriptions-annuelles/?annee={ANNEE}")
+
+    assert reponse.status_code == 200
+    assert "Synchronisation incomplète" in reponse.get_data(as_text=True)
+    assert "Échec de la resynchronisation" in caplog.text
 
 
 def test_permissions_declarees_et_attribuees(app):
