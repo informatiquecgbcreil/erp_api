@@ -52,8 +52,10 @@ from app.services.inscriptions_annuelles import (
     etat_reglement,
     export_xlsx,
     generer_cotisations,
+    participants_sans_bulletin,
     personnes_couvertes,
     prefill_depuis_participant,
+    regulariser_depuis_les_fiches,
     rafraichir_reglements,
     rafraichir_statuts,
     rattacher_participant,
@@ -353,6 +355,11 @@ def index():
         annee=annee,
         libelle_annee=libelle_annee_scolaire(annee),
         annees=annees_disponibles(),
+        # Combien de personnes sont venues sans bulletin : le compteur porte
+        # sur le bouton, sinon on ne va jamais voir l'écran.
+        nb_a_regulariser=len(participants_sans_bulletin(
+            annee, secteur=(None if _portee_globale() else (_secteur_utilisateur() or None))
+        )),
         inscriptions=inscriptions,
         data=synthese(annee, toutes),
         secteurs=get_secteur_labels(active_only=True),
@@ -374,6 +381,79 @@ def index():
 # ---------------------------------------------------------------------------
 # Saisie et modification d'un bulletin
 # ---------------------------------------------------------------------------
+
+@bp.route("/a-regulariser")
+@login_required
+@require_perm("inscriptions_annuelles:view")
+def a_regulariser():
+    """Qui est venu cette année sans avoir de bulletin d'inscription.
+
+    Le module d'inscription est récent, les participations ne le sont pas.
+    Rien ne disait LESQUELLES des personnes déjà fichées n'avaient pas de
+    bulletin : il fallait ouvrir les fiches une par une. Cette liste
+    transforme « je dois y penser » en « il m'en reste douze ».
+    """
+    annee = _annee_demandee()
+    secteur = None if _portee_globale() else (_secteur_utilisateur() or None)
+    lignes = participants_sans_bulletin(annee, secteur=secteur)
+    return render_template(
+        "inscriptions_annuelles/a_regulariser.html",
+        annee=annee,
+        libelle_annee=libelle_annee_scolaire(annee),
+        annees=annees_disponibles(),
+        lignes=lignes,
+        secteur=secteur,
+    )
+
+
+@bp.route("/a-regulariser/creer", methods=["POST"])
+@login_required
+@require_perm("inscriptions_annuelles:edit")
+def regulariser():
+    """Crée les bulletins manquants des personnes cochées.
+
+    Rattrapage d'historique, et rien de plus : le bulletin reprend les
+    coordonnées de la fiche et dit d'où il vient. Aucun règlement, aucune
+    adhésion, aucune inscription d'atelier n'est fabriquée — ce sont des
+    actes administratifs qui demandent une personne, pas un bouton.
+    """
+    annee = _annee_demandee()
+    retour = request.form.get("retour") or url_for("inscriptions_annuelles.a_regulariser", annee=annee)
+
+    ids: list[int] = []
+    for brut in request.form.getlist("pid"):
+        try:
+            valeur = int(brut)
+        except (TypeError, ValueError):
+            continue
+        if valeur not in ids:
+            ids.append(valeur)
+
+    fiches = [p for p in (db.session.get(Participant, i) for i in ids) if p is not None]
+    if not fiches:
+        flash("Coche d'abord au moins une personne dans la liste.", "warning")
+        return redirect(retour)
+
+    crees, avertissements = regulariser_depuis_les_fiches(
+        annee, fiches,
+        user_id=getattr(current_user, "id", None),
+        secteur=_secteur_utilisateur() or None,
+    )
+    journaliser(
+        "inscription_annuelle.regularisation",
+        cible=f"{len(crees)} bulletin(s) · {libelle_annee_scolaire(annee)}",
+    )
+    if crees:
+        flash(
+            f"{len(crees)} bulletin(s) créé(s) pour {libelle_annee_scolaire(annee)}. "
+            "Ils reprennent les coordonnées des fiches et portent la mention "
+            "« créé après coup ». Le règlement et les ateliers restent à saisir.",
+            "ok",
+        )
+    for message in avertissements[:5]:
+        flash(message, "warn")
+    return redirect(retour)
+
 
 @bp.route("/nouvelle", methods=["GET", "POST"])
 @login_required

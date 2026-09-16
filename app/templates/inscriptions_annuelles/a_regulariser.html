@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% import "_ux_macros.html" as ui %}
+{% import "_selection_multiple.html" as sel %}
+{% block title %}À régulariser · {{ libelle_annee }}{% endblock %}
+{% block body %}
+<div class="stack">
+
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1 style="margin:0;">À régulariser · {{ libelle_annee }}</h1>
+        <p class="muted" style="margin:6px 0 0; max-width:60ch;">
+          Ces personnes ont participé pendant l'année scolaire mais n'ont pas de
+          bulletin d'inscription. C'est normal pour tout ce qui précède la mise en
+          service du module&nbsp;: leurs présences existent, le bulletin n'a jamais
+          été saisi.
+        </p>
+      </div>
+      <form method="get" class="inline" style="gap:8px; align-items:center;">
+        <label class="muted" for="annee">Année scolaire</label>
+        <select class="in" id="annee" name="annee" onchange="this.form.submit()">
+          {% for a in annees %}
+            <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}-{{ a + 1 }}</option>
+          {% endfor %}
+        </select>
+        <a class="btn" href="{{ url_for('inscriptions_annuelles.index', annee=annee) }}">← La campagne</a>
+      </form>
+    </div>
+  </div>
+
+  {% if lignes %}
+    <div class="card" style="border-left:4px solid var(--accent, #3b82f6);">
+      <strong>{{ lignes|length }} personne{{ 's' if lignes|length > 1 }} sans bulletin</strong>
+      <div class="muted" style="margin-top:4px; font-size:.9rem;">
+        Triées par nombre de présences&nbsp;: les plus assidues d'abord, parce que
+        ce sont elles qui pèsent le plus dans un bilan — et celles dont l'absence
+        de bulletin se remarquera.
+        {% if secteur %}<br>Limitée à ton secteur ({{ secteur }}).{% endif %}
+      </div>
+    </div>
+
+    {{ sel.formulaire("regul", url_for('inscriptions_annuelles.regulariser', annee=annee)) }}
+    {% call sel.barre("regul", "personne", "personnes") %}
+      {% if can('inscriptions_annuelles:edit') %}
+        <button class="btn ok" type="submit" form="regul"
+                title="Crée le bulletin manquant de chaque personne cochée, avec les coordonnées de sa fiche. Aucun règlement ni atelier n'est inventé."
+                onclick="return confirm('Créer les bulletins manquants pour les personnes cochées ? Ils reprendront les coordonnées des fiches et porteront la mention « créé après coup ». Le règlement et les ateliers resteront à saisir.');">
+          📝 Créer les bulletins manquants
+        </button>
+      {% endif %}
+    {% endcall %}
+
+    <div class="card">
+      <div class="tablewrap clean">
+        <table class="js-sortable">
+          <thead>
+            <tr>
+              <th style="width:34px;">{{ sel.tout_cocher("regul") }}</th>
+              <th>Personne</th>
+              <th>Présences</th>
+              <th>Dernière venue</th>
+              <th style="width:190px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ligne in lignes %}
+              {% set p = ligne.participant %}
+              <tr>
+                <td>{{ sel.case("regul", "pid", p.id, "Sélectionner " ~ p.prenom ~ " " ~ p.nom) }}</td>
+                <td>
+                  <a href="{{ url_for('participants.synthese_participant', participant_id=p.id) }}">
+                    <strong>{{ p.nom }}</strong> {{ p.prenom }}
+                  </a>
+                  {% if p.ville %}<div class="muted" style="font-size:.85rem;">{{ p.ville }}{% if p.quartier %} · {{ p.quartier.nom }}{% endif %}</div>{% endif %}
+                </td>
+                <td style="font-variant-numeric:tabular-nums;"><strong>{{ ligne.presences }}</strong></td>
+                <td class="muted">{{ ligne.derniere.strftime('%d/%m/%Y') if ligne.derniere else '—' }}</td>
+                <td>
+                  {% if can('inscriptions_annuelles:edit') %}
+                    <a class="btn" href="{{ url_for('inscriptions_annuelles.nouvelle', participant_id=p.id, annee=annee) }}"
+                       title="Ouvre un bulletin prérempli avec ce que la fiche sait déjà">
+                      📝 Inscrire
+                    </a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0; font-size:1.02rem;">Ce que la création groupée fait — et ne fait pas</h2>
+      <p class="muted" style="margin:0;">
+        Le bulletin créé reprend les coordonnées de la fiche, se rattache à elle, et
+        porte un commentaire qui dit d'où il vient. Il n'invente <strong>aucun
+        règlement, aucune adhésion, aucune inscription d'atelier</strong>&nbsp;: ce sont
+        des actes administratifs qui demandent une personne, pas un bouton. Tu les
+        retrouveras dans la campagne, à compléter.
+      </p>
+    </div>
+  {% else %}
+    <div class="card">
+      {{ ui.empty_state(
+          "Rien à régulariser",
+          "Toutes les personnes venues en " ~ libelle_annee ~ " ont leur bulletin d'inscription.",
+          url_for('inscriptions_annuelles.index', annee=annee),
+          "Voir la campagne",
+          "✅") }}
+    </div>
+  {% endif %}
+
+</div>
+{{ sel.script() }}
+{% endblock %}

@@ -326,6 +326,158 @@ def bulletin_existant(participant: Participant, annee: int) -> InscriptionAnnuel
     )
 
 
+def bornes_annee_scolaire(annee: int) -> tuple[date, date]:
+    """Du 1er septembre au 31 août — la convention du module."""
+    return date(annee, 9, 1), date(annee + 1, 8, 31)
+
+
+def participants_sans_bulletin(
+    annee: int, *, secteur: str | None = None, limite: int = 500
+) -> list[dict]:
+    """Qui est venu cette année-là sans avoir de bulletin d'inscription.
+
+    Le module d'inscription est récent ; les participations, non. Une
+    personne qui vient depuis un an a des présences mais aucun bulletin —
+    et rien, jusqu'ici, ne disait LESQUELLES. Il fallait ouvrir les fiches
+    une par une pour le découvrir.
+
+    Tri par nombre de présences décroissant : les plus assidues d'abord.
+    Ce sont elles qui pèsent le plus dans un bilan, et celles pour qui
+    l'absence de bulletin se remarquera.
+
+    Chaque entrée : ``{participant, presences, derniere, secteurs}``.
+    """
+    debut, fin = bornes_annee_scolaire(annee)
+    jour = db.func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date)
+
+    requete = (
+        db.session.query(
+            PresenceActivite.participant_id,
+            db.func.count(PresenceActivite.id),
+            db.func.max(jour),
+        )
+        .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
+        .filter(SessionActivite.is_deleted.is_(False))
+        .filter(db.func.lower(db.func.coalesce(SessionActivite.statut, "")) != "annulee")
+        .filter(jour.isnot(None))
+        .filter(jour >= debut, jour <= fin)
+        .group_by(PresenceActivite.participant_id)
+    )
+    if secteur:
+        requete = requete.filter(SessionActivite.secteur == secteur)
+
+    comptes = {
+        pid: {"presences": int(nb or 0), "derniere": derniere}
+        for pid, nb, derniere in requete.all()
+        if pid
+    }
+    if not comptes:
+        return []
+
+    # Un seul aller-retour pour savoir qui a déjà un bulletin. Le
+    # rattachement par ``participant_id`` est certain ; le rapprochement par
+    # nom complet rattrape les bulletins saisis AVANT que la fiche existe,
+    # qui n'ont pas encore d'identifiant.
+    deja: set[int] = set()
+    noms_avec_bulletin: set[tuple[str, str]] = set()
+    for ins in InscriptionAnnuelle.query.filter_by(annee_scolaire=annee).all():
+        if ins.participant_id:
+            deja.add(ins.participant_id)
+        noms_avec_bulletin.add(
+            ((ins.nom or "").strip().lower(), (ins.prenom or "").strip().lower())
+        )
+
+    fiches = Participant.query.filter(Participant.id.in_(list(comptes))).all()
+
+    lignes = []
+    for fiche in fiches:
+        if fiche.id in deja:
+            continue
+        cle = ((fiche.nom or "").strip().lower(), (fiche.prenom or "").strip().lower())
+        if cle in noms_avec_bulletin:
+            continue
+        lignes.append({
+            "participant": fiche,
+            "presences": comptes[fiche.id]["presences"],
+            "derniere": comptes[fiche.id]["derniere"],
+        })
+
+    lignes.sort(
+        key=lambda ligne: (
+            -ligne["presences"],
+            (ligne["participant"].nom or "").lower(),
+            (ligne["participant"].prenom or "").lower(),
+        )
+    )
+    return lignes[:limite]
+
+
+def regulariser_depuis_les_fiches(
+    annee: int, participants, *, user_id: int | None = None, secteur: str | None = None
+) -> tuple[list[InscriptionAnnuelle], list[str]]:
+    """Crée le bulletin manquant de plusieurs personnes déjà fichées.
+
+    Rattrapage d'historique : ces personnes sont venues, leur bulletin
+    n'existe pas parce que le module n'existait pas encore.
+
+    Le bulletin créé n'AFFIRME rien qui n'ait été constaté : il reprend les
+    coordonnées de la fiche, porte un commentaire qui dit d'où il vient, et
+    reste au statut de départ. Aucun règlement, aucune adhésion, aucune
+    inscription d'atelier n'est fabriquée — ce sont des actes administratifs
+    qui demandent une personne, pas un bouton.
+
+    Retourne (bulletins créés, avertissements).
+    """
+    crees: list[InscriptionAnnuelle] = []
+    avertissements: list[str] = []
+
+    for participant in participants:
+        if bulletin_existant(participant, annee) is not None:
+            avertissements.append(
+                f"{participant.prenom} {participant.nom} avait déjà un bulletin : ignoré."
+            )
+            continue
+
+        valeurs = prefill_depuis_participant(participant)
+        inscription = InscriptionAnnuelle(
+            annee_scolaire=annee,
+            date_inscription=date.today(),
+            nom=valeurs.get("nom") or participant.nom,
+            prenom=valeurs.get("prenom") or participant.prenom,
+            adresse=valeurs.get("adresse"),
+            ville=valeurs.get("ville"),
+            email=valeurs.get("email"),
+            telephone=valeurs.get("telephone"),
+            genre=valeurs.get("genre"),
+            date_naissance=participant.date_naissance,
+            secteur_orienteur=valeurs.get("secteur_orienteur"),
+            commentaire=(
+                "Bulletin créé après coup depuis la fiche participant : la "
+                "personne a participé à cette année scolaire alors que le "
+                "module d'inscription n'existait pas encore. Coordonnées "
+                "reprises de la fiche ; règlement et ateliers restent à saisir."
+            ),
+            created_secteur=secteur or participant.created_secteur,
+            created_by_user_id=user_id,
+        )
+        db.session.add(inscription)
+        db.session.flush()
+
+        try:
+            avertissements += rattacher_participant(
+                inscription, participant,
+                user_id=user_id,
+                inscrire_ateliers=False,   # on ne réinscrit pas à des ateliers
+                creer_cotisations=False,   # et on n'invente aucune adhésion
+            )
+        except InscriptionAnnuelleErreur as exc:
+            avertissements.append(str(exc))
+        crees.append(inscription)
+
+    db.session.commit()
+    return crees, avertissements
+
+
 def prefill_depuis_participant(participant: Participant) -> dict[str, str]:
     """Ce que l'application sait déjà de la personne, au format du formulaire.
 
