@@ -45,6 +45,10 @@
     {% if peut_editer %}
       <a class="btn primary" href="{{ url_for('inscriptions_annuelles.nouvelle', annee=annee) }}">➕ Nouvelle inscription</a>
     {% endif %}
+    <a class="btn" href="{{ url_for('inscriptions_annuelles.a_regulariser', annee=annee) }}"
+       title="Les personnes venues cette année sans bulletin d'inscription — celles d'avant la mise en service du module">
+      🔎 À régulariser{% if nb_a_regulariser %} ({{ nb_a_regulariser }}){% endif %}
+    </a>
     {% if peut_exporter %}
       <a class="btn" href="{{ url_for('inscriptions_annuelles.export', annee=annee) }}">⬇ Exporter en XLSX</a>
     {% endif %}

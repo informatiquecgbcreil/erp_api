@@ -86,6 +86,19 @@ SEARCH_TYPE_ALIASES = {
 }
 
 
+def _nom_du_dialecte() -> str:
+    """Le dialecte réellement utilisé, lu sur le moteur.
+
+    ``db.session.bind`` est None avec Flask-SQLAlchemy 3 tant qu'aucun bind
+    explicite n'est posé : s'y fier renvoyait la chaîne vide, et la
+    recherche partait dans la branche du mauvais dialecte.
+    """
+    try:
+        return (db.engine.dialect.name or "").lower()
+    except Exception:  # noqa: BLE001 — une recherche ne casse pas pour ça
+        return ""
+
+
 def _normalize_search_text(value: str | None) -> str:
     """Minuscules sans accents, EXACTEMENT comme la fonction SQL homonyme.
 
@@ -148,19 +161,31 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
     if secteur_filter_participants and not secteur_filter and can("participants:view_all"):
         secteur_filter_participants = None
     wanted_type = SEARCH_TYPE_ALIASES.get(type_filter or "")
-    dialect_name = ((db.session.bind.dialect.name if db.session.bind else "") or "").lower()
+    # Le dialecte se lit sur le MOTEUR, pas sur la session : avec
+    # Flask-SQLAlchemy 3, « db.session.bind » vaut None tant qu'aucun bind
+    # explicite n'est posé, et le nom retombait sur la chaîne vide. Le
+    # défaut est passé inaperçu des années durant parce que le repli
+    # utilisait lower(), qui existe dans toutes les bases ; il est devenu
+    # fatal le jour où le repli est devenu propre à SQLite.
+    dialect_name = _nom_du_dialecte()
     results: list[dict] = []
     candidate_limit = max(panel_limit, min(max(page_limit, 20), 120))
     fetch_limit = max(candidate_limit * 3, 24)
 
     def _like(column, pattern: str):
+        if dialect_name == "sqlite":
+            # SQLite : sa fonction lower() ne descend que l'ASCII, « É »
+            # restait « É » côté base alors que Python l'avait mis en « é ».
+            # On compare donc des deux côtés avec la même normalisation sans
+            # accents — fonction enregistrée sur la connexion SQLite.
+            return getattr(db.func, NOM_FONCTION_SQL)(db.func.coalesce(column, "")).like(pattern)
         if dialect_name == "postgresql":
             # ilike() y est déjà unicode : « Étienne » s'y trouve.
             return db.func.coalesce(column, "").ilike(pattern)
-        # SQLite : sa fonction lower() ne descend que l'ASCII, « É » restait
-        # « É » côté base alors que Python l'avait mis en « é ». On compare
-        # donc des deux côtés avec la même normalisation sans accents.
-        return getattr(db.func, NOM_FONCTION_SQL)(db.func.coalesce(column, "")).like(pattern)
+        # Dialecte inconnu : on ne suppose rien de ses fonctions. lower()
+        # existe partout — une recherche un peu moins fine vaut mieux
+        # qu'une recherche qui renvoie une erreur.
+        return db.func.lower(db.func.coalesce(column, "")).like(pattern.lower())
 
     def _token_mode_clause(columns, token: str, mode: str):
         if mode == "exact":
@@ -171,10 +196,10 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
         return db.or_(*[_like(col, f"%{token}%") for col in columns])
 
     def _filter_for_tokens(columns, *, mode: str):
-        # Les motifs doivent être normalisés comme les colonnes : sans accents
-        # sur SQLite, simplement en minuscules sur PostgreSQL dont le ilike
-        # gère déjà la casse unicode.
-        source_tokens = sql_tokens if dialect_name == "postgresql" else tokens
+        # Les motifs doivent être normalisés EXACTEMENT comme les colonnes :
+        # sans accents sur SQLite (seul dialecte où l'on applique
+        # sans_accent), tels quels ailleurs.
+        source_tokens = tokens if dialect_name == "sqlite" else sql_tokens
         return db.and_(*[_token_mode_clause(columns, token, mode) for token in source_tokens])
 
     def _run_ranked_rows(base_query, columns, order_by, *, row_id_attr="id"):
