@@ -1510,6 +1510,42 @@ def actions_groupees():
 
     from app.services.audit import journaliser
 
+    if action == "fusionner":
+        if not can("participants:delete"):
+            abort(403)
+        keep_id = request.form.get("keep_id", type=int) or 0
+        if len(membres) != 2 or keep_id not in {p.id for p in membres}:
+            flash("Coche exactement deux personnes et choisis la fiche à conserver.", "warning")
+            return _retour_annuaire()
+        keep = next(p for p in membres if p.id == keep_id)
+        victime = next(p for p in membres if p.id != keep_id)
+        if not _is_global_role():
+            secteur = _current_secteur()
+            if not secteur or any(p.created_secteur != secteur for p in membres):
+                abort(403)
+        try:
+            deplaces, ecartes = _transferer_liens(keep.id, [victime.id])
+            etiquette_victime = f"{victime.nom} {victime.prenom} (#{victime.id})"
+            db.session.delete(victime)
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.exception("Échec de la fusion manuelle des participants")
+            flash(f"La fusion a échoué, rien n'a été modifié : {exc}", "danger")
+            return _retour_annuaire()
+        journaliser(
+            "participant.merge",
+            cible=f"{keep.nom} {keep.prenom} (#{keep.id})",
+            details={"fiche_absorbee": etiquette_victime, "liens_deplaces": deplaces,
+                     "doublons_ecartes": ecartes, "origine": "sélection annuaire"},
+        )
+        flash(
+            f"Fusion effectuée : {keep.prenom} {keep.nom} a absorbé la fiche "
+            f"de {etiquette_victime}.",
+            "success",
+        )
+        return _retour_annuaire()
+
     if action == "famille":
         if not can("participants:edit"):
             abort(403)

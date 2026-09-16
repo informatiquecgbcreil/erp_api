@@ -224,10 +224,22 @@ def fusionner_quartiers(source: Quartier, cible: Quartier) -> int:
     if source.id == cible.id:
         return 0
 
-    deplaces = (
-        Participant.query.filter(Participant.quartier_id == source.id)
-        .update({Participant.quartier_id: cible.id}, synchronize_session=False)
-    )
+    # Déplacer tous les liens déclarés dans le schéma, pas uniquement les
+    # participants. Une orientation vers l'accès aux droits, par exemple,
+    # porte elle aussi un quartier et ne doit pas perdre cette information.
+    deplaces = 0
+    quartier_id = Quartier.__table__.c.id
+    for table in db.metadata.sorted_tables:
+        if table is Quartier.__table__:
+            continue
+        for colonne in table.columns:
+            if not any(cle.column is quartier_id for cle in colonne.foreign_keys):
+                continue
+            resultat = db.session.execute(
+                table.update().where(colonne == source.id).values({colonne.name: cible.id})
+            )
+            if table is Participant.__table__:
+                deplaces += int(resultat.rowcount or 0)
 
     if not cible.qpv and source.qpv:
         cible.qpv = source.qpv
