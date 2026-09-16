@@ -958,9 +958,16 @@ def test_export_xlsx_contient_toutes_les_donnees(admin_client, app, atelier):
     assert f"inscriptions_{ANNEE}-{ANNEE + 1}.xlsx" in r.headers["Content-Disposition"]
 
     wb = load_workbook(BytesIO(r.data))
-    assert wb.sheetnames == ["Inscriptions", "Synthèse", "Foyers", "Bénévolat"]
+    assert wb.sheetnames[0] == "Adultes"
+    assert wb.sheetnames[-3:] == ["Synthèse", "Foyers", "Bénévolat"]
+    assert "Inscriptions" not in wb.sheetnames
 
-    detail = wb["Inscriptions"]
+    detail = wb["Adultes"]
+    assert detail.page_setup.orientation == "landscape"
+    assert detail.page_setup.fitToWidth == 1
+    assert detail.page_setup.fitToHeight == 1
+    assert detail.print_title_rows == "$1:$4"
+    assert detail.sheet_view.showGridLines is False
     entetes = [c.value for c in detail[4]]
     for colonne in ("Nom", "Prénom", "Adresse", "E-mail", "Téléphone",
                     "Secteur qui fait venir", "Ateliers choisis",
@@ -984,6 +991,38 @@ def test_export_xlsx_contient_toutes_les_donnees(admin_client, app, atelier):
     # La feuille bénévolat sert la réunion d'équipe : grille + liste nominative.
     benevolat = [[c.value for c in ligne] for ligne in wb["Bénévolat"].iter_rows()]
     assert any(f"Soline Rentree{suf}" == (l[0] or "") for l in benevolat)
+
+
+def test_export_xlsx_separe_les_secteurs_dans_des_onglets(admin_client, app, atelier):
+    from openpyxl import load_workbook
+
+    annee = 2042
+    famille_id, famille_suffixe = _creer_bulletin(
+        admin_client, app, atelier["id"], annee=annee, secteur_orienteur="Familles"
+    )
+    numerique_id, numerique_suffixe = _creer_bulletin(
+        admin_client, app, atelier["id"], annee=annee,
+        secteur_orienteur="Numérique/Créatif",
+    )
+
+    wb = load_workbook(BytesIO(admin_client.get(
+        f"/inscriptions-annuelles/export.xlsx?annee={annee}"
+    ).data))
+
+    assert wb.sheetnames[:2] == ["Familles", "Numérique Créatif"]
+    for feuille, inscription_id, suffixe in (
+        (wb["Familles"], famille_id, famille_suffixe),
+        (wb["Numérique Créatif"], numerique_id, numerique_suffixe),
+    ):
+        entetes = [cell.value for cell in feuille[4]]
+        lignes = [[cell.value for cell in ligne] for ligne in feuille.iter_rows(min_row=5)]
+        assert any(
+            ligne[entetes.index("Nom")] == f"Rentree{suffixe}"
+            for ligne in lignes
+        ), inscription_id
+
+    noms_familles = {cell.value for cell in wb["Familles"][4]}
+    assert "Nom" in noms_familles
 
 
 # ---------------------------------------------------------------------------
