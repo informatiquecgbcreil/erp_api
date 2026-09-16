@@ -40,6 +40,7 @@ from app.services.prorata import (
     export_xlsx,
     periode_couverte,
     repartition,
+    repartition_periode,
 )
 
 
@@ -149,6 +150,29 @@ def _contexte_demande():
     except (TypeError, ValueError):
         annee = annee_scolaire_courante()
 
+    # Période libre : deux dates valides suffisent à basculer de mode. Elle
+    # existe parce que les cotisations vivent en année SCOLAIRE tandis qu'un
+    # exercice comptable peut suivre l'année CIVILE — sans elle, la
+    # comptabilité recomposerait son 1er janvier - 31 décembre à la main
+    # depuis deux années scolaires.
+    bornes = []
+    for champ in ("debut", "fin"):
+        brut = (request.args.get(champ) or "").strip()
+        try:
+            bornes.append(date.fromisoformat(brut) if brut else None)
+        except ValueError:
+            bornes.append(None)
+    debut_libre, fin_libre = bornes
+    if debut_libre and fin_libre:
+        vue = _normaliser(repartition_periode(debut_libre, fin_libre))
+        impose = _secteur_impose()
+        if impose:
+            vue = _borner_au_secteur(vue, impose)
+        filtre = (request.args.get("secteur") or "").strip() or None
+        if filtre and not impose:
+            vue = _borner_au_secteur(vue, filtre)
+        return annee, vue, None, impose, filtre
+
     # « vivant » (défaut) ou l'identifiant d'un arrêté figé.
     choix = (request.args.get("arrete") or "").strip()
     arrete_affiche = None
@@ -197,6 +221,8 @@ def repartition_participation():
         arrete_affiche=arrete_affiche,
         peut_arreter=current_user.has_perm("cotisations:edit") and not impose,
         aujourdhui=date.today(),
+        debut_libre=(request.args.get("debut") or "").strip(),
+        fin_libre=(request.args.get("fin") or "").strip(),
     )
 
 
@@ -213,11 +239,16 @@ def repartition_participation_xlsx():
     annee, vue, arrete_affiche, impose, filtre = _contexte_demande()
     classeur = export_xlsx(vue, arrete=arrete_affiche)
 
-    morceaux = ["repartition_participation", libelle_annee_scolaire(annee)]
-    if arrete_affiche is not None:
-        morceaux.append(f"arrete_{arrete_affiche.date_arrete:%Y%m%d}")
+    if vue.get("mode") == "periode":
+        bornes = vue["periode"]
+        morceaux = ["repartition_participation", "periode",
+                    f"{bornes['debut']:%Y%m%d}_{bornes['fin']:%Y%m%d}"]
     else:
-        morceaux.append(f"provisoire_{date.today():%Y%m%d}")
+        morceaux = ["repartition_participation", libelle_annee_scolaire(annee)]
+        if arrete_affiche is not None:
+            morceaux.append(f"arrete_{arrete_affiche.date_arrete:%Y%m%d}")
+        else:
+            morceaux.append(f"provisoire_{date.today():%Y%m%d}")
     secteur = impose or filtre
     if secteur:
         morceaux.append(secteur.replace(" ", "_")[:40])

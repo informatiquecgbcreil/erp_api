@@ -1157,3 +1157,227 @@ def test_lexport_porte_ses_bornes_sur_chaque_onglet(admin_client, annee_type, sa
         couverture = wb[onglet]["A3"].value or ""
         assert "Période couverte : du 01/09/2025 au 31/08/2026" in couverture, onglet
         assert "exercice comptable" in couverture, onglet
+
+
+# ---------------------------------------------------------------------------
+# La période libre : quand l'exercice comptable ne suit pas l'année scolaire
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def a_cheval(app):
+    """Une personne à cheval sur deux années scolaires.
+
+    Deux participations : celle de 2025-2026, facturée et payée en
+    septembre 2025 ; celle de 2026-2027, facturée et payée en septembre
+    2026. Ses venues changent de secteur dominant d'une année sur l'autre.
+
+    L'année civile 2026 traverse les deux : c'est exactement le cas que
+    l'année scolaire seule ne sait pas produire.
+    """
+    import datetime as _dt
+
+    suf = _suffixe()
+    with app.app_context():
+        from app.extensions import db
+        from app.models import (
+            AtelierActivite, Cotisation, Paiement, Participant,
+            PresenceActivite, SessionActivite,
+        )
+
+        personne = Participant(nom=f"Cheval{suf}", prenom="Inès",
+                               created_secteur="Familles")
+        db.session.add(personne)
+        db.session.flush()
+
+        ateliers, sessions = {}, []
+        for secteur in ("Numérique", "EPE"):
+            atelier = AtelierActivite(secteur=secteur, nom=f"Ch{suf}{secteur[:4]}")
+            db.session.add(atelier)
+            db.session.flush()
+            ateliers[secteur] = atelier
+
+        def _venir(secteur, jour, nombre):
+            for i in range(nombre):
+                s = SessionActivite(
+                    atelier_id=ateliers[secteur].id, secteur=secteur,
+                    session_type="COLLECTIF",
+                    date_session=jour + _dt.timedelta(days=i),
+                    heure_debut="14:00", heure_fin="16:00")
+                db.session.add(s)
+                db.session.flush()
+                sessions.append(s.id)
+                db.session.add(PresenceActivite(session_id=s.id,
+                                                participant_id=personne.id))
+
+        # Automne 2025 : Numérique. Printemps 2026 : EPE. Automne 2026 : EPE.
+        _venir("Numérique", date(2025, 10, 1), 4)
+        _venir("EPE", date(2026, 3, 2), 6)
+        _venir("EPE", date(2026, 10, 5), 2)
+
+        for annee, jour, montant in ((2025, date(2025, 9, 15), 20.0),
+                                     (2026, date(2026, 9, 14), 30.0)):
+            cot = Cotisation(annee_scolaire=annee, type_cotisation="participation",
+                             participant_id=personne.id, montant_du=montant,
+                             date_reference=jour)
+            db.session.add(cot)
+            db.session.flush()
+            db.session.add(Paiement(cotisation_id=cot.id, montant=montant,
+                                    date_paiement=jour, mode="especes"))
+        db.session.commit()
+        contexte = {"participant_id": personne.id, "nom": personne.nom,
+                    "ateliers": [a.id for a in ateliers.values()],
+                    "sessions": sessions}
+
+    yield contexte
+
+    with app.app_context():
+        from app.extensions import db
+        from app.models import (
+            ArchiveEmargement, AtelierActivite, Participant, PresenceActivite,
+        )
+
+        for pr in PresenceActivite.query.filter_by(
+                participant_id=contexte["participant_id"]).all():
+            db.session.delete(pr)
+        for aid in contexte["ateliers"]:
+            for archive in ArchiveEmargement.query.filter_by(atelier_id=aid).all():
+                db.session.delete(archive)
+        db.session.flush()
+        for aid in contexte["ateliers"]:
+            a = db.session.get(AtelierActivite, aid)
+            if a is not None:
+                db.session.delete(a)
+        p = db.session.get(Participant, contexte["participant_id"])
+        if p is not None:
+            db.session.delete(p)
+        db.session.commit()
+
+
+def test_lannee_civile_traverse_deux_annees_scolaires(app, a_cheval):
+    """LE cas qui justifie ce mode : sur 2026, la personne est venue 6 fois
+    en EPE au printemps et 2 fois à l'automne, jamais en Numérique."""
+    with app.app_context():
+        from app.services.prorata import repartition_periode
+
+        vue = repartition_periode(date(2026, 1, 1), date(2026, 12, 31))
+        ligne = next(p for p in vue["personnes"]
+                     if p["participant"].id == a_cheval["participant_id"])
+        assert ligne["parts"]["EPE"]["venues"] == 8
+        assert "Numérique" not in ligne["parts"]
+        # Le versement de septembre 2026 est le seul encaissé dans la fenêtre.
+        assert ligne["regle"] == 30.0
+
+
+def test_lencaisse_et_le_facture_ne_comptent_pas_la_meme_chose(app, annee_type):
+    """Une participation facturée dans la fenêtre mais payée après n'apporte
+    que son dû ; l'inverse n'apporte que sa trésorerie."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Paiement
+        from app.services.prorata import repartition_periode
+
+        for versement in Paiement.query.filter_by(
+                cotisation_id=annee_type["cotisation_id"]).all():
+            versement.date_paiement = date(2026, 3, 5)
+        db.session.commit()
+
+        # Fenêtre qui contient la facturation (15/09/2025) mais pas le
+        # versement (05/03/2026).
+        vue = repartition_periode(date(2025, 9, 1), date(2025, 12, 31))
+        assert vue["totaux"]["du"] == 20.0
+        assert vue["totaux"]["regle"] == 0.0
+
+        # Fenêtre inverse.
+        vue = repartition_periode(date(2026, 1, 1), date(2026, 6, 30))
+        assert vue["totaux"]["du"] == 0.0
+        assert vue["totaux"]["regle"] == 20.0
+
+
+def test_la_periode_boucle_au_centime_aussi(app, a_cheval):
+    """Même moteur, même arrondi : les colonnes totalisent ici aussi."""
+    with app.app_context():
+        from app.services.prorata import repartition_periode
+
+        vue = repartition_periode(date(2026, 1, 1), date(2026, 12, 31))
+        assert round(sum(c["du"] for c in vue["secteurs"].values()), 2) == vue["totaux"]["du"]
+        assert round(sum(c["regle"] for c in vue["secteurs"].values()), 2) == vue["totaux"]["regle"]
+
+
+def test_sans_venue_dans_la_fenetre_on_retombe_sur_lorienteur(app, a_cheval):
+    """Fenêtre où elle a payé mais n'est pas venue : la règle de repli est
+    la même que partout ailleurs."""
+    with app.app_context():
+        from app.services.prorata import repartition_periode
+
+        # Septembre 2026 : versement le 14, mais ses venues EPE sont en octobre.
+        vue = repartition_periode(date(2026, 9, 1), date(2026, 9, 30))
+        ligne = next(p for p in vue["personnes"]
+                     if p["participant"].id == a_cheval["participant_id"])
+        assert ligne["repli"] is True
+        assert list(ligne["parts"]) == ["Familles"]
+        assert ligne["parts"]["Familles"]["regle"] == 30.0
+
+
+def test_des_bornes_inversees_sont_remises_a_lendroit(app, a_cheval):
+    with app.app_context():
+        from app.services.prorata import repartition_periode
+
+        a = repartition_periode(date(2026, 12, 31), date(2026, 1, 1))
+        b = repartition_periode(date(2026, 1, 1), date(2026, 12, 31))
+        assert a["totaux"] == b["totaux"]
+        assert a["periode"] == b["periode"]
+
+
+def test_une_fenetre_vide_ne_plante_pas(app):
+    with app.app_context():
+        from app.services.prorata import repartition_periode
+
+        vue = repartition_periode(date(1999, 1, 1), date(1999, 12, 31))
+        assert vue["personnes"] == []
+        assert vue["totaux"]["regle"] == 0.0
+
+
+# --- l'écran et l'export ---------------------------------------------------
+
+def test_lecran_calcule_sur_une_periode_libre(admin_client, a_cheval):
+    page = _page(admin_client, debut="2026-01-01", fin="2026-12-31")
+    assert "Période libre : du 01/01/2026" in page
+    assert "31/12/2026" in page
+    assert "indépendante de l'année scolaire" in page
+    # Ni le bandeau du provisoire, ni celui de l'arrêté.
+    assert "Répartition provisoire" not in page
+    assert "Arrêté figé" not in page
+
+
+def test_lecran_previent_quune_saisie_retroactive_peut_bouger(admin_client, a_cheval):
+    """Une période passée n'est PAS un arrêté : pointer une présence après
+    coup la modifie encore. Le dire évite qu'on la prenne pour définitive."""
+    page = _page(admin_client, debut="2026-01-01", fin="2026-12-31")
+    assert "saisie rétroactive" in page
+    assert "figez un arrêté" in page
+
+
+def test_lexport_dune_periode_libre_le_dit(admin_client, a_cheval):
+    wb = _classeur(admin_client, debut="2026-01-01", fin="2026-12-31")
+    for onglet in wb.sheetnames:
+        nature = wb[onglet]["A2"].value or ""
+        assert "PÉRIODE LIBRE du 01/01/2026 au 31/12/2026" in nature, onglet
+        assert "PROVISOIRE" not in nature, onglet
+    # Les colonnes disent ce qu'elles comptent, et pas « Dû » tout court.
+    entetes = [wb["Par secteur"].cell(row=6, column=c).value for c in range(1, 7)]
+    assert "Facturé dans la période (€)" in entetes
+    assert "Encaissé dans la période (€)" in entetes
+
+
+def test_le_nom_du_fichier_dune_periode_porte_ses_bornes(admin_client, a_cheval):
+    r = admin_client.get("/repartition-participation.xlsx?debut=2026-01-01&fin=2026-12-31")
+    entete = r.headers["Content-Disposition"]
+    assert "periode" in entete
+    assert "20260101_20261231" in entete
+
+
+def test_une_date_illisible_retombe_sur_lannee_scolaire(admin_client, annee_type, sans_arretes):
+    """Une borne invalide ne doit pas casser l'écran : on revient au mode
+    par défaut plutôt que d'afficher une erreur."""
+    page = _page(admin_client, annee=2025, debut="pas une date", fin="2026-12-31")
+    assert "Répartition provisoire" in page
