@@ -135,8 +135,12 @@ def _ligne_de_moteur() -> str:
         from sqlalchemy.engine import make_url
 
         url = make_url(_URL_POSTGRES)
+        # Une connexion par socket unix porte hôte et port dans la query,
+        # pas dans l'URL : afficher 5432 par défaut annoncerait un serveur
+        # qui n'est pas celui sur lequel on vient de tourner.
         hote = url.host or url.query.get("host") or "local"
-        return f"base de test : PostgreSQL ({hote}:{url.port or 5432}, bases {url.database}{_SUFFIXE}*)"
+        port = url.port or url.query.get("port") or 5432
+        return f"base de test : PostgreSQL ({hote}:{port}, bases {url.database}{_SUFFIXE}*)"
     return "base de test : SQLite — pose TESTS_DATABASE_URL pour tourner sur PostgreSQL"
 
 

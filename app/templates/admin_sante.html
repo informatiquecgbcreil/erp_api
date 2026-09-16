@@ -19,6 +19,17 @@
       <h2>Base de données</h2>
       <p>Moteur : <strong>{{ moteur }}</strong></p>
       <p>Connexion : {{ etat(db_ok, "OK ✓", "ERREUR ✗") }}</p>
+      <p>Recherche sans accents :
+        {{ etat(recherche_sans_accent, "OK ✓", "indisponible ⚠️") }}
+      </p>
+      {% if not recherche_sans_accent %}
+        <p class="muted" style="font-size:.85rem;">
+          « amelie » ne trouvera pas « Amélie ». Sur PostgreSQL, faire
+          installer l'extension par un compte administrateur de la base :
+          <code>CREATE EXTENSION unaccent;</code> dans la base de
+          l'application. Rien d'autre à faire ensuite.
+        </p>
+      {% endif %}
     </div>
 
     <div class="card">

@@ -26,7 +26,11 @@ from app.models import (
 
 
 from app.main.common import bp
-from app.services.recherche_texte import NOM_FONCTION_SQL, sans_accent
+from app.services.recherche_texte import (
+    NOM_FONCTION_SQL,
+    sans_accent,
+    unaccent_disponible,
+)
 
 
 SEARCH_TYPE_PRIORITY = {
@@ -99,6 +103,21 @@ def _nom_du_dialecte() -> str:
         return ""
 
 
+def _compare_sans_accent_en_base() -> bool:
+    """La base sait-elle comparer sans accents, ou faut-il s'en passer ?
+
+    Oui sur SQLite (fonction ``sans_accent`` posée sur la connexion), oui
+    sur PostgreSQL quand l'extension ``unaccent`` a pu être obtenue. Non
+    ailleurs — et alors on compare les mots tels qu'ils sont tapés plutôt
+    que d'envoyer à la base une fonction qu'elle ne connaît pas : c'est
+    exactement ce qui avait rendu la recherche muette en production.
+    """
+    try:
+        return unaccent_disponible(db.engine)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _normalize_search_text(value: str | None) -> str:
     """Minuscules sans accents, EXACTEMENT comme la fonction SQL homonyme.
 
@@ -168,6 +187,20 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
     # utilisait lower(), qui existe dans toutes les bases ; il est devenu
     # fatal le jour où le repli est devenu propre à SQLite.
     dialect_name = _nom_du_dialecte()
+    # Peut-on demander à la base de comparer sans accents ? Sur SQLite,
+    # toujours. Sur PostgreSQL, si l'extension unaccent est là — sinon on
+    # garde ILIKE, qui trouve « Étienne » mais pas « amelie » -> « Amélie ».
+    normalise_en_base = dialect_name == "sqlite" or (
+        dialect_name == "postgresql" and _compare_sans_accent_en_base()
+    )
+    # Même exigence de symétrie pour « quartier: » que pour les mots tapés :
+    # un motif sans accents comparé à des colonnes qui en gardent ne trouve
+    # rien. La version Python (quartier_filter) reste normalisée des deux
+    # côtés, elle : c'est du filtrage en mémoire.
+    quartier_filter_sql = (
+        quartier_filter if normalise_en_base
+        else (parsed["quartier_filter"] or "").strip().lower()
+    )
     results: list[dict] = []
     candidate_limit = max(panel_limit, min(max(page_limit, 20), 120))
     fetch_limit = max(candidate_limit * 3, 24)
@@ -180,7 +213,16 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
             # accents — fonction enregistrée sur la connexion SQLite.
             return getattr(db.func, NOM_FONCTION_SQL)(db.func.coalesce(column, "")).like(pattern)
         if dialect_name == "postgresql":
-            # ilike() y est déjà unicode : « Étienne » s'y trouve.
+            if normalise_en_base:
+                # unaccent() D'ABORD : il ramène « É » à « E », de l'ASCII
+                # que lower() traite quelle que soit la locale du serveur.
+                # Dans l'autre ordre, une base en locale C laisserait « É »
+                # intact — le bug d'origine, transposé.
+                return db.func.lower(
+                    db.func.unaccent(db.func.coalesce(column, ""))
+                ).like(pattern)
+            # Sans l'extension : ilike() est déjà unicode, « Étienne » s'y
+            # trouve. « amelie » n'y trouvera pas « Amélie », faute de mieux.
             return db.func.coalesce(column, "").ilike(pattern)
         # Dialecte inconnu : on ne suppose rien de ses fonctions. lower()
         # existe partout — une recherche un peu moins fine vaut mieux
@@ -196,10 +238,10 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
         return db.or_(*[_like(col, f"%{token}%") for col in columns])
 
     def _filter_for_tokens(columns, *, mode: str):
-        # Les motifs doivent être normalisés EXACTEMENT comme les colonnes :
-        # sans accents sur SQLite (seul dialecte où l'on applique
-        # sans_accent), tels quels ailleurs.
-        source_tokens = tokens if dialect_name == "sqlite" else sql_tokens
+        # Les motifs doivent être normalisés EXACTEMENT comme les colonnes.
+        # Sans cette symétrie, un côté compare « Étienne » à « etienne » et
+        # ne trouve jamais rien : c'est la panne d'origine.
+        source_tokens = tokens if normalise_en_base else sql_tokens
         return db.and_(*[_token_mode_clause(columns, token, mode) for token in source_tokens])
 
     def _run_ranked_rows(base_query, columns, order_by, *, row_id_attr="id"):
@@ -254,8 +296,8 @@ def _run_global_search(term: str, *, panel_limit: int = 20, page_limit: int = 10
         if quartier_filter:
             participants_q = participants_q.filter(
                 db.or_(
-                    _like(Quartier.nom, f"%{quartier_filter}%"),
-                    _like(Quartier.ville, f"%{quartier_filter}%"),
+                    _like(Quartier.nom, f"%{quartier_filter_sql}%"),
+                    _like(Quartier.ville, f"%{quartier_filter_sql}%"),
                 )
             )
         if secteur_filter_participants:

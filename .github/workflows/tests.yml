@@ -52,6 +52,10 @@ jobs:
           POSTGRES_DB: erp
           # Locale UTF-8 et non C : c'est elle qui décide si « Étienne »
           # se trouve lui-même (ILIKE et lower() y sont unicode).
+          # L'image officielle embarque aussi les extensions contrib, dont
+          # « unaccent » — celle qui fait trouver « Amélie » en tapant
+          # « amelie ». L'application l'installe toute seule au premier
+          # besoin ; les tests vérifient les deux cas, avec et sans.
           POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
         ports:
           - 5432:5432
@@ -72,9 +76,9 @@ jobs:
           cache: pip
 
       - name: Installer les dépendances
-        run: |
-          pip install -r requirements-dev.txt
-          pip install "psycopg[binary]"
+        # Le pilote PostgreSQL est déclaré dans requirements.txt : c'est
+        # celui que la production utilise, il n'y a rien à ajouter ici.
+        run: pip install -r requirements-dev.txt
 
       - name: Installer le client PostgreSQL
         # pg_dump est appelé par le module de sauvegarde, qui est testé.
