@@ -67,7 +67,7 @@ def test_extraction_saine_fonctionne(tmp_path):
 # Vérification à blanc d'un lot
 # ---------------------------------------------------------------------------
 
-def test_verifier_lot_sauvegarde_reelle(app, backups_tmp):
+def test_verifier_lot_sauvegarde_reelle(app, backups_tmp, dialecte):
     from app.services import sauvegarde as svc
 
     with app.app_context():
@@ -80,8 +80,15 @@ def test_verifier_lot_sauvegarde_reelle(app, backups_tmp):
     assert noms["Empreintes sha256"]["ok"] is True
     assert noms["Pièces jointes"]["ok"] is True
     assert noms["Base de données"]["ok"] is True
-    # La restauration à blanc doit avoir compté les tables témoins.
-    assert "participant=" in noms["Base de données"]["detail"]
+    # Le contrôle n'a pas la même forme selon le moteur, et c'est normal :
+    # une base SQLite est un fichier qu'on rouvre pour compter ses lignes,
+    # un dump PostgreSQL est un texte dont on vérifie la structure et le
+    # marqueur de fin.
+    detail = noms["Base de données"]["detail"]
+    if dialecte == "postgresql":
+        assert "dump complet" in detail
+    else:
+        assert "participant=" in detail
 
 
 def test_verifier_lot_detecte_base_corrompue(app, backups_tmp):

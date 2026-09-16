@@ -55,12 +55,19 @@ def seance(app):
 
     with app.app_context():
         from app.extensions import db
-        from app.models import AtelierActivite
+        from app.models import ArchiveEmargement, AtelierActivite
 
+        # Les archives d'émargement D'ABORD : elles référencent la séance
+        # sans cascade. SQLite n'applique pas les clés étrangères et
+        # laissait des archives orphelines ; PostgreSQL refuse la
+        # suppression, et il a raison.
+        for archive in ArchiveEmargement.query.filter_by(
+                atelier_id=contexte["atelier_id"]).all():
+            db.session.delete(archive)
         a = db.session.get(AtelierActivite, contexte["atelier_id"])
         if a is not None:
             db.session.delete(a)
-            db.session.commit()
+        db.session.commit()
 
 
 def _signer(app, session_id, participant_id):

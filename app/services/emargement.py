@@ -93,3 +93,95 @@ def retirer_les_non_signees(session, *, journaliser_action=None) -> list[str]:
     if retires:
         db.session.commit()
     return retires
+
+
+# ---------------------------------------------------------------------------
+# Où en est chaque personne présente
+# ---------------------------------------------------------------------------
+
+def situations(session, participant_ids) -> dict[int, dict]:
+    """Inscription à l'atelier, bulletin de l'année, règlement — par personne.
+
+    Pendant l'émargement, la question qui revient à l'accueil est toujours
+    la même : « elle est inscrite, celle-là ? elle a payé ? ». Les trois
+    réponses vivent dans trois modules différents, et il fallait ouvrir
+    trois écrans pour les obtenir — pendant que la personne attend.
+
+    Chaque entrée : ``{annee_scolaire, libelle_annee, atelier, bulletin,
+    reglement}`` où
+
+    - ``atelier`` vaut « inscrit », « attente » (liste d'attente) ou
+      « aucune » — venue sans inscription, ce qui est parfaitement
+      légitime en accueil libre mais mérite d'être su ;
+    - ``bulletin`` dit si la personne a un bulletin d'inscription pour
+      l'année scolaire DE LA SÉANCE ;
+    - ``reglement`` est l'état d'adhésion de cette même année.
+
+    L'année est celle de la séance et non celle d'aujourd'hui : rouvrir
+    l'émargement d'une séance de juin doit montrer la situation de juin,
+    pas celle d'aujourd'hui.
+
+    Trois requêtes au total, quel que soit le nombre de présents : afficher
+    l'état de vingt personnes ne doit pas coûter soixante allers-retours.
+    """
+    from app.models import InscriptionActivite, InscriptionAnnuelle, Participant
+    from app.services.cotisations import (
+        annee_scolaire_de,
+        annee_scolaire_courante,
+        etats_reglement_par_participant,
+        libelle_annee_scolaire,
+    )
+
+    ids = sorted({int(i) for i in participant_ids if i})
+    if not ids:
+        return {}
+
+    jour = getattr(session, "date_session", None) or getattr(session, "rdv_date", None)
+    annee = annee_scolaire_de(jour) if jour else annee_scolaire_courante()
+
+    # 1. Inscription à l'atelier. « inscrit » l'emporte sur « attente » :
+    #    quelqu'un inscrit à l'atelier ET en attente sur une séance
+    #    précise est bien inscrit.
+    par_atelier: dict[int, str] = {}
+    lignes = (
+        InscriptionActivite.query
+        .filter(InscriptionActivite.atelier_id == session.atelier_id)
+        .filter(InscriptionActivite.participant_id.in_(ids))
+        .filter(InscriptionActivite.statut != "annule")
+        .all()
+    )
+    for ligne in lignes:
+        if par_atelier.get(ligne.participant_id) == "inscrit":
+            continue
+        par_atelier[ligne.participant_id] = ligne.statut
+
+    # 2. Bulletin de l'année. Rattachement par identifiant (certain), puis
+    #    par nom complet : un bulletin saisi avant que la fiche existe n'a
+    #    pas encore d'identifiant.
+    fiches = Participant.query.filter(Participant.id.in_(ids)).all()
+    avec_bulletin: set[int] = set()
+    noms = {}
+    for fiche in fiches:
+        noms[((fiche.nom or "").strip().lower(), (fiche.prenom or "").strip().lower())] = fiche.id
+    for ins in InscriptionAnnuelle.query.filter_by(annee_scolaire=annee).all():
+        if ins.participant_id in ids:
+            avec_bulletin.add(ins.participant_id)
+            continue
+        cle = ((ins.nom or "").strip().lower(), (ins.prenom or "").strip().lower())
+        if cle in noms:
+            avec_bulletin.add(noms[cle])
+
+    # 3. Règlement, en un seul aller-retour (fonction déjà prévue pour ça).
+    reglements = etats_reglement_par_participant(ids, annee_scolaire=annee)
+
+    libelle = libelle_annee_scolaire(annee)
+    return {
+        pid: {
+            "annee_scolaire": annee,
+            "libelle_annee": libelle,
+            "atelier": par_atelier.get(pid, "aucune"),
+            "bulletin": pid in avec_bulletin,
+            "reglement": reglements.get(pid),
+        }
+        for pid in ids
+    }

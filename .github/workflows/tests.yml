@@ -5,7 +5,10 @@ on:
   pull_request:
 
 jobs:
-  tests:
+  # La suite telle qu'elle tourne sur le poste de chacun : SQLite, rien à
+  # installer, rien à démarrer. C'est le retour rapide.
+  sqlite:
+    name: Tests (SQLite)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -26,4 +29,64 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Lancer les tests
+        run: python -m pytest
+
+  # La même suite sur le moteur de PRODUCTION.
+  #
+  # Deux pannes ont eu pour cause un comportement que SQLite pardonne et
+  # que PostgreSQL refuse : un booléen écrit « 1 » au lieu de « true », et
+  # une fonction SQL propre à SQLite appelée sur PostgreSQL. Dans les deux
+  # cas la suite était au vert — elle ne tournait que sur SQLite. Ce second
+  # passage existe pour que cette famille d'erreurs s'arrête ici.
+  postgres:
+    name: Tests (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp
+          # Locale UTF-8 et non C : c'est elle qui décide si « Étienne »
+          # se trouve lui-même (ILIKE et lower() y sont unicode).
+          # L'image officielle embarque aussi les extensions contrib, dont
+          # « unaccent » — celle qui fait trouver « Amélie » en tapant
+          # « amelie ». L'application l'installe toute seule au premier
+          # besoin ; les tests vérifient les deux cas, avec et sans.
+          POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Installer les dépendances
+        # Le pilote PostgreSQL est déclaré dans requirements.txt : c'est
+        # celui que la production utilise, il n'y a rien à ajouter ici.
+        run: pip install -r requirements-dev.txt
+
+      - name: Installer le client PostgreSQL
+        # pg_dump est appelé par le module de sauvegarde, qui est testé.
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Lancer les tests sur PostgreSQL
+        env:
+          # Les bases de travail sont dérivées de cette URL (erp_pytest_app,
+          # erp_pytest_fresh) puis créées et supprimées autour de la session.
+          TESTS_DATABASE_URL: postgresql+psycopg://erp:erp@localhost:5432/erp
         run: python -m pytest

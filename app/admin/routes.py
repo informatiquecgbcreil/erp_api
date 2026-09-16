@@ -900,6 +900,21 @@ def sante_systeme():
     except Exception:  # noqa: BLE001
         disque = None
 
+    # Recherche accent-insensible. Sur SQLite, une fonction posée sur la
+    # connexion : toujours là. Sur PostgreSQL, l'extension unaccent, dont
+    # l'installation demande des droits que le compte applicatif n'a pas
+    # forcément — et son absence ne se voit nulle part ailleurs : la
+    # recherche répond, elle trouve seulement un peu moins.
+    from app.services.recherche_texte import unaccent_disponible
+
+    if moteur == "PostgreSQL":
+        try:
+            recherche_sans_accent = unaccent_disponible(db.engine)
+        except Exception:  # noqa: BLE001 — un diagnostic ne casse pas une page
+            recherche_sans_accent = False
+    else:
+        recherche_sans_accent = moteur == "SQLite"
+
     mail = resolve_mail_settings(current_app.config)
     try:
         seuil = int(current_app.config.get("BACKUP_ALERT_DAYS") or 2)
@@ -910,6 +925,7 @@ def sante_systeme():
         "admin_sante.html",
         moteur=moteur,
         db_ok=db_ok,
+        recherche_sans_accent=recherche_sans_accent,
         jours_depuis=jours_depuis_derniere(),
         seuil_alerte=seuil,
         disque=disque,

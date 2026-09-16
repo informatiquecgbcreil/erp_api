@@ -58,7 +58,10 @@ def _fiche_avec_historique(app, *, tag, secteur="Numérique"):
                            date_evaluation=dt.date.today(), niveau=3),
             BenevoleHeures(participant_id=p.id, secteur=secteur, date_action=dt.date.today(), heures=2.0),
         ])
-        cot = Cotisation(participant_id=p.id, annee_scolaire="2025-2026", type_cotisation="individuelle",
+        # L'ANNÉE DE RENTRÉE, pas son libellé : la colonne est un entier.
+        # SQLite acceptait « 2025-2026 » sans broncher (typage dynamique),
+        # PostgreSQL le refuse — et il a raison, la donnée était fausse.
+        cot = Cotisation(participant_id=p.id, annee_scolaire=2025, type_cotisation="individuelle",
                          montant_du=10.0, date_reference=dt.date.today())
         db.session.add(cot)
         db.session.flush()

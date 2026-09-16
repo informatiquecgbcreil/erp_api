@@ -577,12 +577,20 @@ def emargement(session_id: int):
     # l'année scolaire. Calculé en un aller-retour pour toute la liste, et
     # partagé avec la fiche participant et les inscriptions annuelles — même
     # règle, même verdict, quel que soit l'écran.
-    from app.services.cotisations import etats_reglement_par_participant
-    etats_reglement = etats_reglement_par_participant(
-        [pr.participant_id for pr in presences]
-        + [i.participant_id for i in inscrits_a_pointer]
-    )
+    from app.services.emargement import situations as situations_emargement
 
+    # « Elle est inscrite, celle-là ? elle a payé ? » — la question de
+    # l'accueil, dont les trois réponses vivent dans trois modules. On les
+    # rassemble ici, en trois requêtes pour toute la liste.
+    #
+    # L'année de référence est celle de la SÉANCE : rouvrir l'émargement
+    # d'une séance de juin doit montrer la situation de juin, et non celle
+    # d'aujourd'hui.
+    situations = situations_emargement(
+        s,
+        [pr.participant_id for pr in presences]
+        + [i.participant_id for i in inscrits_a_pointer],
+    )
     return render_template(
         "activite/emargement.html",
         secteur=secteur,
@@ -625,7 +633,7 @@ def emargement(session_id: int):
         hart_dues=hart_dues,
         hart_niveaux=hart_service.HART_NIVEAUX,
         inscrits_a_pointer=inscrits_a_pointer,
-        etats_reglement=etats_reglement,
+        situations=situations,
     )
 
 
