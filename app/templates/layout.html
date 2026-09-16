@@ -1038,10 +1038,18 @@
             <span class="breadcrumb__sep">›</span>
             <a class="breadcrumb__item breadcrumb__current" aria-current="page" href="{{ request.path }}">{{ AIDE_PAGE.titre }}</a>
           {% elif endpoint_action and not action_redondante %}
-            {% set premier = endpoint_action.split('_')[0] %}
-            {% set reste = endpoint_action.split('_')[1:] | join(' ') %}
+            {# Ces deux noms sont préfixés, et ce n'est pas de la coquetterie :
+               un {% raw %}{% set %}{% endraw %} posé ici vit dans la portée RACINE du gabarit
+               parent, donc il reste visible à l'intérieur de {% raw %}{% block body %}{% endraw %}
+               et y ÉCRASE la variable que la page a passée à render_template.
+               « reste » a ainsi rendu l'écran des dépenses inutilisable :
+               la route envoyait un montant, le fil d'Ariane le remplaçait
+               par la chaîne « edit », et Jinja refusait de formater
+               « %.2f » avec du texte. Voir tests/test_layout_variables.py. #}
+            {% set crumb_verbe = endpoint_action.split('_')[0] %}
+            {% set crumb_suite = endpoint_action.split('_')[1:] | join(' ') %}
             <span class="breadcrumb__sep">›</span>
-            <a class="breadcrumb__item breadcrumb__current" aria-current="page" href="{{ request.path }}">{{ (verbes_crumb.get(premier, premier) ~ (' ' ~ reste if reste else '')) | trim | capitalize }}</a>
+            <a class="breadcrumb__item breadcrumb__current" aria-current="page" href="{{ request.path }}">{{ (verbes_crumb.get(crumb_verbe, crumb_verbe) ~ (' ' ~ crumb_suite if crumb_suite else '')) | trim | capitalize }}</a>
           {% endif %}
         </nav>
       {% endif %}
