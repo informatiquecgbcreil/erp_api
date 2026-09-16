@@ -3,14 +3,13 @@
 Portée secteur : sans ``scope:all_secteurs``, on ne voit que les bulletins
 de son propre secteur — ceux qu'on a saisis (``created_secteur``) et ceux
 dont on est le secteur qui fait venir (``secteur_orienteur``). Les bulletins
-sans secteur restent visibles de tous : à l'accueil, on ne sait pas toujours
-qui envoie la personne, et un bulletin invisible est un bulletin perdu.
+sans secteur forment une file à affecter réservée aux comptes globaux.
 """
 from __future__ import annotations
 
 from datetime import date, datetime
 
-from flask import abort, flash, redirect, render_template, request, send_file, url_for
+from flask import abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from werkzeug.datastructures import MultiDict
 
@@ -28,7 +27,9 @@ from app.models import (
     TYPES_INSCRIPTION_ANNUELLE_LABELS,
     InscriptionAnnuelle,
     Participant,
+    PresenceActivite,
     Quartier,
+    SessionActivite,
 )
 from app.rbac import can, require_perm
 from app.secteurs import get_secteur_labels
@@ -77,21 +78,29 @@ def _portee_globale() -> bool:
     return can("scope:all_secteurs")
 
 
+def _secteur_requis() -> str:
+    """Secteur d'un compte borné ; une absence de configuration ferme l'accès."""
+    secteur = _secteur_utilisateur()
+    if not secteur:
+        abort(
+            403,
+            description=(
+                "Votre compte possède un accès sectoriel, mais aucun secteur ne lui est "
+                "attribué. Demandez à l’administration de compléter votre compte."
+            ),
+        )
+    return secteur
+
+
 def _restreindre_a_mon_secteur(query):
     """Applique le cloisonnement par secteur (sans effet en portée globale)."""
     if _portee_globale():
         return query
-    secteur = _secteur_utilisateur()
-    if not secteur:
-        return query
+    secteur = _secteur_requis()
     return query.filter(
         db.or_(
             InscriptionAnnuelle.created_secteur == secteur,
             InscriptionAnnuelle.secteur_orienteur == secteur,
-            db.and_(
-                InscriptionAnnuelle.created_secteur.is_(None),
-                InscriptionAnnuelle.secteur_orienteur.is_(None),
-            ),
         )
     )
 
@@ -99,12 +108,36 @@ def _restreindre_a_mon_secteur(query):
 def _accessible(inscription: InscriptionAnnuelle) -> bool:
     if _portee_globale():
         return True
-    secteur = _secteur_utilisateur()
-    if not secteur:
-        return True
-    if not inscription.created_secteur and not inscription.secteur_orienteur:
-        return True
+    secteur = _secteur_requis()
     return secteur in {inscription.created_secteur, inscription.secteur_orienteur}
+
+
+def _participant_accessible(participant: Participant) -> bool:
+    """Même périmètre concret que l'annuaire : création ou présence du secteur."""
+    if _portee_globale():
+        return True
+    secteur = _secteur_requis()
+    if (participant.created_secteur or "") == secteur:
+        return True
+    presence = (
+        db.session.query(PresenceActivite.id)
+        .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
+        .filter(PresenceActivite.participant_id == participant.id)
+        .filter(SessionActivite.secteur == secteur)
+        .first()
+    )
+    return presence is not None
+
+
+def _refuser_participant_hors_perimetre(participant: Participant | None) -> None:
+    if participant is not None and not _participant_accessible(participant):
+        abort(
+            403,
+            description=(
+                "Cette fiche habitant existe, mais elle n’est pas accessible depuis votre "
+                "secteur. Demandez au secteur concerné ou à la direction de la rattacher."
+            ),
+        )
 
 
 def _charger(inscription_id: int) -> InscriptionAnnuelle:
@@ -299,11 +332,17 @@ def index():
     # Filets de sécurité avant d'afficher les compteurs : les bulletins dont
     # la personne est déjà venue, et les règlements saisis ailleurs (une fiche
     # participant peut encaisser sans passer par ce module).
+    synchronisation_ok = True
     try:
         rafraichir_statuts(annee)
         rafraichir_reglements(annee)
     except Exception:  # noqa: BLE001 — l'affichage ne dépend pas du rattrapage
         db.session.rollback()
+        synchronisation_ok = False
+        current_app.logger.exception(
+            "Échec de la resynchronisation des inscriptions annuelles %s-%s",
+            annee, annee + 1,
+        )
 
     q = _restreindre_a_mon_secteur(
         InscriptionAnnuelle.query.filter(InscriptionAnnuelle.annee_scolaire == annee)
@@ -314,7 +353,12 @@ def index():
         q = q.filter(InscriptionAnnuelle.statut == statut)
 
     secteur = (request.args.get("secteur") or "").strip()
-    if secteur:
+    if secteur == "__sans_secteur__" and _portee_globale():
+        q = q.filter(
+            InscriptionAnnuelle.created_secteur.is_(None),
+            InscriptionAnnuelle.secteur_orienteur.is_(None),
+        )
+    elif secteur:
         q = q.filter(InscriptionAnnuelle.secteur_orienteur == secteur)
 
     reglement = (request.args.get("reglement") or "").strip()
@@ -375,6 +419,8 @@ def index():
         peut_editer=can("inscriptions_annuelles:edit"),
         peut_regler=can("inscriptions_annuelles:reglement"),
         peut_exporter=can("inscriptions_annuelles:export"),
+        portee_globale=_portee_globale(),
+        synchronisation_ok=synchronisation_ok,
     )
 
 
@@ -394,7 +440,7 @@ def a_regulariser():
     transforme « je dois y penser » en « il m'en reste douze ».
     """
     annee = _annee_demandee()
-    secteur = None if _portee_globale() else (_secteur_utilisateur() or None)
+    secteur = None if _portee_globale() else _secteur_requis()
     lignes = participants_sans_bulletin(annee, secteur=secteur)
     return render_template(
         "inscriptions_annuelles/a_regulariser.html",
@@ -433,6 +479,8 @@ def regulariser():
     if not fiches:
         flash("Coche d'abord au moins une personne dans la liste.", "warning")
         return redirect(retour)
+    for participant in fiches:
+        _refuser_participant_hors_perimetre(participant)
 
     crees, avertissements = regulariser_depuis_les_fiches(
         annee, fiches,
@@ -460,10 +508,13 @@ def regulariser():
 @require_perm("inscriptions_annuelles:edit")
 def nouvelle():
     annee = _annee_demandee()
+    if not _portee_globale():
+        _secteur_requis()
     # Bulletin ouvert depuis une fiche participant (« Inscrire pour 2026-2027 ») :
     # tout ce que l'application sait déjà est prérempli, et la fiche est
     # rattachée au bulletin dès l'enregistrement.
     participant = db.session.get(Participant, request.values.get("participant_id", type=int) or 0)
+    _refuser_participant_hors_perimetre(participant)
 
     if request.method == "POST":
         inscription = InscriptionAnnuelle(
@@ -691,6 +742,7 @@ def rattacher_fiche(inscription_id: int):
     if participant is None:
         flash("Fiche participant introuvable.", "err")
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
+    _refuser_participant_hors_perimetre(participant)
 
     try:
         avertissements = rattacher_participant(

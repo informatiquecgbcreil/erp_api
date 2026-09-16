@@ -41,6 +41,16 @@
     </form>
   </section>
 
+  {% if not synchronisation_ok %}
+  <div class="ui-card" style="margin-top:10px; border-left:4px solid var(--warn, #f59e0b);">
+    <strong>Synchronisation incomplète</strong>
+    <p class="muted" style="margin:4px 0 0;">
+      La liste reste disponible, mais certains statuts de première venue ou règlements
+      n'ont pas pu être recalés. Réessaie dans quelques instants ou préviens l'administration.
+    </p>
+  </div>
+  {% endif %}
+
   <div class="ui-actions inline-actions" style="margin-top:10px;">
     {% if peut_editer %}
       <a class="btn primary" href="{{ url_for('inscriptions_annuelles.nouvelle', annee=annee) }}">➕ Nouvelle inscription</a>
@@ -81,6 +91,7 @@
       <label class="field-stack slim"><span>Secteur qui fait venir</span>
         <select class="in" name="secteur">
           <option value="">Tous</option>
+          {% if portee_globale %}<option value="__sans_secteur__" {% if filtres.secteur == '__sans_secteur__' %}selected{% endif %}>À affecter (sans secteur)</option>{% endif %}
           {% for s in secteurs %}<option value="{{ s }}" {% if filtres.secteur == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
         </select>
       </label>

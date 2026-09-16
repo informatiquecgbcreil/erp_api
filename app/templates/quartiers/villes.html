@@ -65,10 +65,22 @@
       Villers-sous-Saint-Leu, deux communes voisines. Le code ne devine pas — c'est
       à vous de trancher.
     </p>
+    {% if can('quartiers:edit') %}
+    <form method="post" action="{{ url_for('quartiers.villes_fusionner') }}" id="villes-fusion-libre"
+          onsubmit="return confirm('Fusionner les deux villes cochées ? Les habitants et quartiers seront mis à jour.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+    <div class="inline" id="villes-fusion-bar" style="display:none; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+      <strong>2 villes cochées</strong>
+      <label>Conserver <select class="in" name="cible" form="villes-fusion-libre" id="villes-fusion-cible" required></select></label>
+      <button class="btn warn" type="submit" form="villes-fusion-libre">Fusionner la sélection</button>
+    </div>
+    {% endif %}
     <div class="tablewrap clean">
       <table class="js-sortable">
         <thead>
           <tr>
+            {% if can('quartiers:edit') %}<th style="width:34px;"></th>{% endif %}
             <th>Écriture enregistrée</th>
             <th>Fiches</th>
             <th>Quartiers</th>
@@ -79,6 +91,7 @@
         <tbody>
           {% for v in villes %}
             <tr>
+              {% if can('quartiers:edit') %}<td><input type="checkbox" class="ville-fusion-check" name="villes_selection" value="{{ v.nom }}" data-label="{{ v.nom }}" form="villes-fusion-libre" aria-label="Sélectionner {{ v.nom }}"></td>{% endif %}
               <td><strong>{{ v.nom }}</strong></td>
               <td>{{ v.participants }}</td>
               <td>{{ v.quartiers }}</td>
@@ -105,7 +118,7 @@
               {% endif %}
             </tr>
           {% else %}
-            <tr><td colspan="5" class="muted">Aucune ville enregistrée pour l'instant.</td></tr>
+            <tr><td colspan="{{ 6 if can('quartiers:edit') else 4 }}" class="muted">Aucune ville enregistrée pour l'instant.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -115,4 +128,26 @@
     </datalist>
   </div>
 </div>
+{% if can('quartiers:edit') %}
+<script>
+(() => {
+  const checks = Array.from(document.querySelectorAll('.ville-fusion-check'));
+  const bar = document.getElementById('villes-fusion-bar');
+  const cible = document.getElementById('villes-fusion-cible');
+  function refresh(changed) {
+    const selected = checks.filter(c => c.checked);
+    if (selected.length > 2 && changed) {
+      changed.checked = false;
+      alert('Choisissez seulement deux villes à fusionner.');
+      return refresh();
+    }
+    const previous = cible.value;
+    cible.replaceChildren(...selected.map(c => new Option(c.dataset.label, c.value, false, c.value === previous)));
+    bar.style.display = selected.length === 2 ? '' : 'none';
+  }
+  checks.forEach(c => c.addEventListener('change', () => refresh(c)));
+  refresh();
+})();
+</script>
+{% endif %}
 {% endblock %}

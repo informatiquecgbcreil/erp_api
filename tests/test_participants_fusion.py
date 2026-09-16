@@ -199,6 +199,29 @@ def test_merging_returns_to_the_duplicates_list_not_the_edit_page(app, admin_cli
     assert "a absorbé 1 fiche(s)" in page
 
 
+def test_annuaire_permet_la_fusion_libre_de_deux_fiches(app, admin_client):
+    garde = _participant(app, nom="AUCUN-RAPPORT", prenom="Alpha")
+    doublon = _participant(app, nom="AUTRE-NOM", prenom="Beta")
+
+    page = admin_client.get("/participants/").get_data(as_text=True)
+    assert 'value="fusionner"' in page
+    assert "Fusionner les 2 fiches" in page
+
+    reponse = admin_client.post(
+        "/participants/actions-groupees",
+        data={"action": "fusionner", "pid": [garde, doublon], "keep_id": garde},
+        follow_redirects=True,
+    )
+    assert reponse.status_code == 200
+    assert "Fusion effectuée" in reponse.get_data(as_text=True)
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant
+
+        assert db.session.get(Participant, garde) is not None
+        assert db.session.get(Participant, doublon) is None
+
+
 def _bloc_du_groupe(page, cle):
     """Le fragment de page correspondant à un groupe, repéré par sa clé."""
     debut = page.index(f"<code>{cle}</code>")

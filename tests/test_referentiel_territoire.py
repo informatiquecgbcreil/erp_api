@@ -21,6 +21,7 @@ Trois maux qui se tiennent, constatés dans le code existant :
 Et le geste qui manquait : supprimer un quartier doublonné était refusé dès
 qu'une fiche y était rattachée. Il n'existait aucun moyen de nettoyer.
 """
+import datetime as dt
 import uuid
 
 import pytest
@@ -213,7 +214,7 @@ def test_fusion_deplace_les_fiches_puis_supprime(app):
     et les bilans comptaient le même quartier deux fois."""
     with app.app_context():
         from app.extensions import db
-        from app.models import Participant, Quartier
+        from app.models import OrientationAccesDroit, Participant, Quartier
         from app.services.referentiels import fusionner_quartiers
 
         suf = _suffixe()
@@ -226,6 +227,10 @@ def test_fusion_deplace_les_fiches_puis_supprime(app):
         source_id, cible_id = source.id, cible.id
         for i in range(3):
             db.session.add(Participant(nom=f"Fusion{suf}", prenom=f"P{i}", quartier_id=source_id))
+        db.session.add(OrientationAccesDroit(
+            date_orientation=dt.date.today(), domaine="Test",
+            demande="Conserver le rattachement territorial", quartier_id=source_id,
+        ))
         db.session.commit()
 
         deplaces = fusionner_quartiers(source, cible)
@@ -234,6 +239,7 @@ def test_fusion_deplace_les_fiches_puis_supprime(app):
         assert db.session.get(Quartier, source_id) is None
         survivant = db.session.get(Quartier, cible_id)
         assert Participant.query.filter_by(quartier_id=cible_id).count() == 3
+        assert OrientationAccesDroit.query.filter_by(quartier_id=cible_id).count() == 1
         # Rien de ce que le doublon savait n'est perdu.
         assert survivant.qpv == "Hauts de Creil"
         assert survivant.is_qpv is True
@@ -290,6 +296,39 @@ def test_un_quartier_ne_se_fusionne_pas_avec_lui_meme(admin_client, app):
         assert db.session.get(Quartier, qid) is not None
 
 
+def test_fusion_libre_de_deux_quartiers_sans_ressemblance(admin_client, app):
+    """La décision humaine prime sur la détection automatique des doublons."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant, Quartier
+
+        suf = _suffixe()
+        source = Quartier(ville=f"Creil{suf}", nom="Cavées")
+        cible = Quartier(ville=f"Creil{suf}", nom="Hauts de Creil")
+        db.session.add_all([source, cible])
+        db.session.flush()
+        source_id, cible_id = source.id, cible.id
+        db.session.add(Participant(nom=f"Cavees{suf}", prenom="Test", quartier_id=source_id))
+        db.session.commit()
+
+    page = admin_client.get("/quartiers/").get_data(as_text=True)
+    assert 'name="quartier_ids"' in page
+    assert "Fusionner la sélection" in page
+
+    reponse = admin_client.post(
+        "/quartiers/fusionner",
+        data={"quartier_ids": [source_id, cible_id], "cible_id": cible_id},
+        follow_redirects=True,
+    )
+    assert reponse.status_code == 200
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant, Quartier
+
+        assert db.session.get(Quartier, source_id) is None
+        assert Participant.query.filter_by(quartier_id=cible_id).count() == 1
+
+
 def test_fusion_de_villes(admin_client, app):
     """« Nogent » -> « Nogent-sur-Oise » sur toutes les fiches d'un coup."""
     with app.app_context():
@@ -314,6 +353,33 @@ def test_fusion_de_villes(admin_client, app):
         assert Participant.query.filter_by(ville=source).count() == 0
         assert Participant.query.filter_by(ville=cible).count() == 2
         assert Quartier.query.filter_by(ville=cible).count() == 1
+
+
+def test_fusion_libre_de_villes_par_selection(admin_client, app):
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Participant
+
+        suf = _suffixe()
+        source, cible = f"Nom court {suf}", f"Commune officielle {suf}"
+        db.session.add_all([
+            Participant(nom=f"Ville{suf}", prenom="Source", ville=source),
+            Participant(nom=f"Ville{suf}", prenom="Cible", ville=cible),
+        ])
+        db.session.commit()
+
+    page = admin_client.get("/quartiers/villes").get_data(as_text=True)
+    assert 'name="villes_selection"' in page
+    assert "Fusionner la sélection" in page
+    admin_client.post(
+        "/quartiers/villes/fusionner",
+        data={"villes_selection": [source, cible], "cible": cible},
+    )
+    with app.app_context():
+        from app.models import Participant
+
+        assert Participant.query.filter_by(ville=source).count() == 0
+        assert Participant.query.filter_by(ville=cible).count() == 2
 
 
 def test_ecran_des_villes_montre_le_poids_de_chaque_ecriture(admin_client, app):

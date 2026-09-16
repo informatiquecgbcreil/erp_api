@@ -158,6 +158,13 @@
               title="Rassemble les personnes cochées dans un même foyer : l'adhésion familiale se règle une fois pour toute la famille."
               onclick="return confirm('Regrouper les personnes cochées dans une même famille (foyer) ?');">👪 Regrouper en famille</button>
       {% endif %}
+      {% if can('participants:delete') %}
+      <span id="bulk-merge-controls" class="inline-actions" style="display:none; gap:6px;">
+        <label>Conserver <select class="in" name="keep_id" id="bulk-merge-keep" form="bulk-actions"></select></label>
+        <button class="btn warn" type="submit" form="bulk-actions" name="action" value="fusionner"
+                onclick="return confirm('Fusionner ces deux personnes ? Tout l’historique suivra la fiche conservée et l’autre fiche sera supprimée.');">Fusionner les 2 fiches</button>
+      </span>
+      {% endif %}
       <button class="btn" type="submit" form="bulk-actions" name="action" value="export"
               title="Télécharge la sélection en tableur (CSV).">⬇ Exporter la sélection</button>
       {% if can('participants:anonymize') %}
@@ -196,7 +203,7 @@
         <tbody>
           {% for item in items %}
           <tr>
-            <td><input type="checkbox" class="bulk-pid" name="pid" value="{{ item.id }}" form="bulk-actions" aria-label="Sélectionner {{ item.prenom }} {{ item.nom }}"></td>
+            <td><input type="checkbox" class="bulk-pid" name="pid" value="{{ item.id }}" data-label="{{ item.prenom }} {{ item.nom }} (#{{ item.id }})" form="bulk-actions" aria-label="Sélectionner {{ item.prenom }} {{ item.nom }}"></td>
             <td><strong>{{ item.nom }}</strong><br><span class="muted">{{ item.prenom or '—' }}</span>
               {% if item.foyer_id %}<br><a class="chip" style="text-decoration:none;" href="{{ url_for('participants.synthese_participant', participant_id=item.id) }}#famille" title="Membre d'une famille (foyer) — voir la synthèse pour la composition.">👪 {{ item.foyer.nom or 'Famille' }}</a>{% endif %}
             </td>
@@ -237,7 +244,7 @@
       {% for item in items %}
       <article class="responsive-card">
         <header class="responsive-card__head">
-          <strong><label style="display:inline-flex; align-items:center; gap:8px;"><input type="checkbox" class="bulk-pid" name="pid" value="{{ item.id }}" form="bulk-actions"> {{ item.nom }} {{ item.prenom or '' }}</label></strong>
+          <strong><label style="display:inline-flex; align-items:center; gap:8px;"><input type="checkbox" class="bulk-pid" name="pid" value="{{ item.id }}" data-label="{{ item.prenom }} {{ item.nom }} (#{{ item.id }})" form="bulk-actions"> {{ item.nom }} {{ item.prenom or '' }}</label></strong>
           <span class="chip">{{ item.type_public or 'Public non renseigné' }}</span>
           {% if item.foyer_id %}<a class="chip" style="text-decoration:none;" href="{{ url_for('participants.synthese_participant', participant_id=item.id) }}#famille">👪 {{ item.foyer.nom or 'Famille' }}</a>{% endif %}
         </header>
@@ -284,6 +291,8 @@
   const compteur = document.getElementById('bulk-count');
   const toutes = () => Array.from(document.querySelectorAll('.bulk-pid'));
   const global = document.getElementById('bulk-all');
+  const mergeControls = document.getElementById('bulk-merge-controls');
+  const mergeKeep = document.getElementById('bulk-merge-keep');
 
   function rafraichir(){
     // Les coches existent en double (vue tableau + vue cartes mobiles) :
@@ -293,6 +302,12 @@
     const n = cochees.size;
     compteur.textContent = n;
     bar.style.display = n > 0 ? '' : 'none';
+    if (mergeControls && mergeKeep) {
+      const fiches = [...new Map(toutes().filter(c => c.checked).map(c => [c.value, c])).values()];
+      const previous = mergeKeep.value;
+      mergeKeep.replaceChildren(...fiches.map(c => new Option(c.dataset.label, c.value, false, c.value === previous)));
+      mergeControls.style.display = n === 2 ? '' : 'none';
+    }
     if(global){
       global.checked = total > 0 && n === total;
       global.indeterminate = n > 0 && n < total;

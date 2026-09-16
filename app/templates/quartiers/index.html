@@ -78,10 +78,25 @@
   {% endif %}
 
   <div class="card">
+    {% if can('quartiers:edit') %}
+    <form method="post" action="{{ url_for('quartiers.fusionner') }}" id="quartiers-fusion-libre"
+          onsubmit="return confirm('Fusionner les deux quartiers cochés ? Toutes les fiches suivront le quartier conservé.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+    <div class="inline" id="quartiers-fusion-bar" style="display:none; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+      <strong>2 quartiers cochés</strong>
+      <label>Conserver
+        <select class="in" name="cible_id" form="quartiers-fusion-libre" id="quartiers-fusion-cible" required></select>
+      </label>
+      <button class="btn warn" type="submit" form="quartiers-fusion-libre">Fusionner la sélection</button>
+      <span class="muted">Ils peuvent avoir des noms et des villes différents.</span>
+    </div>
+    {% endif %}
     <div class="tablewrap clean">
       <table>
         <thead>
           <tr>
+            {% if can('quartiers:edit') %}<th style="width:34px;"></th>{% endif %}
             <th>Ville</th>
             <th>Quartier</th>
             <th>QPV</th>
@@ -92,6 +107,7 @@
         <tbody>
           {% for q in quartiers %}
             <tr>
+              {% if can('quartiers:edit') %}<td><input type="checkbox" class="quartier-fusion-check" name="quartier_ids" value="{{ q.id }}" data-label="{{ q.ville }} — {{ q.nom }} (#{{ q.id }})" form="quartiers-fusion-libre" aria-label="Sélectionner {{ q.nom }}"></td>{% endif %}
               <td>{{ q.ville }}</td>
               <td><strong>{{ q.nom }}</strong></td>
               <td>{% if q.qpv %}<span class="tag">{{ q.qpv }}</span>{% elif q.is_qpv %}<span class="tag">QPV</span>{% else %}—{% endif %}</td>
@@ -112,16 +128,16 @@
             </tr>
           {% endfor %}
           {% if quartiers|length == 0 %}
-            <tr><td colspan="5" class="muted">Aucun quartier enregistré.</td></tr>
+            <tr><td colspan="{{ 6 if can('quartiers:edit') else 5 }}" class="muted">Aucun quartier enregistré.</td></tr>
           {% endif %}
         </tbody>
       </table>
     </div>
     <div class="responsive-card-list" aria-label="Liste des quartiers (vue compacte)">
       {% for q in quartiers %}
-        <article class="responsive-card">
+      <article class="responsive-card">
           <header class="responsive-card__head">
-            <strong>{{ q.nom }}</strong>
+            <strong>{% if can('quartiers:edit') %}<input type="checkbox" class="quartier-fusion-check" name="quartier_ids" value="{{ q.id }}" data-label="{{ q.ville }} — {{ q.nom }} (#{{ q.id }})" form="quartiers-fusion-libre" aria-label="Sélectionner {{ q.nom }}">{% endif %} {{ q.nom }}</strong>
             <span class="chip">{{ q.ville }}</span>
           </header>
           <dl class="responsive-card__grid">
@@ -146,5 +162,29 @@
     </div>
   </div>
 </div>
+
+{% if can('quartiers:edit') %}
+<script>
+(() => {
+  const checks = Array.from(document.querySelectorAll('.quartier-fusion-check'));
+  const bar = document.getElementById('quartiers-fusion-bar');
+  const cible = document.getElementById('quartiers-fusion-cible');
+  function refresh(changed) {
+    if (changed) checks.filter(c => c.value === changed.value).forEach(c => { c.checked = changed.checked; });
+    const selected = [...new Map(checks.filter(c => c.checked).map(c => [c.value, c])).values()];
+    if (selected.length > 2 && changed) {
+      checks.filter(c => c.value === changed.value).forEach(c => { c.checked = false; });
+      alert('Choisissez seulement deux quartiers à fusionner.');
+      return refresh();
+    }
+    const previous = cible.value;
+    cible.replaceChildren(...selected.map(c => new Option(c.dataset.label, c.value, false, c.value === previous)));
+    bar.style.display = selected.length === 2 ? '' : 'none';
+  }
+  checks.forEach(c => c.addEventListener('change', () => refresh(c)));
+  refresh();
+})();
+</script>
+{% endif %}
 
 {% endblock %}
