@@ -625,3 +625,164 @@ def test_une_participation_creee_apres_larrete_nen_fait_pas_partie(app, annee_ty
         avant = repartition(2025, a_la_date=date(2025, 9, 1))
         assert all(p["participant"].id != annee_type["participant_id"]
                    for p in avant["personnes"])
+
+
+# ---------------------------------------------------------------------------
+# L'arrêté : une photo qui ne bouge plus
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def sans_arretes(app):
+    """Table nettoyée avant et après : un arrêté d'un autre test fausserait
+    les comptes, et la contrainte d'unicité ferait échouer la création."""
+    def _vider():
+        from app.extensions import db
+        from app.models import RepartitionArretee
+
+        for a in RepartitionArretee.query.all():
+            db.session.delete(a)
+        db.session.commit()
+
+    with app.app_context():
+        _vider()
+    yield
+    with app.app_context():
+        _vider()
+
+
+def test_arreter_ecrit_le_detail_et_les_totaux(app, annee_type, sans_arretes):
+    with app.app_context():
+        from app.services.prorata import arreter
+
+        arrete, message = arreter(2025, date(2026, 8, 31), libelle="Clôture d'année")
+        assert arrete is not None, message
+        assert arrete.total_regle == 20.0
+        assert arrete.total_du == 20.0
+        # Une ligne par secteur fréquenté.
+        secteurs_ecrits = {ligne.secteur for ligne in arrete.lignes}
+        assert secteurs_ecrits == {nom for nom, _ in SCENARIO}
+        # Et les totaux par secteur se relisent depuis le détail.
+        totaux = arrete.totaux_par_secteur()
+        assert round(sum(c["regle"] for c in totaux.values()), 2) == 20.0
+        assert totaux["Numérique"]["venues"] == 20
+
+
+def test_un_arrete_ne_bouge_plus(app, annee_type, sans_arretes):
+    """C'est toute sa raison d'être : un référent à qui on annonce une somme
+    ne doit pas la voir fondre parce que quelqu'un a fréquenté ailleurs."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import AtelierActivite, PresenceActivite, SessionActivite
+        from app.services.prorata import arreter, repartition
+
+        arrete, message = arreter(2025, date(2026, 8, 31))
+        assert arrete is not None, message
+        fige = arrete.totaux_par_secteur()["Numérique"]["regle"]
+
+        # Cinquante venues de plus en Familles, après l'arrêté.
+        atelier = db.session.get(AtelierActivite, annee_type["ateliers"][-1])
+        for i in range(50):
+            s = SessionActivite(
+                atelier_id=atelier.id, secteur="Familles", session_type="COLLECTIF",
+                date_session=date(2026, 5, 1), heure_debut="14:00", heure_fin="16:00")
+            db.session.add(s)
+            db.session.flush()
+            db.session.add(PresenceActivite(
+                session_id=s.id, participant_id=annee_type["participant_id"]))
+        db.session.commit()
+
+        # Le calcul vivant a bougé…
+        vivant = repartition(2025)["secteurs"]["Numérique"]["regle"]
+        assert vivant < fige
+
+        # …mais l'arrêté, non.
+        from app.models import RepartitionArretee
+        relu = db.session.get(RepartitionArretee, arrete.id)
+        assert relu.totaux_par_secteur()["Numérique"]["regle"] == fige
+
+
+def test_on_narrete_pas_avant_la_rentree(app, sans_arretes):
+    with app.app_context():
+        from app.services.prorata import arreter
+
+        arrete, message = arreter(2025, date(2025, 6, 30))
+        assert arrete is None
+        assert "précède la rentrée" in message
+
+
+def test_on_narrete_pas_une_date_future(app, sans_arretes):
+    """Un « arrêté au 31 août » signé en mars annonce cinq mois qui n'ont
+    pas eu lieu."""
+    with app.app_context():
+        from datetime import timedelta
+
+        from app.services.prorata import arreter
+
+        demain = date.today() + timedelta(days=1)
+        annee = demain.year if demain.month >= 9 else demain.year - 1
+        arrete, message = arreter(annee, demain)
+        assert arrete is None
+        assert "future" in message
+
+
+def test_deux_arretes_a_la_meme_date_sont_refuses(app, annee_type, sans_arretes):
+    """Deux pièces portant la même date, c'est la garantie qu'un jour
+    quelqu'un cite la mauvaise."""
+    with app.app_context():
+        from app.services.prorata import arreter
+
+        premier, _ = arreter(2025, date(2026, 8, 31))
+        assert premier is not None
+        second, message = arreter(2025, date(2026, 8, 31))
+        assert second is None
+        assert "existe déjà" in message
+
+
+def test_un_arrete_reste_lisible_quand_la_fiche_disparait(app, annee_type, sans_arretes):
+    """Une fiche peut être renommée, fusionnée ou supprimée. Un arrêté qui
+    deviendrait illisible pour autant ne serait pas une pièce justificative."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import RepartitionArreteeLigne
+        from app.services.prorata import arreter
+
+        arrete, message = arreter(2025, date(2026, 8, 31))
+        assert arrete is not None, message
+        ligne = arrete.lignes[0]
+        assert ligne.participant_nom
+        assert annee_type["nom"] in ligne.nom_affiche
+
+        # On coupe le lien, comme le ferait la suppression de la fiche.
+        ligne_id = ligne.id
+        ligne.participant_id = None
+        db.session.commit()
+        relue = db.session.get(RepartitionArreteeLigne, ligne_id)
+        assert annee_type["nom"] in relue.nom_affiche
+
+
+def test_larrete_photographie_bien_la_date_demandee(app, annee_type, sans_arretes):
+    """Un arrêté au 31 décembre ne doit pas compter les séances de février."""
+    with app.app_context():
+        from app.extensions import db
+        from app.models import SessionActivite
+        from app.services.prorata import arreter
+
+        for i, s in enumerate(SessionActivite.query
+                              .filter(SessionActivite.id.in_(annee_type["sessions"]))
+                              .filter_by(secteur="EPE").all()):
+            s.date_session = date(2026, 2, 10 + i)
+        db.session.commit()
+
+        arrete, message = arreter(2025, date(2025, 12, 31))
+        assert arrete is not None, message
+        assert "EPE" not in arrete.totaux_par_secteur()
+        assert round(arrete.total_regle, 2) == 20.0
+
+
+def test_le_dernier_arrete_est_le_plus_recent(app, annee_type, sans_arretes):
+    with app.app_context():
+        from app.services.prorata import arreter, dernier_arrete
+
+        arreter(2025, date(2025, 12, 31))
+        arreter(2025, date(2026, 3, 31))
+        assert dernier_arrete(2025).date_arrete == date(2026, 3, 31)

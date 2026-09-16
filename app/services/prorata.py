@@ -407,3 +407,107 @@ def repartition(annee: int, a_la_date: date | None = None) -> dict:
             "venues": sum(case["venues"] for case in secteurs.values()),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Figer : l'arrêté
+# ---------------------------------------------------------------------------
+
+def arreter(annee: int, date_arrete: date, *, libelle: str | None = None,
+            note: str | None = None, user_id: int | None = None):
+    """Photographie la répartition à une date, et l'écrit. Elle ne bougera plus.
+
+    Retourne ``(arrete, message)``. L'arrêté vaut ``None`` si le geste a
+    été refusé, et le message dit pourquoi — il est destiné à l'écran.
+
+    Trois refus, tous pour la même raison de fond : un arrêté est une pièce
+    qu'on ressortira en réunion, il ne doit pas pouvoir mentir.
+
+    - **une date antérieure à la rentrée** : rien ne s'est encore passé,
+      la photo serait vide et son titre laisserait croire le contraire ;
+    - **une date future** : on photographierait un état qui n'existe pas
+      encore. Un « arrêté au 31 août » signé en mars annonce cinq mois
+      qui n'ont pas eu lieu ;
+    - **un arrêté déjà pris à cette date** : deux pièces différentes
+      portant la même date et le même intitulé, c'est la garantie qu'un
+      jour quelqu'un cite la mauvaise.
+    """
+    from app.models import RepartitionArretee, RepartitionArreteeLigne
+
+    debut, fin = bornes_annee_scolaire(annee)
+    if date_arrete < debut:
+        return None, (
+            f"Le {date_arrete:%d/%m/%Y} précède la rentrée du "
+            f"{debut:%d/%m/%Y} : il n'y a rien à arrêter."
+        )
+    if date_arrete > date.today():
+        return None, (
+            "On ne peut pas arrêter une répartition à une date future : "
+            "l'année n'est pas encore allée jusque-là."
+        )
+    if date_arrete > fin:
+        date_arrete = fin
+
+    if RepartitionArretee.query.filter_by(
+            annee_scolaire=annee, date_arrete=date_arrete).first():
+        return None, (
+            f"Un arrêté existe déjà au {date_arrete:%d/%m/%Y} pour "
+            f"{libelle_annee(annee)}. Supprimez-le d'abord si vous voulez le refaire."
+        )
+
+    vue = repartition(annee, a_la_date=date_arrete)
+
+    arrete = RepartitionArretee(
+        annee_scolaire=annee,
+        date_arrete=date_arrete,
+        libelle=(libelle or "").strip() or None,
+        note=(note or "").strip() or None,
+        total_du=vue["totaux"]["du"],
+        total_regle=vue["totaux"]["regle"],
+        cree_par_user_id=user_id,
+    )
+    db.session.add(arrete)
+    db.session.flush()
+
+    for personne in vue["personnes"]:
+        fiche = personne["participant"]
+        nom = f"{fiche.nom or ''} {fiche.prenom or ''}".strip()
+        for secteur, part in personne["parts"].items():
+            db.session.add(RepartitionArreteeLigne(
+                arrete_id=arrete.id,
+                secteur=secteur,
+                participant_id=fiche.id,
+                participant_nom=nom[:240] or None,
+                venues=part["venues"],
+                montant_du=part["du"],
+                montant_regle=part["regle"],
+                repli=personne["repli"],
+            ))
+
+    db.session.commit()
+    return arrete, f"Répartition arrêtée au {date_arrete:%d/%m/%Y}."
+
+
+def libelle_annee(annee: int) -> str:
+    from app.services.cotisations import libelle_annee_scolaire
+
+    return libelle_annee_scolaire(annee)
+
+
+def arretes(annee: int | None = None) -> list:
+    """Les arrêtés existants, du plus récent au plus ancien."""
+    from app.models import RepartitionArretee
+
+    requete = RepartitionArretee.query
+    if annee is not None:
+        requete = requete.filter_by(annee_scolaire=annee)
+    return requete.order_by(
+        RepartitionArretee.annee_scolaire.desc(),
+        RepartitionArretee.date_arrete.desc(),
+    ).all()
+
+
+def dernier_arrete(annee: int):
+    """Le dernier arrêté de l'année, s'il y en a un."""
+    liste = arretes(annee)
+    return liste[0] if liste else None
