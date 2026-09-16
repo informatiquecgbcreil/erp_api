@@ -29,6 +29,21 @@ from app.services.cotisations import (
 from app.participants.routes import bp, _can_edit_participant, _can_read_participant, _can_see_participant
 
 
+def _repartition_ou_rien(participant: Participant, annee: int):
+    """La répartition de la participation, ou None — jamais une erreur.
+
+    Une fiche participant doit s'ouvrir même si ce calcul de confort
+    échoue : on ne bloque pas l'accueil pour un encart d'information.
+    """
+    try:
+        from app.services.prorata import repartition_personne
+
+        return repartition_personne(participant, annee)
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception("Répartition de la participation : encart ignoré")
+        return None
+
+
 def cotisations_contexte(participant: Participant) -> dict:
     """Le contexte à injecter dans la fiche participant (synthese.html)."""
     annee = annee_scolaire_courante()
@@ -63,6 +78,10 @@ def cotisations_contexte(participant: Participant) -> dict:
         "tarifs_en_vigueur": {
             t: tarif_en_vigueur(annee, t) for t in TYPES_TARIF
         },
+        # Où part la participation de cette personne. L'accueil se fait poser
+        # la question de face — « et mes 20 €, ils vont où ? » — et ouvrir un
+        # tableau de bord global pour y répondre serait absurde.
+        "repartition_participation": _repartition_ou_rien(participant, annee),
         "foyer_membres": foyer_membres_autres(participant),
         "q_famille": q_famille,
         "resultats_famille": resultats_famille,

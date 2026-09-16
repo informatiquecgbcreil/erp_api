@@ -4876,3 +4876,135 @@ class OccupationRessource(db.Model):
     __table_args__ = (
         db.UniqueConstraint("occupation_id", "ressource_id", name="uq_occupation_ressource"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Répartition de la participation : les arrêtés figés
+# ---------------------------------------------------------------------------
+
+class RepartitionArretee(db.Model):
+    """Photographie datée de la répartition de la participation.
+
+    Le calcul au prorata des venues est vivant : tant que l'année court, la
+    part d'un secteur bouge à chaque séance pointée. C'est juste, mais
+    inexploitable tel quel pour engager de l'argent — un référent à qui on
+    annonce 420 € en mars ne peut pas en voir 380 € en juin parce que
+    quelqu'un a fréquenté un autre secteur entre-temps.
+
+    D'où l'arrêté : à une date choisie (fin de trimestre, 31 août), on
+    rejoue l'année telle qu'elle était connue CE JOUR-LÀ — venues et
+    versements compris — et on écrit le résultat. Il ne bougera plus.
+
+    Le détail est conservé personne par personne et secteur par secteur :
+    c'est ce qui permet de répondre à « pourquoi le Numérique a-t-il
+    420 € ? » des mois plus tard, quand la question tombe en réunion.
+    """
+
+    __tablename__ = "repartition_arretee"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    #: Année de rentrée, même convention que les cotisations (2025 -> 2025-2026).
+    annee_scolaire = db.Column(db.Integer, nullable=False, index=True)
+
+    #: Date à laquelle l'année est arrêtée (et non la date de création).
+    date_arrete = db.Column(db.Date, nullable=False, index=True)
+
+    libelle = db.Column(db.String(160), nullable=True)
+    note = db.Column(db.Text, nullable=True)
+
+    #: Totaux recopiés de la somme des lignes, pour lister les arrêtés sans
+    #: relire chaque détail. Écrits une fois, à la création, et jamais
+    #: recalculés séparément : le détail reste la seule source.
+    total_du = db.Column(db.Float, nullable=False, default=0.0)
+    total_regle = db.Column(db.Float, nullable=False, default=0.0)
+
+    cree_par_user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    cree_par = db.relationship("User")
+
+    @property
+    def libelle_annee(self) -> str:
+        return f"{self.annee_scolaire}-{self.annee_scolaire + 1}"
+
+    @property
+    def intitule(self) -> str:
+        if self.libelle:
+            return self.libelle
+        return f"Arrêté au {self.date_arrete:%d/%m/%Y}"
+
+    def totaux_par_secteur(self) -> dict[str, dict]:
+        """Les totaux, TOUJOURS recalculés depuis les lignes conservées.
+
+        Jamais un second stockage par secteur : deux chiffres qui disent la
+        même chose finissent par diverger, et plus personne ne sait lequel
+        croire.
+        """
+        par_secteur: dict[str, dict] = {}
+        for ligne in self.lignes:
+            case = par_secteur.setdefault(
+                ligne.secteur, {"du": 0.0, "regle": 0.0, "venues": 0, "nb_personnes": 0}
+            )
+            case["du"] = round(case["du"] + float(ligne.montant_du or 0), 2)
+            case["regle"] = round(case["regle"] + float(ligne.montant_regle or 0), 2)
+            case["venues"] += int(ligne.venues or 0)
+            case["nb_personnes"] += 1
+        return dict(sorted(par_secteur.items(), key=lambda kv: (-kv[1]["regle"], kv[0])))
+
+    __table_args__ = (
+        # Deux pièces différentes portant la même date et le même intitulé,
+        # c'est la garantie qu'un jour quelqu'un cite la mauvaise.
+        db.Index("uq_repartition_arretee_annee_date",
+                 "annee_scolaire", "date_arrete", unique=True),
+    )
+
+    def __repr__(self):
+        return f"<RepartitionArretee {self.libelle_annee} au {self.date_arrete}>"
+
+
+class RepartitionArreteeLigne(db.Model):
+    """Une part figée : ce qu'une personne apporte à un secteur, ce jour-là."""
+
+    __tablename__ = "repartition_arretee_ligne"
+
+    id = db.Column(db.Integer, primary_key=True)
+    arrete_id = db.Column(
+        db.Integer, db.ForeignKey("repartition_arretee.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+
+    secteur = db.Column(db.String(120), nullable=False, index=True)
+
+    participant_id = db.Column(
+        db.Integer, db.ForeignKey("participant.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    #: Le nom AU MOMENT de l'arrêté. Une fiche peut être renommée, fusionnée
+    #: ou supprimée ensuite ; un arrêté qui deviendrait illisible pour
+    #: autant ne serait pas une pièce justificative.
+    participant_nom = db.Column(db.String(240), nullable=True)
+
+    venues = db.Column(db.Integer, nullable=False, default=0)
+    montant_du = db.Column(db.Float, nullable=False, default=0.0)
+    montant_regle = db.Column(db.Float, nullable=False, default=0.0)
+
+    #: Part attribuée faute de venue : elle est allée au secteur orienteur.
+    repli = db.Column(db.Boolean, nullable=False, default=False)
+
+    arrete = db.relationship(
+        "RepartitionArretee",
+        backref=db.backref("lignes", cascade="all, delete-orphan", lazy="selectin"),
+    )
+    participant = db.relationship("Participant")
+
+    @property
+    def nom_affiche(self) -> str:
+        if self.participant is not None:
+            return f"{self.participant.nom} {self.participant.prenom}".strip()
+        return self.participant_nom or "Fiche supprimée"
+
+    def __repr__(self):
+        return f"<RepartitionArreteeLigne {self.secteur} {self.montant_regle}>"

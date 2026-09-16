@@ -6,6 +6,17 @@
   .cotis-obligation.solde{ border-color:rgba(34,197,94,.30); background:rgba(34,197,94,.06); }
   .cotis-obligation.partiel{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.07); }
   .cotis-obligation.impaye{ border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.06); }
+
+  /* Où part la participation de cette personne. L'accueil se fait poser la
+     question devant la personne : la réponse doit tenir sur la fiche. */
+  .cotis-repartition{ margin-top:10px; padding-top:8px; border-top:1px dashed rgba(15,23,42,.14); }
+  .cotis-repartition-titre{ font-size:.82rem; font-weight:700; margin-bottom:5px; }
+  .cotis-repartition-parts{ display:flex; flex-wrap:wrap; gap:5px; }
+  .cotis-repartition-part{ display:inline-flex; gap:5px; align-items:baseline; font-size:.78rem;
+                           padding:2px 8px; border-radius:999px; background:rgba(90,120,255,.12);
+                           color:#1e3a8a; white-space:nowrap; }
+  .cotis-repartition-repli{ font-size:.72rem; font-weight:700; padding:1px 8px; border-radius:999px;
+                            background:rgba(245,158,11,.20); color:#78350f; }
   .cotis-montants{ display:flex; gap:14px; flex-wrap:wrap; margin:6px 0; }
   .cotis-montants div{ font-size:13px; color:#64748b; }
   .cotis-montants strong{ display:block; font-size:18px; color:#0f172a; }
@@ -137,6 +148,39 @@
           {% endif %}
           {% if c.montant_regle > 0 %}
             <div style="margin-top:6px;"><a class="mini-link" href="{{ url_for('participants.cotisation_recu', participant_id=participant.id, cotisation_id=c.id) }}" target="_blank">🧾 Imprimer un reçu de règlement</a></div>
+          {% endif %}
+
+          {# La question qui arrive de face à l'accueil : « et mes 20 €,
+             ils vont où ? ». La réponse doit être ici, pas dans un tableau
+             de bord qu'il faut aller chercher. #}
+          {% if repartition_participation %}
+            {% set rp = repartition_participation %}
+            <div class="cotis-repartition">
+              <div class="cotis-repartition-titre">
+                Réparti entre les secteurs
+                {% if rp.repli %}
+                  <span class="cotis-repartition-repli" title="Aucune venue enregistrée cette année : la participation revient au secteur qui a fait venir la personne">aucune venue cette année</span>
+                {% else %}
+                  <span class="muted">· au prorata de {{ rp.total_venues }} venue{{ 's' if rp.total_venues > 1 else '' }}</span>
+                {% endif %}
+              </div>
+              <div class="cotis-repartition-parts">
+                {% for secteur, part in rp.parts.items() %}
+                  <span class="cotis-repartition-part">
+                    <strong>{{ secteur }}</strong>
+                    {% if part.venues %}<span class="muted">× {{ part.venues }}</span>{% endif %}
+                    <b>{{ "%.2f"|format(part.regle) }} €</b>
+                  </span>
+                {% endfor %}
+              </div>
+              <div class="muted" style="font-size:.76rem; margin-top:4px;">
+                Montants encaissés, provisoires : ils bougeront à chaque séance
+                pointée jusqu'au 31 août.
+                {% if can('cotisations:view') %}
+                  <a class="mini-link" href="{{ url_for('main.repartition_participation', annee=c.annee_scolaire) }}">Vue par secteur →</a>
+                {% endif %}
+              </div>
+            </div>
           {% endif %}
           {% if can_edit_cotisations %}
             <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement', participant_id=participant.id, cotisation_id=c.id) }}">

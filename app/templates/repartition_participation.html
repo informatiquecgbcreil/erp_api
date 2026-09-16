@@ -1,0 +1,329 @@
+{% extends "layout.html" %}
+{% block title %}Répartition de la participation{% endblock %}
+{% block body %}
+<style>
+  /* Provisoire ou définitif : la seule erreur vraiment coûteuse ici est de
+     confondre les deux. On n'engage pas un budget sur un chiffre qui bouge
+     encore. D'où un bandeau pleine largeur, et pas une mention discrète. */
+  .rp-nature{ border-radius:12px; padding:12px 16px; margin-top:14px; border:1px solid transparent;
+              display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+  .rp-nature .ico{ font-size:1.4rem; line-height:1.2; }
+  .rp-nature strong{ display:block; font-size:1rem; }
+  .rp-nature .det{ font-size:.87rem; opacity:.9; }
+  .rp-vivant{ background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.38); color:#6b3d05; }
+  .rp-fige{ background:rgba(34,197,94,.13); border-color:rgba(34,197,94,.34); color:#14532d; }
+
+  .rp-cartes{ display:flex; flex-wrap:wrap; gap:14px; margin-top:14px; }
+  .rp-cartes .carte{ border:1px solid var(--border, #e3e6ef); border-radius:12px; padding:14px 18px;
+                     background:var(--panel, #fff); min-width:170px; }
+  .rp-cartes .carte .lib{ font-size:.8rem; opacity:.7; }
+  .rp-cartes .carte .val{ font-size:1.7rem; font-weight:800; }
+  .rp-cartes .carte .sous{ font-size:.78rem; opacity:.65; }
+  .rp-cartes .carte.principale{ border-color:rgba(34,197,94,.45); background:rgba(34,197,94,.07); }
+
+  table.rp{ width:100%; border-collapse:collapse; margin-top:12px; }
+  table.rp th, table.rp td{ padding:8px 10px; font-size:.9rem;
+                            border-bottom:1px solid var(--border-soft, #eef0f6); text-align:left; }
+  table.rp td.m, table.rp th.m{ text-align:right; white-space:nowrap; }
+  table.rp td.m{ font-weight:600; }
+  table.rp tr:hover td{ background:rgba(90,120,255,.05); }
+  table.rp tfoot td{ font-weight:800; border-top:2px solid var(--border, #e3e6ef); }
+
+  /* La barre dit d'un coup d'œil l'équilibre entre secteurs — un tableau de
+     six nombres ne se compare pas à l'œil, une longueur si. */
+  .rp-part{ display:block; height:7px; border-radius:999px; background:rgba(90,120,255,.18); overflow:hidden; min-width:60px; }
+  .rp-part i{ display:block; height:100%; background:#5a78ff; }
+
+  .rp-chip{ display:inline-block; font-size:.72rem; font-weight:700; padding:1px 8px; border-radius:999px;
+            background:rgba(148,163,184,.18); color:#475569; white-space:nowrap; }
+  .rp-chip--repli{ background:rgba(245,158,11,.20); color:#78350f; }
+  .rp-detail summary{ cursor:pointer; font-weight:700; padding:6px 0; }
+  .rp-secteur-part{ font-size:.78rem; opacity:.85; white-space:nowrap; }
+</style>
+<div class="ui-page">
+  <section class="ui-header page-hero-soft">
+    <div class="page-title-wrap">
+      <h1 class="ui-title page-title">🧭 Répartition de la participation</h1>
+      <p class="ui-subtitle page-subtitle">
+        L'adhésion couvre l'assurance et ne se découpe pas. La participation, elle,
+        finance les secteurs : elle est répartie ici <strong>au prorata des venues réelles</strong>
+        de chaque personne. Une absence excusée ne compte pas ; qui n'est venu nulle part
+        est rattaché au secteur qui l'a fait venir.
+      </p>
+    </div>
+    <form method="get" action="{{ url_for('main.repartition_participation') }}" class="ui-actions inline-actions">
+      <label class="field-stack slim"><span>Année scolaire</span>
+        <select class="in" name="annee" onchange="this.form.submit()">
+          {% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}-{{ a + 1 }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-stack slim"><span>Vue</span>
+        <select class="in" name="arrete" onchange="this.form.submit()">
+          <option value="vivant">Répartition vivante (aujourd'hui)</option>
+          {% for a in arretes %}
+            <option value="{{ a.id }}" {% if arrete_affiche and a.id == arrete_affiche.id %}selected{% endif %}>
+              {{ a.intitule }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if peut_choisir_secteur %}
+        <label class="field-stack slim"><span>Secteur</span>
+          <select class="in" name="secteur" onchange="this.form.submit()">
+            <option value="">Tous les secteurs</option>
+            {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur_filtre %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <noscript><button class="btn" type="submit">Afficher</button></noscript>
+    </form>
+    <div class="ui-actions inline-actions" style="margin-top:6px;">
+      <a class="btn" href="{{ url_for('main.repartition_participation_xlsx', annee=annee,
+                                      arrete=(arrete_affiche.id if arrete_affiche else 'vivant'),
+                                      secteur=(secteur_filtre or '')) }}">
+        📊 Exporter en Excel
+      </a>
+    </div>
+  </section>
+
+  {# ------------------------------------------------------------------ #}
+  {# Provisoire ou définitif : impossible à manquer.                     #}
+  {# ------------------------------------------------------------------ #}
+  {% if arrete_affiche %}
+    <div class="rp-nature rp-fige">
+      <span class="ico">🔒</span>
+      <div>
+        <strong>Arrêté figé au {{ arrete_affiche.date_arrete.strftime('%d/%m/%Y') }}</strong>
+        <span class="det">
+          Ces montants ne bougeront plus. Ils rejouent l'année telle qu'elle était connue
+          ce jour-là — venues et règlements compris.
+          {% if arrete_affiche.cree_par %}Établi par {{ arrete_affiche.cree_par.email }}.{% endif %}
+          {% if arrete_affiche.note %}<br>{{ arrete_affiche.note }}{% endif %}
+        </span>
+      </div>
+    </div>
+  {% else %}
+    <div class="rp-nature rp-vivant">
+      <span class="ico">⏳</span>
+      <div>
+        <strong>Répartition provisoire, au {{ aujourdhui.strftime('%d/%m/%Y') }}</strong>
+        <span class="det">
+          Elle bougera à chaque séance pointée jusqu'au 31 août {{ annee + 1 }} :
+          une personne qui fréquentera davantage un autre secteur déplacera sa part.
+          <strong>Pour engager un budget, appuyez-vous sur un arrêté figé.</strong>
+        </span>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if secteur_impose %}
+    <p class="muted" style="margin-top:10px;">
+      Vue bornée à votre secteur ({{ secteur_impose }}).
+    </p>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {# Les chiffres de tête                                                #}
+  {# ------------------------------------------------------------------ #}
+  <div class="rp-cartes">
+    <div class="carte principale">
+      <div class="lib">Encaissé à répartir{% if secteur_filtre %} · {{ secteur_filtre }}{% endif %}</div>
+      <div class="val">{{ "%.2f"|format(vue.totaux.regle) }} €</div>
+      <div class="sous">Ce qui est réellement rentré</div>
+    </div>
+    <div class="carte">
+      <div class="lib">Dû (facturé)</div>
+      <div class="val">{{ "%.2f"|format(vue.totaux.du) }} €</div>
+      <div class="sous">Budget théorique, règlements compris ou non</div>
+    </div>
+    <div class="carte">
+      <div class="lib">Participations</div>
+      <div class="val">{{ vue.totaux.nb_personnes }}</div>
+      <div class="sous">
+        {{ vue.totaux.venues }} venue{{ 's' if vue.totaux.venues > 1 else '' }} comptée{{ 's' if vue.totaux.venues > 1 else '' }}
+      </div>
+    </div>
+    {% if vue.totaux.nb_repli %}
+      <div class="carte">
+        <div class="lib">Sans aucune venue</div>
+        <div class="val">{{ vue.totaux.nb_repli }}</div>
+        <div class="sous">Rattachées au secteur orienteur</div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ------------------------------------------------------------------ #}
+  {# Par secteur — ce que le référent vient chercher                     #}
+  {# ------------------------------------------------------------------ #}
+  {% if vue.secteurs %}
+    <div class="card" style="margin-top:16px;">
+      <h2 style="margin-top:0;">Par secteur</h2>
+      <div style="overflow-x:auto;">
+        <table class="rp">
+          <thead>
+            <tr>
+              <th>Secteur</th>
+              <th class="m">Venues</th>
+              <th class="m">Personnes</th>
+              <th style="width:22%;">Part</th>
+              <th class="m">Dû</th>
+              <th class="m">Encaissé</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for nom, case in vue.secteurs.items() %}
+              {% set pct = (case.regle / vue.totaux.regle * 100) if vue.totaux.regle else 0 %}
+              <tr>
+                <td><strong>{{ nom }}</strong></td>
+                <td class="m">{{ case.venues }}</td>
+                <td class="m">{{ case.nb_personnes }}</td>
+                <td>
+                  <span class="rp-part" title="{{ "%.1f"|format(pct) }} % de l'encaissé">
+                    <i style="width:{{ "%.1f"|format(pct) }}%;"></i>
+                  </span>
+                  <span class="rp-secteur-part">{{ "%.1f"|format(pct) }} %</span>
+                </td>
+                <td class="m">{{ "%.2f"|format(case.du) }} €</td>
+                <td class="m">{{ "%.2f"|format(case.regle) }} €</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="m">{{ vue.totaux.venues }}</td>
+              <td class="m">—</td>
+              <td></td>
+              <td class="m">{{ "%.2f"|format(vue.totaux.du) }} €</td>
+              <td class="m">{{ "%.2f"|format(vue.totaux.regle) }} €</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="muted" style="font-size:.82rem; margin-top:8px;">
+        Les colonnes totalisent exactement les montants du haut : la répartition
+        n'arrondit jamais un centime dans le vide.
+      </p>
+    </div>
+
+    {# ---------------------------------------------------------------- #}
+    {# Le détail : « pourquoi le Numérique a-t-il ce montant ? »        #}
+    {# ---------------------------------------------------------------- #}
+    <div class="card" style="margin-top:16px;">
+      <details class="rp-detail" {% if vue.personnes|length <= 25 %}open{% endif %}>
+        <summary>Détail par personne ({{ vue.personnes|length }})</summary>
+        <div style="overflow-x:auto;">
+          <table class="rp">
+            <thead>
+              <tr>
+                <th>Personne</th>
+                <th class="m">Venues</th>
+                <th>Répartition</th>
+                <th class="m">Dû</th>
+                <th class="m">Encaissé</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for personne in vue.personnes %}
+                <tr>
+                  <td>
+                    {% if personne.participant_id %}
+                      <a href="{{ url_for('participants.synthese_participant', participant_id=personne.participant_id) }}">{{ personne.nom }}</a>
+                    {% else %}
+                      {{ personne.nom }}
+                    {% endif %}
+                    {% if personne.repli %}
+                      <br><span class="rp-chip rp-chip--repli" title="Aucune venue sur l'année : rattachée au secteur qui l'a fait venir">aucune venue</span>
+                    {% endif %}
+                  </td>
+                  <td class="m">{{ personne.total_venues }}</td>
+                  <td>
+                    {% for secteur, part in personne.parts.items() %}
+                      <span class="rp-chip" title="{{ "%.2f"|format(part.regle) }} € encaissés · {{ "%.2f"|format(part.du) }} € dus">
+                        {{ secteur }}{% if part.venues %} × {{ part.venues }}{% endif %} — {{ "%.2f"|format(part.regle) }} €
+                      </span>
+                    {% endfor %}
+                  </td>
+                  <td class="m">{{ "%.2f"|format(personne.du) }} €</td>
+                  <td class="m">{{ "%.2f"|format(personne.regle) }} €</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  {% else %}
+    <div class="quick-empty" style="margin-top:14px;">
+      <strong>Aucune participation à répartir</strong>
+      Rien n'est enregistré pour {{ libelle_annee }}{% if secteur_filtre %} sur le secteur {{ secteur_filtre }}{% endif %}.
+    </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {# Arrêter la répartition                                             #}
+  {# ------------------------------------------------------------------ #}
+  {% if peut_arreter %}
+    <div class="card" style="margin-top:16px;">
+      <h2 style="margin-top:0;">🔒 Arrêter la répartition</h2>
+      <p class="muted" style="margin-top:0;">
+        Fige les montants à une date : fin de trimestre, 31 août… L'année est rejouée
+        telle qu'elle était connue ce jour-là. Un arrêté ne bouge plus — c'est sur lui
+        qu'un référent peut engager.
+      </p>
+      <form method="post" action="{{ url_for('main.repartition_arreter') }}" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <label class="field-stack slim"><span>Arrêté au</span>
+          <input class="in" type="date" name="date_arrete" required
+                 max="{{ aujourdhui.isoformat() }}"
+                 value="{{ aujourdhui.isoformat() }}">
+        </label>
+        <label class="field-stack slim" style="min-width:220px;"><span>Intitulé (facultatif)</span>
+          <input class="in" type="text" name="libelle" maxlength="160" placeholder="Arrêté du 1er trimestre">
+        </label>
+        <label class="field-stack slim" style="min-width:260px;"><span>Note (facultative)</span>
+          <input class="in" type="text" name="note" placeholder="Validé en réunion de direction du…">
+        </label>
+        <button class="btn primary" type="submit">Arrêter</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if arretes %}
+    <div class="card" style="margin-top:16px;">
+      <h2 style="margin-top:0;">Arrêtés de {{ libelle_annee }}</h2>
+      <div style="overflow-x:auto;">
+        <table class="rp">
+          <thead>
+            <tr><th>Arrêté</th><th>Date</th><th class="m">Dû</th><th class="m">Encaissé</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for a in arretes %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('main.repartition_participation', annee=annee, arrete=a.id) }}">{{ a.intitule }}</a>
+                  {% if a.note %}<br><span class="muted" style="font-size:.8rem;">{{ a.note }}</span>{% endif %}
+                </td>
+                <td>{{ a.date_arrete.strftime('%d/%m/%Y') }}</td>
+                <td class="m">{{ "%.2f"|format(a.total_du) }} €</td>
+                <td class="m">{{ "%.2f"|format(a.total_regle) }} €</td>
+                <td>
+                  {% if peut_arreter %}
+                    <form method="post" style="margin:0;"
+                          action="{{ url_for('main.repartition_arrete_supprimer', arrete_id=a.id) }}"
+                          onsubmit="return confirm('Supprimer cet arrêté ? Les montants figés seront perdus.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="mini-link" type="submit">Supprimer</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
