@@ -38,6 +38,7 @@ from app.services.prorata import (
     arretes,
     canoniser,
     export_xlsx,
+    periode_couverte,
     repartition,
 )
 
@@ -85,9 +86,11 @@ def _vue_depuis_un_arrete(arrete: RepartitionArretee) -> dict:
 
     liste = sorted(personnes.values(), key=lambda p: (p["nom"] or "").lower())
     secteurs = arrete.totaux_par_secteur()
+    debut, fin = periode_couverte(arrete.annee_scolaire, arrete.date_arrete)
     return {
         "annee_scolaire": arrete.annee_scolaire,
         "a_la_date": arrete.date_arrete,
+        "periode": {"debut": debut, "fin": fin},
         "libelle_annee": arrete.libelle_annee,
         "personnes": liste,
         "secteurs": secteurs,

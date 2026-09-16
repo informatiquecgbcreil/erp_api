@@ -1103,3 +1103,57 @@ def test_le_nom_du_fichier_dit_ce_quil_contient(admin_client, annee_type, sans_a
     assert "repartition_participation" in entete
     assert "2025-2026" in entete
     assert "provisoire" in entete
+
+
+# ---------------------------------------------------------------------------
+# La période couverte : « 2025-2026 » ne veut rien dire pour une comptabilité
+# ---------------------------------------------------------------------------
+
+def test_la_periode_dune_annee_revolue_va_de_septembre_a_aout(app, annee_type):
+    with app.app_context():
+        from app.services.prorata import repartition
+
+        vue = repartition(2025)
+        assert vue["periode"]["debut"] == date(2025, 9, 1)
+        assert vue["periode"]["fin"] == date(2026, 8, 31)
+
+
+def test_la_periode_de_lannee_en_cours_sarrete_aujourdhui(app):
+    """Annoncer une période qui va jusqu'en août laisserait croire que les
+    mois à venir sont déjà comptés."""
+    with app.app_context():
+        from app.services.cotisations import annee_scolaire_courante
+        from app.services.prorata import repartition
+
+        annee = annee_scolaire_courante()
+        vue = repartition(annee)
+        assert vue["periode"]["debut"] == date(annee, 9, 1)
+        assert vue["periode"]["fin"] == date.today()
+
+
+def test_la_periode_dun_arrete_sarrete_a_sa_date(app, annee_type, sans_arretes):
+    with app.app_context():
+        from app.services.prorata import arreter, periode_couverte
+
+        arrete, message = arreter(2025, date(2025, 12, 31))
+        assert arrete is not None, message
+        debut, fin = periode_couverte(arrete.annee_scolaire, arrete.date_arrete)
+        assert (debut, fin) == (date(2025, 9, 1), date(2025, 12, 31))
+
+
+def test_lecran_annonce_ses_bornes_en_dates(admin_client, annee_type, sans_arretes):
+    page = _page(admin_client, annee=2025)
+    assert "Période couverte : du 01/09/2025" in page
+    assert "31/08/2026" in page
+    # Et prévient de la confusion avec l'exercice comptable.
+    assert "exercice comptable" in page
+
+
+def test_lexport_porte_ses_bornes_sur_chaque_onglet(admin_client, annee_type, sans_arretes):
+    """Le classeur circulera loin de l'écran qui l'a produit : la période
+    doit y être écrite, pas déductible."""
+    wb = _classeur(admin_client, annee=2025)
+    for onglet in wb.sheetnames:
+        couverture = wb[onglet]["A3"].value or ""
+        assert "Période couverte : du 01/09/2025 au 31/08/2026" in couverture, onglet
+        assert "exercice comptable" in couverture, onglet

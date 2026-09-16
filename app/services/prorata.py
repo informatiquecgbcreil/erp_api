@@ -266,6 +266,20 @@ def _participations_avec_reglement(annee: int, a_la_date: date | None = None):
     return requete.all()
 
 
+def periode_couverte(annee: int, a_la_date: date | None = None) -> tuple[date, date]:
+    """Les deux dates que le tableau couvre réellement.
+
+    « 2025-2026 » ne veut rien dire pour une comptabilité : elle a besoin
+    d'un du-tel-jour-au-tel-jour. Et la borne haute n'est pas toujours le
+    31 août — sur l'année en cours, rien n'existe après aujourd'hui, et
+    annoncer une période qui va jusqu'en août laisserait croire que les
+    mois à venir sont déjà comptés.
+    """
+    debut, fin = bornes_annee_scolaire(annee)
+    butoir = a_la_date or date.today()
+    return debut, min(fin, butoir) if butoir < fin else fin
+
+
 def repartition(annee: int, a_la_date: date | None = None) -> dict:
     """La répartition complète de l'année : par personne et par secteur.
 
@@ -288,9 +302,11 @@ def repartition(annee: int, a_la_date: date | None = None) -> dict:
 
     lignes = _participations_avec_reglement(annee, a_la_date)
     if not lignes:
+        debut_vide, fin_vide = periode_couverte(annee, a_la_date)
         return {
             "annee_scolaire": annee,
             "a_la_date": a_la_date,
+            "periode": {"debut": debut_vide, "fin": fin_vide},
             "libelle_annee": libelle_annee_scolaire(annee),
             "personnes": [],
             "secteurs": {},
@@ -393,9 +409,11 @@ def repartition(annee: int, a_la_date: date | None = None) -> dict:
         (p["participant"].nom or "").lower(), (p["participant"].prenom or "").lower()
     ))
 
+    debut_couvert, fin_couverte = periode_couverte(annee, a_la_date)
     return {
         "annee_scolaire": annee,
         "a_la_date": a_la_date,
+        "periode": {"debut": debut_couvert, "fin": fin_couverte},
         "libelle_annee": libelle_annee_scolaire(annee),
         "personnes": personnes,
         "secteurs": dict(sorted(secteurs.items(), key=lambda kv: (-kv[1]["regle"], kv[0]))),
@@ -593,6 +611,19 @@ def export_xlsx(vue: dict, *, arrete=None):
             "utiliser un arrêté figé."
         )
 
+    # « 2025-2026 » ne veut rien dire pour une comptabilité : elle a besoin
+    # d'un du-tel-jour-au-tel-jour. Et le classeur circulera loin de l'écran
+    # qui l'a produit — il doit porter ses bornes lui-même.
+    bornes = vue.get("periode") or {}
+    if bornes.get("debut") and bornes.get("fin"):
+        couverture = (
+            f"Période couverte : du {bornes['debut']:%d/%m/%Y} au {bornes['fin']:%d/%m/%Y} "
+            "(année scolaire de septembre à août — à ne pas confondre avec "
+            "l'exercice comptable, qui peut suivre l'année civile)."
+        )
+    else:
+        couverture = "Période couverte : année scolaire de septembre à août."
+
     gras = Font(bold=True)
     wb = Workbook()
 
@@ -602,6 +633,7 @@ def export_xlsx(vue: dict, *, arrete=None):
     feuille.append([f"Répartition de la participation — {vue['libelle_annee']}"])
     feuille["A1"].font = Font(bold=True, size=13)
     feuille.append([nature])
+    feuille.append([couverture])
     feuille.append([
         "Au prorata des venues réelles (présent, retard). Les absences excusées "
         "ne comptent pas. Qui n'est venu nulle part est rattaché au secteur "
@@ -612,7 +644,8 @@ def export_xlsx(vue: dict, *, arrete=None):
     entetes = ["Secteur", "Venues", "Personnes", "Part de l'encaissé",
                "Dû (€)", "Encaissé (€)"]
     feuille.append(entetes)
-    for cellule in feuille[5]:
+    ligne_entetes = feuille.max_row
+    for cellule in feuille[ligne_entetes]:
         cellule.font = gras
 
     total_regle = vue["totaux"]["regle"] or 0.0
@@ -622,8 +655,10 @@ def export_xlsx(vue: dict, *, arrete=None):
             round(case["regle"] / total_regle, 4) if total_regle else 0,
             case["du"], case["regle"],
         ])
-    premiere, derniere = 6, 5 + len(vue["secteurs"])
-    for ligne in range(premiere, derniere + 1):
+    # Les index se déduisent de l'écriture réelle : une ligne d'en-tête
+    # ajoutée plus haut décalerait silencieusement tous les formats.
+    premiere = ligne_entetes + 1
+    for ligne in range(premiere, feuille.max_row + 1):
         feuille.cell(row=ligne, column=4).number_format = "0.0%"
         feuille.cell(row=ligne, column=5).number_format = "#,##0.00"
         feuille.cell(row=ligne, column=6).number_format = "#,##0.00"
@@ -638,7 +673,7 @@ def export_xlsx(vue: dict, *, arrete=None):
     feuille.cell(row=ligne_total, column=5).number_format = "#,##0.00"
     feuille.cell(row=ligne_total, column=6).number_format = "#,##0.00"
 
-    feuille.freeze_panes = "A6"
+    feuille.freeze_panes = f"A{ligne_entetes + 1}"
     for index, largeur in enumerate((38, 10, 12, 18, 14, 14), start=1):
         feuille.column_dimensions[get_column_letter(index)].width = largeur
     feuille["A2"].alignment = Alignment(wrap_text=False)
@@ -648,7 +683,7 @@ def export_xlsx(vue: dict, *, arrete=None):
     detail.append([f"Détail de la répartition — {vue['libelle_annee']}"])
     detail["A1"].font = Font(bold=True, size=13)
     detail.append([nature])
-    detail.append([])
+    detail.append([couverture])
     colonnes = ["Personne", "Secteur", "Venues dans ce secteur",
                 "Total venues de la personne", "Dû réparti (€)",
                 "Encaissé réparti (€)", "Sans venue (repli)"]
@@ -683,7 +718,7 @@ def export_xlsx(vue: dict, *, arrete=None):
     controle.append(["Contrôle de bouclage"])
     controle["A1"].font = Font(bold=True, size=13)
     controle.append([nature])
-    controle.append([])
+    controle.append([couverture])
     controle.append(["Vérification", "Dû (€)", "Encaissé (€)"])
     for cellule in controle[4]:
         cellule.font = gras
