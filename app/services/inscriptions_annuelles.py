@@ -1417,12 +1417,47 @@ def _ligne_export(inscription: InscriptionAnnuelle, utilisateurs: dict[int, str]
     ]
 
 
+def _titre_feuille_secteur(secteur: str, titres_utilises: set[str]) -> str:
+    """Construit un nom d'onglet Excel valide et unique pour un secteur."""
+    import re
+
+    titre = re.sub(r"[\[\]:*?/\\]", " ", secteur or "Sans secteur").strip()
+    titre = titre[:31] or "Sans secteur"
+    base = titre
+    numero = 2
+    while titre.casefold() in titres_utilises:
+        suffixe = f" ({numero})"
+        titre = f"{base[:31 - len(suffixe)]}{suffixe}"
+        numero += 1
+    titres_utilises.add(titre.casefold())
+    return titre
+
+
+def _configurer_impression(feuille, *, lignes_entete: str | None = None) -> None:
+    """Prépare une feuille pour une impression lisible sur une page A4."""
+    from openpyxl.utils import get_column_letter
+
+    feuille.sheet_properties.pageSetUpPr.fitToPage = True
+    feuille.page_setup.orientation = "landscape"
+    feuille.page_setup.paperSize = feuille.PAPERSIZE_A4
+    feuille.page_setup.fitToWidth = 1
+    feuille.page_setup.fitToHeight = 1
+    feuille.print_options.horizontalCentered = True
+    feuille.sheet_view.showGridLines = False
+    if lignes_entete:
+        feuille.print_title_rows = lignes_entete
+    if feuille.max_row and feuille.max_column:
+        feuille.print_area = (
+            f"A1:{get_column_letter(feuille.max_column)}{feuille.max_row}"
+        )
+
+
 def export_xlsx(annee_scolaire: int, inscriptions: list[InscriptionAnnuelle]) -> BytesIO:
     """Classeur complet de la campagne : toutes les données récoltées.
 
-    Trois feuilles : le détail nominatif (une ligne par bulletin, toutes les
-    colonnes du formulaire), la synthèse de la campagne, et la grille des
-    disponibilités bénévolat prête à imprimer pour la réunion d'équipe."""
+    Le détail nominatif est ventilé dans un onglet par secteur. Il est complété
+    par la synthèse de campagne, les foyers et la grille des disponibilités
+    bénévolat. Chaque onglet est réglé pour tenir sur une page imprimée."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -1434,17 +1469,38 @@ def export_xlsx(annee_scolaire: int, inscriptions: list[InscriptionAnnuelle]) ->
 
     wb = Workbook()
 
-    detail = wb.active
-    detail.title = "Inscriptions"
-    detail.append([f"Inscriptions annuelles {data['libelle_annee']}"])
-    detail.append([f"{len(inscriptions)} bulletin(s) — export du {date.today().strftime('%d/%m/%Y')}"])
-    detail.append([])
-    detail.append(COLONNES_EXPORT)
+    # Réserver les titres des feuilles transversales évite qu'un secteur nommé
+    # « Synthèse » ou « Foyers » provoque une collision dans le classeur.
+    titres_utilises = {titre.casefold() for titre in ("Synthèse", "Foyers", "Bénévolat")}
+    inscriptions_par_secteur: dict[str, list[InscriptionAnnuelle]] = {}
     for inscription in inscriptions:
-        detail.append(_ligne_export(inscription, utilisateurs))
-    detail.freeze_panes = "A5"
-    if len(inscriptions):
-        detail.auto_filter.ref = f"A4:{get_column_letter(len(COLONNES_EXPORT))}{4 + len(inscriptions)}"
+        secteur = (inscription.secteur_orienteur or "").strip() or "Sans secteur"
+        inscriptions_par_secteur.setdefault(secteur, []).append(inscription)
+
+    # Un classeur vide doit malgré tout conserver un onglet de détail utile.
+    if not inscriptions_par_secteur:
+        inscriptions_par_secteur["Sans secteur"] = []
+
+    premiere_feuille = True
+    for secteur in sorted(inscriptions_par_secteur, key=str.casefold):
+        lignes = inscriptions_par_secteur[secteur]
+        if premiere_feuille:
+            detail = wb.active
+            detail.title = _titre_feuille_secteur(secteur, titres_utilises)
+            premiere_feuille = False
+        else:
+            detail = wb.create_sheet(_titre_feuille_secteur(secteur, titres_utilises))
+        detail.append([f"Inscriptions annuelles {data['libelle_annee']} — {secteur}"])
+        detail.append([f"{len(lignes)} bulletin(s) — export du {date.today().strftime('%d/%m/%Y')}"])
+        detail.append([])
+        detail.append(COLONNES_EXPORT)
+        for inscription in lignes:
+            detail.append(_ligne_export(inscription, utilisateurs))
+        detail.freeze_panes = "A5"
+        if lignes:
+            detail.auto_filter.ref = (
+                f"A4:{get_column_letter(len(COLONNES_EXPORT))}{4 + len(lignes)}"
+            )
 
     resume = wb.create_sheet("Synthèse")
     resume.append([f"Campagne {data['libelle_annee']}"])
@@ -1543,6 +1599,10 @@ def export_xlsx(annee_scolaire: int, inscriptions: list[InscriptionAnnuelle]) ->
                 for r in range(1, min(feuille.max_row, 400) + 1)
             ]
             feuille.column_dimensions[get_column_letter(col)].width = min(44, max(12, max(longueurs or [0]) + 2))
+        _configurer_impression(
+            feuille,
+            lignes_entete="1:4" if feuille.title not in ("Synthèse", "Foyers", "Bénévolat") else None,
+        )
 
     sortie = BytesIO()
     wb.save(sortie)

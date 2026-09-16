@@ -166,8 +166,18 @@ def fusionner():
     qu'une fiche y était rattachée : un doublon créé un jour de rush restait
     là pour toujours, et les bilans comptaient le même quartier deux fois.
     """
-    source = db.session.get(Quartier, request.form.get("source_id", type=int) or 0)
-    cible = db.session.get(Quartier, request.form.get("cible_id", type=int) or 0)
+    selection = list(dict.fromkeys(request.form.getlist("quartier_ids")))
+    cible_id = request.form.get("cible_id", type=int) or 0
+    source_id = request.form.get("source_id", type=int) or 0
+    if selection:
+        ids = [int(valeur) for valeur in selection if valeur.isdigit()]
+        if len(ids) != 2 or cible_id not in ids:
+            flash("Coche exactement deux quartiers et choisis celui à conserver.", "danger")
+            return redirect(url_for("quartiers.index"))
+        source_id = next(identifiant for identifiant in ids if identifiant != cible_id)
+
+    source = db.session.get(Quartier, source_id)
+    cible = db.session.get(Quartier, cible_id)
     if source is None or cible is None:
         flash("Choisis le quartier à absorber et celui qui le remplace.", "danger")
         return redirect(url_for("quartiers.index"))
@@ -224,8 +234,16 @@ def villes_fusionner():
     Villers-Saint-Paul comme Villers-sous-Saint-Leu, deux communes voisines.
     Le code ne devine pas ; la personne qui connaît le territoire tranche.
     """
-    source = (request.form.get("source") or "").strip()
+    selection = list(dict.fromkeys(
+        valeur.strip() for valeur in request.form.getlist("villes_selection") if valeur.strip()
+    ))
     cible = (request.form.get("cible") or "").strip()
+    source = (request.form.get("source") or "").strip()
+    if selection:
+        if len(selection) != 2 or cible not in selection:
+            flash("Coche exactement deux villes et choisis celle à conserver.", "danger")
+            return redirect(url_for("quartiers.villes"))
+        source = next(ville for ville in selection if ville != cible)
     if not source or not cible:
         flash("Indique l'écriture à corriger et celle à conserver.", "danger")
         return redirect(url_for("quartiers.villes"))
