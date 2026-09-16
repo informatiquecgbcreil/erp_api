@@ -74,10 +74,21 @@ DELAI_HTTP = 20  # secondes par requête vers Google
 #: Rattrapage périodique : resynchronisation complète si la dernière date
 #: de plus de N heures (filet de sécurité, quasi gratuit grâce aux empreintes).
 RATTRAPAGE_HEURES = 6
+ERREUR_JETON_INVALIDE = "invalid_grant"
 
 
 class GoogleAgendaErreur(Exception):
     """Erreur de dialogue avec Google (réseau, refus, jeton révoqué…)."""
+
+
+def acces_a_reconnecter(compte: GoogleAgendaCompte | None) -> bool:
+    """Indique si la dernière erreur exige un nouveau consentement OAuth.
+
+    Ce prédicat centralise la détection : le template ne doit pas interpréter
+    lui-même un texte d'erreur destiné à l'affichage.
+    """
+    erreur = getattr(compte, "derniere_erreur", None) or ""
+    return ERREUR_JETON_INVALIDE in erreur.lower()
 
 
 def lien_base_application() -> str:
@@ -278,9 +289,21 @@ def _rafraichir_jeton(compte: GoogleAgendaCompte) -> str:
             "grant_type": "refresh_token",
         })
     except GoogleAgendaErreur as exc:
-        # Jeton révoqué côté Google (invalid_grant) : accès à reconnecter.
+        message = str(exc)
+        if ERREUR_JETON_INVALIDE in message.lower():
+            # En plus d'une révocation manuelle, Google invalide après sept
+            # jours les refresh tokens d'une application OAuth externe qui
+            # est encore en mode « Test ». La reconnexion remet immédiatement
+            # la synchro en route, mais le correctif durable est de publier
+            # l'application dans Google Auth Platform.
+            raise GoogleAgendaErreur(
+                "Accès Google expiré ou révoqué "
+                f"({message}). Reconnecte Google ci-dessous. Si cela revient chaque semaine, "
+                "l'application OAuth est encore en mode Test : l'administrateur doit la "
+                "publier dans Google Auth Platform → Audience."
+            ) from exc
         raise GoogleAgendaErreur(
-            f"Accès Google expiré ou révoqué ({exc}). Reconnecte ton compte depuis Mon agenda."
+            f"Impossible de renouveler l'accès Google ({message}). Réessaie la synchronisation plus tard."
         ) from exc
     compte.access_token = donnees.get("access_token")
     try:

@@ -149,6 +149,33 @@ En pratique pour une installation LAN :
    faudra une URL en `https` avec un nom de domaine (reverse proxy ou
    tunnel) — mais rien d'autre ne change.
 
+### « 502 Bad Gateway » au retour de Google
+
+Une page **nginx 502** après le consentement ne vient ni de Google ni du
+jeton : le navigateur est bien revenu sur l'URI configurée, mais le proxy qui
+écoute à cette adresse ne réussit pas à joindre Flask/Waitress. Le port de
+`GOOGLE_OAUTH_REDIRECT_BASE`, le port déclaré dans Google Cloud et le port
+réellement accessible doivent correspondre.
+
+Par exemple, pour un lancement de développement Windows avec :
+
+```powershell
+python -m flask --app wsgi:app run --host 0.0.0.0 --port 5000 --debug
+```
+
+utiliser temporairement :
+
+```ini
+GOOGLE_OAUTH_REDIRECT_BASE=http://127.0.0.1:5000
+```
+
+et autoriser exactement
+`http://127.0.0.1:5000/mon-agenda/google/retour` dans le client OAuth Google.
+Redémarrer Flask après la modification du `.env`, puis recommencer la
+connexion : un code OAuth déjà envoyé vers la page 502 ne doit pas être
+réutilisé. En service normal derrière nginx, conserver au contraire le port
+du proxy et vérifier que son upstream (Waitress) est démarré.
+
 ## Notes techniques
 
 - Aucune dépendance externe : OAuth 2.0 et l'API Calendar sont appelés en
