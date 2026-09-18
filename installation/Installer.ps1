@@ -232,6 +232,24 @@ Ok "Base 'appgestion' prête (utilisateur 'appgestion')"
 
 # --- 4. Copie de l'application ----------------------------------------------
 Etape "4/8 - Copie de l'application"
+
+# Sur une MISE À JOUR, le service tourne encore et son interpréteur Python
+# garde ouverts les modules compilés (.pyd) de psycopg, Pillow… pip ne peut
+# alors pas les remplacer : « Access is denied », et la mise à jour échoue
+# au milieu. On l'arrête donc ici, avant de copier et avant pip — et non à
+# l'étape 7 comme avant, qui était trop tard.
+if (Get-Service -Name "AppGestion" -ErrorAction SilentlyContinue) {
+    Info "Service AppGestion en cours : arrêt avant la mise à jour..."
+    Stop-Service -Name "AppGestion" -Force -ErrorAction SilentlyContinue
+    # Windows libère les fichiers avec un peu de retard après l'arrêt.
+    for ($i = 1; $i -le 10; $i++) {
+        $etat = (Get-Service -Name "AppGestion" -ErrorAction SilentlyContinue).Status
+        if ($etat -ne "Running") { break }
+        Start-Sleep -Seconds 2
+    }
+    Ok "Service arrêté le temps de la mise à jour"
+}
+
 $source = Split-Path -Parent $PSScriptRoot   # le script est dans <app>\installation\
 Info "Source : $source"
 Info "Destination : $dossier"
@@ -261,12 +279,20 @@ Ok "Dépendances installées"
 Etape "6/8 - Configuration"
 $secretKey = MotDePasseAleatoire 64
 $urlPublique = "http://$(if ($hote -eq '0.0.0.0') { $env:COMPUTERNAME } else { '127.0.0.1' }):$port"
+
+# Le mot de passe part dans une URL : il DOIT être encodé. Un « @ » dans un
+# mot de passe saisi à la main coupe l'URL au mauvais endroit — l'hôte
+# devient « ssw0rd!@127.0.0.1 » et l'application refuse de démarrer avec un
+# message qui ne parle ni de mot de passe ni d'URL. Le mot de passe généré
+# automatiquement est alphanumérique et n'aurait jamais révélé le problème :
+# seul quelqu'un qui choisit le sien se fait piéger.
+$mdpAppUrl = [uri]::EscapeDataString($mdpApp)
 @"
 # Fichier généré par l'installateur le $(Get-Date -Format "yyyy-MM-dd HH:mm")
 # NE PAS PARTAGER : contient les mots de passe de l'application.
 ERP_ENV=production
 SECRET_KEY=$secretKey
-DATABASE_URL=postgresql://appgestion:$mdpApp@127.0.0.1:$pgPort/appgestion
+DATABASE_URL=postgresql+psycopg://appgestion:$mdpAppUrl@127.0.0.1:$pgPort/appgestion
 ERP_HOST=$hote
 ERP_PORT=$port
 ERP_THREADS=12
@@ -296,7 +322,43 @@ $nssm = "$dossier\tools\nssm\win64\nssm.exe"
 if (-not (Test-Path $nssm)) {
     Info "Téléchargement de NSSM (gestionnaire de service)..."
     $zip = "$env:TEMP\nssm.zip"
-    Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile $zip
+
+    # Windows PowerShell 5.1 négocie encore TLS 1.0 sur certaines machines,
+    # que le serveur refuse : le téléchargement échoue alors sur une erreur
+    # de « canal sécurisé » incompréhensible. Une ligne suffit à l'éviter.
+    try {
+        [Net.ServicePointManager]::SecurityProtocol =
+            [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    } catch { }
+
+    # nssm.cc est un petit site, parfois injoignable, et certains réseaux
+    # municipaux le bloquent. Trois essais, puis un message qui dit quoi
+    # faire — plutôt qu'une exception .NET brute devant quelqu'un qui
+    # n'est pas informaticien.
+    $telecharge = $false
+    foreach ($essai in 1..3) {
+        try {
+            Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile $zip -UseBasicParsing -TimeoutSec 60
+            $telecharge = $true
+            break
+        } catch {
+            Warn "Téléchargement de NSSM : échec $essai/3 ($($_.Exception.Message))"
+            Start-Sleep -Seconds 5
+        }
+    }
+    if (-not $telecharge) {
+        throw @"
+Impossible de télécharger NSSM depuis https://nssm.cc/release/nssm-2.24.zip
+(pas d'accès internet, site injoignable, ou téléchargement bloqué par le réseau).
+
+Contournement : téléchargez ce fichier depuis un autre poste, puis placez
+nssm.exe (version 64 bits) dans :
+    $dossier\tools\nssm\win64\nssm.exe
+et relancez cet installateur.
+
+Journal : $global:LogFile
+"@
+    }
     Expand-Archive -Path $zip -DestinationPath "$env:TEMP\nssm-extract" -Force
     New-Item -ItemType Directory -Force -Path "$dossier\tools\nssm\win64" | Out-Null
     Copy-Item "$env:TEMP\nssm-extract\nssm-2.24\win64\nssm.exe" $nssm -Force

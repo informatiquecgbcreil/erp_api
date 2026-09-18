@@ -35,6 +35,11 @@ Comptez 10 à 20 minutes. Il vous faut :
    | Port PostgreSQL | Entrée (5432) |
    | Mot de passe base de données | Entrée (généré automatiquement) |
 
+   > 💡 Pour le mot de passe de la base, appuyez simplement sur **Entrée** :
+   > celui généré est long, aléatoire et vous n'aurez jamais à le taper.
+   > Vous ne le saisissez vous-même que si votre service informatique
+   > l'impose.
+
 4. L'installateur fait ensuite **tout le reste tout seul** : Python,
    la base de données PostgreSQL, l'application, le démarrage
    automatique avec Windows et la sauvegarde quotidienne (2h00).
@@ -79,5 +84,7 @@ Lancez `Desinstaller.ps1` (même dossier). Vos données sont conservées.
 |---|---|
 | « winget n'est pas reconnu » | Windows trop ancien : installez « App Installer » depuis le Microsoft Store, ou installez manuellement [Python](https://www.python.org/downloads/) (cochez *Add to PATH*) et [PostgreSQL](https://www.postgresql.org/download/windows/), puis relancez. |
 | « L'application n'a pas répondu à temps » | Ouvrez `C:\AppGestion\logs\service-err.log` et envoyez son contenu à votre support. |
+| « Impossible de télécharger NSSM » | Le site nssm.cc est injoignable ou bloqué par votre réseau. Le message affiché indique le fichier à récupérer depuis un autre poste et où le déposer, puis relancez l'installateur. |
+| La mise à jour s'arrête sur « Access is denied » | L'installateur arrête le service avant de mettre à jour. Si le message persiste, arrêtez-le à la main (`nssm stop AppGestion`) et relancez. |
 | Page inaccessible depuis un autre poste | Vérifiez que vous avez répondu **o** à la question réseau ; sinon relancez `Installer.ps1`. |
 | Mot de passe administrateur oublié | Depuis l'écran de connexion : « Mot de passe oublié » (nécessite la configuration email), sinon contactez votre support. |
