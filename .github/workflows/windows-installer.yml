@@ -28,9 +28,34 @@ jobs:
       - name: Compiler le paquet autonome
         shell: pwsh
         run: python desktop/build.py --work "$env:RUNNER_TEMP/build-mcs" --output outputs --iscc "$env:RUNNER_TEMP/inno/ISCC.exe"
-      - name: Vérifier le runtime sur PostgreSQL et HTTPS
+      - name: Installer et vérifier le service sur Windows Server
         shell: pwsh
-        run: python desktop/smoke.py --payload "$env:RUNNER_TEMP/build-mcs/payload" --data-root "$env:RUNNER_TEMP/Recette Centre Équipe"
+        run: |
+          if (Test-Path "$env:ProgramData/MonCentreSocial") { throw 'Une instance existe déjà' }
+          $installer = (Resolve-Path 'outputs/Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe').Path
+          $installation = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
+          if ($installation.ExitCode -notin 0,3010) { throw "Installation : $($installation.ExitCode)" }
+          $appDir = "$env:ProgramFiles/Mon Centre Social"
+          & "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/csc.exe" /nologo /target:exe /platform:x64 /main:MonCentreSocial.SystemSmoke "/out:$appDir/RecetteSysteme.exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:System.Web.Extensions.dll /r:System.Security.dll desktop/MonCentreSocial.cs desktop/SystemSmoke.cs
+          if ($LASTEXITCODE -ne 0) { throw 'Compilation de la recette impossible' }
+          & "$appDir/RecetteSysteme.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Recette service échouée' }
+          $update = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
+          if ($update.ExitCode -notin 0,3010) { throw 'Mise à jour échouée' }
+          & "$appDir/RecetteSysteme.exe" resume
+          if ($LASTEXITCODE -ne 0) { throw 'Reprise après mise à jour échouée' }
+          $uninstall = Start-Process "$appDir/unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Désinstallation échouée' }
+          if (Get-Service MonCentreSocial -ErrorAction SilentlyContinue) { throw 'Le service subsiste après désinstallation' }
+          if (Test-Path "$appDir/MonCentreSocial.exe") { throw 'Le programme subsiste après désinstallation' }
+          if (!(Test-Path "$env:ProgramData/MonCentreSocial/Direction-DSI/Installation-confidentielle.txt")) { throw 'Le dossier confidentiel a été perdu' }
+          if (!(Test-Path "$env:ProgramData/MonCentreSocial/postgresql/PG_VERSION")) { throw 'La base a été perdue' }
+          'Installation, service, HTTPS, DPAPI, ACL, arrêt, redémarrage, mise à jour et désinstallation : OK.' | Set-Content outputs/recette-systeme.txt
+      - name: Diagnostic protégé en cas d'échec
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-Content "$env:ProgramData/MonCentreSocial/logs/service.log" -Tail 35 -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: Mon-Centre-Social-Windows-x64
