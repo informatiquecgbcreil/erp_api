@@ -25,9 +25,14 @@ def kiosk_public_base_url() -> str:
     Si un hôte public « hors les murs » est configuré (tunnel, voir
     KIOSK_PUBLIC_HOST dans config.py), les liens kiosque l'utilisent :
     ils fonctionnent alors aussi bien dans la structure qu'à l'extérieur.
-    Sinon, on retombe sur l'URL LAN habituelle.
+    Sinon, l'assistant Windows peut fournir une adresse HTTP LAN dédiée au
+    kiosque (accessible depuis les téléphones sans déployer l'autorité de
+    certification interne). À défaut, on retombe sur l'URL LAN habituelle.
     """
     hote = (current_app.config.get("KIOSK_PUBLIC_HOST") or "").strip().lower()
     if hote:
         return f"https://{hote}"
+    kiosque = (current_app.config.get("KIOSK_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if kiosque:
+        return kiosque
     return public_base_url()

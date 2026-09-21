@@ -151,6 +151,11 @@ class Config:
     # (connexion, données, admin) renvoie 403. Vide = désactivé.
     # Exemple : kiosque-cgb.exemple.fr (sans http:// ni port).
     KIOSK_PUBLIC_HOST = os.environ.get("KIOSK_PUBLIC_HOST", "").strip().lower()
+    # Adresse LAN dédiée aux QR codes du kiosque Windows. Elle est générée par
+    # l'assistant quand le mode réseau est choisi et reste distincte de l'URL
+    # HTTPS d'administration (les téléphones n'ont alors aucun certificat à
+    # installer). Une valeur explicite reste utile pour un reverse-proxy DSI.
+    KIOSK_PUBLIC_BASE_URL = os.environ.get("KIOSK_PUBLIC_BASE_URL", "").strip().rstrip("/")
 
     # Répertoire des uploads (pièces jointes, logos, exports visuels).
     # Par défaut: ./static/uploads (compatible Windows/Linux + hébergement web simple).

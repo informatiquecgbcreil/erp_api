@@ -280,6 +280,18 @@ def test_lien_kiosque_prefere_l_hote_public(app):
         app.config["KIOSK_PUBLIC_HOST"] = ""
     with app.test_request_context():
         assert "kiosque.exemple.fr" not in kiosk_public_base_url()
+
+
+def test_lien_kiosque_prefere_adresse_mobile_lan(app):
+    from app.services.public_urls import kiosk_public_base_url
+    app.config["KIOSK_PUBLIC_HOST"] = ""
+    previous = app.config.get("KIOSK_PUBLIC_BASE_URL")
+    app.config["KIOSK_PUBLIC_BASE_URL"] = "http://192.168.1.20:8080"
+    try:
+        with app.test_request_context():
+            assert kiosk_public_base_url() == "http://192.168.1.20:8080"
+    finally:
+        app.config["KIOSK_PUBLIC_BASE_URL"] = previous
 def test_ouverture_kiosque_reservee_au_lan_puis_lien_public(app, atelier_grille, admin_client):
     """L'ouverture du kiosque (bouton sur la page émargement admin) exige
     d'être sur le LAN ; une fois ouvert, le lien/QR généré pointe bien

@@ -33,9 +33,11 @@ def smoke(payload, root):
                admin_email="recette@example.test", admin_password=" " + secrets.token_urlsafe(25) + " ",
                db_password=secrets.token_urlsafe(32), db_admin_password=secrets.token_urlsafe(32),
                secret_key=secrets.token_urlsafe(40), db_port=free_port(), web_port=free_port(),
-               https_port=free_port(), network=True, hostname="localhost", modules=["presences", "statistiques"],
+               https_port=free_port(), kiosk_http_port=free_port(), lan_ip="127.0.0.1",
+               network=True, hostname="localhost", modules=["presences", "statistiques"],
                smtp_host="", smtp_port=587, smtp_user="", smtp_password="", smtp_sender="")
     cfg["url"] = f"https://localhost:{cfg['https_port']}"
+    cfg["kiosk_url"] = f"http://127.0.0.1:{cfg['kiosk_http_port']}"
     results = {}
     process = None
     log = (root / "smoke-supervisor.log").open("wb")
@@ -69,6 +71,12 @@ def smoke(payload, root):
                     return r.status, r.read().decode("utf-8")
             except urllib.error.HTTPError as e:
                 return e.code, e.read().decode("utf-8")
+        def get_mobile(path):
+            try:
+                with urllib.request.urlopen(cfg["kiosk_url"] + path, timeout=30) as r:
+                    return r.status, r.read().decode("utf-8")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8")
         code, body = get("/"); assert code == 200
         csrf = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', body).group(1)
         data = urllib.parse.urlencode(dict(email=cfg["admin_email"], password=cfg["admin_password"], csrf_token=csrf)).encode()
@@ -81,6 +89,9 @@ def smoke(payload, root):
         for path in ("/rh", "/caisse", "/salles/", "/setup/", "/media/justifs/secret.pdf"):
             assert get(path)[0] == 404, path
         results["modules_et_assistant_web_proteges"] = True
+        assert get_mobile("/kiosk/")[0] == 200
+        assert get_mobile("/dashboard")[0] == 403
+        results["kiosque_mobile_lan_sans_certificat"] = True
         for _ in range(80):
             if list((root / "backups").glob("*.sha256")): break
             time.sleep(0.5)

@@ -15,6 +15,18 @@ static class SystemSmoke {
         request.Proxy = null; request.Timeout = 30000;
         using (var response = (HttpWebResponse)request.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "HTTPS indisponible");
     }
+    static void KioskHealthy(Dictionary<string, object> config) {
+        var request = (HttpWebRequest)WebRequest.Create((string)config["kiosk_url"] + "/kiosk/");
+        request.Proxy = null; request.Timeout = 30000;
+        using (var response = (HttpWebResponse)request.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "Kiosque mobile indisponible");
+        try {
+            var blocked = (HttpWebRequest)WebRequest.Create((string)config["kiosk_url"] + "/dashboard"); blocked.Proxy = null; blocked.Timeout = 30000;
+            using (var response = (HttpWebResponse)blocked.GetResponse()) Check(false, "Le point d'accès mobile expose l'administration");
+        } catch (WebException e) {
+            var response = e.Response as HttpWebResponse;
+            Check(response != null && response.StatusCode == HttpStatusCode.Forbidden, "Le filtrage du point d'accès mobile est absent");
+        }
+    }
     static int Main(string[] args) {
         try {
             Check(Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" && Program.IsAdmin,
@@ -30,8 +42,8 @@ static class SystemSmoke {
                 {"modules", new[] {"presences", "statistiques"}}, {"network", true}, {"hostname", "localhost"},
                 {"smtp_host", ""}, {"smtp_port", 587}, {"smtp_user", ""}, {"smtp_password", ""}, {"smtp_sender", ""}
             };
-            Program.InstallConfiguration(c, message => Console.WriteLine(message));
-            Healthy(c);
+                Program.InstallConfiguration(c, message => Console.WriteLine(message));
+            Healthy(c); KioskHealthy(c);
             using (var service = new ServiceController(Program.ServiceName)) Check(service.Status == ServiceControllerStatus.Running, "Service non démarré");
             var report = Path.Combine(Program.Root, "Direction-DSI", "Installation-confidentielle.txt");
             Check(File.ReadAllText(report).Contains((string)c["db_password"]), "Dossier confidentiel incomplet");
@@ -44,7 +56,7 @@ static class SystemSmoke {
             Check((string)Program.ReadConfiguration()["db_password"] == (string)c["db_password"], "Configuration DPAPI invalide");
             Program.StopService();
             Check(!File.Exists(Path.Combine(Program.Root, "postgresql", "postmaster.pid")), "PostgreSQL encore démarré");
-            Program.FinishInstallation(c); Healthy(c);
+            Program.FinishInstallation(c); Healthy(c); KioskHealthy(c);
             Console.WriteLine("SERVICE_HTTPS_DPAPI_ACL_ARRET_REDEMARRAGE_OK");
             return 0;
         } catch (Exception e) {

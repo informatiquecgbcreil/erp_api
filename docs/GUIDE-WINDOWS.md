@@ -65,8 +65,9 @@ Ce chiffrement n'est pas transportable tel quel sur une autre machine.
 
 Le mode ordinateur écoute seulement sur `127.0.0.1`. Le mode réseau ajoute HTTPS
 sur le nom de la machine et un port disponible à partir de 8443. Le pare-feu
-autorise seulement le sous-réseau local sur les profils Privé/Domaine. PostgreSQL
-reste sur `127.0.0.1`, port choisi à partir de 55432 ; il n'est jamais publié.
+autorise seulement le sous-réseau local sur les profils Privé/Domaine pour
+l'administration HTTPS. PostgreSQL reste sur `127.0.0.1`, port choisi à partir
+de 55432 ; il n'est jamais publié.
 
 L'installation crée une autorité de certification propre au centre et fait
 confiance à son certificat sur le serveur. La DSI déploie
@@ -76,6 +77,32 @@ Seul ce certificat public est à diffuser ; jamais le dossier `runtime\tls`.
 Le DNS local doit résoudre le nom choisi. Ne pas ignorer une alerte de certificat.
 Pour une exposition Internet, faire configurer le domaine, le certificat public
 et les règles réseau par la DSI ; ce paquet est configuré pour le réseau local.
+
+### Téléphones et tablettes : kiosque sans certificat
+
+L'installation réseau crée aussi une **adresse kiosque locale** dans le dossier
+confidentiel et dans `public\kiosk-url.txt`. Elle ressemble à
+`http://192.168.1.20:8080/kiosk/`. Le bouton **Kiosque** et les QR codes de
+l'émargement utilisent cette adresse. Un téléphone ou une tablette connecté au
+même Wi-Fi peut donc ouvrir le kiosque sans installer le certificat HTTPS du
+serveur. L'adresse IPv4 est détectée pendant l'installation ; si le serveur
+change de carte réseau ou d'adresse, relancer **Configurer Mon Centre Social**
+pour régénérer le lien.
+
+Ce port HTTP ne publie que `/kiosk`, les feuilles de style, les logos et
+`/healthz`. Les routes d'administration renvoient 403 et PostgreSQL reste
+inaccessible. Le pare-feu limite le port au sous-réseau local, y compris sur le
+profil Windows Public pour les réseaux où Windows classe le Wi-Fi de façon
+stricte. Ne pas transférer ce port sur la box, ne pas l'utiliser depuis un
+Wi-Fi invité isolé et ne pas considérer ce lien comme un accès Internet. Pour
+une activité hors de la structure, utiliser le tunnel HTTPS décrit dans
+`docs/kiosque-hors-les-murs.md`.
+
+Si un appareil ne se connecte toujours pas : vérifier qu'il est sur le même
+Wi-Fi que le serveur, que le réseau autorise les appareils à communiquer entre
+eux (désactiver l'isolation « clients Wi-Fi » pour ce SSID), puis tester
+l'adresse complète avec `/kiosk/`. L'administration continue d'utiliser
+l'adresse HTTPS et le certificat déployé par la DSI.
 
 ## Sauvegarder, restaurer, mettre à jour
 
