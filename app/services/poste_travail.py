@@ -401,8 +401,12 @@ ROLE_PRIORITY = [
 
 
 def _safe_url(endpoint: str | None, fallback_endpoint: str | None = None, **values) -> str | None:
+    from app.services.modules import endpoint_module, module_enabled
     for candidate in (endpoint, fallback_endpoint):
         if not candidate:
+            continue
+        key = endpoint_module(candidate)
+        if key and not module_enabled(key):
             continue
         try:
             return url_for(candidate, **values)

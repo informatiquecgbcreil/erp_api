@@ -195,6 +195,8 @@ def build_dashboard_context(
         }
 
     subs_q = Subvention.query.filter_by(est_archive=False).filter(Subvention.annee_exercice == budget_year)
+    if not _has("subventions:view"):
+        subs_q = subs_q.filter(False)
     if not has_scope_all:
         subs_q = subs_q.filter(Subvention.secteur == user.secteur_assigne)
     subs = subs_q.all()
@@ -241,6 +243,9 @@ def build_dashboard_context(
     # à la corbeille ne compte plus (sinon le tableau de bord et les stats
     # affichent des totaux différents).
     pres_q = PresenceActivite.query.join(SessionActivite).filter(SessionActivite.is_deleted.is_(False))
+    if not _has_any("emargement:view", "stats:view", "statsimpact:view"):
+        sessions_q = sessions_q.filter(False)
+        pres_q = pres_q.filter(False)
     if not has_scope_all:
         sessions_q = sessions_q.filter(SessionActivite.secteur == user.secteur_assigne)
         pres_q = pres_q.filter(SessionActivite.secteur == user.secteur_assigne)
@@ -266,6 +271,8 @@ def build_dashboard_context(
     month_labels = [f"{y}-{m:02d}" for (y, m) in months]
 
     dep_q = Depense.query.filter_by(est_supprimee=False)
+    if not _has("depenses:view"):
+        dep_q = dep_q.filter(False)
     if not has_scope_all:
         dep_q = (
             dep_q.join(LigneBudget)

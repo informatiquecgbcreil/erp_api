@@ -135,7 +135,7 @@ def _build_bilans_dashboard_workbook(year: int, scope):
 
 @bp.route("/bilans")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def dashboard():
     scope = scope_for_user(current_user)
 
@@ -197,7 +197,7 @@ def dashboard():
 
 @bp.route("/bilans/export.xlsx")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def dashboard_export_xlsx():
     scope = scope_for_user(current_user)
     years = list_exercice_years(scope)
@@ -470,7 +470,7 @@ def bilans_lourds_export_docx():
 
 @bp.route("/bilans/secteur")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def bilan_secteur():
     scope = scope_for_user(current_user)
     years = list_exercice_years(scope)
@@ -509,7 +509,7 @@ def bilan_secteur():
 
 @bp.route("/bilans/subvention")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def bilan_subvention():
     scope = scope_for_user(current_user)
     years = list_exercice_years(scope)
@@ -553,7 +553,7 @@ def bilan_subvention():
 
 @bp.route("/bilans/financeurs")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def bilans_financeurs():
     scope = scope_for_user(current_user)
     years = list_exercice_years(scope)
@@ -578,7 +578,7 @@ def bilans_financeurs():
 
 @bp.route("/bilans/qualite")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def qualite():
     scope = scope_for_user(current_user)
     years = list_exercice_years(scope)
@@ -596,7 +596,7 @@ def qualite():
 
 @bp.route("/bilans/inventaire")
 @login_required
-@require_perm("bilans:view")
+@require_perm("inventaire:view")
 def inventaire():
     scope = scope_for_user(current_user)
     years = list_exercice_years(scope)
@@ -654,13 +654,13 @@ def bilan_senacs():
         finances=finances_annee(annee),
         evenementiel=evenementiel_annee(annee),
         types_contrat=SENACS_TYPES_CONTRAT,
-        peut_editer_emplois=can("subventions:edit"),
+        peut_editer_emplois=can("rh:edit"),
     )
 
 
 @bp.route("/bilans/senacs/emplois", methods=["POST"])
 @login_required
-@require_perm("subventions:edit")
+@require_perm("rh:edit")
 def bilan_senacs_emploi_create():
     from app.models import SenacsEmploi, SENACS_TYPES_CONTRAT_DICT
 
@@ -693,7 +693,7 @@ def bilan_senacs_emploi_create():
 
 @bp.route("/bilans/senacs/emplois/<int:emploi_id>/supprimer", methods=["POST"])
 @login_required
-@require_perm("subventions:edit")
+@require_perm("rh:edit")
 def bilan_senacs_emploi_supprimer(emploi_id: int):
     from app.models import SenacsEmploi
 

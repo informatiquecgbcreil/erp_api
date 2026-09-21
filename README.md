@@ -1,4 +1,18 @@
-# App Gestion
+# Mon Centre Social
+
+## Installation Windows avec assistant
+
+La distribution Windows s'installe avec **Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe**.
+Python, PostgreSQL, HTTPS et les bibliothèques sont inclus ; aucune commande
+PowerShell ni configuration manuelle du PATH. L'assistant choisit les modules,
+crée le compte direction et le dossier confidentiel. Un service Windows et une
+icône de notification assurent le fonctionnement en arrière-plan.
+
+Voir [le guide Windows](docs/GUIDE-WINDOWS.md),
+[le rapport de sécurité](docs/SECURITE-DISTRIBUTION-WINDOWS.md) et
+[la construction reproductible](desktop/README.md).
+La configuration manuelle décrite ci-dessous reste disponible pour les autres
+environnements. Les anciens scripts PowerShell ne sont plus la méthode de distribution.
 
 Application web de gestion interne pour structure associative, sociale ou centre social. Elle centralise le suivi des publics, des activités, des présences, des projets, des subventions, des dépenses, des bilans, de l'insertion, de la pédagogie, de l'inventaire et des indicateurs d'impact.
 

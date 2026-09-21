@@ -1,0 +1,38 @@
+name: Installateur Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/mon-centre-social-windows]
+    paths: ['desktop/**', 'app/**', 'migrations/**', 'config.py', 'requirements.txt', '.github/workflows/windows-installer.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Préparer les outils de construction
+        shell: pwsh
+        run: |
+          python -m pip install Pillow==12.3.0
+          Invoke-WebRequest https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe -OutFile "$env:RUNNER_TEMP/inno.exe"
+          if ((Get-FileHash "$env:RUNNER_TEMP/inno.exe").Hash -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw 'Empreinte Inno Setup invalide' }
+          $setup = Start-Process "$env:RUNNER_TEMP/inno.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',"/DIR=$env:RUNNER_TEMP/inno" -WindowStyle Hidden -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw 'Installation du compilateur impossible' }
+      - name: Compiler le paquet autonome
+        shell: pwsh
+        run: python desktop/build.py --work "$env:RUNNER_TEMP/build-mcs" --output outputs --iscc "$env:RUNNER_TEMP/inno/ISCC.exe"
+      - name: Vérifier le runtime sur PostgreSQL et HTTPS
+        shell: pwsh
+        run: python desktop/smoke.py --payload "$env:RUNNER_TEMP/build-mcs/payload" --data-root "$env:RUNNER_TEMP/Recette Centre Équipe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mon-Centre-Social-Windows-x64
+          path: outputs/*
+          retention-days: 30

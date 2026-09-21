@@ -3,6 +3,7 @@
 {% block body %}
 <div class="card" style="max-width:860px; margin:0 auto;">
   <h1>Configuration simplifiée de votre structure</h1>
+  {% if can_manage_modules %}<p><a class="btn" href="{{ url_for('admin.modules') }}">Choisir les outils du centre</a></p>{% endif %}
   <p class="muted">Personnalisez ici le nom de l’application, les logos, l’URL publique et la messagerie sans modifier les fichiers du projet.</p>
 
   {{ ux.callout("Paramètres essentiels", "Renseignez l'URL publique si l'application est ouverte depuis d'autres postes ou si des e-mails de récupération doivent contenir un lien fonctionnel. Configurez le SMTP uniquement si vous utilisez l'envoi d'e-mails depuis l'application.") }}

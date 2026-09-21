@@ -15,8 +15,7 @@ produire, en respectant les règles de l'enquête :
   public, participants uniques, participations),
 - partenaires recensés.
 
-Le bénévolat, les emplois et les finances ne sont pas gérés par
-l'application : ils restent à renseigner à la main dans SENACS.
+Les volets complémentaires respectent les modules actifs et les droits du compte.
 """
 from datetime import date
 
@@ -242,9 +241,16 @@ def tableau_actions(annee: int) -> list[dict]:
     return lignes
 
 
+def section_allowed(key, permission):
+    from flask import has_request_context
+    from app.services.modules import module_enabled
+    from app.rbac import can
+    return module_enabled(key) and (not has_request_context() or can(permission))
+
+
 def partenaires_recenses() -> list[dict]:
     """Base du tableau partenariats (6.4) : la nature et le rôle restent à qualifier."""
-    partenaires = Partenaire.query.order_by(Partenaire.nom.asc()).all()
+    partenaires = Partenaire.query.order_by(Partenaire.nom.asc()).all() if section_allowed("partenaires", "partenaires:view") else []
     return [
         {
             "nom": pa.nom,
@@ -268,6 +274,9 @@ def construire_export_senacs(annee: int):
     wb.remove(wb.active)
 
     def feuille(titre, entetes, lignes):
+        sections = {"Partenariats": ("partenaires", "partenaires:view"), "Emplois": ("rh", "rh:view"), "Finances": ("finances", "subventions:view")}
+        if titre in sections and not section_allowed(*sections[titre]):
+            return None
         ws = wb.create_sheet(title=titre[:31])
         ws.append(entetes)
         for cellule in ws[1]:
@@ -412,6 +421,10 @@ def emplois_annee(annee: int) -> dict:
     + postes complémentaires saisis à la main, avec totaux consolidés."""
     from app.models import SenacsEmploi, Salarie
 
+    if not section_allowed("rh", "rh:view"):
+        return dict(postes=[], nb_postes=0, total_etp=0, rh_salaries=[], nb_rh=0,
+                    rh_etp=0, masse_salariale=0, etp_global=0, par_contrat={})
+
     postes = (SenacsEmploi.query.filter_by(annee=annee)
               .order_by(SenacsEmploi.intitule.asc()).all())
     rh_salaries = [s for s in Salarie.query.order_by(Salarie.nom.asc()).all()
@@ -447,7 +460,18 @@ def finances_annee(annee: int) -> dict:
     à partir des subventions de l'exercice + valorisation du bénévolat."""
     from app.models import Subvention
 
-    subs = Subvention.query.filter_by(est_archive=False, annee_exercice=annee).all()
+    if not section_allowed("finances", "subventions:view"):
+        return dict(par_financeur={}, total_attribue=0, total_recu=0,
+                    total_charges_reelles=0, valorisation_benevolat=0, masse_salariale=0)
+
+    from flask import has_request_context
+    from flask_login import current_user
+    from app.rbac import can
+    query = Subvention.query.filter_by(est_archive=False, annee_exercice=annee)
+    if has_request_context() and not can("scope:all_secteurs"):
+        secteur = current_user.secteur_assigne
+        query = query.filter(Subvention.secteur == secteur) if secteur else query.filter(False)
+    subs = query.all()
     par_financeur: dict[str, dict] = {}
     total_charges_reelles = 0.0
     for s in subs:

@@ -29,6 +29,10 @@ from app.main.common import bp
 # ---------------------------------------------------------------------
 
 def _hub_forbidden_if_empty(cards):
+    from app.services.modules import url_enabled
+    cards[:] = [card for card in cards if "primary_url" not in card or url_enabled(card["primary_url"])]
+    for card in cards:
+        card["secondary"] = [link for link in card.get("secondary", []) if link and url_enabled(link.get("url"))]
     if not cards:
         abort(403)
 
@@ -187,7 +191,7 @@ def hub_bilans():
             "title": "Résultats & bilans",
             "subtitle": "Consulter les chiffres clés et les indicateurs de pilotage.",
             "primary_label": "Ouvrir les résultats & bilans",
-            "primary_url": url_for("main.stats_bilans"),
+            "primary_url": url_for("statsimpact.dashboard"),
             "secondary": [
                 {"label": "Bilan SENACS", "url": url_for("bilans.bilan_senacs")},
                 {"label": "Bilan global", "url": url_for("main.bilan_global")},
@@ -436,7 +440,11 @@ def documents_exports():
     groups: list[dict] = []
 
     def add_group(title: str, intro: str, cards: list[dict]):
+        from app.services.modules import url_enabled
         cards = [card for card in cards if card]
+        for card in cards:
+            card["actions"] = [action for action in card.get("actions", []) if action and url_enabled(action.get("url"))]
+        cards = [card for card in cards if card["actions"]]
         if cards:
             groups.append({"title": title, "intro": intro, "cards": cards})
 
@@ -649,7 +657,7 @@ def _direction_context() -> dict:
         benevolat_q = benevolat_q.filter(BenevoleHeures.secteur == secteur_user)
         salaries_q = salaries_q.filter(Salarie.secteur == secteur_user)
 
-    subventions = subventions_q.all() if (can("subventions:view") or can("bilans:view") or can("stats:view")) else []
+    subventions = subventions_q.all() if can("subventions:view") else []
     total_attribue = sum(float(s.montant_attribue or 0) for s in subventions)
     total_recu = sum(float(s.montant_recu or 0) for s in subventions)
     total_engage = sum(float(s.total_engage or 0) for s in subventions)

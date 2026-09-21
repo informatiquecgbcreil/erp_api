@@ -1,4 +1,5 @@
 import smtplib
+import ssl
 from email.message import EmailMessage
 from socket import timeout as SocketTimeout
 from urllib.parse import urljoin
@@ -95,13 +96,13 @@ def _send_password_reset_email(to_email: str, reset_link: str) -> bool:
         # Compat fournisseurs: 465 = SSL implicite (SMTPS), 587 = STARTTLS explicite.
         use_ssl_implicit = (port == 465)
         if use_ssl_implicit:
-            server = smtplib.SMTP_SSL(host, port, timeout=smtp_timeout)
+            server = smtplib.SMTP_SSL(host, port, timeout=smtp_timeout, context=ssl.create_default_context())
             server.ehlo()
         else:
             server = smtplib.SMTP(host, port, timeout=smtp_timeout)
             server.ehlo()
             if use_tls:
-                server.starttls(timeout=smtp_timeout)
+                server.starttls(context=ssl.create_default_context())
                 server.ehlo()
 
         if username and password:
@@ -135,7 +136,7 @@ def login():
         )
 
         email = (request.form.get("email") or "").strip().lower()
-        password = (request.form.get("password") or "").strip()
+        password = request.form.get("password") or ""
         adresse_ip = request.remote_addr
 
         minutes = minutes_avant_deverrouillage(email)
@@ -207,8 +208,8 @@ def password_reset_token(token: str):
         return redirect(url_for("auth.password_reset_request"))
 
     if request.method == "POST":
-        password = (request.form.get("password") or "").strip()
-        password_confirm = (request.form.get("password_confirm") or "").strip()
+        password = request.form.get("password") or ""
+        password_confirm = request.form.get("password_confirm") or ""
 
         if len(password) < 10:
             flash("Le mot de passe doit contenir au moins 10 caractères.", "danger")

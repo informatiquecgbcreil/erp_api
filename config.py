@@ -37,7 +37,11 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 class Config:
 
-    APP_NAME = os.environ.get("APP_NAME", "App Gestion")
+    APP_NAME = os.environ.get("APP_NAME", "Mon Centre Social")
+    ENABLED_MODULES = os.environ.get("MCS_MODULES")
+    # L'assistant natif crée le premier compte avant l'ouverture du serveur.
+    SETUP_DISABLED = os.environ.get("MCS_SETUP_DISABLED", "0") == "1"
+    BACKUP_DIR = os.environ.get("MCS_BACKUP_DIR")
     ORGANIZATION_NAME = os.environ.get("ORGANIZATION_NAME", "Votre structure")
     ERP_ENV = os.environ.get("ERP_ENV", "development").strip().lower()
 
@@ -70,7 +74,7 @@ class Config:
     # - Fallback SQLite local si rien n'est défini
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
+    INSTANCE_DIR = os.environ.get("MCS_INSTANCE_DIR", os.path.join(BASE_DIR, "instance"))
     os.makedirs(INSTANCE_DIR, exist_ok=True)
 
     # Fallback SQLite unique (stable, version Flask standard)

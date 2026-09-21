@@ -47,6 +47,9 @@ class User(db.Model):
 
     # RBAC helpers (roles/permissions)
     def has_perm(self, code: str) -> bool:
+        from app.services.modules import permission_enabled
+        if not self.is_active or not permission_enabled(code):
+            return False
         codes: set[str] = set()
         for role in getattr(self, "roles", []) or []:
             for p in getattr(role, "permissions", []) or []:
@@ -164,6 +167,8 @@ class InstanceSettings(db.Model):
     app_logo_path = db.Column(db.String(255), nullable=True)
     organization_logo_path = db.Column(db.String(255), nullable=True)
     public_base_url = db.Column(db.String(255), nullable=True)
+    # NULL conserve le périmètre historique ; [] désactive les modules métier.
+    enabled_modules_json = db.Column(db.Text, nullable=True)
 
     # SMTP (override optionnel des variables d'environnement)
     smtp_host = db.Column(db.String(255), nullable=True)

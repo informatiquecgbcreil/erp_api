@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ APP_NAME }}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='mon-centre-social.svg') }}">
 
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/feedback-kit.css') }}">
@@ -536,6 +537,7 @@
   <div class="topbar">
     <div class="wrap">
       <div class="nav">
+        {% if can_manage_modules %}<a class="pill" href="{{ url_for('admin.modules') }}">Outils du centre</a>{% endif %}
         <div class="brand" style="display:flex;align-items:center;gap:8px;">{% if APP_LOGO_URL %}<img src="{{ APP_LOGO_URL }}" alt="Logo application" style="height:28px;width:28px;object-fit:contain;border-radius:6px;">{% endif %}<span>{{ APP_NAME }}</span></div>
 
         {% if current_user.is_authenticated %}
@@ -719,7 +721,7 @@
                   <a class="pill {% if ep == 'main.hub_bilans' %}active{% endif %}" href="{{ url_for('main.hub_bilans') }}">Accueil bilans</a>
                   <a class="pill {% if ep == 'main.documents_exports' %}active{% endif %}" href="{{ url_for('main.documents_exports') }}">Documents prêts</a>
                   {% if can('stats:view') %}
-                    <a class="pill {% if ep.startswith('main.stats_bilans') or ep.startswith('main.bilan_global') or ep.startswith('main.stats') %}active{% endif %}" href="{{ url_for('main.stats_bilans') }}">Résultats &amp; bilans</a>
+                    <a class="pill {% if ep.startswith('main.stats_bilans') or ep.startswith('main.bilan_global') or ep.startswith('main.stats') %}active{% endif %}" href="{{ url_for('statsimpact.dashboard') }}">Résultats &amp; bilans</a>
                   {% endif %}
                   {% if can('bilans:view') %}
                     <a class="pill {% if ep.startswith('bilans.') %}active{% endif %}" href="{{ url_for('bilans.bilans_lourds', year=2026) }}">Bilans complets</a>

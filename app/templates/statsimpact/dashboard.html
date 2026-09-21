@@ -65,7 +65,7 @@
   }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.js') }}"></script>
 {% set current_mode = (flt.mode if flt.mode is defined else None) or "Tous modes" %}
 {% set current_secteur = flt.secteur or "Tous secteurs" %}
       <p class="monster-sub">Lis les chiffres de présence et d’occupation sur la période choisie. Période : {{ flt.date_from }} → {{ flt.date_to }} — Mode : {{ current_mode }} — Secteur : {{ current_secteur }}</p>

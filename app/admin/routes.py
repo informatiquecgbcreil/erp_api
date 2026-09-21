@@ -613,6 +613,31 @@ def instance_settings():
     return render_template("admin_instance.html", settings=row)
 
 
+@bp.route("/modules", methods=["GET", "POST"])
+@login_required
+@require_perm("admin:rbac")
+def modules():
+    import json
+    from flask import g, abort
+    from app.services.modules import CATALOG, PROFILES, normalize, enabled_modules, can_manage_modules
+    if not can_manage_modules(current_user):
+        abort(403)
+    if request.method == "POST":
+        try:
+            selected = normalize(request.form.getlist("modules"))
+        except ValueError:
+            abort(400)
+        row = InstanceSettings.query.first() or InstanceSettings()
+        row.enabled_modules_json = json.dumps(selected)
+        db.session.add(row)
+        db.session.commit()
+        journaliser("instance.modules", cible="structure", details={"modules": selected})
+        g.pop("mcs_modules", None)
+        flash("Modules enregistrés. Les données des modules désactivés sont conservées.", "success")
+        return redirect(url_for("admin.modules"))
+    return render_template("admin_modules.html", catalog=CATALOG, profiles=PROFILES, selected=enabled_modules())
+
+
 @bp.route("/sauvegardes", methods=["GET"])
 @login_required
 @require_perm("admin:rbac")

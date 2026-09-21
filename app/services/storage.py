@@ -2,6 +2,31 @@ import os
 from flask import current_app, send_from_directory, abort, url_for
 
 
+def authorize_public_media(relpath):
+    """Les justificatifs passent exclusivement par leurs routes métier cloisonnées."""
+    from flask_login import current_user
+    from werkzeug.utils import secure_filename
+    from app.models import InstanceSettings
+    from app.rbac import can
+    path = _normalize_relpath(relpath)
+    parts = path.split("/")
+    if ".." in parts or ":" in path:
+        abort(404)
+    settings = InstanceSettings.query.first()
+    if parts[0] == "branding" and settings and path in {
+        settings.app_logo_path, settings.organization_logo_path
+    }:
+        return
+    if not current_user.is_authenticated or not current_user.is_active:
+        abort(401)
+    if parts[0] == "bilans_lourds" and len(parts) == 4 and can("bilans:view"):
+        scope = secure_filename(current_user.secteur_assigne or "")
+        if can("scope:all_secteurs") or (scope and parts[2] == scope):
+            return
+    # justifs, factures et projets : aucun contournement des droits par /media.
+    abort(404)
+
+
 def get_upload_root() -> str:
     root = current_app.config.get("APP_UPLOAD_DIR")
     if not root:
@@ -13,8 +38,13 @@ def get_upload_root() -> str:
 
 def _safe_abs_under_root(*parts: str) -> str:
     root = get_upload_root()
-    abs_path = os.path.abspath(os.path.join(root, *parts))
-    if os.path.commonpath([root, abs_path]) != root:
+    root = os.path.realpath(root)
+    abs_path = os.path.realpath(os.path.join(root, *parts))
+    try:
+        allowed = os.path.commonpath([root, abs_path]) == root
+    except ValueError:
+        allowed = False
+    if not allowed:
         abort(400)
     return abs_path
 
@@ -45,10 +75,8 @@ def send_media_file(relpath: str, *, as_attachment: bool = False, download_name:
     relpath = _normalize_relpath(relpath)
     if not relpath:
         abort(404)
-    root = get_upload_root()
-    directory = os.path.abspath(os.path.join(root, os.path.dirname(relpath)))
-    if os.path.commonpath([root, directory]) != root:
-        abort(400)
+    resolved = _safe_abs_under_root(relpath)
+    directory = os.path.dirname(resolved)
     filename = os.path.basename(relpath)
     return send_from_directory(directory, filename, as_attachment=as_attachment, download_name=download_name)
 

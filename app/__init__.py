@@ -42,7 +42,7 @@ def _configure_error_logging(app):
 
 
 def create_app():
-    app = Flask(__name__, instance_relative_config=True)
+    app = Flask(__name__, instance_relative_config=True, instance_path=Config.INSTANCE_DIR)
     app.config.from_object(Config)
 
     # Instance folder (sqlite db, uploads, etc.)
@@ -53,7 +53,7 @@ def create_app():
     default_secret = app.config.get("SECRET_KEY") == DEFAULT_SECRET_KEY
     is_prod_env = app.config.get("ERP_ENV") == "production"
 
-    if default_secret and is_prod_env:
+    if is_prod_env and (default_secret or not app.config.get("SECRET_KEY") or len(app.config["SECRET_KEY"]) < 32):
         raise RuntimeError(
             "SECRET_KEY par défaut interdite en production. Définis SECRET_KEY via variable d'environnement."
         )
@@ -102,6 +102,8 @@ def create_app():
 
     @app.route("/media/<path:filename>")
     def media_file(filename):
+        from app.services.storage import authorize_public_media
+        authorize_public_media(filename)
         return send_media_file(filename, as_attachment=False)
 
     @app.route("/healthz")
@@ -166,6 +168,32 @@ def create_app():
     app.register_blueprint(veille_bp)
     app.register_blueprint(inscriptions_annuelles_bp)
     app.register_blueprint(salles_bp)
+
+    from app.services.modules import endpoint_module, module_enabled, can_manage_modules
+
+    @app.before_request
+    def _enforce_module_scope():
+        from flask import abort
+        if request.endpoint == "static" and str((request.view_args or {}).get("filename", "")).replace("\\", "/").startswith("uploads/"):
+            abort(404)
+        key = endpoint_module(request.endpoint or "")
+        if key and not module_enabled(key):
+            abort(404)
+
+    @app.after_request
+    def _response_security(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        if request.endpoint == "media_file":
+            response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+            response.headers["Cache-Control"] = "private, no-store"
+        return response
+
+    @app.context_processor
+    def _inject_modules():
+        return {"module_enabled": module_enabled,
+                "can_manage_modules": can_manage_modules(current_user)}
 
     # Blocage automatique des salles : une séance ou un créneau d'agenda
     # qui porte une salle crée son occupation tout seul, quel que soit le
@@ -329,7 +357,7 @@ def create_app():
             return None
 
         # Jamais de collecte réseau pendant les tests, ni si désactivée.
-        if app.config.get("TESTING") or not app.config.get("VEILLE_AUTO", True):
+        if app.config.get("TESTING") or not app.config.get("VEILLE_AUTO", True) or not module_enabled("finances"):
             return None
 
         aujourd_hui = _date.today()
@@ -366,7 +394,7 @@ def create_app():
             return None
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
             return None
-        if app.config.get("TESTING") or not app.config.get("GOOGLE_AGENDA_AUTO", True):
+        if app.config.get("TESTING") or not app.config.get("GOOGLE_AGENDA_AUTO", True) or not module_enabled("presences"):
             return None
 
         heure_courante = _datetime.now().strftime("%Y-%m-%d %H")

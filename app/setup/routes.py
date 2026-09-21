@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, current_app, abort
 
 from app.extensions import db
 from app.setup import bp
@@ -8,6 +8,8 @@ from app.rbac import bootstrap_rbac
 
 @bp.route("/", methods=["GET", "POST"])
 def wizard():
+    if current_app.config.get("SETUP_DISABLED"):
+        abort(404)
     if User.query.first():
         return redirect(url_for("auth.login"))
 
@@ -16,7 +18,7 @@ def wizard():
         org_name = (request.form.get("organization_name") or "").strip()
         admin_name = (request.form.get("admin_name") or "").strip() or "Admin"
         admin_email = (request.form.get("admin_email") or "").strip().lower()
-        admin_password = (request.form.get("admin_password") or "").strip()
+        admin_password = request.form.get("admin_password") or ""
         public_base_url = (request.form.get("public_base_url") or "").strip() or None
 
         smtp_host = (request.form.get("smtp_host") or "").strip() or None
