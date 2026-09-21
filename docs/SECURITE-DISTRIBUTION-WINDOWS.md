@@ -57,12 +57,18 @@ ne remplace pas la veille sur Python, PostgreSQL, Caddy et les autres composants
 Les intégrations externes (cartes, agendas, messagerie et veille) gardent leurs
 besoins réseau propres ; le cœur installé n'a pas besoin d'un CDN.
 
-Cette version candidate n'est pas signée Authenticode. La recette de bout en
-bout avec élévation UAC, installation SCM, contrôle des ACL effectives, pare-feu,
-mise à jour et désinstallation sur machines propres Windows et Windows Server
-reste nécessaire avant une diffusion de production. La machine de construction
-ne dispose pas d'une session administrateur élevée ; les tests du runtime ne
-valident donc pas ces opérations système. Server Core n'est pas pris en charge.
+Cette version candidate n'est pas signée Authenticode. Une
+[recette système sur Windows Server 2025](https://github.com/informatiquecgbcreil/erp_api/actions/runs/35600495904)
+a installé le véritable EXE, configuré et démarré le service, vérifié HTTPS,
+DPAPI et les ACL du fichier confidentiel, puis effectué arrêt, redémarrage,
+réinstallation et désinstallation avec conservation de la base et du dossier DSI.
+Le harnais `SystemSmoke.cs` est compilé seulement dans la machine CI temporaire ;
+il n'est pas inclus dans les exécutables livrés. Cette recette s'exécute déjà
+avec des droits élevés : elle ne valide pas l'interaction humaine avec la boîte
+UAC. La recette du parcours graphique complet et des versions Windows 10/11 et
+Server 2019/2022 reste à effectuer en environnement pilote. Server Core n'est
+pas pris en charge. Le fonctionnement de la règle réseau entre deux machines
+et la messagerie avec le véritable SMTP de la structure restent à valider sur site.
 
 Les sauvegardes locales ne couvrent pas la perte du poste. Prévoir une copie
 hors machine et une recette de restauration métier. Le certificat de signature

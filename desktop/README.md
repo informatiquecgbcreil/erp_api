@@ -49,6 +49,13 @@ nécessaire pour valider UAC, service SCM, ACL, pare-feu, réparation, mise à j
 et désinstallation. La compilation et les tests applicatifs ne remplacent pas
 cette recette système.
 
+Le workflow Windows effectue une installation réelle sur Windows Server 2025,
+une configuration par le même code que l'assistant, puis vérifie le service,
+HTTPS, DPAPI, les ACL, l'arrêt/redémarrage, une réinstallation et la conservation
+des données après désinstallation. `SystemSmoke.cs` est un harnais réservé à cette
+machine CI jetable, compilé après l'installation et absent des binaires distribués.
+Le test manuel du parcours graphique et de l'élévation UAC reste distinct.
+
 Pour la diffusion officielle, signer le gestionnaire et l'installateur avec le
 certificat Authenticode de l'éditeur, puis recalculer les empreintes. Aucun
 certificat ni mot de passe de signature ne doit entrer dans le dépôt.
