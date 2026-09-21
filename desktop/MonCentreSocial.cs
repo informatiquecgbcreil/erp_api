@@ -6,6 +6,7 @@ using System.Drawing;
 using System.IO;
 using System.Net;
 using System.Net.Mail;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
@@ -65,6 +66,7 @@ static class Program {
                 StopService();
                 if (ServiceExists()) Run(SystemExe("sc.exe"), "delete " + ServiceName, false);
                 Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social HTTPS\"", false);
+                Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
                 return 0; // Les données et le dossier de direction restent conservés.
             }
             return 2;
@@ -141,6 +143,44 @@ static class Program {
         for (int port = start; port < start + 100; port++) try { var l = new TcpListener(IPAddress.Loopback, port); l.Start(); l.Stop(); return port; } catch (SocketException) {}
         throw new Exception("Aucun port disponible pour l'application.");
     }
+    static bool IsUsableLanAddress(IPAddress address) {
+        if (address == null || address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(address)) return false;
+        var bytes = address.GetAddressBytes();
+        return bytes.Length == 4 && !(bytes[0] == 169 && bytes[1] == 254);
+    }
+    internal static string LanAddress() {
+        string fallback = null;
+        try {
+            foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces()) {
+                if (adapter.OperationalStatus != OperationalStatus.Up) continue;
+                bool preferred = adapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet || adapter.NetworkInterfaceType == NetworkInterfaceType.Wireless80211;
+                foreach (var item in adapter.GetIPProperties().UnicastAddresses) {
+                    if (!IsUsableLanAddress(item.Address)) continue;
+                    if (preferred) return item.Address.ToString();
+                    if (fallback == null) fallback = item.Address.ToString();
+                }
+            }
+        } catch (NetworkInformationException) { }
+        if (fallback != null) return fallback;
+        try {
+            foreach (var address in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
+                if (IsUsableLanAddress(address)) return address.ToString();
+        } catch (SocketException) { }
+        throw new Exception("Aucune adresse IPv4 de réseau local n'a été trouvée. Connectez le serveur au réseau puis relancez l'assistant.");
+    }
+    internal static void EnsureNetworkSettings(Dictionary<string, object> c) {
+        bool network = c.ContainsKey("network") && Convert.ToBoolean(c["network"]);
+        if (!network) {
+            if (!c.ContainsKey("lan_ip") || string.IsNullOrWhiteSpace(Convert.ToString(c["lan_ip"]))) c["lan_ip"] = "127.0.0.1";
+            if (!c.ContainsKey("kiosk_url") || string.IsNullOrWhiteSpace(Convert.ToString(c["kiosk_url"]))) c["kiosk_url"] = c["url"];
+            return;
+        }
+        string detectedLanIp = LanAddress();
+        bool lanAddressChanged = !c.ContainsKey("lan_ip") || !string.Equals(Convert.ToString(c["lan_ip"]), detectedLanIp, StringComparison.OrdinalIgnoreCase);
+        c["lan_ip"] = detectedLanIp;
+        if (!c.ContainsKey("kiosk_http_port") || Convert.ToInt32(c["kiosk_http_port"]) < 1) c["kiosk_http_port"] = FreePort(8080);
+        if (lanAddressChanged || !c.ContainsKey("kiosk_url") || string.IsNullOrWhiteSpace(Convert.ToString(c["kiosk_url"]))) c["kiosk_url"] = "http://" + c["lan_ip"] + ":" + c["kiosk_http_port"];
+    }
     internal static void InstallConfiguration(Dictionary<string, object> c, Action<string> progress) {
         if (File.Exists(ConfigFile)) throw new Exception("Une configuration existe déjà. Relancez l'assistant pour la reprendre.");
         progress("Préparation du service et protection des dossiers…");
@@ -153,17 +193,24 @@ static class Program {
         c["data_root"] = Root; c["db_password"] = Secret(); c["db_admin_password"] = Secret(); c["secret_key"] = Secret();
         c["db_port"] = FreePort(55432); c["web_port"] = FreePort(18080); c["https_port"] = FreePort(8443);
         c["url"] = (bool)c["network"] ? "https://" + c["hostname"] + ":" + c["https_port"] : "http://127.0.0.1:" + c["web_port"];
+        if ((bool)c["network"]) { c["lan_ip"] = LanAddress(); c["kiosk_http_port"] = FreePort(8080); }
+        EnsureNetworkSettings(c);
         SaveConfiguration(c);
         WriteReport(c); // Produit avant le démarrage, reste disponible en cas de reprise.
         var publicFile = Path.Combine(Root, "public", "url.txt"); GuardPath(publicFile); File.WriteAllText(publicFile, (string)c["url"], Utf8);
+        var kioskFile = Path.Combine(Root, "public", "kiosk-url.txt"); GuardPath(kioskFile); File.WriteAllText(kioskFile, (string)c["kiosk_url"] + "/kiosk/", Utf8);
         progress("Initialisation de la base et des outils du centre… Cela peut prendre quelques minutes.");
         FinishInstallation(c);
     }
     internal static void FinishInstallation(Dictionary<string, object> c) {
         // Reprise après une interruption entre l'enregistrement et la création du dossier.
-        if (!File.Exists(Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt"))) WriteReport(c);
+        EnsureNetworkSettings(c);
+        SaveConfiguration(c);
+        var reportPath = Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt");
+        if (!File.Exists(reportPath) || !File.ReadAllText(reportPath, Utf8).Contains("Adresse kiosque")) WriteReport(c);
         var publicFile = Path.Combine(Root, "public", "url.txt"); GuardPath(publicFile);
         File.WriteAllText(publicFile, (string)c["url"], Utf8);
+        var kioskFile = Path.Combine(Root, "public", "kiosk-url.txt"); GuardPath(kioskFile); File.WriteAllText(kioskFile, (string)c["kiosk_url"] + "/kiosk/", Utf8);
         RegisterService(); StartService();
         var ready = Path.Combine(Root, "runtime", "ready");
         for (int i = 0; i < 480; i++) { if (File.Exists(ready)) break; Thread.Sleep(500); if (i == 479) throw new Exception("Le service n'est pas prêt. Le diagnostic est dans " + Path.Combine(Root, "logs") + "."); }
@@ -176,6 +223,8 @@ static class Program {
             File.WriteAllBytes(publicCertificate, certificate.Export(X509ContentType.Cert));
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social HTTPS\"", false);
             Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social HTTPS\" dir=in action=allow protocol=TCP localport=" + c["https_port"] + " remoteip=LocalSubnet profile=private,domain program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
+            Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
+            Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=LocalSubnet profile=private,domain,public program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
         }
     }
     internal static void WriteReport(Dictionary<string, object> c) {
@@ -186,7 +235,7 @@ static class Program {
         text.AppendLine("Contient des mots de passe. Conserver dans le coffre-fort de la structure.");
         text.AppendLine("Accès Windows : Administrateurs et SYSTEM uniquement. La DSI peut donner un accès NTFS nominatif à la direction.");
         text.AppendLine("Photographie de l'installation ; les changements effectués ensuite dans l'administration ne sont pas recopiés ici.");
-        foreach (var pair in new[] { new[] { "Structure", "organization" }, new[] { "Adresse de connexion", "url" }, new[] { "Compte direction", "admin_email" }, new[] { "Mot de passe initial du compte", "admin_password" }, new[] { "Port PostgreSQL (127.0.0.1 exclusivement)", "db_port" }, new[] { "Mot de passe base (utilisateur mcs)", "db_password" }, new[] { "Mot de passe maintenance PostgreSQL (postgres)", "db_admin_password" }, new[] { "Clé des sessions", "secret_key" }, new[] { "Serveur SMTP", "smtp_host" }, new[] { "Port SMTP / STARTTLS", "smtp_port" }, new[] { "Identifiant SMTP", "smtp_user" }, new[] { "Mot de passe SMTP", "smtp_password" }, new[] { "Expéditeur", "smtp_sender" } }) text.AppendLine(pair[0] + " : " + c[pair[1]]);
+        foreach (var pair in new[] { new[] { "Structure", "organization" }, new[] { "Adresse de connexion administration", "url" }, new[] { "Adresse kiosque tablettes/téléphones", "kiosk_url" }, new[] { "Adresse IPv4 du serveur sur le LAN", "lan_ip" }, new[] { "Compte direction", "admin_email" }, new[] { "Mot de passe initial du compte", "admin_password" }, new[] { "Port PostgreSQL (127.0.0.1 exclusivement)", "db_port" }, new[] { "Mot de passe base (utilisateur mcs)", "db_password" }, new[] { "Mot de passe maintenance PostgreSQL (postgres)", "db_admin_password" }, new[] { "Clé des sessions", "secret_key" }, new[] { "Serveur SMTP", "smtp_host" }, new[] { "Port SMTP / STARTTLS", "smtp_port" }, new[] { "Identifiant SMTP", "smtp_user" }, new[] { "Mot de passe SMTP", "smtp_password" }, new[] { "Expéditeur", "smtp_sender" } }) text.AppendLine(pair[0] + " : " + c[pair[1]]);
         text.AppendLine("Base : moncentresocial. Compte applicatif non superutilisateur : mcs.");
         text.AppendLine("Modules initiaux : " + Json.Serialize(c["modules"]));
         text.AppendLine("Programme : " + Install);
@@ -196,9 +245,15 @@ static class Program {
         text.AppendLine("Sauvegardes : " + Path.Combine(Root, "backups") + " (quotidiennes, 30 lots). Prévoir une copie hors machine dans Administration > Sauvegardes.");
         text.AppendLine("Service Windows : " + ServiceName + " ; compte virtuel NT SERVICE\\" + ServiceName);
         text.AppendLine("Le service démarre avant toute ouverture de session. L'icône apparaît à la connexion Windows.");
-        text.AppendLine("Réseau : HTTPS, sous-réseau local, profils Privé/Domaine uniquement ; aucune ouverture de PostgreSQL.");
-        text.AppendLine("Certificat public à déployer sur les postes clients (magasin Autorités racines de confiance) : " + Path.Combine(Root, "public", "Certificat-du-centre.cer"));
-        text.AppendLine("Le nom de serveur doit être résolu par le DNS local. Ne pas contourner les alertes du navigateur.");
+        if (Convert.ToBoolean(c["network"])) {
+            text.AppendLine("Réseau administration : HTTPS, sous-réseau local, profils Privé/Domaine ; aucune ouverture de PostgreSQL.");
+            text.AppendLine("Kiosque mobile : HTTP limité aux routes /kiosk, /static, /media/branding et /healthz, sous-réseau local uniquement. Utiliser l'adresse kiosque ci-dessus depuis le même Wi-Fi ; aucune installation de certificat n'est nécessaire sur les téléphones/tablettes.");
+            text.AppendLine("Ne jamais publier le port kiosque sur Internet ni utiliser un Wi-Fi invité non isolé. Pour un accès hors les murs, configurer le tunnel HTTPS décrit dans le guide.");
+            text.AppendLine("Certificat public administration à déployer sur les postes clients (magasin Autorités racines de confiance) : " + Path.Combine(Root, "public", "Certificat-du-centre.cer"));
+            text.AppendLine("Le nom de serveur doit être résolu par le DNS local pour l'administration. Ne pas contourner les alertes du navigateur.");
+        } else {
+            text.AppendLine("Réseau : accès limité à cet ordinateur (127.0.0.1) ; aucune ouverture de PostgreSQL.");
+        }
         text.AppendLine("Restauration : réinstaller la même version, créer un compte direction, puis Administration > Sauvegardes. La configuration DPAPI dépend de cette machine ; utiliser ce dossier pour reconfigurer après sinistre.");
         text.AppendLine("La désinstallation conserve les données et ce dossier. Guide complet : " + Path.Combine(Install, "GUIDE-WINDOWS.md"));
         File.WriteAllText(path, text.ToString(), Utf8);
@@ -320,7 +375,7 @@ sealed class SetupWizard : Form {
             local.Text = "Sur cet ordinateur uniquement"; local.SetBounds(0,16,670,34); content.Controls.Add(local);
             network.Text = "Sur plusieurs postes du réseau de la structure"; network.SetBounds(0,66,700,34); content.Controls.Add(network);
             Field("Nom de cet ordinateur sur le réseau",hostname,127,0,500);
-            TextLine("En réseau, les connexions sont chiffrées (HTTPS). La DSI déploie une fois le certificat du centre sur les postes clients. Le certificat et les instructions sont fournis automatiquement.",205,75);
+            TextLine("En réseau, l'administration est chiffrée (HTTPS). Pour l'émargement, les téléphones et tablettes utilisent une adresse locale dédiée, sans certificat à installer. Le certificat d'administration et les instructions sont fournis automatiquement.",205,75);
             TextLine("Le service fonctionne aussi sans session ouverte sur Windows Server.",292);
         } else if (step == 3) {
             heading.Text = "Les e-mails de votre structure";
@@ -362,7 +417,8 @@ sealed class SetupWizard : Form {
             busy = true; next.Enabled = false; back.Enabled = false; UseWaitCursor = true;
             await Task.Run(delegate { Program.InstallConfiguration(c, message => BeginInvoke(new Action(delegate { status.Text = message; }))); });
             busy = false; UseWaitCursor = false;
-            MessageBox.Show("Votre centre est prêt.\n\nAdresse : " + c["url"] + "\n\nLe dossier confidentiel est dans :\n" + Path.Combine(Program.Root,"Direction-DSI") + "\n\nL'icône Mon Centre Social permet d'ouvrir l'administration, de redémarrer et de fermer le service.", "Installation terminée", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            string mobile = (bool)c["network"] ? "\n\nKiosque tablettes/téléphones (même Wi-Fi) : " + c["kiosk_url"] + "/kiosk/" : "";
+            MessageBox.Show("Votre centre est prêt.\n\nAdresse administration : " + c["url"] + mobile + "\n\nLe dossier confidentiel est dans :\n" + Path.Combine(Program.Root,"Direction-DSI") + "\n\nL'icône Mon Centre Social permet d'ouvrir l'administration, de redémarrer et de fermer le service.", "Installation terminée", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK; Close();
         } catch (Exception e) { busy = false; UseWaitCursor = false; next.Enabled = true; back.Enabled = true; status.Text = e.Message; MessageBox.Show(e.Message,"Mon Centre Social",MessageBoxButtons.OK,MessageBoxIcon.Warning); }
     }

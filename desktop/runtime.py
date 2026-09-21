@@ -37,7 +37,9 @@ def configure_environment(c):
         "APP_DATA_DIR": str(root), "APP_UPLOAD_DIR": str(root / "uploads"),
         "ERP_LOG_DIR": str(root / "logs"), "MCS_BACKUP_DIR": str(root / "backups"),
         "MCS_MODULES": ",".join(c["modules"]), "MCS_SETUP_DISABLED": "1",
-        "ERP_PUBLIC_BASE_URL": c["url"], "SESSION_COOKIE_SECURE": "1" if c["network"] else "0",
+        "ERP_PUBLIC_BASE_URL": c["url"],
+        "KIOSK_PUBLIC_BASE_URL": c.get("kiosk_url") or c["url"],
+        "SESSION_COOKIE_SECURE": "1" if c["network"] else "0",
         "PG_DUMP_PATH": str(INSTALL / "postgresql/bin/pg_dump.exe"),
         "PSQL_PATH": str(INSTALL / "postgresql/bin/psql.exe"),
         "DB_AUTO_UPGRADE_ON_START": "1", "DB_ENABLE_LEGACY_SCHEMA_PATCH": "0",
@@ -122,7 +124,11 @@ def web(c):
     from app import create_app
     from waitress import create_server
     app = create_app()
-    app.config["TRUSTED_HOSTS"] = ["127.0.0.1", "localhost", c["hostname"]]
+    trusted_hosts = ["127.0.0.1", "localhost", c["hostname"]]
+    lan_ip = str(c.get("lan_ip") or "").strip()
+    if lan_ip and lan_ip not in trusted_hosts:
+        trusted_hosts.append(lan_ip)
+    app.config["TRUSTED_HOSTS"] = trusted_hosts
     bootstrap_account(app, c)
     server = create_server(app, host="127.0.0.1", port=int(c["web_port"]), threads=12,
                            clear_untrusted_proxy_headers=True,
@@ -165,12 +171,23 @@ def write_caddy(c, root):
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}", hostname):
         raise ValueError("Nom de serveur invalide.")
     storage = json.dumps(str(root / "runtime/tls").replace("\\", "/"), ensure_ascii=False)
+    kiosk_port = int(c["kiosk_http_port"])
+    web_port = int(c["web_port"])
     target = root / "runtime/Caddyfile"
     target.write_text(
         "{\n admin off\n auto_https disable_redirects\n skip_install_trust\n persist_config off\n"
         f" storage file_system {storage}\n}}\n"
         f"https://{hostname}:{int(c['https_port'])} {{\n tls internal\n"
-        f" reverse_proxy 127.0.0.1:{int(c['web_port'])}\n}}\n", encoding="utf-8")
+        f" reverse_proxy 127.0.0.1:{web_port}\n}}\n"
+        f":{kiosk_port} {{\n"
+        " @kiosk path /kiosk /kiosk/* /static /static/* /media/branding /media/branding/* /healthz\n"
+        " handle @kiosk {\n"
+        f"  reverse_proxy 127.0.0.1:{web_port}\n"
+        " }\n"
+        " handle {\n"
+        "  respond \"Accès réservé à l'émargement sur le réseau local.\" 403\n"
+        " }\n"
+        "}\n", encoding="utf-8")
     return target
 
 
@@ -232,6 +249,21 @@ def supervise(c):
                         time.sleep(0.5)
                 else:
                     raise RuntimeError("La connexion HTTPS n'a pas pu être vérifiée.")
+                # Le second point d'entrée est volontairement HTTP et limité
+                # par Caddy aux routes kiosque/static/branding/healthz. Cela
+                # permet à un téléphone ou une tablette de fonctionner sans
+                # installer l'autorité de certification privée de l'ERP.
+                for _ in range(60):
+                    try:
+                        with urlopen(f"http://127.0.0.1:{int(c['kiosk_http_port'])}/healthz", timeout=2) as response:
+                            if response.status == 200:
+                                break
+                    except OSError:
+                        if proxy.poll() is not None:
+                            raise RuntimeError("Le point d'accès kiosque n'a pas démarré.")
+                        time.sleep(0.5)
+                else:
+                    raise RuntimeError("La connexion kiosque locale n'a pas pu être vérifiée.")
             (state / "ready").write_text("1", encoding="ascii")
             last_backup_day = ""
             while not (state / "stop").exists():
