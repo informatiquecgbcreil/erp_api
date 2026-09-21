@@ -57,6 +57,7 @@ def envoyer_email_test(config: dict, to: str) -> None:
     Lève une exception (message lisible) si la configuration est absente ou
     si l'envoi échoue — utilisé par la page « Santé du système »."""
     import smtplib
+    import ssl
     from email.message import EmailMessage
 
     cfg = resolve_mail_settings(config)
@@ -77,13 +78,13 @@ def envoyer_email_test(config: dict, to: str) -> None:
 
     port = int(cfg["port"])
     if port == 465:
-        server = smtplib.SMTP_SSL(host, port, timeout=10)
+        server = smtplib.SMTP_SSL(host, port, timeout=10, context=ssl.create_default_context())
         server.ehlo()
     else:
         server = smtplib.SMTP(host, port, timeout=10)
         server.ehlo()
         if cfg["use_tls"]:
-            server.starttls(timeout=10)
+            server.starttls(context=ssl.create_default_context())
             server.ehlo()
     try:
         if cfg["username"] and cfg["password"]:

@@ -30,6 +30,8 @@ def _eco_conso_stats_for_context(selected_annee=None, selected_secteur=None, sel
     secteur = selected_secteur
     if not (can("stats:view_all") or can("scope:all_secteurs")):
         secteur = current_user.secteur_assigne
+    if not can("transitions:view"):
+        return dict(total_kwh=0, total_co2=0, sessions_count=0, presences_count=0, participants_count=0, materiel_lines_count=0, avg_kwh_per_presence=0, top_materiels=[], by_atelier=[], by_secteur=[])
     try:
         return aggregate_individual_consumption(
             date_from=date_from,
@@ -56,7 +58,7 @@ def _eco_conso_stats_for_context(selected_annee=None, selected_secteur=None, sel
 # --------- Stats ---------
 @bp.route("/stats")
 @login_required
-@require_perm("stats:view")
+@require_perm("subventions:view")
 def stats():
     """
     Vue synthèse des budgets avec représentation graphique.
@@ -182,7 +184,7 @@ def stats():
     if selected_projet_id:
         selected_projet = db.session.get(Projet, selected_projet_id)
 
-    if selected_projet and can_see_secteur(selected_projet.secteur):
+    if selected_projet and can("participants:view") and can_see_secteur(selected_projet.secteur):
         project_indicators = compute_project_indicators(
             selected_projet,
             selected_annee=selected_annee,
@@ -217,7 +219,7 @@ def stats():
 # --- Hub ergonomique : 1 menu "Stats & bilans" ---
 @bp.route("/stats-bilans")
 @login_required
-@require_perm("stats:view")
+@require_perm("subventions:view")
 def stats_bilans():
     has_global_scope = can("stats:view_all") or can("scope:all_secteurs")
 

@@ -286,13 +286,15 @@ def _envoyer_texte(to: str, subject: str, body: str) -> None:
     port = int(cfg["port"])
     timeout = float(current_app.config.get("MAIL_TIMEOUT_SECONDS", 10))
     if port == 465:
-        server = smtplib.SMTP_SSL(cfg["host"], port, timeout=timeout)
+        import ssl
+        server = smtplib.SMTP_SSL(cfg["host"], port, timeout=timeout, context=ssl.create_default_context())
         server.ehlo()
     else:
         server = smtplib.SMTP(cfg["host"], port, timeout=timeout)
         server.ehlo()
         if cfg["use_tls"]:
-            server.starttls(timeout=timeout)
+            import ssl
+            server.starttls(context=ssl.create_default_context())
             server.ehlo()
     try:
         if cfg["username"] and cfg["password"]:

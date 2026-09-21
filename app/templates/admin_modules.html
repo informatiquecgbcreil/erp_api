@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card" style="max-width:860px;margin:auto">
+  <h1>Les outils de votre centre</h1>
+  <p>Activez uniquement ce dont l'équipe a besoin. Les menus, raccourcis et accès suivent ce choix. Les droits de chaque personne continuent de s'appliquer.</p>
+  <p class="muted">Désactiver un outil conserve ses données. Vous pourrez le réactiver ici à tout moment.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="inline" style="gap:8px;margin:20px 0;flex-wrap:wrap">
+      <button class="btn" type="button" data-profile="essentiel">Présences et statistiques</button>
+      <button class="btn" type="button" data-profile="gestion">Ajouter les finances</button>
+      <button class="btn" type="button" data-profile="complet">Tous les outils</button>
+    </div>
+    {% for key, details in catalog.items() %}
+      <label style="display:block;padding:14px 0;border-bottom:1px solid #ddd">
+        <input type="checkbox" name="modules" value="{{ key }}" {% if key in selected %}checked{% endif %}>
+        <strong>{{ details[0] }}</strong><br><span class="muted">{{ details[1] }}</span>
+      </label>
+    {% endfor %}
+    <p class="muted">Statistiques, accompagnement, questionnaires et transitions activent aussi les présences dont ils dépendent.</p>
+    <button class="btn ok" type="submit">Enregistrer les outils</button>
+    <a class="btn" href="{{ url_for('admin.droits') }}">Régler les droits de l'équipe</a>
+  </form>
+</div>
+<script>
+const profiles = {{ profiles|tojson }};
+document.querySelectorAll('[data-profile]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('input[name="modules"]').forEach(c => c.checked = profiles[b.dataset.profile].includes(c.value));
+}));
+</script>
+{% endblock %}

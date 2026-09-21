@@ -224,10 +224,10 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
         "perms": [p for (p, _) in DEFAULT_PERMS],
     },
 
-    # Finance: accès global total (pilotage complet) — SAUF le module RH,
-    # réservé à la direction (données salariales).
+    # Finance : pilotage métier ; ni salaires ni administration des comptes/droits.
+    # Sinon le rôle pourrait s'attribuer lui-même les droits RH ou direction.
     "finance": {
-        "perms": [p for (p, _) in DEFAULT_PERMS if not p.startswith("rh:")],
+        "perms": [p for (p, _) in DEFAULT_PERMS if not p.startswith(("rh:", "admin:"))],
     },
 
     # Responsable secteur: "presque direction" MAIS borné au secteur (contrôlé dans les routes)

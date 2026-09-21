@@ -84,10 +84,13 @@
     <p class="muted">Rappel : 2 h d'atelier avec 10 personnes = 2 h d'animation (et non 20). Les heures s'appuient sur la durée des séances : renseignez les horaires pour fiabiliser ce chiffre.</p>
   </div>
 
+  {% if can('partenaires:view') %}
   <div class="card">
     <h2>Partenaires recensés ({{ partenaires|length }})</h2>
     <p class="muted">L'export Excel liste vos partenaires : il restera à qualifier la nature (formalisé / non formalisé) et le rôle de chacun, comme demandé par l'onglet Territoire.</p>
   </div>
+
+  {% endif %}
 
   <div class="grid two">
     <div class="card">
@@ -112,6 +115,7 @@
     </div>
   </div>
 
+  {% if can('rh:view') %}
   <div class="card">
     <h2>👥 Emplois / ETP ({{ annee }})</h2>
     {% if emplois.rh_salaries %}
@@ -172,6 +176,9 @@
     {% endif %}
   </div>
 
+  {% endif %}
+
+  {% if can('subventions:view') %}
   <div class="card">
     <h2>💶 Finances ({{ annee }})</h2>
     <div class="tablewrap">
@@ -192,6 +199,8 @@
     </div>
     <p class="muted">À rapprocher de la comptabilité officielle avant saisie sur senacs.fr.</p>
   </div>
+
+  {% endif %}
 
   <div class="card">
     <h2>Reste à estimer à part</h2>

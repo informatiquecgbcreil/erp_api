@@ -55,7 +55,7 @@ def test_pg_dump_detecte_via_config(app, tmp_path, monkeypatch):
     faux = tmp_path / "pg_dump.exe"
     faux.write_text("")
     with app.app_context():
-        app.config["PG_DUMP_PATH"] = str(faux)
+        monkeypatch.setitem(app.config, "PG_DUMP_PATH", str(faux))
         assert sauvegarde._trouver_pg_dump() == str(faux)
 
 

@@ -61,7 +61,9 @@ def test_destinations_separees_par_points_virgules_et_lignes(app, monkeypatch):
     )
     with app.app_context():
         chemins = [str(p) for p in destinations_hors_serveur()]
-    assert chemins == ["D:\\Sauvegardes", "\\\\NAS\\backups", "/mnt/disque"]
+    # pathlib applique les séparateurs et la racine UNC du système de recette.
+    from pathlib import Path
+    assert chemins == [str(Path(p)) for p in ["D:\\Sauvegardes", "\\\\NAS\\backups", "/mnt/disque"]]
 
 
 def test_aucune_destination_configuree_vaut_alerte(app, monkeypatch):

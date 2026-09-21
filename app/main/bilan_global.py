@@ -194,7 +194,7 @@ def _build_bilan_global_workbook(payload: dict):
 
 @bp.route("/bilan")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def bilan_global():
     payload = _compute_bilan_global_payload()
     return render_template(
@@ -212,7 +212,7 @@ def bilan_global():
 
 @bp.route("/bilan/export.xlsx")
 @login_required
-@require_perm("bilans:view")
+@require_perm("subventions:view")
 def bilan_global_export_xlsx():
     payload = _compute_bilan_global_payload()
     wb = _build_bilan_global_workbook(payload)

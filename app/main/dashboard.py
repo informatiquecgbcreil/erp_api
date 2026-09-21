@@ -21,6 +21,18 @@ from app.services.poste_travail import build_poste_travail
 
 from app.main.common import bp
 
+
+def _local_next():
+    from urllib.parse import urlsplit
+    value = (request.form.get("next") or "").strip()
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return url_for("main.dashboard")
+    if value.startswith("/") and not value.startswith("//") and not parsed.netloc and not parsed.scheme and "\\" not in value and not any(ord(c) < 32 for c in value):
+        return value
+    return url_for("main.dashboard")
+
 @bp.post("/ui-mode")
 @login_required
 def set_ui_mode():
@@ -33,7 +45,7 @@ def set_ui_mode():
     except Exception:
         db.session.rollback()
     flash("Mode simplifié activé." if mode == "simple" else "Mode expert activé.", "success")
-    next_url = (request.form.get("next") or request.referrer or url_for("main.dashboard")).strip()
+    next_url = _local_next()
     return redirect(next_url)
 
 
@@ -45,7 +57,7 @@ def set_ui_device_mode():
         mode = "desktop"
     session["ui_device_mode"] = mode
     flash(f"Mode d’écran activé : {mode}.", "success")
-    next_url = (request.form.get("next") or request.referrer or url_for("main.dashboard")).strip()
+    next_url = _local_next()
     resp = redirect(next_url)
     resp.set_cookie("ui_device_mode", mode, max_age=60 * 60 * 24 * 365, samesite="Lax")
     return resp
@@ -118,7 +130,7 @@ def dashboard_reset():
     except Exception:
         db.session.rollback()
         flash("Impossible de réinitialiser l’accueil.", "danger")
-    return redirect(request.form.get("next") or url_for("main.dashboard"))
+    return redirect(_local_next())
 
 
 # --------- Permissions ---------
@@ -128,6 +140,10 @@ def dashboard_reset():
 @login_required
 @require_perm("dashboard:view")
 def dashboard():
+    from app.services.modules import CATALOG, enabled_modules
+    prefs = load_dashboard_pref(current_user)
+    if enabled_modules() != set(CATALOG) and session.get("ui_mode", prefs.get("ui_mode", "simple")) != "expert":
+        return render_template("dashboard_modules.html", poste_travail=build_poste_travail(current_user))
     raw_period = (request.args.get("period") or "").strip().lower()
     try:
         days = int(request.args.get("days") or 90)

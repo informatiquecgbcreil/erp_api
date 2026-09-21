@@ -1,5 +1,6 @@
 import os
 import smtplib
+import ssl
 from email.message import EmailMessage
 
 
@@ -50,11 +51,13 @@ def send_email_with_attachment(
 
     msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
-    if use_tls:
-        server = smtplib.SMTP(host, port)
-        server.starttls()
+    if port == 465:
+        server = smtplib.SMTP_SSL(host, port, timeout=10, context=ssl.create_default_context())
+    elif use_tls:
+        server = smtplib.SMTP(host, port, timeout=10)
+        server.starttls(context=ssl.create_default_context())
     else:
-        server = smtplib.SMTP(host, port)
+        server = smtplib.SMTP(host, port, timeout=10)
 
     try:
         if username and password:

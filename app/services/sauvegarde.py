@@ -38,7 +38,7 @@ def _sha256(path: Path) -> str:
 
 def dossier_sauvegardes() -> Path:
     """Dossier de stockage des sauvegardes (créé si besoin)."""
-    out_dir = Path(current_app.root_path).parent / "backups"
+    out_dir = Path(current_app.config.get("BACKUP_DIR") or (Path(current_app.root_path).parent / "backups"))
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
 
@@ -47,7 +47,12 @@ def _copy_sqlite(db_uri: str, cible: Path) -> None:
     src = Path(db_uri.replace("sqlite:///", "", 1))
     if not src.exists():
         raise RuntimeError(f"Base SQLite introuvable : {src}")
-    shutil.copy2(src, cible)
+    # L'API backup donne un instantané cohérent même si SQLite est en cours d'écriture.
+    import sqlite3
+    from contextlib import closing
+    with closing(sqlite3.connect(str(src))) as source, closing(sqlite3.connect(str(cible))) as target:
+        with target:
+            source.backup(target)
 
 
 def _uri_libpq(db_uri: str) -> str:
@@ -63,21 +68,21 @@ def _trouver_pg_dump() -> str | None:
     """Localise l'exécutable pg_dump, sans exiger qu'il soit dans le PATH.
 
     Ordre de recherche :
-    1. le PATH du système ;
-    2. la variable PG_DUMP_PATH (config Flask ou variable d'environnement) ;
+    1. la variable PG_DUMP_PATH (config Flask ou variable d'environnement) ;
+    2. le PATH du système ;
     3. les emplacements d'installation PostgreSQL courants sous Windows
        (``C:\\Program Files\\PostgreSQL\\<version>\\bin\\pg_dump.exe``),
        version la plus récente d'abord.
     """
-    exe = shutil.which("pg_dump") or shutil.which("pg_dump.exe")
-    if exe:
-        return exe
-
     configure = (
         current_app.config.get("PG_DUMP_PATH") or os.environ.get("PG_DUMP_PATH") or ""
     ).strip()
     if configure and Path(configure).exists():
         return configure
+
+    exe = shutil.which("pg_dump") or shutil.which("pg_dump.exe")
+    if exe:
+        return exe
 
     def _version(verdir: Path) -> int:
         m = re.match(r"(\d+)", verdir.name)
@@ -107,11 +112,12 @@ def _pg_dump(db_uri: str, cible: Path) -> None:
     # --clean --if-exists : le dump recrée proprement les objets à la
     # restauration (DROP ... IF EXISTS puis CREATE), ce qui le rend rejouable
     # via psql même sur une base déjà peuplée.
+    uri, pg_env = _private_pg_connection(db_uri)
     cmd = [exe, "--format=plain", "--clean", "--if-exists",
-           "--no-owner", "--no-privileges", _uri_libpq(db_uri)]
+           "--no-owner", "--no-privileges", uri]
     try:
         with cible.open("wb") as f:
-            proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE)
+            proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, env=pg_env)
     except FileNotFoundError as exc:  # pg_dump introuvable malgré la détection
         raise RuntimeError(
             f"Impossible d'exécuter pg_dump ({exe}). Vérifiez l'installation de PostgreSQL."
@@ -139,7 +145,7 @@ def creer_sauvegarde() -> dict:
     Lève ``RuntimeError`` avec un message lisible en cas d'échec.
     """
     org = current_app.config.get("ORGANIZATION_NAME", "structure")
-    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     out_dir = dossier_sauvegardes()
     base = _safe_name(f"{org}_{stamp}")
 
@@ -337,14 +343,14 @@ def nettoyer_sauvegardes(max_lots: int | None = None) -> int:
 
 
 def _trouver_psql() -> str | None:
-    exe = shutil.which("psql") or shutil.which("psql.exe")
-    if exe:
-        return exe
     configure = (
         current_app.config.get("PSQL_PATH") or os.environ.get("PSQL_PATH") or ""
     ).strip()
     if configure and Path(configure).exists():
         return configure
+    exe = shutil.which("psql") or shutil.which("psql.exe")
+    if exe:
+        return exe
     for base in (r"C:\Program Files\PostgreSQL", r"C:\Program Files (x86)\PostgreSQL"):
         racine = Path(base)
         if not racine.exists():
@@ -366,6 +372,15 @@ def _restaurer_sqlite(src_db: Path, db_uri: str) -> None:
     shutil.copy2(src_db, dst)
 
 
+def _private_pg_connection(db_uri):
+    from sqlalchemy.engine import make_url
+    url = make_url(_uri_libpq(db_uri))
+    env = os.environ.copy()
+    if url.password is not None:
+        env["PGPASSWORD"] = url.password
+    return url._replace(password=None).render_as_string(hide_password=False), env
+
+
 def _restaurer_postgres(src_sql: Path, db_uri: str) -> None:
     from app.extensions import db
 
@@ -377,8 +392,9 @@ def _restaurer_postgres(src_sql: Path, db_uri: str) -> None:
         )
     db.session.remove()
     db.engine.dispose()
-    cmd = [exe, _uri_libpq(db_uri), "-v", "ON_ERROR_STOP=1", "-f", str(src_sql)]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    uri, pg_env = _private_pg_connection(db_uri)
+    cmd = [exe, uri, "-v", "ON_ERROR_STOP=1", "-f", str(src_sql)]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=pg_env)
     if proc.returncode != 0:
         detail = (proc.stderr or b"").decode("utf-8", "replace").strip()
         raise RuntimeError(f"La restauration PostgreSQL (psql) a échoué. Détail : {detail}")

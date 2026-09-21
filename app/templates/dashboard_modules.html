@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% block body %}
+<h1>Bienvenue dans votre centre</h1>
+<p class="muted">Retrouvez vos actions du quotidien et les outils choisis par votre structure.</p>
+{% include "_poste_travail.html" %}
+<section class="card" aria-labelledby="outils-title">
+  <h2 id="outils-title">Vos outils</h2>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    {% if can('emargement:view') %}<a class="btn" href="{{ url_for('main.hub_activites') }}">Activités et présences</a>{% endif %}
+    {% if can('participants:view') %}<a class="btn" href="{{ url_for('main.hub_publics') }}">Participants</a>{% endif %}
+    {% if can('statsimpact:view') or can('stats:view') %}<a class="btn" href="{{ url_for('statsimpact.dashboard') }}">Statistiques de fréquentation</a>{% endif %}
+    {% if can('bilans:view') %}<a class="btn" href="{{ url_for('main.hub_bilans') }}">Bilans et exports</a>{% endif %}
+    {% if can('subventions:view') %}<a class="btn" href="{{ url_for('projets.finance_home') }}">Finances et projets</a>{% endif %}
+    {% if can('salles:view') or can('inventaire:view') %}<a class="btn" href="{{ url_for('main.hub_ressources') }}">Salles et matériel</a>{% endif %}
+    {% if can('rh:view') %}<a class="btn" href="{{ url_for('main.rh') }}">Ressources humaines</a>{% endif %}
+  </div>
+</section>
+{% if can_manage_modules %}
+<p class="muted" style="margin-top:16px">Vos besoins évoluent ? <a href="{{ url_for('admin.modules') }}">Choisir les outils du centre</a>.</p>
+{% endif %}
+{% endblock %}
