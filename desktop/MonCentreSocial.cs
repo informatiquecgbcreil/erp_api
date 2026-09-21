@@ -175,9 +175,11 @@ static class Program {
             if (!c.ContainsKey("kiosk_url") || string.IsNullOrWhiteSpace(Convert.ToString(c["kiosk_url"]))) c["kiosk_url"] = c["url"];
             return;
         }
-        if (!c.ContainsKey("lan_ip") || string.IsNullOrWhiteSpace(Convert.ToString(c["lan_ip"]))) c["lan_ip"] = LanAddress();
+        string detectedLanIp = LanAddress();
+        bool lanAddressChanged = !c.ContainsKey("lan_ip") || !string.Equals(Convert.ToString(c["lan_ip"]), detectedLanIp, StringComparison.OrdinalIgnoreCase);
+        c["lan_ip"] = detectedLanIp;
         if (!c.ContainsKey("kiosk_http_port") || Convert.ToInt32(c["kiosk_http_port"]) < 1) c["kiosk_http_port"] = FreePort(8080);
-        if (!c.ContainsKey("kiosk_url") || string.IsNullOrWhiteSpace(Convert.ToString(c["kiosk_url"]))) c["kiosk_url"] = "http://" + c["lan_ip"] + ":" + c["kiosk_http_port"];
+        if (lanAddressChanged || !c.ContainsKey("kiosk_url") || string.IsNullOrWhiteSpace(Convert.ToString(c["kiosk_url"]))) c["kiosk_url"] = "http://" + c["lan_ip"] + ":" + c["kiosk_http_port"];
     }
     internal static void InstallConfiguration(Dictionary<string, object> c, Action<string> progress) {
         if (File.Exists(ConfigFile)) throw new Exception("Une configuration existe déjà. Relancez l'assistant pour la reprendre.");
