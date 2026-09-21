@@ -35,8 +35,10 @@ jobs:
           $installer = (Resolve-Path 'outputs/Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe').Path
           $installation = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
           if ($installation.ExitCode -notin 0,3010) { throw "Installation : $($installation.ExitCode)" }
-          $appDir = "$env:ProgramFiles/Mon Centre Social"
-          & "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/csc.exe" /nologo /target:exe /platform:x64 /main:MonCentreSocial.SystemSmoke "/out:$appDir/RecetteSysteme.exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:System.Web.Extensions.dll /r:System.Security.dll desktop/MonCentreSocial.cs desktop/SystemSmoke.cs
+          $appDir = Join-Path $env:ProgramFiles 'Mon Centre Social'
+          $nativeSource = (Resolve-Path 'desktop\MonCentreSocial.cs').Path
+          $testSource = (Resolve-Path 'desktop\SystemSmoke.cs').Path
+          & "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/csc.exe" /nologo /target:exe /platform:x64 /main:MonCentreSocial.SystemSmoke "/out:$appDir\RecetteSysteme.exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:System.Web.Extensions.dll /r:System.Security.dll $nativeSource $testSource
           if ($LASTEXITCODE -ne 0) { throw 'Compilation de la recette impossible' }
           & "$appDir/RecetteSysteme.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Recette service échouée' }
