@@ -206,7 +206,8 @@ static class Program {
         // Reprise après une interruption entre l'enregistrement et la création du dossier.
         EnsureNetworkSettings(c);
         SaveConfiguration(c);
-        if (!File.Exists(Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt"))) WriteReport(c);
+        var reportPath = Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt");
+        if (!File.Exists(reportPath) || !File.ReadAllText(reportPath, Utf8).Contains("Adresse kiosque")) WriteReport(c);
         var publicFile = Path.Combine(Root, "public", "url.txt"); GuardPath(publicFile);
         File.WriteAllText(publicFile, (string)c["url"], Utf8);
         var kioskFile = Path.Combine(Root, "public", "kiosk-url.txt"); GuardPath(kioskFile); File.WriteAllText(kioskFile, (string)c["kiosk_url"] + "/kiosk/", Utf8);
