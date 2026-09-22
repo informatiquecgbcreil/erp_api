@@ -22,6 +22,7 @@ from app.services.veille_financements import (
     TYPES_SOURCE_LABELS,
     rafraichir_toutes_sources,
     seed_sources_par_defaut,
+    url_source_valide,
 )
 
 from . import bp
@@ -187,6 +188,9 @@ def source_ajouter():
     if not nom or not url_source or type_source not in TYPES_SOURCE_LABELS:
         flash("Nom, adresse et type de source sont obligatoires.", "danger")
         return redirect(url_for("veille.sources"))
+    if not url_source_valide(url_source):
+        flash("Adresse invalide : indiquez une adresse web commençant par http:// ou https://.", "danger")
+        return redirect(url_for("veille.sources"))
     db.session.add(VeilleSource(nom=nom[:160], url=url_source[:500], type_source=type_source))
     db.session.commit()
     flash("Source ajoutée. Elle sera lue au prochain rafraîchissement.", "success")
@@ -218,6 +222,9 @@ def source_modifier(source_id: int):
         if nom:
             source.nom = nom[:160]
         if url_source:
+            if not url_source_valide(url_source):
+                flash("Adresse invalide : indiquez une adresse web commençant par http:// ou https://.", "danger")
+                return redirect(url_for("veille.sources"))
             source.url = url_source[:500]
         api_cle = (request.form.get("api_cle") or "").strip()
         if api_cle:

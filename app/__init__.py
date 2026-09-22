@@ -41,9 +41,36 @@ def _configure_error_logging(app):
     app.logger.addHandler(handler)
 
 
+from flask.sessions import SecureCookieSessionInterface
+
+
+class _SessionKiosqueHttp(SecureCookieSessionInterface):
+    """Cookie de session « HTTPS uniquement »… sauf pour le kiosque en HTTP.
+
+    En réseau, la distribution Windows sert l'administration en HTTPS
+    (SESSION_COOKIE_SECURE=1) et le kiosque des téléphones en simple HTTP sur
+    l'adresse du réseau local. Un cookie marqué Secure y est refusé par le
+    navigateur : les messages du kiosque (« Code invalide », « Tu es déjà
+    émargé(e) », « Merci ! ») ne s'affichaient jamais. Le kiosque n'ouvre
+    aucune session de compte : son cookie ne porte que ces messages. Il
+    n'est donc non sécurisé que pour les pages du kiosque servies en HTTP ;
+    l'administration garde un cookie sécurisé.
+    """
+
+    def get_cookie_secure(self, app):
+        securise = super().get_cookie_secure(app)
+        if securise:
+            from flask import has_request_context, request as _requete
+
+            if has_request_context() and not _requete.is_secure and _requete.blueprint == "kiosk":
+                return False
+        return securise
+
+
 def create_app():
     app = Flask(__name__, instance_relative_config=True, instance_path=Config.INSTANCE_DIR)
     app.config.from_object(Config)
+    app.session_interface = _SessionKiosqueHttp()
 
     # Instance folder (sqlite db, uploads, etc.)
     os.makedirs(app.instance_path, exist_ok=True)
@@ -65,7 +92,11 @@ def create_app():
 
     # Extensions
     db.init_app(app)
-    migrate.init_app(app, db)
+    # Dossier des migrations en chemin ABSOLU : Flask-Migrate le cherche sinon
+    # par rapport au dossier courant, qui n'est pas celui du code quand
+    # l'application est lancée par une tâche planifiée ou un service
+    # (dossier courant C:\Windows\System32).
+    migrate.init_app(app, db, directory=os.path.join(os.path.dirname(app.root_path), "migrations"))
     login_manager.init_app(app)
     csrf.init_app(app)
     login_manager.login_view = "auth.login"
@@ -178,17 +209,92 @@ def create_app():
             abort(404)
         key = endpoint_module(request.endpoint or "")
         if key and not module_enabled(key):
-            abort(404)
+            # Personne connectée : une page qui explique (outil non activé,
+            # où l'activer) plutôt qu'une erreur « introuvable » déroutante.
+            # Visiteur anonyme ou kiosque : rien à expliquer.
+            if request.blueprint == "kiosk" or not current_user.is_authenticated:
+                abort(404)
+            from flask import render_template as _rendu
+            from app.services.modules import CATALOG as _catalogue
+
+            libelle, description = _catalogue.get(key, (key, ""))
+            return _rendu("module_inactif.html", libelle=libelle, description=description,
+                          peut_activer=can_manage_modules(current_user)), 403
 
     @app.after_request
     def _response_security(response):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("Referrer-Policy", "same-origin")
+        # Origine seule vers les autres sites (jamais les adresses internes,
+        # qui peuvent contenir un identifiant de participant). « same-origin »
+        # ne transmettait rien du tout, et les serveurs de tuiles
+        # OpenStreetMap refusent alors les cartes (partenaires, quartiers).
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         if request.endpoint == "media_file":
             response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
             response.headers["Cache-Control"] = "private, no-store"
         return response
+
+    # Seules routes autorisées à renvoyer le navigateur vers un autre site.
+    _REDIRECTIONS_EXTERNES_AUTORISEES = {"main.google_agenda_connecter"}
+
+    def _hotes_autorises() -> set[str]:
+        """Hôtes vers lesquels une redirection reste « interne »."""
+        from urllib.parse import urlsplit as _us
+
+        hotes = {(request.host or "").lower()}
+        for cle in ("PUBLIC_BASE_URL", "KIOSK_PUBLIC_BASE_URL"):
+            valeur = (app.config.get(cle) or "").strip()
+            if valeur:
+                hotes.add(_us(valeur).netloc.lower())
+        kiosque = (app.config.get("KIOSK_PUBLIC_HOST") or "").strip().lower()
+        if kiosque:
+            hotes.add(kiosque)
+        hotes.discard("")
+        return hotes
+
+    @app.after_request
+    def _bloquer_redirections_ouvertes(reponse):
+        """Filet de sécurité contre les redirections ouvertes.
+
+        Une vingtaine d'écrans renvoient vers l'adresse reçue dans un champ
+        « next » / « retour » ou dans l'en-tête Referer. Un lien piégé pouvait
+        ainsi faire atterrir un utilisateur connecté sur un site imitant
+        l'application (hameçonnage). Plutôt que de compter sur chaque écran,
+        on vérifie ici toute redirection : si elle sort de l'application
+        (autre hôte, « //site », « /\\site », « https:site », schéma exotique,
+        caractère de contrôle), elle est remplacée par l'accueil.
+        """
+        if reponse.status_code not in (301, 302, 303, 307, 308):
+            return reponse
+        if (request.endpoint or "") in _REDIRECTIONS_EXTERNES_AUTORISEES:
+            return reponse
+        cible = (reponse.headers.get("Location") or "").strip()
+        if not cible:
+            return reponse
+        from urllib.parse import urlsplit
+
+        # Les navigateurs lisent « \\ » comme « / » : « /\\site.fr » == « //site.fr ».
+        normalisee = cible.replace("\\", "/")
+        if any(ord(c) < 33 or ord(c) == 127 for c in normalisee):
+            externe = True
+        else:
+            morceaux = urlsplit(normalisee)
+            hotes = _hotes_autorises()
+            if morceaux.scheme:
+                # « https:site.fr » devient « https:///site.fr » une fois encodé :
+                # schéma sans hôte, que le navigateur complète vers site.fr.
+                externe = (morceaux.scheme.lower() not in {"http", "https"}
+                           or morceaux.netloc.lower() not in hotes)
+            elif morceaux.netloc:
+                externe = morceaux.netloc.lower() not in hotes
+            else:
+                # « ////site.fr » : chemin commençant par « // », lu comme un hôte.
+                externe = morceaux.path.startswith("//")
+        if externe:
+            app.logger.warning("Redirection externe bloquée vers %r (page %s)", cible, request.path)
+            reponse.headers["Location"] = "/"
+        return reponse
 
     @app.context_processor
     def _inject_modules():

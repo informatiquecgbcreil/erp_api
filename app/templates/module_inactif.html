@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="card" style="max-width:760px;margin:auto">
+  <h1 style="margin-top:0;">Outil non activé</h1>
+  <p>La page demandée fait partie de l'outil <strong>{{ libelle }}</strong>, qui n'est pas activé dans votre structure.</p>
+  {% if description %}<p class="muted">{{ description }}</p>{% endif %}
+  <p class="muted">
+    {% if peut_activer %}Vous pouvez l'activer dans <strong>Outils du centre</strong> : aucune donnée n'est perdue, et vous pourrez le désactiver à nouveau.
+    {% else %}Si votre équipe en a besoin, demandez à la direction de l'activer dans « Outils du centre ».{% endif %}
+  </p>
+  <div class="inline" style="margin-top:16px;gap:8px;flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('main.dashboard') }}">Retour à l'accueil</a>
+    {% if peut_activer %}<a class="btn ok" href="{{ url_for('admin.modules') }}">Choisir les outils du centre</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

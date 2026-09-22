@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -12,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app import create_app
-from app.services.sauvegarde import extraire_zip_securisee
+from app.services.sauvegarde import _restaurer_postgres, extraire_zip_securisee
 
 
 def _restore_sqlite(src_db: Path, db_uri: str) -> None:
@@ -22,10 +21,10 @@ def _restore_sqlite(src_db: Path, db_uri: str) -> None:
 
 
 def _restore_postgres(src_sql: Path, db_uri: str) -> None:
-    cmd = ["psql", db_uri, "-f", str(src_sql)]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if proc.returncode != 0:
-        raise RuntimeError("psql a échoué. Vérifiez l'accès DB et l'installation de psql.")
+    # Même chemin que la restauration depuis l'interface : psql localisé
+    # (PATH, PSQL_PATH, dossiers PostgreSQL), mot de passe transmis par
+    # l'environnement et jamais sur la ligne de commande.
+    _restaurer_postgres(src_sql, db_uri)
 
 
 def _restore_uploads(zip_file: Path, upload_dir: Path) -> None:
@@ -52,7 +51,7 @@ def main() -> int:
 
         if db_uri.startswith("sqlite:///") and db_path.suffix == ".db":
             _restore_sqlite(db_path, db_uri)
-        elif db_uri.startswith("postgresql://") and db_path.suffix == ".sql":
+        elif db_uri.startswith("postgresql") and db_path.suffix == ".sql":
             _restore_postgres(db_path, db_uri)
         else:
             raise RuntimeError("Incohérence entre type DB courant et fichier fourni.")

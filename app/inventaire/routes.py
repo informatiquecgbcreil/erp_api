@@ -322,6 +322,7 @@ def facture_detail(facture_id):
 
 @bp.route("/<int:facture_id>/validate", methods=["POST"])
 @login_required
+@require_perm("inventaire:edit")
 def facture_validate(facture_id):
 
     f = db.get_or_404(FactureAchat, facture_id)

@@ -6,26 +6,33 @@
   <p class="muted">Désactiver un outil conserve ses données. Vous pourrez le réactiver ici à tout moment.</p>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="inline" style="gap:8px;margin:20px 0;flex-wrap:wrap">
-      <button class="btn" type="button" data-profile="essentiel">Présences et statistiques</button>
-      <button class="btn" type="button" data-profile="gestion">Ajouter les finances</button>
-      <button class="btn" type="button" data-profile="complet">Tous les outils</button>
+    <p style="margin:20px 0 6px"><strong>Partir d'un profil :</strong></p>
+    <div class="inline" style="gap:8px;margin:0 0 20px;flex-wrap:wrap">
+      {% for code, libelle in profile_labels.items() %}
+        <button class="btn" type="button" data-profile="{{ code }}">{{ libelle }}</button>
+      {% endfor %}
     </div>
     {% for key, details in catalog.items() %}
       <label style="display:block;padding:14px 0;border-bottom:1px solid #ddd">
-        <input type="checkbox" name="modules" value="{{ key }}" {% if key in selected %}checked{% endif %}>
+        {% if key == socle %}
+          <input type="checkbox" checked disabled>
+          <input type="hidden" name="modules" value="{{ key }}">
+        {% else %}
+          <input type="checkbox" name="modules" value="{{ key }}" {% if key in selected %}checked{% endif %}>
+        {% endif %}
         <strong>{{ details[0] }}</strong><br><span class="muted">{{ details[1] }}</span>
       </label>
     {% endfor %}
-    <p class="muted">Statistiques, accompagnement, questionnaires et transitions activent aussi les présences dont ils dépendent.</p>
+    <p class="muted">« Accueil et présences » est le socle : toujours actif, les autres outils s'appuient dessus.</p>
     <button class="btn ok" type="submit">Enregistrer les outils</button>
     <a class="btn" href="{{ url_for('admin.droits') }}">Régler les droits de l'équipe</a>
   </form>
+  <p class="muted" style="margin-top:18px">Rôles prêts à l'emploi pour l'équipe : <strong>Animateur / animatrice</strong> (ateliers, émargement, pédagogie, publics de son secteur) et <strong>Accueil</strong> (inscriptions, adhésions, caisse, salles, sans les finances). À attribuer dans Administration › Équipe.</p>
 </div>
 <script>
 const profiles = {{ profiles|tojson }};
 document.querySelectorAll('[data-profile]').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('input[name="modules"]').forEach(c => c.checked = profiles[b.dataset.profile].includes(c.value));
+  document.querySelectorAll('input[name="modules"][type="checkbox"]').forEach(c => c.checked = profiles[b.dataset.profile].includes(c.value));
 }));
 </script>
 {% endblock %}

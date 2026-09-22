@@ -28,7 +28,17 @@ def module_scope(app):
 
 @pytest.mark.parametrize("path", ["/rh", "/caisse", "/dons", "/repartition-participation", "/inventaire/", "/salles/", "/partenaires/", "/insertion/", "/questionnaires/", "/stats", "/stats-bilans", "/bilans", "/bilans/export.xlsx", "/bilans/financeurs", "/bilans/inventaire"])
 def test_disabled_modules_deny_even_direction(admin_client, module_scope, path):
+    # Refus pour tout le monde, direction comprise ; une personne connectée
+    # reçoit une page qui explique (outil non activé, où l'activer).
     response = admin_client.get(path, follow_redirects=True)
+    assert response.status_code == 403
+    assert "Outil non activé" in response.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("path", ["/rh", "/caisse", "/salles/"])
+def test_disabled_modules_anonymous_get_nothing(client, module_scope, path):
+    # Un visiteur anonyme n'apprend rien : ni page d'explication, ni contenu.
+    response = client.get(path)
     assert response.status_code == 404
 
 
@@ -49,7 +59,7 @@ def test_simple_home_and_senacs_hide_disabled_sections(admin_client, module_scop
     assert senacs.status_code == 200
     assert "Emplois / ETP" not in senacs.get_data(as_text=True)
     assert "TOTAL subventions" not in senacs.get_data(as_text=True)
-    assert admin_client.post("/bilans/senacs/emplois", data={"annee": "2026", "intitule": "Test"}).status_code == 404
+    assert admin_client.post("/bilans/senacs/emplois", data={"annee": "2026", "intitule": "Test"}).status_code == 403
     documents = admin_client.get("/documents")
     assert documents.status_code == 200
     assert 'href="/bilans/export.xlsx' not in documents.get_data(as_text=True)
@@ -83,12 +93,13 @@ def test_modules_reenable_without_reinstall(admin_client, module_scope):
     assert admin_client.post("/admin/modules", data={"modules": ["invented"]}).status_code == 400
 
 
-def test_finance_without_presence_or_statistics(admin_client, module_scope):
+def test_finance_without_statistics(admin_client, module_scope):
+    # « Accueil et présences » est le socle : cocher seulement les finances
+    # le garde actif. Les statistiques restent éteintes.
     assert admin_client.post("/admin/modules", data={"modules": ["finances"]}).status_code == 302
-    for path in ["/dashboard", "/stats", "/stats-bilans", "/bilans", "/bilans/financeurs"]:
+    for path in ["/dashboard", "/stats", "/stats-bilans", "/bilans", "/bilans/financeurs", "/activite/"]:
         assert admin_client.get(path, follow_redirects=True).status_code == 200, path
-    assert admin_client.get("/activite/").status_code == 404
-    assert admin_client.get("/bilans/senacs").status_code == 404
+    assert admin_client.get("/bilans/senacs").status_code == 403
 
 
 def test_embedded_postgres_tools_override_machine_path(app, tmp_path, monkeypatch):
@@ -106,12 +117,13 @@ def test_dependencies_empty_and_corrupt_config(app, module_scope):
     from app.models import InstanceSettings
     from app.extensions import db
     assert normalize(["statistiques"]) == ["presences", "statistiques"]
-    assert normalize([]) == []
+    assert normalize([]) == ["presences"]          # le socle ne s'éteint pas
     with app.app_context():
         InstanceSettings.query.first().enabled_modules_json = "invalid JSON"
         db.session.commit()
     with app.test_request_context():
-        assert enabled_modules() == set()
+        # Réglage abîmé : aucun module optionnel réactivé par défaut.
+        assert enabled_modules() == {"presences"}
 
 
 def test_module_change_requires_csrf(admin_client, app, module_scope, monkeypatch):

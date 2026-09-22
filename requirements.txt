@@ -16,3 +16,6 @@ alembic==1.18.4
 # laissait le vrai pilote absent d'une installation neuve.
 psycopg[binary]==3.3.5
 certifi==2026.7.22
+# Analyse XML durcie : openpyxl l'utilise automatiquement quand il est
+# présent (classeurs importés), la veille financements aussi (flux RSS).
+defusedxml==0.7.1

@@ -447,7 +447,14 @@ def bilans_lourds_export_docx():
             if not rel_path:
                 continue
 
-            abs_path = os.path.join(current_app.static_folder, rel_path)
+            # Les photos sont rangées dans le dossier des dépôts (APP_UPLOAD_DIR),
+            # pas dans le dossier « static » du code : chemin résolu et borné.
+            from app.services.storage import get_upload_root
+
+            racine = get_upload_root()
+            abs_path = os.path.abspath(os.path.join(racine, rel_path.replace("\\", "/").lstrip("/")))
+            if os.path.commonpath([racine, abs_path]) != racine:
+                continue
             if os.path.exists(abs_path):
                 try:
                     doc.add_picture(abs_path, width=Inches(5.8))

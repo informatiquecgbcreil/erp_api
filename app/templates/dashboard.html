@@ -1013,6 +1013,10 @@
     return `Ce qu’il faut retenir : ${top.label || 'poste principal'} est en tête avec ${topValue} (${pct}% du total).`;
   }
 
+  function escDash(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
   function setMeta(canvas, items, money=true) {
     const { meta } = getUi(canvas);
     if (!meta) return;
@@ -1021,7 +1025,8 @@
       const el = document.createElement('span');
       el.className = 'chart-meta__item';
       const valueText = item.rawText || (money ? formatValue(item.value, true) : formatValue(item.value, false));
-      el.innerHTML = `<strong>${item.label}</strong><span>${valueText}</span>`;
+      // Libellés saisis par les équipes (quartiers, ateliers...) : échappés.
+      el.innerHTML = `<strong>${escDash(item.label)}</strong><span>${escDash(valueText)}</span>`;
       meta.appendChild(el);
     });
 
@@ -1054,7 +1059,7 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'chart-legend__item';
-      button.innerHTML = `<i style="background:${item.color}"></i><span>${item.label}</span><strong>${item.rawText || (money ? formatValue(item.value, true) : formatValue(item.value, false))}</strong>`;
+      button.innerHTML = `<i style="background:${escDash(item.color)}"></i><span>${escDash(item.label)}</span><strong>${escDash(item.rawText || (money ? formatValue(item.value, true) : formatValue(item.value, false)))}</strong>`;
       if (typeof handlers.onEnter === 'function') button.addEventListener('mouseenter', () => { clearTooltip(canvas); handlers.onEnter(index, item); });
       if (typeof handlers.onLeave === 'function') button.addEventListener('mouseleave', () => { clearTooltip(canvas); handlers.onLeave(index, item); });
       if (typeof handlers.onClick === 'function') button.addEventListener('click', () => { clearTooltip(canvas); handlers.onClick(index, item); });

@@ -1,4 +1,4 @@
-"""Import de compétences (DigComp/Pix/CléA...) depuis un CSV.
+r"""Import de compétences (DigComp/Pix/CléA...) depuis un CSV.
 
 But : éviter la saisie à la main.
 

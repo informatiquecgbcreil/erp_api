@@ -7,7 +7,7 @@ from werkzeug.routing import BuildError
 
 import segno
 
-from app.services.public_urls import public_base_url
+from app.services.public_urls import kiosk_public_base_url, public_base_url
 
 from . import bp
 
@@ -23,7 +23,9 @@ def index():
         # fallback si jamais tu changes encore le nom
         kiosk_path = "/kiosk/"
 
-    kiosk_url = f"{base}{kiosk_path}"
+    # Adresse kiosque (réseau local sans certificat, ou façade « hors les
+    # murs ») : c'est elle que les téléphones et tablettes savent ouvrir.
+    kiosk_url = f"{kiosk_public_base_url()}{kiosk_path}"
 
     # Admin : on envoie sur le login (l'admin reste protégé)
     try:
@@ -47,6 +49,14 @@ def launcher_qr():
     base = public_base_url()
     target = (request.args.get("target") or "kiosk").strip().lower()
     u = (request.args.get("u") or "").strip()
+    # Page publique : on ne fabrique de QR code que vers l'application
+    # elle-même (ou son adresse kiosque : réseau local sans certificat,
+    # façade « hors les murs »). Sinon n'importe qui pouvait faire générer,
+    # sous le nom de la structure, un QR code menant vers un site
+    # d'hameçonnage.
+    bases = {b for b in (base, kiosk_public_base_url()) if b}
+    if u and not any(u == b or u.startswith(b + "/") for b in bases):
+        u = ""
 
     if not u:
         if target == "admin":
@@ -55,10 +65,11 @@ def launcher_qr():
             except BuildError:
                 u = f"{base}/auth/login"
         else:
+            base_kiosque = kiosk_public_base_url()
             try:
-                u = f"{base}{url_for('kiosk.kiosk_home')}"
+                u = f"{base_kiosque}{url_for('kiosk.kiosk_home')}"
             except BuildError:
-                u = f"{base}/kiosk/"
+                u = f"{base_kiosque}/kiosk/"
 
     qr = segno.make(u, error="M")
 

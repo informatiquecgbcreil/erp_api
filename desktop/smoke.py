@@ -86,7 +86,11 @@ def smoke(payload, root):
         results["https_certificat_verifie_connexion_csrf"] = True
         for path in ("/admin/modules", "/activite/", "/participants/", "/dashboard"):
             assert get(path)[0] == 200, path
-        for path in ("/rh", "/caisse", "/salles/", "/setup/", "/media/justifs/secret.pdf"):
+        # Outil éteint : une personne connectée reçoit la page « Outil non activé ».
+        for path in ("/rh", "/caisse", "/salles/"):
+            code, body = get(path)
+            assert code == 403 and "Outil non activé" in body, path
+        for path in ("/setup/", "/media/justifs/secret.pdf"):
             assert get(path)[0] == 404, path
         results["modules_et_assistant_web_proteges"] = True
         assert get_mobile("/kiosk/")[0] == 200

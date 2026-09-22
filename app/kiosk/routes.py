@@ -33,6 +33,7 @@ from app.models import (
 from . import bp
 from app.activite.services.docx_utils import generate_individuel_mensuel_docx
 from app.services.quartiers import normalize_quartier_for_ville
+from app.utils.limiteur import Limiteur
 
 
 def _ensure_month_capacity(atelier: AtelierActivite, session: SessionActivite):
@@ -56,6 +57,35 @@ from app.services.doublons import (  # noqa: E402
     normaliser_nom as _normaliser_nom,
     squelette_nom as _squelette_nom,
 )
+
+
+# Freins anti-automates des pages publiques (voir app/utils/limiteur.py).
+# PIN : 10 codes faux par adresse en 10 minutes, puis attente.
+# Recherche : 120 requêtes par adresse et par minute (une personne qui
+# tape son nom en déclenche une dizaine ; un aspirateur, des milliers).
+_ECHECS_PIN = Limiteur(maximum=10, fenetre_secondes=600)
+# Plafond commun à tous les appareils : un attaquant qui change d'adresse
+# (IPv6 temporaires) ne multiplie pas ses essais sur un code à 4 chiffres.
+_ECHECS_PIN_TOTAL = Limiteur(maximum=60, fenetre_secondes=600)
+_RECHERCHES = Limiteur(maximum=120, fenetre_secondes=60)
+
+
+def _adresse_client() -> str:
+    return request.remote_addr or "?"
+
+
+def _via_facade_publique() -> bool:
+    """La requête arrive-t-elle par le nom d'hôte PUBLIC (tunnel) ?
+
+    Dans ce cas, la liste des séances ouvertes n'est pas affichée : elle
+    donnerait à n'importe qui sur internet l'accès à chaque séance, donc à
+    la recherche dans l'annuaire. On entre alors par le lien/QR code
+    transmis par l'équipe, ou par le code PIN.
+    """
+    hote_public = (current_app.config.get("KIOSK_PUBLIC_HOST") or "").strip().lower()
+    if not hote_public:
+        return False
+    return (request.host or "").split(":", 1)[0].strip().lower() == hote_public
 
 
 def _get_open_session_by_pin(pin: str):
@@ -168,29 +198,41 @@ def _open_sessions_today() -> list[dict]:
 def kiosk_home():
     """Page publique: saisie PIN + liste des sessions ouvertes."""
     if request.method == "POST":
+        if _ECHECS_PIN.depasse(_adresse_client()) or _ECHECS_PIN_TOTAL.depasse("*"):
+            flash("Trop de codes erronés. Patientez quelques minutes ou demandez à l'animateur.", "danger")
+            return redirect(url_for("kiosk.kiosk_home"))
         pin = (request.form.get("pin") or "").strip()
         s = _get_open_session_by_pin(pin)
         if not s:
+            _ECHECS_PIN.noter(_adresse_client())
+            _ECHECS_PIN_TOTAL.noter("*")
             flash("Code invalide ou session fermée.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         return redirect(url_for("kiosk.kiosk_session", token=s.kiosk_token))
 
-    return render_template("kiosk/index.html", sessions=_open_sessions_today())
+    sessions = [] if _via_facade_publique() else _open_sessions_today()
+    return render_template("kiosk/index.html", sessions=sessions)
 
 
 @bp.route("/programme")
 def kiosk_programme():
     """Programme en direct (lecture seule) : les ateliers ouverts du jour,
     consultables sans émarger. Pratique aussi en affichage mural dans le hall."""
-    return render_template("kiosk/programme.html", sessions=_open_sessions_today())
+    sessions = [] if _via_facade_publique() else _open_sessions_today()
+    return render_template("kiosk/programme.html", sessions=sessions)
 
 
 @bp.route("/session/<token>/search")
 def kiosk_search(token: str):
     """Recherche participants (protégée par token de session kiosque)."""
+    # Clé = adresse ET séance : derrière le tunnel « hors les murs », tout
+    # internet arrive avec la même adresse ; un abus sur une séance ne doit
+    # pas bloquer la recherche des participants des autres séances.
     s = _get_open_session_by_token(token)
     if not s:
         return jsonify({"results": []})
+    if not _RECHERCHES.autoriser(f"{_adresse_client()}|{s.id}"):
+        return jsonify({"results": [], "limite": True}), 429
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
         return jsonify({"results": []})

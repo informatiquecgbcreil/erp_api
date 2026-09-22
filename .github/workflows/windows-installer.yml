@@ -2,7 +2,7 @@ name: Installateur Windows
 on:
   workflow_dispatch:
   push:
-    branches: [codex/mon-centre-social-windows]
+    branches: [codex/mon-centre-social-windows, Claude-Securite-Parcours]
     paths: ['desktop/**', 'app/**', 'migrations/**', 'config.py', 'requirements.txt', '.github/workflows/windows-installer.yml']
 permissions:
   contents: read

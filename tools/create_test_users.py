@@ -31,7 +31,19 @@ TEST_USERS = [
 
 
 def main() -> None:
+    import os
+
+    # Ces comptes ont des mots de passe PUBLICS (ils figurent ci-dessus) :
+    # les créer sur une installation réelle ouvrirait la porte à quiconque
+    # lit ce dépôt. Réservé aux postes de développement.
+    if (os.environ.get("ERP_ENV") or "").strip().lower() == "production":
+        raise SystemExit(
+            "Refusé : ERP_ENV=production. Ce script crée des comptes aux mots de "
+            "passe publics et ne doit servir que sur un poste de développement."
+        )
     app = create_app()
+    if (app.config.get("ERP_ENV") or "").strip().lower() == "production":
+        raise SystemExit("Refusé : configuration de production détectée.")
     with app.app_context():
         db.create_all()
         bootstrap_rbac()

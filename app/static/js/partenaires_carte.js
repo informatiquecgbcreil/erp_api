@@ -60,10 +60,11 @@
         tags(p.competences) +
         (p.tel ? "<div>📞 " + escapeHtml(p.tel) + "</div>" : "") +
         (p.email ? "<div>✉️ " + escapeHtml(p.email) + "</div>" : "") +
-        (p.fiche_url ? "<div style='margin-top:6px;'><a href='" + p.fiche_url + "'>Ouvrir la fiche →</a></div>" : "") +
+        (p.fiche_url ? "<div style='margin-top:6px;'><a href='" + escapeHtml(p.fiche_url) + "'>Ouvrir la fiche →</a></div>" : "") +
         "</div>";
       var m = L.marker([p.lat, p.lon], { icon: icon }).bindPopup(html);
-      m.bindTooltip(p.nom, { direction: "top" });
+      // Leaflet insère le texte d'une infobulle comme du HTML : on échappe.
+      m.bindTooltip(escapeHtml(p.nom), { direction: "top" });
       m.addTo(layer);
       bounds.push([p.lat, p.lon]);
     });

@@ -700,6 +700,22 @@ def export_csat_csv():
 def search_participants():
     """Annuaire global (lecture seule) pour l'auto-complétion côté émargement."""
 
+    # Sécurité : l'annuaire (nom, année de naissance, ville) n'est ouvert
+    # qu'aux comptes qui ont une raison d'y chercher quelqu'un. Avant, tout
+    # compte connecté — y compris un compte sans aucun droit sur les
+    # publics — pouvait le parcourir, y compris par e-mail ou téléphone.
+    from app.rbac import can
+
+    if not any(
+        can(code)
+        for code in (
+            "participants:view", "participants:view_all", "emargement:view",
+            "emargement:edit", "inscriptions:edit", "inscriptions_annuelles:edit",
+            "cotisations:edit",
+        )
+    ):
+        abort(403)
+
     q = (request.args.get("q") or "").strip()
     if not q or len(q) < 2:
         return {"items": []}
@@ -1210,6 +1226,11 @@ def edit_participant(participant_id: int):
 
     # Lecture globale autorisée (annuaire), mais édition verrouillée
     if not _can_read_participant(p):
+        abort(403)
+    # Compte borné à son secteur (sans « participants:view_all », comme le
+    # rôle animateur) : la fiche complète (e-mail, téléphone, adresse) n'est
+    # ouverte que pour les publics de son secteur, comme la synthèse.
+    if not _is_global_role() and not _can_see_participant(p):
         abort(403)
 
     is_editable = _can_edit_participant(p)

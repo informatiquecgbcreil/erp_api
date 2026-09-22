@@ -10,6 +10,9 @@
     {% if can('participants:view') %}<a class="btn" href="{{ url_for('main.hub_publics') }}">Participants</a>{% endif %}
     {% if can('statsimpact:view') or can('stats:view') %}<a class="btn" href="{{ url_for('statsimpact.dashboard') }}">Statistiques de fréquentation</a>{% endif %}
     {% if can('bilans:view') %}<a class="btn" href="{{ url_for('main.hub_bilans') }}">Bilans et exports</a>{% endif %}
+    {% if can('inscriptions_annuelles:view') %}<a class="btn" href="{{ url_for('inscriptions_annuelles.index') }}">Inscriptions de rentrée</a>{% endif %}
+    {% if can('caisse:view') %}<a class="btn" href="{{ url_for('main.caisse') }}">Caisse</a>{% endif %}
+    {% if can('cotisations:view') %}<a class="btn" href="{{ url_for('main.impayes') }}">Adhésions à régler</a>{% endif %}
     {% if can('subventions:view') %}<a class="btn" href="{{ url_for('projets.finance_home') }}">Finances et projets</a>{% endif %}
     {% if can('salles:view') or can('inventaire:view') %}<a class="btn" href="{{ url_for('main.hub_ressources') }}">Salles et matériel</a>{% endif %}
     {% if can('rh:view') %}<a class="btn" href="{{ url_for('main.rh') }}">Ressources humaines</a>{% endif %}
