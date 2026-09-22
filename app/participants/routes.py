@@ -1227,6 +1227,11 @@ def edit_participant(participant_id: int):
     # Lecture globale autorisée (annuaire), mais édition verrouillée
     if not _can_read_participant(p):
         abort(403)
+    # Compte borné à son secteur (sans « participants:view_all », comme le
+    # rôle animateur) : la fiche complète (e-mail, téléphone, adresse) n'est
+    # ouverte que pour les publics de son secteur, comme la synthèse.
+    if not _is_global_role() and not _can_see_participant(p):
+        abort(403)
 
     is_editable = _can_edit_participant(p)
 

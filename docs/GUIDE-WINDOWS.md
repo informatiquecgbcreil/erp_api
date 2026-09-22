@@ -117,6 +117,11 @@ Wi-Fi invité isolé et ne pas considérer ce lien comme un accès Internet. Pou
 une activité hors de la structure, utiliser le tunnel HTTPS décrit dans
 `docs/kiosque-hors-les-murs.md`.
 
+Les messages du kiosque (« Code invalide », « Tu es déjà émargé(e) »,
+« Merci ! ») s'affichent aussi sur ce port HTTP : son cookie, qui ne porte
+aucune session de compte, n'y est pas réservé au HTTPS. La page de lancement
+(`/launcher/`) affiche elle aussi l'adresse et le QR code du kiosque local.
+
 Si un appareil ne se connecte toujours pas : vérifier qu'il est sur le même
 Wi-Fi que le serveur, que le réseau autorise les appareils à communiquer entre
 eux (désactiver l'isolation « clients Wi-Fi » pour ce SSID), puis tester

@@ -23,7 +23,9 @@ def index():
         # fallback si jamais tu changes encore le nom
         kiosk_path = "/kiosk/"
 
-    kiosk_url = f"{base}{kiosk_path}"
+    # Adresse kiosque (réseau local sans certificat, ou façade « hors les
+    # murs ») : c'est elle que les téléphones et tablettes savent ouvrir.
+    kiosk_url = f"{kiosk_public_base_url()}{kiosk_path}"
 
     # Admin : on envoie sur le login (l'admin reste protégé)
     try:
@@ -63,10 +65,11 @@ def launcher_qr():
             except BuildError:
                 u = f"{base}/auth/login"
         else:
+            base_kiosque = kiosk_public_base_url()
             try:
-                u = f"{base}{url_for('kiosk.kiosk_home')}"
+                u = f"{base_kiosque}{url_for('kiosk.kiosk_home')}"
             except BuildError:
-                u = f"{base}/kiosk/"
+                u = f"{base_kiosque}/kiosk/"
 
     qr = segno.make(u, error="M")
 

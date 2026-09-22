@@ -64,6 +64,9 @@ from app.services.doublons import (  # noqa: E402
 # Recherche : 120 requêtes par adresse et par minute (une personne qui
 # tape son nom en déclenche une dizaine ; un aspirateur, des milliers).
 _ECHECS_PIN = Limiteur(maximum=10, fenetre_secondes=600)
+# Plafond commun à tous les appareils : un attaquant qui change d'adresse
+# (IPv6 temporaires) ne multiplie pas ses essais sur un code à 4 chiffres.
+_ECHECS_PIN_TOTAL = Limiteur(maximum=60, fenetre_secondes=600)
 _RECHERCHES = Limiteur(maximum=120, fenetre_secondes=60)
 
 
@@ -195,13 +198,14 @@ def _open_sessions_today() -> list[dict]:
 def kiosk_home():
     """Page publique: saisie PIN + liste des sessions ouvertes."""
     if request.method == "POST":
-        if _ECHECS_PIN.depasse(_adresse_client()):
+        if _ECHECS_PIN.depasse(_adresse_client()) or _ECHECS_PIN_TOTAL.depasse("*"):
             flash("Trop de codes erronés. Patientez quelques minutes ou demandez à l'animateur.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         pin = (request.form.get("pin") or "").strip()
         s = _get_open_session_by_pin(pin)
         if not s:
             _ECHECS_PIN.noter(_adresse_client())
+            _ECHECS_PIN_TOTAL.noter("*")
             flash("Code invalide ou session fermée.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         return redirect(url_for("kiosk.kiosk_session", token=s.kiosk_token))

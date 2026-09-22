@@ -41,9 +41,36 @@ def _configure_error_logging(app):
     app.logger.addHandler(handler)
 
 
+from flask.sessions import SecureCookieSessionInterface
+
+
+class _SessionKiosqueHttp(SecureCookieSessionInterface):
+    """Cookie de session « HTTPS uniquement »… sauf pour le kiosque en HTTP.
+
+    En réseau, la distribution Windows sert l'administration en HTTPS
+    (SESSION_COOKIE_SECURE=1) et le kiosque des téléphones en simple HTTP sur
+    l'adresse du réseau local. Un cookie marqué Secure y est refusé par le
+    navigateur : les messages du kiosque (« Code invalide », « Tu es déjà
+    émargé(e) », « Merci ! ») ne s'affichaient jamais. Le kiosque n'ouvre
+    aucune session de compte : son cookie ne porte que ces messages. Il
+    n'est donc non sécurisé que pour les pages du kiosque servies en HTTP ;
+    l'administration garde un cookie sécurisé.
+    """
+
+    def get_cookie_secure(self, app):
+        securise = super().get_cookie_secure(app)
+        if securise:
+            from flask import has_request_context, request as _requete
+
+            if has_request_context() and not _requete.is_secure and _requete.blueprint == "kiosk":
+                return False
+        return securise
+
+
 def create_app():
     app = Flask(__name__, instance_relative_config=True, instance_path=Config.INSTANCE_DIR)
     app.config.from_object(Config)
+    app.session_interface = _SessionKiosqueHttp()
 
     # Instance folder (sqlite db, uploads, etc.)
     os.makedirs(app.instance_path, exist_ok=True)

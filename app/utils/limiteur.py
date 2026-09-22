@@ -51,7 +51,7 @@ class Limiteur:
             file.append(maintenant)
 
     def autoriser(self, cle: str) -> bool:
-        """Compte un essai et dit s'il est permis (compte même si refusé)."""
+        """Dit si l'essai est permis, et ne compte que les essais permis."""
         if self.depasse(cle):
             return False
         self.noter(cle)

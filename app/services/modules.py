@@ -119,7 +119,7 @@ def permission_enabled(code):
 
 def endpoint_module(endpoint):
     # Adhésions saisies depuis la fiche d'un participant.
-    if (endpoint or "").startswith("participants.cotisation_"):
+    if (endpoint or "").startswith(("participants.cotisation_", "participants.foyer_")):
         return "adhesions"
     overrides = {
         "bilans.dashboard": "finances", "bilans.dashboard_export_xlsx": "finances",

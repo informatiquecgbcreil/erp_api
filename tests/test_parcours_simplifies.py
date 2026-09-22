@@ -164,3 +164,80 @@ def test_accueil_simplifie_propose_les_adhesions(admin_client, modules_actifs):
     assert "Vos outils" in page
     assert 'href="/caisse"' in page and "Adhésions à régler" in page
     assert "Finances et projets" not in page
+
+
+# --- Kiosque sur téléphone (port HTTP du réseau local) ------------------------------
+
+def test_messages_du_kiosque_affiches_en_http(app, monkeypatch):
+    """Cookie de session non sécurisé pour le kiosque servi en HTTP (sinon le
+    navigateur le refuse et « Code invalide » ne s'affiche jamais), sécurisé
+    partout ailleurs."""
+    from app.kiosk import routes as kiosque
+
+    monkeypatch.setitem(app.config, "SESSION_COOKIE_SECURE", True)
+    kiosque._ECHECS_PIN.reinitialiser()
+    kiosque._ECHECS_PIN_TOTAL.reinitialiser()
+    client = app.test_client()
+    r = client.post("/kiosk/", data={"pin": "0000"}, base_url="http://192.168.1.20:8080")
+    cookie = r.headers.get("Set-Cookie", "")
+    assert "session=" in cookie and "Secure" not in cookie
+    page = client.get("/kiosk/", base_url="http://192.168.1.20:8080").get_data(as_text=True)
+    assert "Code invalide" in page
+    # En HTTPS (administration), le cookie reste sécurisé.
+    r = app.test_client().post("/kiosk/", data={"pin": "0000"}, base_url="https://serveur:8443")
+    assert "Secure" in r.headers.get("Set-Cookie", "")
+    kiosque._ECHECS_PIN.reinitialiser()
+    kiosque._ECHECS_PIN_TOTAL.reinitialiser()
+
+
+def test_page_de_lancement_donne_l_adresse_kiosque(app, client, monkeypatch):
+    monkeypatch.setitem(app.config, "KIOSK_PUBLIC_BASE_URL", "http://192.168.1.20:8080")
+    page = client.get("/launcher/").get_data(as_text=True)
+    assert "http://192.168.1.20:8080/kiosk/" in page
+
+
+def test_pin_plafond_commun_a_tous_les_appareils(app):
+    from app.kiosk import routes as kiosque
+
+    kiosque._ECHECS_PIN.reinitialiser()
+    kiosque._ECHECS_PIN_TOTAL.reinitialiser()
+    try:
+        for i in range(60):
+            c = app.test_client()
+            c.post("/kiosk/", data={"pin": "0000"}, environ_base={"REMOTE_ADDR": f"10.0.{i // 250}.{i % 250 + 1}"})
+        r = app.test_client().post("/kiosk/", data={"pin": "1234"}, environ_base={"REMOTE_ADDR": "10.9.9.9"},
+                                   follow_redirects=True)
+        assert "Trop de codes erronés".encode() in r.data
+    finally:
+        kiosque._ECHECS_PIN.reinitialiser()
+        kiosque._ECHECS_PIN_TOTAL.reinitialiser()
+
+
+def test_animateur_limite_aux_fiches_de_son_secteur(app):
+    from app.extensions import db
+    from app.models import Participant, Role, User
+
+    with app.app_context():
+        anim = User.query.filter_by(email="anim-secteur@example.org").first()
+        if anim is None:
+            anim = User(email="anim-secteur@example.org", nom="Animateur", secteur_assigne="Numérique")
+            anim.set_password("Anim-secteur-2026")
+            anim.roles.append(Role.query.filter_by(code="animateur").one())
+            db.session.add(anim)
+        autre = Participant(nom="Autresecteur", prenom="Test", created_secteur="Familles",
+                            email="autre@example.org")
+        sien = Participant(nom="Sonsecteur", prenom="Test", created_secteur="Numérique")
+        db.session.add_all([autre, sien])
+        db.session.commit()
+        autre_id, sien_id = autre.id, sien.id
+    c = app.test_client()
+    assert c.post("/", data={"email": "anim-secteur@example.org", "password": "Anim-secteur-2026"}).status_code == 302
+    try:
+        assert c.get(f"/participants/{autre_id}/edit").status_code == 403
+        assert c.post(f"/participants/{autre_id}/edit", data={"nom": "Pirate"}).status_code == 403
+        assert c.get(f"/participants/{sien_id}/edit").status_code == 200
+    finally:
+        with app.app_context():
+            for pid in (autre_id, sien_id):
+                db.session.delete(db.session.get(Participant, pid))
+            db.session.commit()
