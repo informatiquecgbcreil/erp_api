@@ -43,6 +43,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+
+try:  # Analyse XML durcie (entités, bombes XML) quand defusedxml est présent.
+    from defusedxml.ElementTree import fromstring as _xml_fromstring
+except ImportError:  # pragma: no cover - dépendance déclarée, repli prudent
+    _xml_fromstring = ET.fromstring
 from datetime import date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -349,7 +354,23 @@ def _contexte_certifi() -> ssl.SSLContext | None:
         return None
 
 
+def url_source_valide(url: str) -> bool:
+    """Seules les adresses web (http/https) avec un nom d'hôte sont lues.
+
+    urllib sait aussi ouvrir « file:// » : sans ce contrôle, une source
+    pointant sur file:///C:/ProgramData/... ferait lire au serveur ses
+    propres fichiers (configuration, mots de passe).
+    """
+    try:
+        morceaux = urllib.parse.urlsplit((url or "").strip())
+    except ValueError:
+        return False
+    return morceaux.scheme in {"http", "https"} and bool(morceaux.hostname)
+
+
 def _telecharger(url: str, en_tetes: dict | None = None, timeout: int = DELAI_HTTP) -> bytes:
+    if not url_source_valide(url):
+        raise ValueError("Adresse refusée : seules les adresses http:// et https:// sont lues.")
     entetes = {
         "User-Agent": USER_AGENT,
         "Accept-Language": "fr",
@@ -476,7 +497,7 @@ _ATOM = "{http://www.w3.org/2005/Atom}"
 
 
 def _collecter_rss(source: VeilleSource) -> list[dict]:
-    racine = ET.fromstring(_telecharger(source.url))
+    racine = _xml_fromstring(_telecharger(source.url))
     items: list[dict] = []
 
     # RSS 2.0 : <channel><item>...

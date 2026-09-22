@@ -82,17 +82,27 @@ def main():
     parser.add_argument("--email", default="admin@asso.com")
     parser.add_argument(
         "--password",
-        required=True,
-        help="Mot de passe du compte (obligatoire, 12 caractères minimum)",
+        default=None,
+        help="Mot de passe du compte (12 caractères minimum). Conseillé : ne pas "
+             "le passer ici (il resterait visible dans l'historique et la liste des "
+             "processus) et le taper quand il est demandé.",
     )
     parser.add_argument(
         "--role",
         default="admin_tech",
-        choices=["direction", "directrice", "directeur", "finance", "responsable_secteur", "admin_tech"],
+        choices=["direction", "directrice", "directeur", "finance", "responsable_secteur", "admin_tech",
+                 "animateur", "accueil"],
     )
     parser.add_argument("--nom", default="Admin Test")
     parser.add_argument("--secteur", default=None)
     args = parser.parse_args()
+
+    if args.password is None:
+        import getpass
+
+        args.password = getpass.getpass("Nouveau mot de passe (12 caractères minimum) : ")
+        if getpass.getpass("Confirmez le mot de passe : ") != args.password:
+            parser.error("Les deux saisies ne correspondent pas.")
 
     if len(args.password) < 12:
         parser.error("Le mot de passe doit contenir au moins 12 caractères.")
@@ -100,7 +110,8 @@ def main():
     app = create_app()
 
     with app.app_context():
-        print("DB URI     =", app.config.get("SQLALCHEMY_DATABASE_URI"))
+        # render_as_string(hide_password=True) : jamais de mot de passe à l'écran.
+        print("DB URI     =", db.engine.url.render_as_string(hide_password=True))
         print("DB DIALECT =", db.engine.dialect.name)
 
         # 1) Crée tout ce que SQLAlchemy connaît

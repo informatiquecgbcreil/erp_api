@@ -209,6 +209,8 @@ def controle_navigation():
 
 
 @bp.route("/setup-start")
+@login_required
+@require_perm("controle:view")
 def setup_start():
     # simple page de diagnostic / aide
     return render_template("controle.html")

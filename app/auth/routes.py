@@ -49,22 +49,40 @@ def _load_password_reset_user(token: str) -> User | None:
 
 
 
-def _build_external_reset_link(token: str) -> str:
+_HOTES_LOCAUX = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def _build_external_reset_link(token: str) -> str | None:
     """Construit un lien de reset utilisable hors du poste hôte.
 
-    Priorité à PUBLIC_BASE_URL (ex: http://192.168.1.10:8000)
-    puis fallback sur url_for(..., _external=True).
+    Sécurité (« empoisonnement du lien de réinitialisation ») : l'adresse
+    du lien ne doit JAMAIS être déduite de l'en-tête Host de la requête,
+    que l'auteur de la demande choisit librement. Sinon, il suffit de
+    demander la réinitialisation du compte de la direction en annonçant
+    « Host: site-pirate.fr » : l'e-mail légitime part avec un lien vers ce
+    site, et le premier clic y dépose le jeton.
+
+    D'où : URL publique configurée (installateur, page « Ma structure » ou
+    ERP_PUBLIC_BASE_URL) ; à défaut, seul un accès local au serveur est
+    accepté ; sinon, pas de lien du tout (journalisé).
     """
     public_base_url = resolve_public_base_url(current_app.config)
     reset_path = url_for("auth.password_reset_token", token=token)
     if public_base_url:
         return urljoin(public_base_url + "/", reset_path.lstrip("/"))
 
-    request_base = (request.host_url or "").strip().rstrip("/")
-    if request_base:
+    hote = (request.host or "").rsplit(":", 1)[0].strip().lower() if request.host else ""
+    if request.host and request.host.startswith("["):
+        hote = request.host.split("]", 1)[0] + "]"
+    if hote in _HOTES_LOCAUX:
+        request_base = (request.host_url or "").strip().rstrip("/")
         return urljoin(request_base + "/", reset_path.lstrip("/"))
 
-    return url_for("auth.password_reset_token", token=token, _external=True)
+    current_app.logger.error(
+        "Réinitialisation de mot de passe : aucune URL publique configurée "
+        "(Administration > Ma structure, ou ERP_PUBLIC_BASE_URL). Lien non envoyé."
+    )
+    return None
 
 def _send_password_reset_email(to_email: str, reset_link: str) -> bool:
     mail_cfg = resolve_mail_settings(current_app.config)
@@ -184,7 +202,7 @@ def password_reset_request():
         if user:
             token = _build_password_reset_token(user)
             reset_link = _build_external_reset_link(token)
-            sent = _send_password_reset_email(user.email, reset_link)
+            sent = bool(reset_link) and _send_password_reset_email(user.email, reset_link)
 
             if not sent and current_app.debug and current_app.config.get("PASSWORD_RESET_ALLOW_DEBUG_LINK", False):
                 debug_link = reset_link

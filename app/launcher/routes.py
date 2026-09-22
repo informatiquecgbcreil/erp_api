@@ -7,7 +7,7 @@ from werkzeug.routing import BuildError
 
 import segno
 
-from app.services.public_urls import public_base_url
+from app.services.public_urls import kiosk_public_base_url, public_base_url
 
 from . import bp
 
@@ -47,6 +47,14 @@ def launcher_qr():
     base = public_base_url()
     target = (request.args.get("target") or "kiosk").strip().lower()
     u = (request.args.get("u") or "").strip()
+    # Page publique : on ne fabrique de QR code que vers l'application
+    # elle-même (ou son adresse kiosque : réseau local sans certificat,
+    # façade « hors les murs »). Sinon n'importe qui pouvait faire générer,
+    # sous le nom de la structure, un QR code menant vers un site
+    # d'hameçonnage.
+    bases = {b for b in (base, kiosk_public_base_url()) if b}
+    if u and not any(u == b or u.startswith(b + "/") for b in bases):
+        u = ""
 
     if not u:
         if target == "admin":

@@ -438,6 +438,7 @@ def create_bulk_from_facture_ligne(ligne_id: int):
 
 @bp.route("/from_depense/<int:depense_id>", methods=["POST"])
 @login_required
+@require_perm("inventaire:edit")
 def create_from_depense(depense_id: int):
     """Créer une entrée inventaire depuis une dépense (non liée à une facture)."""
 

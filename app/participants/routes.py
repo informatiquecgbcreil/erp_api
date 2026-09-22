@@ -700,6 +700,22 @@ def export_csat_csv():
 def search_participants():
     """Annuaire global (lecture seule) pour l'auto-complétion côté émargement."""
 
+    # Sécurité : l'annuaire (nom, année de naissance, ville) n'est ouvert
+    # qu'aux comptes qui ont une raison d'y chercher quelqu'un. Avant, tout
+    # compte connecté — y compris un compte sans aucun droit sur les
+    # publics — pouvait le parcourir, y compris par e-mail ou téléphone.
+    from app.rbac import can
+
+    if not any(
+        can(code)
+        for code in (
+            "participants:view", "participants:view_all", "emargement:view",
+            "emargement:edit", "inscriptions:edit", "inscriptions_annuelles:edit",
+            "cotisations:edit",
+        )
+    ):
+        abort(403)
+
     q = (request.args.get("q") or "").strip()
     if not q or len(q) < 2:
         return {"items": []}
