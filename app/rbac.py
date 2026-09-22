@@ -295,6 +295,57 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
 }
 
 
+# Profils de poste « terrain » (parcours simplifiés) : moins de menus, donc
+# moins de questions. Un animateur n'a pas à naviguer dans les budgets pour
+# pointer sa séance, un agent d'accueil n'a pas à voir les bilans financeurs
+# pour encaisser une adhésion. Créés au démarrage s'ils n'existent pas, puis
+# jamais modifiés : les ajustements faits dans l'écran des droits restent.
+ROLE_TEMPLATES["animateur"] = {
+    "label": "Animateur / animatrice",
+    "perms": [
+        "dashboard:view",
+        # Pas de « participants:view_all » : un animateur voit les publics de
+        # son secteur, pas l'annuaire (e-mails, téléphones) de toute la structure.
+        "participants:view", "participants:edit",
+        "ateliers:view", "ateliers:edit",
+        "emargement:view", "emargement:edit",
+        "inscriptions:view", "inscriptions:edit",
+        "pedagogie:view", "pedagogie:edit",
+        "questionnaires:view", "questionnaires:respond",
+        # Fréquentation de ses ateliers ; pas « stats:view » (pilotage et
+        # coût unitaire, qui montrent les montants des financeurs).
+        "statsimpact:view",
+        "salles:view", "partenaires:view", "quartiers:view",
+    ],
+}
+ROLE_TEMPLATES["accueil"] = {
+    "label": "Accueil",
+    "perms": [
+        "dashboard:view",
+        # L'accueil reçoit tout le monde : annuaire complet.
+        "participants:view", "participants:view_all", "participants:edit",
+        # Rattrapage des feuilles d'émargement papier : saisie, pas de suppression.
+        "ateliers:view", "emargement:view", "emargement:edit",
+        "inscriptions:view", "inscriptions:edit",
+        "inscriptions_annuelles:view", "inscriptions_annuelles:edit",
+        "inscriptions_annuelles:reglement",
+        "cotisations:view", "cotisations:edit", "caisse:view",
+        "salles:view", "locations:view", "locations:edit",
+        "partenaires:view", "quartiers:view",
+    ],
+}
+
+#: Libellés lisibles des rôles créés au démarrage.
+ROLE_LABELS: dict[str, str] = {
+    "admin_tech": "Administrateur technique",
+    "direction": "Direction",
+    "finance": "Comptabilité / finances",
+    "responsable_secteur": "Responsable de secteur",
+    "animateur": "Animateur / animatrice",
+    "accueil": "Accueil",
+}
+
+
 # Permissions introduites APRÈS des mises en production : au moment précis de
 # leur première création en base, on les accorde aux rôles listés (AJOUT
 # uniquement — les personnalisations faites via l'UI ne sont jamais retirées).
@@ -423,7 +474,7 @@ def bootstrap_rbac() -> None:
         role = Role.query.filter_by(code=role_code).first()
         created = False
         if not role:
-            role = Role(code=role_code, label=role_code)
+            role = Role(code=role_code, label=ROLE_LABELS.get(role_code, role_code))
             db.session.add(role)
             db.session.flush()
             created = True

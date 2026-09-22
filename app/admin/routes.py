@@ -635,7 +635,9 @@ def modules():
         g.pop("mcs_modules", None)
         flash("Modules enregistrés. Les données des modules désactivés sont conservées.", "success")
         return redirect(url_for("admin.modules"))
-    return render_template("admin_modules.html", catalog=CATALOG, profiles=PROFILES, selected=enabled_modules())
+    from app.services.modules import PROFILE_LABELS, SOCLE
+    return render_template("admin_modules.html", catalog=CATALOG, profiles=PROFILES, selected=enabled_modules(),
+                           profile_labels=PROFILE_LABELS, socle=SOCLE)
 
 
 @bp.route("/sauvegardes", methods=["GET"])

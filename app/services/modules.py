@@ -2,16 +2,27 @@
 
 Tous les schémas restent installés : désactiver un module ne détruit rien.
 Ce registre protège aussi les anciennes routes qui contrôlent un rôle directement.
+
+Parcours simplifiés :
+- « presences » est le socle : toujours actif, tout le reste s'appuie dessus ;
+- « adhesions » (adhésions, caisse, impayés, tarifs) est séparé des finances :
+  un accueil qui encaisse les adhésions n'a pas à voir budgets et subventions ;
+- le profil « animation » correspond à un centre qui anime et accueille,
+  sans gestion financière dans le logiciel.
 """
 from __future__ import annotations
 
 import json
 from flask import current_app, g, has_app_context, has_request_context
 
+#: Socle toujours actif (ne se désactive pas).
+SOCLE = "presences"
+
 CATALOG = {
-    "presences": ("Accueil et présences", "Participants, inscriptions, ateliers et émargement."),
+    "presences": ("Accueil et présences", "Participants, inscriptions, ateliers et émargement. Toujours actif."),
     "statistiques": ("Statistiques et bilans", "Indicateurs, bilans d'activité et exports."),
-    "finances": ("Finances et projets", "Budgets, subventions, dépenses, caisse et cotisations."),
+    "adhesions": ("Adhésions et caisse", "Adhésions et participation des familles, règlements, impayés, tarifs, caisse."),
+    "finances": ("Finances et projets", "Budgets, subventions, dépenses, dons et veille des appels à projets."),
     "ressources": ("Salles et matériel", "Planning des salles, locations et inventaire."),
     "accompagnement": ("Accompagnement", "Insertion et suivi pédagogique."),
     "partenaires": ("Partenaires", "Annuaire et cartographie des partenaires."),
@@ -22,15 +33,25 @@ CATALOG = {
 DEPENDENCIES = {
     "statistiques": {"presences"}, "accompagnement": {"presences"},
     "questionnaires": {"presences"}, "transitions": {"presences"},
+    "adhesions": {"presences"},
 }
 PROFILES = {"essentiel": ["presences", "statistiques"],
-            "gestion": ["presences", "statistiques", "finances"],
+            "animation": ["presences", "statistiques", "adhesions", "ressources", "partenaires",
+                          "accompagnement", "questionnaires"],
+            "gestion": ["presences", "statistiques", "adhesions", "finances"],
             "complet": list(CATALOG)}
+PROFILE_LABELS = {
+    "essentiel": "Présences et statistiques",
+    "animation": "Animation et accueil",
+    "gestion": "Gestion : adhésions et finances",
+    "complet": "Tous les outils",
+}
 
 PERMISSIONS = {
     "presences": "participants participant ateliers emargement inscriptions inscriptions_annuelles quartiers activite benevolat",
     "statistiques": "stats statsimpact bilans bilan",
-    "finances": "projets projets_edit aap budget subventions depenses dons cotisations caisse veille",
+    "adhesions": "cotisations caisse",
+    "finances": "projets projets_edit aap budget subventions depenses dons veille",
     "ressources": "inventaire salles locations",
     "accompagnement": "insertion pedagogie",
     "partenaires": "partenaires", "questionnaires": "questionnaires",
@@ -49,16 +70,16 @@ BLUEPRINT_MODULE = {
 SOURCE_MODULE = {
     "agenda": "presences", "google_agenda": "presences", "benevoles": "presences",
     "hart": "presences", "rh": "rh", "stats": "finances", "bilan_global": "finances",
-    "caisse": "finances", "comparaison": "finances", "couts": "finances", "dons": "finances",
-    "impayes": "finances", "repartition": "finances", "subventions": "finances",
-    "tarifs": "finances", "tresorerie": "finances",
+    "caisse": "adhesions", "comparaison": "finances", "couts": "finances", "dons": "finances",
+    "impayes": "adhesions", "repartition": "adhesions", "subventions": "finances",
+    "tarifs": "adhesions", "tresorerie": "finances",
 }
 
 
 def normalize(values):
     if not isinstance(values, (list, tuple, set)) or any(v not in CATALOG for v in values):
         raise ValueError("Sélection de modules invalide.")
-    selected = set(values)
+    selected = set(values) | {SOCLE}
     for key in list(selected):
         selected.update(DEPENDENCIES.get(key, ()))
     return sorted(selected)
@@ -77,7 +98,7 @@ def enabled_modules():
         try:
             selected = set(normalize(json.loads(raw)))
         except (ValueError, TypeError):
-            selected = set()
+            selected = {SOCLE}
     else:
         configured = current_app.config.get("ENABLED_MODULES")
         selected = set(CATALOG) if configured is None else set(normalize(
@@ -97,6 +118,9 @@ def permission_enabled(code):
 
 
 def endpoint_module(endpoint):
+    # Adhésions saisies depuis la fiche d'un participant.
+    if (endpoint or "").startswith("participants.cotisation_"):
+        return "adhesions"
     overrides = {
         "bilans.dashboard": "finances", "bilans.dashboard_export_xlsx": "finances",
         "bilans.bilan_secteur": "finances", "bilans.bilan_subvention": "finances",
@@ -135,6 +159,10 @@ def url_enabled(url):
         return True
     key = endpoint_module(endpoint)
     return key is None or module_enabled(key)
+
+
+def module_label(key):
+    return CATALOG.get(key, (key, ""))[0]
 
 
 def can_manage_modules(user):

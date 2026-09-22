@@ -182,7 +182,17 @@ def create_app():
             abort(404)
         key = endpoint_module(request.endpoint or "")
         if key and not module_enabled(key):
-            abort(404)
+            # Personne connectée : une page qui explique (outil non activé,
+            # où l'activer) plutôt qu'une erreur « introuvable » déroutante.
+            # Visiteur anonyme ou kiosque : rien à expliquer.
+            if request.blueprint == "kiosk" or not current_user.is_authenticated:
+                abort(404)
+            from flask import render_template as _rendu
+            from app.services.modules import CATALOG as _catalogue
+
+            libelle, description = _catalogue.get(key, (key, ""))
+            return _rendu("module_inactif.html", libelle=libelle, description=description,
+                          peut_activer=can_manage_modules(current_user)), 403
 
     @app.after_request
     def _response_security(response):

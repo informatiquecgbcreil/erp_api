@@ -11,8 +11,11 @@ ou supérieur, fourni par ces versions de Windows.
 1. Double-cliquer sur `Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe` et accepter
    l'élévation Windows avec le compte administrateur de la structure.
 2. Saisir la structure et le premier compte de direction.
-3. Choisir les outils nécessaires. « Accueil et présences » et « Statistiques »
-   suffisent pour démarrer. Les autres outils sont facultatifs.
+3. Choisir les outils nécessaires, en partant d'un profil : **Présences et
+   statistiques** pour démarrer simplement, **Animation et accueil** (ajoute
+   adhésions et caisse, salles, partenaires, pédagogie, questionnaires, sans
+   les finances) ou **Tous les outils**. « Accueil et présences » est le
+   socle, toujours inclus. Chaque outil reste modifiable à l'unité.
 4. Choisir cet ordinateur ou le réseau de la structure. Le SMTP est facultatif
    et peut être ajouté plus tard. Le mode SMTP proposé est STARTTLS (souvent 587).
 5. Conserver le dossier confidentiel dans le coffre-fort de la direction/DSI.
@@ -41,10 +44,26 @@ personnes se connectent dans leur navigateur avec un compte propre. La direction
 crée les comptes et attribue les rôles et les secteurs dans Administration.
 
 **Outils du centre** permet d'ajouter/enlever des modules sans réinstallation et
-sans suppression des données. La désactivation bloque également les adresses
-directes et les permissions associées, même pour la direction. Le rôle attribué
-reste nécessaire pour accéder à un module actif. Les anciennes installations qui
-n'ont pas de sélection conservent leurs modules actifs.
+sans suppression des données, en partant d'un profil si besoin. La désactivation
+bloque également les adresses directes et les permissions associées, même pour la
+direction ; une personne connectée qui suit un ancien lien voit une page
+« Outil non activé » qui explique où l'activer. Le rôle attribué reste nécessaire
+pour accéder à un module actif. « Accueil et présences » ne se désactive pas.
+Les anciennes installations qui n'ont pas de sélection conservent leurs modules
+actifs.
+
+« Adhésions et caisse » (adhésions et participation des familles, règlements,
+impayés, tarifs, caisse) est un outil distinct de « Finances et projets » : un
+accueil peut encaisser les adhésions sans voir budgets ni subventions. Une
+installation qui avait activé les finances avant cette séparation garde ses
+écrans d'adhésion (ajout automatique à la mise à jour).
+
+Deux rôles prêts à l'emploi facilitent les parcours de l'équipe (Administration ›
+Équipe) : **Animateur / animatrice** (ateliers, émargement, pédagogie,
+questionnaires, fréquentation, publics de son secteur) et **Accueil**
+(inscriptions, inscriptions de rentrée, adhésions, caisse, salles, annuaire
+complet ; ni finances ni administration). Ils sont créés au démarrage s'ils
+n'existent pas, puis ajustables dans l'écran des droits.
 
 ## Dossier confidentiel
 

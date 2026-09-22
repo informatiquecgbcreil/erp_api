@@ -334,8 +334,11 @@ sealed class SetupWizard : Form {
     readonly TextBox organization = new TextBox(); readonly TextBox adminName = new TextBox(); readonly TextBox email = new TextBox(); readonly TextBox password = new TextBox(); readonly TextBox confirm = new TextBox();
     readonly CheckedListBox modules = new CheckedListBox(); readonly RadioButton local = new RadioButton(); readonly RadioButton network = new RadioButton(); readonly TextBox hostname = new TextBox();
     readonly TextBox smtpHost = new TextBox(); readonly TextBox smtpPort = new TextBox(); readonly TextBox smtpUser = new TextBox(); readonly TextBox smtpPassword = new TextBox(); readonly TextBox smtpSender = new TextBox();
-    readonly string[] keys = { "presences", "statistiques", "finances", "ressources", "accompagnement", "partenaires", "questionnaires", "transitions", "rh" };
-    readonly string[] names = { "Accueil, inscriptions et présences", "Statistiques et bilans", "Finances et projets", "Salles et matériel", "Accompagnement et pédagogie", "Partenaires", "Questionnaires", "Transitions", "Ressources humaines" };
+    readonly string[] keys = { "presences", "statistiques", "adhesions", "finances", "ressources", "accompagnement", "partenaires", "questionnaires", "transitions", "rh" };
+    readonly string[] names = { "Accueil, inscriptions et présences (toujours inclus)", "Statistiques et bilans", "Adhésions, caisse et impayés", "Finances et projets", "Salles et matériel", "Accompagnement et pédagogie", "Partenaires", "Questionnaires", "Transitions", "Ressources humaines" };
+    // Profils : mêmes listes que PROFILES dans app/services/modules.py.
+    static readonly string[] profilEssentiel = { "presences", "statistiques" };
+    static readonly string[] profilAnimation = { "presences", "statistiques", "adhesions", "ressources", "partenaires", "accompagnement", "questionnaires" };
     int step; bool busy;
     internal SetupWizard() {
         Text = "Mon Centre Social — Installation"; Icon = Program.Logo; ClientSize = new Size(780, 650); AutoScaleMode = AutoScaleMode.Dpi; Font = new Font("Segoe UI", 10); BackColor = Color.White; StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
@@ -352,9 +355,12 @@ sealed class SetupWizard : Form {
         next.Text = "Continuer"; next.SetBounds(609,607,140,32); next.BackColor = Color.FromArgb(19,91,99); next.ForeColor = Color.White; next.FlatStyle = FlatStyle.Flat; next.Click += async delegate { await Next(); }; Controls.Add(next); AcceptButton = next;
         password.UseSystemPasswordChar = true; confirm.UseSystemPasswordChar = true; smtpPassword.UseSystemPasswordChar = true; smtpPort.Text = "587"; hostname.Text = Environment.MachineName.ToLowerInvariant(); local.Checked = true;
         modules.CheckOnClick = true; modules.BorderStyle = BorderStyle.None; modules.Items.AddRange(names); modules.SetItemChecked(0,true); modules.SetItemChecked(1,true);
+        // Le socle (présences) ne se décoche pas : tout le reste s'appuie dessus.
+        modules.ItemCheck += delegate(object sender, ItemCheckEventArgs e) { if (e.Index == 0) e.NewValue = CheckState.Checked; };
         FormClosing += delegate(object sender, FormClosingEventArgs e) { if (busy) e.Cancel = true; };
         ShowStep();
     }
+    void Profil(string[] codes) { for (int i=0;i<keys.Length;i++) modules.SetItemChecked(i, i == 0 || Array.IndexOf(codes, keys[i]) >= 0); }
     void TextLine(string text, int y, int height = 48) { content.Controls.Add(new Label { Text = text, Location = new Point(0,y), Size = new Size(706,height) }); }
     void Field(string title, TextBox box, int y, int x = 0, int width = 342) { content.Controls.Add(new Label { Text = title, Location = new Point(x,y), AutoSize = true }); box.SetBounds(x,y+25,width,27); box.MaxLength = box == password || box == confirm || box == smtpPassword ? 200 : 180; content.Controls.Add(box); }
     void ShowStep() {
@@ -367,8 +373,10 @@ sealed class SetupWizard : Form {
             TextLine("Les composants nécessaires sont inclus. Une connexion Internet n'est pas nécessaire pour installer.",286);
         } else if (step == 1) {
             heading.Text = "De quels outils avez-vous besoin ?";
-            TextLine("Commencez avec les présences et les statistiques. Vous pourrez changer ce choix plus tard, sans réinstaller.",0);
-            var all = new Button { Text = "Tout sélectionner", Location = new Point(480,55), Size = new Size(200,32) }; all.Click += delegate { for(int i=0;i<keys.Length;i++) modules.SetItemChecked(i,true); }; content.Controls.Add(all);
+            TextLine("Partez d'un profil, puis ajustez si besoin. Vous pourrez changer ce choix plus tard, sans réinstaller et sans rien perdre.",0);
+            var essentiel = new Button { Text = "Présences et statistiques", Location = new Point(480,62), Size = new Size(226,32) }; essentiel.Click += delegate { Profil(profilEssentiel); }; content.Controls.Add(essentiel);
+            var animation = new Button { Text = "Animation et accueil", Location = new Point(480,102), Size = new Size(226,32) }; animation.Click += delegate { Profil(profilAnimation); }; content.Controls.Add(animation);
+            var all = new Button { Text = "Tous les outils", Location = new Point(480,142), Size = new Size(226,32) }; all.Click += delegate { Profil(keys); }; content.Controls.Add(all);
             modules.SetBounds(0,62,465,280); modules.ItemHeight = 27; content.Controls.Add(modules);
         } else if (step == 2) {
             heading.Text = "Où l'équipe utilisera-t-elle l'application ?";
@@ -412,7 +420,7 @@ sealed class SetupWizard : Form {
             ValidateStep();
             if (step < 4) { step++; ShowStep(); return; }
             var selected = new List<string>(); for (int i=0;i<keys.Length;i++) if (modules.GetItemChecked(i)) selected.Add(keys[i]);
-            if ((selected.Contains("statistiques") || selected.Contains("accompagnement") || selected.Contains("questionnaires") || selected.Contains("transitions")) && !selected.Contains("presences")) selected.Add("presences");
+            if (!selected.Contains("presences")) selected.Insert(0, "presences"); // socle toujours actif
             var c = new Dictionary<string,object> { {"organization",organization.Text.Trim()}, {"admin_name",adminName.Text.Trim()}, {"admin_email",email.Text.Trim().ToLowerInvariant()}, {"admin_password",password.Text}, {"modules",selected.ToArray()}, {"network",network.Checked}, {"hostname",hostname.Text.Trim().ToLowerInvariant()}, {"smtp_host",smtpHost.Text.Trim()}, {"smtp_port",string.IsNullOrWhiteSpace(smtpHost.Text) ? 587 : int.Parse(smtpPort.Text)}, {"smtp_user",smtpUser.Text.Trim()}, {"smtp_password",smtpPassword.Text}, {"smtp_sender",smtpSender.Text.Trim()} };
             busy = true; next.Enabled = false; back.Enabled = false; UseWaitCursor = true;
             await Task.Run(delegate { Program.InstallConfiguration(c, message => BeginInvoke(new Action(delegate { status.Text = message; }))); });
