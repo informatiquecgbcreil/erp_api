@@ -407,10 +407,17 @@ def kiosk_session(token: str):
                 )
                 db.session.add(pr)
                 db.session.commit()
-            except Exception:
+            except Exception as error:
                 db.session.rollback()
-                flash("Tu es déjà émargé(e) sur cette séance.", "warning")
-                return redirect(url_for("kiosk.kiosk_session", token=token))
+                if sig_path:
+                    from pathlib import Path
+                    Path(sig_path).unlink(missing_ok=True)
+                from sqlalchemy.exc import IntegrityError
+                if isinstance(error, IntegrityError) and PresenceActivite.query.filter_by(session_id=s.id, participant_id=participant.id).first():
+                    flash("Tu es déjà émargé(e) sur cette séance.", "warning")
+                    return redirect(url_for("kiosk.kiosk_session", token=token))
+                current_app.logger.warning("Pointage kiosque interrompu (%s).", type(error).__name__)
+                abort(503)
 
             # Actions post (individuel mensuel)
             if s.session_type == "INDIVIDUEL_MENSUEL":

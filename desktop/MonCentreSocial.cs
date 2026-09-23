@@ -24,12 +24,14 @@ using System.Runtime.InteropServices;
 namespace MonCentreSocial {
 static class Program {
     internal const string ServiceName = "MonCentreSocial";
+    internal const string ProxyServiceName = "MonCentreSocialHTTPS";
     internal static readonly string Install = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
     internal static readonly string Root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MonCentreSocial");
     internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     internal static readonly Encoding Utf8 = new UTF8Encoding(false);
     internal static string Exe { get { return Path.Combine(Install, "MonCentreSocial.exe"); } }
     internal static string ConfigFile { get { return Path.Combine(Root, "private", "configuration.dpapi"); } }
+    internal static string ServiceConfigFile { get { return Path.Combine(Root, "private", "service.dpapi"); } }
     internal static bool IsAdmin { get { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); } }
     internal static Icon Logo { get { return new Icon(Path.Combine(Install, "mon-centre-social.ico")); } }
 
@@ -40,6 +42,7 @@ static class Program {
         string mode = args.Length == 0 ? "--tray" : args[0];
         try {
             if (mode == "--service") { ServiceBase.Run(new CentreService()); return 0; }
+            if (mode == "--proxy-service") { ServiceBase.Run(new ProxyService()); return 0; }
             if (mode == "--self-test") {
                 // Vérifie le chiffrement et la validation sans toucher l'installation.
                 byte[] value = Utf8.GetBytes("test local sans secret");
@@ -57,18 +60,31 @@ static class Program {
             if (mode == "--tray") { bool created; using (var mutex = new Mutex(true, "Local\\MonCentreSocialTray", out created)) { if (created) Application.Run(new Tray()); else Open(); } return 0; }
             if (!IsAdmin) { var p = Process.Start(new ProcessStartInfo(Exe, mode) { UseShellExecute = true, Verb = "runas" }); p.WaitForExit(); return p.ExitCode; }
             if (mode == "--configure") {
-                if (File.Exists(ConfigFile)) { FinishInstallation(ReadConfiguration()); return 0; }
+                if (File.Exists(ConfigFile)) {
+                    var existing = ReadConfiguration();
+                    if (MessageBox.Show("Une installation existe déjà dans " + Root + ".\n\nReprendre cette installation avec sa base et ses comptes actuels ?", "Installation existante", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) return 1;
+                    FinishInstallation(existing); return 0;
+                }
                 using (var choice = new InstallationChoice()) {
                     if (choice.ShowDialog() != DialogResult.OK) return 1;
                     using (var wizard = new SetupWizard(choice.Source, choice.Connection, choice.LegacyService))
                         return wizard.ShowDialog() == DialogResult.OK ? 0 : 1;
                 }
             }
-            if (mode == "--restart") { StopService(); StartService(); return 0; }
+            if (mode == "--restart") { StopService(); FinishInstallation(ReadConfiguration()); return 0; }
             if (mode == "--stop") { StopService(); return 0; }
             if (mode == "--uninstall") {
                 StopService();
                 if (ServiceExists()) Run(SystemExe("sc.exe"), "delete " + ServiceName, false);
+                if (ServiceExists(ProxyServiceName)) Run(SystemExe("sc.exe"), "delete " + ProxyServiceName, false);
+                var certPath = Path.Combine(Root,"public","Certificat-du-centre.cer");
+                if (File.Exists(certPath)) {
+                    var cert = new X509Certificate2(File.ReadAllBytes(certPath));
+                    using (var store = new X509Store(StoreName.Root,StoreLocation.LocalMachine)) {
+                        store.Open(OpenFlags.ReadWrite);
+                        foreach (var installed in store.Certificates.Find(X509FindType.FindByThumbprint,cert.Thumbprint,false)) store.Remove(installed);
+                    }
+                }
                 Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social HTTPS\"", false);
                 Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
                 return 0; // Les données et le dossier de direction restent conservés.
@@ -98,8 +114,11 @@ static class Program {
             return p.ExitCode;
         }
     }
-    internal static bool ServiceExists() { foreach (var s in ServiceController.GetServices()) using (s) if (s.ServiceName == ServiceName) return true; return false; }
+    internal static bool ServiceExists(string name = ServiceName) { foreach (var s in ServiceController.GetServices()) using (s) if (s.ServiceName == name) return true; return false; }
     internal static void StopService() {
+        if (ServiceExists(ProxyServiceName)) using (var proxy = new ServiceController(ProxyServiceName)) {
+            if (proxy.Status != ServiceControllerStatus.Stopped) { proxy.Stop(); proxy.WaitForStatus(ServiceControllerStatus.Stopped,TimeSpan.FromSeconds(30)); }
+        }
         if (!ServiceExists()) return;
         using (var s = new ServiceController(ServiceName)) {
             if (s.Status != ServiceControllerStatus.Stopped) { if (s.Status != ServiceControllerStatus.StopPending) s.Stop(); s.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100)); }
@@ -116,6 +135,11 @@ static class Program {
         Run(SystemExe("sc.exe"), "description " + ServiceName + " \"Mon Centre Social : application, base locale et sauvegarde quotidienne.\"");
         Run(SystemExe("sc.exe"), "failure " + ServiceName + " reset= 86400 actions= restart/10000/restart/30000/restart/60000");
         Run(SystemExe("sc.exe"), "sidtype " + ServiceName + " unrestricted");
+        Run(SystemExe("sc.exe"), "privs " + ServiceName + " SeChangeNotifyPrivilege");
+        if (!ServiceExists(ProxyServiceName)) Run(SystemExe("sc.exe"), "create " + ProxyServiceName + " binPath= " + Quote(Quote(Exe) + " --proxy-service") + " start= demand obj= " + Quote("NT SERVICE\\" + ProxyServiceName) + " depend= " + ServiceName);
+        Run(SystemExe("sc.exe"), "privs " + ProxyServiceName + " SeChangeNotifyPrivilege");
+        Run(SystemExe("sc.exe"), "sidtype " + ProxyServiceName + " unrestricted");
+        Run(SystemExe("sc.exe"), "failure " + ProxyServiceName + " reset= 86400 actions= restart/10000/restart/30000/restart/60000");
     }
     internal static string Secret() { var bytes = new byte[32]; using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(bytes); return Convert.ToBase64String(bytes); }
     internal static void GuardPath(string path) {
@@ -135,13 +159,73 @@ static class Program {
         Directory.SetAccessControl(path, security);
     }
     internal static Dictionary<string, object> ReadConfiguration() {
-        return Json.Deserialize<Dictionary<string, object>>(Utf8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(ConfigFile), null, DataProtectionScope.LocalMachine)));
+        GuardTrustedStorage();
+        return Json.Deserialize<Dictionary<string, object>>(Utf8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(IsAdmin ? ConfigFile : ServiceConfigFile), null, DataProtectionScope.LocalMachine)));
     }
     internal static void SaveConfiguration(Dictionary<string, object> c) {
-        GuardPath(ConfigFile);
+        WriteConfiguration(c, ConfigFile, false);
+        var service = new Dictionary<string,object>(c);
+        service.Remove("migration_uri");
+        if (File.Exists(Path.Combine(Root,"runtime","provisioned"))) service.Remove("db_admin_password");
+        WriteConfiguration(service, ServiceConfigFile, true);
+    }
+    internal static void WriteConfiguration(Dictionary<string, object> c, string path, bool serviceRead) {
+        GuardPath(path);
         byte[] encrypted = ProtectedData.Protect(Utf8.GetBytes(Json.Serialize(c)), null, DataProtectionScope.LocalMachine);
-        var temporary = ConfigFile + ".new"; GuardPath(temporary); File.WriteAllBytes(temporary, encrypted);
-        if (File.Exists(ConfigFile)) File.Replace(temporary, ConfigFile, null); else File.Move(temporary, ConfigFile);
+        var temporary = path + ".new"; GuardPath(temporary); File.WriteAllBytes(temporary,new byte[0]);
+        var acl = new FileSecurity(); acl.SetAccessRuleProtection(true,false);
+        foreach (var sid in new[] { WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.LocalSystemSid })
+            acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid,null),FileSystemRights.FullControl,AccessControlType.Allow));
+        if (serviceRead) acl.AddAccessRule(new FileSystemAccessRule(new NTAccount("NT SERVICE",ServiceName),FileSystemRights.Read,AccessControlType.Allow));
+        acl.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null));
+        File.SetAccessControl(temporary,acl); File.WriteAllBytes(temporary,encrypted);
+        if (File.Exists(path)) File.Replace(temporary,path,null); else File.Move(temporary,path);
+        File.SetAccessControl(path,acl);
+    }
+    internal static void GuardTrustedStorage() {
+        GuardPath(Root);
+        foreach (var path in new[] {Root,Path.Combine(Root,"private")}) {
+            if (!Directory.Exists(path)) continue;
+            var owner = (SecurityIdentifier)Directory.GetAccessControl(path).GetOwner(typeof(SecurityIdentifier));
+            if (!owner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid) && !owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
+                throw new Exception("Le dossier existant n'appartient pas aux administrateurs Windows : reprise automatique refusée. Conservez-le et faites vérifier ses droits.");
+            foreach (FileSystemAccessRule rule in Directory.GetAccessControl(path).GetAccessRules(true,true,typeof(SecurityIdentifier))) {
+                if (rule.AccessControlType != AccessControlType.Allow || (rule.FileSystemRights & (FileSystemRights.Write | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership | FileSystemRights.Delete)) == 0) continue;
+                var sid = (SecurityIdentifier)rule.IdentityReference;
+                if (!sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid) && !sid.IsWellKnown(WellKnownSidType.LocalSystemSid))
+                    throw new Exception("Le stockage existant est modifiable par un compte non autorisé. Faites vérifier ses droits avant de reprendre l'installation.");
+            }
+        }
+    }
+    internal static void SecureProxyDirectory(string path) {
+        GuardPath(path); Directory.CreateDirectory(path);
+        var acl = new DirectorySecurity(); acl.SetAccessRuleProtection(true,false);
+        var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        foreach (var sid in new[] { WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.LocalSystemSid })
+            acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid,null),FileSystemRights.FullControl,inherit,PropagationFlags.None,AccessControlType.Allow));
+        acl.AddAccessRule(new FileSystemAccessRule(new NTAccount("NT SERVICE",ProxyServiceName),FileSystemRights.Modify,inherit,PropagationFlags.None,AccessControlType.Allow));
+        acl.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null)); Directory.SetAccessControl(path,acl);
+    }
+    internal static void PrepareProxy(Dictionary<string,object> c) {
+        var proxyRoot = Path.Combine(Root,"https"); SecureProxyDirectory(proxyRoot);
+        var legacy = Path.Combine(Root,"runtime","tls"); var storage = Path.Combine(proxyRoot,"tls");
+        if (Directory.Exists(legacy) && !Directory.Exists(storage)) {
+            GuardPath(legacy); Directory.Move(legacy,storage);
+            SecureProxyDirectory(storage);
+            foreach (var dir in Directory.GetDirectories(storage,"*",SearchOption.AllDirectories)) SecureProxyDirectory(dir);
+            foreach (var file in Directory.GetFiles(storage,"*",SearchOption.AllDirectories)) {
+                GuardPath(file);
+                var acl = new FileSecurity(); acl.SetAccessRuleProtection(false,false);
+                acl.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null)); File.SetAccessControl(file,acl);
+            }
+        }
+        var psi = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"),"-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " --prepare-proxy") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true };
+        using (var process = Process.Start(psi)) {
+            var bytes = Utf8.GetBytes(Json.Serialize(c)); process.StandardInput.BaseStream.Write(bytes,0,bytes.Length); process.StandardInput.Close();
+            if (!process.WaitForExit(30000)) { process.Kill(); throw new Exception("Configuration HTTPS trop longue."); }
+            if (process.ExitCode != 0) throw new Exception("Configuration HTTPS impossible.");
+        }
+        Run(SystemExe("sc.exe"), "config " + ProxyServiceName + " start= auto");
     }
     internal static int FreePort(int start) {
         for (int port = start; port < start + 100; port++) try { var l = new TcpListener(IPAddress.Loopback, port); l.Start(); l.Stop(); return port; } catch (SocketException) {}
@@ -187,6 +271,7 @@ static class Program {
     }
     internal static void InstallConfiguration(Dictionary<string, object> c, Action<string> progress) {
         if (File.Exists(ConfigFile)) throw new Exception("Une configuration existe déjà. Relancez l'assistant pour la reprendre.");
+        GuardTrustedStorage();
         progress("Préparation du service et protection des dossiers…");
         GuardPath(Root); RegisterService();
         SecureDirectory(Root, true, false);
@@ -207,12 +292,14 @@ static class Program {
         FinishInstallation(c);
     }
     internal static void FinishInstallation(Dictionary<string, object> c) {
+        GuardTrustedStorage(); StopService(); RegisterService();
+        bool bootstrap = c.ContainsKey("admin_password");
+        string sourceUri = c.ContainsKey("migration_uri") ? Convert.ToString(c["migration_uri"]) : "";
         bool activating = c.ContainsKey("migration_source") && !string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))
             && (!c.ContainsKey("migration_done") || !Convert.ToBoolean(c["migration_done"])
                 || (c.ContainsKey("migration_pending_activation") && Convert.ToBoolean(c["migration_pending_activation"])));
         try {
-        if (activating) {
-            StopService();
+        if (activating || bootstrap) {
             File.WriteAllText(Path.Combine(Root,"private","activation.pending"),"1",Utf8);
         }
         if (c.ContainsKey("migration_source") && !string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))
@@ -229,7 +316,10 @@ static class Program {
         var ready = Path.Combine(Root, "runtime", "ready");
         for (int i = 0; i < 480; i++) { if (File.Exists(ready)) break; Thread.Sleep(500); if (i == 479) throw new Exception("Le service n'est pas prêt. Le diagnostic est dans " + Path.Combine(Root, "logs") + "."); }
         if ((bool)c["network"]) {
-            var certPath = Path.Combine(Root, "runtime", "tls", "pki", "authorities", "local", "root.crt");
+            PrepareProxy(c);
+            using (var proxy = new ServiceController(ProxyServiceName)) { proxy.Start(); proxy.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(30)); }
+            var certPath = Path.Combine(Root, "https", "tls", "pki", "authorities", "local", "root.crt");
+            for (int i=0; !File.Exists(certPath); i++) { if (i>=120) throw new Exception("Le certificat HTTPS n'est pas prêt."); Thread.Sleep(500); }
             var pem = File.ReadAllText(certPath).Replace("-----BEGIN CERTIFICATE-----", "").Replace("-----END CERTIFICATE-----", "");
             var certificate = new X509Certificate2(Convert.FromBase64String(pem));
             using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine)) { store.Open(OpenFlags.ReadWrite); store.Add(certificate); }
@@ -240,12 +330,26 @@ static class Program {
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
             Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=LocalSubnet profile=private,domain program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
         }
+        c.Remove("admin_password"); SaveConfiguration(c); WriteReport(c);
+        // Le premier démarrage provisionne PostgreSQL et le compte direction.
+        // Redémarre sans ces secrets avant d'ouvrir l'application aux utilisateurs.
+        if (bootstrap) {
+            StopService(); StartService();
+            if ((bool)c["network"]) using (var proxy = new ServiceController(ProxyServiceName)) proxy.Start();
+        }
+        for (int i=0; i<120; i++) {
+            try {
+                var check = (HttpWebRequest)WebRequest.Create(Convert.ToString(c["url"]) + "/healthz"); check.Proxy=null; check.Timeout=2000;
+                using (var response = (HttpWebResponse)check.GetResponse()) { if (response.StatusCode == HttpStatusCode.OK) break; }
+            } catch (WebException) { if (i==119) throw new Exception("L'application ne répond pas après sa préparation."); }
+            Thread.Sleep(500);
+        }
         if (activating) {
             var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
-            if (oldName.Length > 0) Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled");
-            c.Remove("migration_pending_activation"); c.Remove("migration_restart_old");
+            if (oldName.Length > 0) { Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled"); c["migration_old_disabled"] = true; }
+            c.Remove("migration_pending_activation");
         }
-        c.Remove("admin_password"); c.Remove("migration_uri"); SaveConfiguration(c); WriteReport(c);
+        c.Remove("migration_uri"); SaveConfiguration(c);
         File.Delete(Path.Combine(Root,"private","activation.pending"));
         } catch {
             if (activating) {
@@ -254,9 +358,14 @@ static class Program {
                 // reprendre l'ancienne instance et on exigera une nouvelle copie.
                 StopService();
                 c["migration_done"] = false; c.Remove("migration_pending_activation");
+                c["migration_uri"] = sourceUri;
                 File.Delete(Path.Combine(Root,"runtime","reprise","complete.json"));
                 SaveConfiguration(c);
                 var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+                if (oldName.Length > 0 && c.ContainsKey("migration_old_disabled") && Convert.ToBoolean(c["migration_old_disabled"])) {
+                    Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= " + (c.ContainsKey("migration_old_start") && Convert.ToInt32(c["migration_old_start"]) == 2 ? "auto" : "demand"));
+                    c.Remove("migration_old_disabled"); SaveConfiguration(c);
+                }
                 if (oldName.Length > 0 && c.ContainsKey("migration_restart_old") && Convert.ToBoolean(c["migration_restart_old"]))
                     using (var old = new ServiceController(oldName)) { if (old.Status == ServiceControllerStatus.Stopped) old.Start(); }
             }
@@ -272,6 +381,7 @@ static class Program {
             if (oldName.Length > 0) using (var old = new ServiceController(oldName)) {
                 wasRunning = old.Status == ServiceControllerStatus.Running;
                 c["migration_restart_old"] = wasRunning;
+                c["migration_old_start"] = Microsoft.Win32.Registry.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\" + oldName,"Start",3);
                 if (old.Status != ServiceControllerStatus.Stopped) { old.Stop(); old.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100)); }
             }
             var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " --migrate") {
@@ -344,6 +454,37 @@ static class Program {
         if (!Uri.TryCreate(url, UriKind.Absolute, out address) || (address.Scheme != "http" && address.Scheme != "https")) throw new Exception("Adresse locale invalide.");
         Process.Start(new ProcessStartInfo(url + "/admin/instance") { UseShellExecute = true });
     }
+}
+
+// Identité distincte : le processus web ne peut ni lire ni modifier la clé CA.
+sealed class ProxyService : ServiceBase {
+    Process proxy;
+    StreamWriter log;
+    IntPtr job;
+    volatile bool stopping;
+    internal ProxyService() { ServiceName=Program.ProxyServiceName; CanStop=true; CanShutdown=true; AutoLog=true; }
+    protected override void OnStart(string[] args) {
+        var root = Path.Combine(Program.Root,"https");
+        log = new StreamWriter(Path.Combine(root,"proxy.log"),true,Program.Utf8) {AutoFlush=true};
+        var psi = new ProcessStartInfo(Path.Combine(Program.Install,"caddy","caddy.exe"),
+            "run --config " + Program.Quote(Path.Combine(root,"Caddyfile")) + " --adapter caddyfile") {
+            UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=root
+        };
+        proxy = new Process {StartInfo=psi,EnableRaisingEvents=true};
+        proxy.OutputDataReceived += delegate(object sender,DataReceivedEventArgs e) { if(e.Data!=null) lock(log) log.WriteLine(e.Data); };
+        proxy.ErrorDataReceived += delegate(object sender,DataReceivedEventArgs e) { if(e.Data!=null) lock(log) log.WriteLine(e.Data); };
+        proxy.Exited += delegate { if(!stopping) Environment.Exit(1); };
+        job=Job.Create(); proxy.Start();
+        if(!Job.AssignProcessToJobObject(job,proxy.Handle)) { proxy.Kill(); throw new Exception("Protection du service HTTPS impossible."); }
+        proxy.BeginOutputReadLine(); proxy.BeginErrorReadLine();
+    }
+    protected override void OnStop() {
+        stopping=true;
+        if(proxy!=null && !proxy.HasExited) { proxy.Kill(); proxy.WaitForExit(10000); }
+        if(job!=IntPtr.Zero) { Job.CloseHandle(job); job=IntPtr.Zero; }
+        if(log!=null) log.Dispose();
+    }
+    protected override void OnShutdown() { OnStop(); }
 }
 
 sealed class CentreService : ServiceBase {

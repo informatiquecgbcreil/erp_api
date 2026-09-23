@@ -541,9 +541,10 @@ def test_historical_requires_import_permission(app):
         db.session.add(user)
         db.session.commit()
         uid = user.id
+        session_id = user.get_id()
     client = app.test_client()
     with client.session_transaction() as session:
-        session["_user_id"] = str(uid)
+        session["_user_id"] = session_id
         session["_fresh"] = True
     try:
         assert client.get("/admin/import-historical").status_code == 403

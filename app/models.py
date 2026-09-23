@@ -6,6 +6,20 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
 
 # ---------- USERS ----------
+class FinancialSequence(db.Model):
+    __tablename__ = "financial_sequence"
+    namespace = db.Column(db.String(60), primary_key=True)
+    value = db.Column(db.Integer, nullable=False)
+
+
+class PendingFileDeletion(db.Model):
+    """Fichiers métier à retirer après validation de la transaction SQL."""
+    __tablename__ = "pending_file_deletion"
+    id = db.Column(db.Integer, primary_key=True)
+    file_path = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(180), unique=True, nullable=False, index=True)
@@ -37,7 +51,8 @@ class User(db.Model):
         return False
 
     def get_id(self):
-        return str(self.id)
+        import hashlib
+        return f"{self.id}." + hashlib.sha256(self.password_hash.encode()).hexdigest()[:24]
 
     def set_password(self, password: str):
         self.password_hash = generate_password_hash(password)

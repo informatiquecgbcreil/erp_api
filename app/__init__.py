@@ -57,6 +57,13 @@ class _SessionKiosqueHttp(SecureCookieSessionInterface):
     l'administration garde un cookie sécurisé.
     """
 
+    def get_cookie_name(self, app):
+        from flask import has_request_context, request
+        name = super().get_cookie_name(app)
+        if has_request_context() and request.path.startswith("/kiosk"):
+            return name + "_kiosk"
+        return name
+
     def get_cookie_secure(self, app):
         securise = super().get_cookie_secure(app)
         if securise:
@@ -77,7 +84,10 @@ def create_app():
 
     _configure_error_logging(app)
 
-    default_secret = app.config.get("SECRET_KEY") == DEFAULT_SECRET_KEY
+    default_secret = app.config.get("SECRET_KEY") in {
+        DEFAULT_SECRET_KEY, "change-me-local-dev", "remplacer-par-une-cle-tres-longue-et-aleatoire",
+        "une-cle-longue-aleatoire",
+    }
     is_prod_env = app.config.get("ERP_ENV") == "production"
 
     if is_prod_env and (default_secret or not app.config.get("SECRET_KEY") or len(app.config["SECRET_KEY"]) < 32):
@@ -143,7 +153,13 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(User, int(user_id))
+        import hmac
+        try:
+            identifiant, _ = user_id.split(".", 1)
+            user = db.session.get(User, int(identifiant))
+        except (ValueError, AttributeError, TypeError):
+            return None
+        return user if user and user.is_active and hmac.compare_digest(user.get_id(), user_id) else None
 
     # ------------------------------------------------------------------
     # Blueprints
@@ -406,7 +422,8 @@ def create_app():
 
         if not purge_auto_active():
             return None
-        aujourd_hui = _date.today()
+        from app.utils.dates import utcnow
+        aujourd_hui = utcnow().date()
         if _purge_marqueur["jour"] == aujourd_hui:
             return None
         _purge_marqueur["jour"] = aujourd_hui
@@ -430,7 +447,8 @@ def create_app():
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
             return None
 
-        aujourd_hui = _date.today()
+        from app.utils.dates import utcnow
+        aujourd_hui = utcnow().date()
         if _digest_marqueur["jour"] == aujourd_hui:
             return None
         _digest_marqueur["jour"] = aujourd_hui

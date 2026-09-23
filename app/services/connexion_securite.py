@@ -27,13 +27,15 @@ FENETRE_MINUTES = int(os.environ.get("LOGIN_FENETRE_MINUTES", "15"))
 RETENTION_JOURS = int(os.environ.get("LOGIN_JOURNAL_RETENTION_JOURS", "365"))
 
 
-def _echecs_recents(email: str) -> list[JournalConnexion]:
+def _echecs_recents(email: str, adresse_ip: str | None = None) -> list[JournalConnexion]:
     """Échecs dans la fenêtre courante, postérieurs au dernier succès."""
     depuis = utcnow() - timedelta(minutes=FENETRE_MINUTES)
     q = JournalConnexion.query.filter(
         JournalConnexion.email == email,
         JournalConnexion.cree_le >= depuis,
     )
+    if adresse_ip is not None:
+        q = q.filter(JournalConnexion.adresse_ip == adresse_ip)
     dernier_succes = (
         q.filter(JournalConnexion.succes.is_(True))
         .order_by(JournalConnexion.cree_le.desc())
@@ -45,10 +47,10 @@ def _echecs_recents(email: str) -> list[JournalConnexion]:
     return echecs.order_by(JournalConnexion.cree_le.desc()).all()
 
 
-def minutes_avant_deverrouillage(email: str) -> int:
+def minutes_avant_deverrouillage(email: str, adresse_ip: str | None = None) -> int:
     """0 si la connexion est autorisée, sinon minutes d'attente restantes."""
     try:
-        echecs = _echecs_recents(email)
+        echecs = _echecs_recents(email, adresse_ip)
     except SQLAlchemyError:
         # Journal indisponible (droits PostgreSQL manquants, base en erreur...) :
         # on n'empêche pas la connexion — le mot de passe reste vérifié. Le verrou
@@ -84,7 +86,7 @@ def enregistrer_echec(email: str, adresse_ip: str | None) -> int:
             exc_info=True,
         )
         return 0
-    return minutes_avant_deverrouillage(email)
+    return minutes_avant_deverrouillage(email, adresse_ip)
 
 
 def enregistrer_succes(email: str, adresse_ip: str | None) -> None:

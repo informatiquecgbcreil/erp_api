@@ -12,6 +12,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.extensions import db
+from app.rbac import can
 from app.models import (
     CONDITIONS_MAJORATION,
     CONDITIONS_MAJORATION_LABELS,
@@ -644,6 +645,9 @@ def reservation_reglements(reservation_id: int):
 @require_perm("locations:edit")
 def reservation_supprimer(reservation_id: int):
     reservation = Reservation.query.get_or_404(reservation_id)
+    if reservation.facture_numero:
+        flash("Cette réservation est facturée : conservez-la au registre et utilisez l'annulation.", "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
     reference = reservation.reference
     db.session.delete(reservation)
     if commit_delete("cette réservation", f"Réservation {reference} supprimée, dates comprises."):
@@ -686,22 +690,17 @@ def _numero_facture(jour: date) -> str:
     réutiliser un numéro est bien pire qu'en sauter un.
     """
     prefixe = f"FAC-{jour.year}-"
-    derniere = (
-        Reservation.query
+    existing = (
+        db.session.query(Reservation.facture_numero)
         .filter(Reservation.facture_numero.like(prefixe + "%"))
-        .order_by(Reservation.facture_numero.desc())
-        .first()
+        .all()
     )
-    numero = 0
-    if derniere is not None and derniere.facture_numero:
-        try:
-            numero = int(derniere.facture_numero.rsplit("-", 1)[1])
-        except (IndexError, ValueError):
-            numero = 0
-    return f"{prefixe}{numero + 1:04d}"
+    from app.services.financial_sequence import next_number
+    numero = next_number(f"facture:{jour.year}", [r[0] for r in existing])
+    return f"{prefixe}{numero:04d}"
 
 
-@bp.route("/reservation/<int:reservation_id>/document/<genre>")
+@bp.route("/reservation/<int:reservation_id>/document/<genre>", methods=["GET", "POST"])
 @login_required
 @require_perm("locations:view")
 def reservation_document(reservation_id: int, genre: str):
@@ -719,7 +718,9 @@ def reservation_document(reservation_id: int, genre: str):
 
     if genre not in DOCUMENTS:
         abort(404)
-    reservation = Reservation.query.get_or_404(reservation_id)
+    if request.method == "POST" and not can("locations:edit"):
+        abort(403)
+    reservation = Reservation.query.filter_by(id=reservation_id).with_for_update().first_or_404()
     libelle, exige_confirmation = DOCUMENTS[genre]
 
     if exige_confirmation:
@@ -736,7 +737,8 @@ def reservation_document(reservation_id: int, genre: str):
 
     if genre == "contrat":
         document = docs.contrat(reservation, structure)
-        reservation.contrat_edite_le = aujourdhui
+        if request.method == "POST":
+            reservation.contrat_edite_le = aujourdhui
         suffixe = reservation.type_document
     elif genre == "etat_lieux_entree":
         document = docs.etat_des_lieux(reservation, sortie=False)
@@ -752,6 +754,9 @@ def reservation_document(reservation_id: int, genre: str):
             flash("Une mise à disposition gratuite ne se facture pas.", "warning")
             return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
         if not reservation.facture_numero:
+            if request.method != "POST":
+                flash("Utilisez le bouton Émettre la facture pour lui attribuer son numéro.", "info")
+                return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
             reservation.facture_numero = _numero_facture(aujourdhui)
             reservation.facture_emise_le = aujourdhui
         document = docs.facture(reservation, reservation.facture_numero, structure)

@@ -189,10 +189,11 @@ def write_caddy(c, root):
     import re
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}", hostname):
         raise ValueError("Nom de serveur invalide.")
-    storage = json.dumps(str(root / "runtime/tls").replace("\\", "/"), ensure_ascii=False)
+    storage = json.dumps(str(root / "https/tls").replace("\\", "/"), ensure_ascii=False)
     kiosk_port = int(c["kiosk_http_port"])
     web_port = int(c["web_port"])
-    target = root / "runtime/Caddyfile"
+    target = root / "https/Caddyfile"
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         "{\n admin off\n auto_https disable_redirects\n skip_install_trust\n persist_config off\n"
         f" storage file_system {storage}\n}}\n"
@@ -240,49 +241,6 @@ def supervise(c):
                 time.sleep(0.5)
             else:
                 raise RuntimeError("Le démarrage de l'application a dépassé le délai de 3 minutes.")
-            if c["network"]:
-                config = write_caddy(c, root)
-                proxy = subprocess.Popen([str(INSTALL / "caddy/caddy.exe"), "run", "--config", str(config), "--adapter", "caddyfile"],
-                                         stdout=log, stderr=log, creationflags=CREATE_NO_WINDOW)
-                children.append(proxy)
-                certificate = state / "tls/pki/authorities/local/root.crt"
-                for _ in range(60):
-                    if proxy.poll() is not None:
-                        raise RuntimeError("Le serveur HTTPS n'a pas démarré.")
-                    if certificate.exists():
-                        break
-                    time.sleep(0.5)
-                else:
-                    raise RuntimeError("Le certificat du centre n'a pas pu être créé.")
-                import socket
-                import ssl
-                tls_context = ssl.create_default_context(cafile=str(certificate))
-                for _ in range(60):
-                    try:
-                        with socket.create_connection(("127.0.0.1", int(c["https_port"])), timeout=2) as connection:
-                            with tls_context.wrap_socket(connection, server_hostname=c["hostname"]):
-                                break
-                    except OSError:
-                        if proxy.poll() is not None:
-                            raise RuntimeError("Le serveur HTTPS s'est arrêté.")
-                        time.sleep(0.5)
-                else:
-                    raise RuntimeError("La connexion HTTPS n'a pas pu être vérifiée.")
-                # Le second point d'entrée est volontairement HTTP et limité
-                # par Caddy aux routes kiosque/static/branding/healthz. Cela
-                # permet à un téléphone ou une tablette de fonctionner sans
-                # installer l'autorité de certification privée de l'ERP.
-                for _ in range(60):
-                    try:
-                        with urlopen(f"http://127.0.0.1:{int(c['kiosk_http_port'])}/healthz", timeout=2) as response:
-                            if response.status == 200:
-                                break
-                    except OSError:
-                        if proxy.poll() is not None:
-                            raise RuntimeError("Le point d'accès kiosque n'a pas démarré.")
-                        time.sleep(0.5)
-                else:
-                    raise RuntimeError("La connexion kiosque locale n'a pas pu être vérifiée.")
             (state / "ready").write_text("1", encoding="ascii")
             last_backup_day = ""
             while not (state / "stop").exists():
@@ -348,9 +306,9 @@ def migrate_installation(c):
 
 
 if __name__ == "__main__":
-    config = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    config = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     try:
-        {"--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation}[sys.argv[1]](config)
+        {"--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation, "--prepare-proxy": lambda c: write_caddy(c, Path(c["data_root"]))}[sys.argv[1]](config)
     except Exception as exc:
         # Le fichier de log est protégé par les ACL, mais ne conserve pas les secrets.
         if sys.argv[1] == "--migrate":

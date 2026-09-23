@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 def test_minutes_resilient_si_journal_inaccessible(app, monkeypatch):
     from app.services import connexion_securite as cs
 
-    def boom(email):
+    def boom(email, adresse_ip=None):
         raise SQLAlchemyError("droit refusé pour la table journal_connexion (simulé)")
 
     monkeypatch.setattr(cs, "_echecs_recents", boom)

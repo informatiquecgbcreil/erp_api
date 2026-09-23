@@ -15,6 +15,8 @@ from app.services.instance_settings import resolve_mail_settings, resolve_public
 bp = Blueprint("auth", __name__)
 
 PASSWORD_RESET_SALT = "password-reset"
+from werkzeug.security import generate_password_hash, check_password_hash
+_UNKNOWN_PASSWORD_HASH = generate_password_hash("compte-absent-non-utilisable")
 
 
 def _reset_serializer() -> URLSafeTimedSerializer:
@@ -157,11 +159,11 @@ def login():
         password = request.form.get("password") or ""
         adresse_ip = request.remote_addr
 
-        minutes = minutes_avant_deverrouillage(email)
+        minutes = minutes_avant_deverrouillage(email, adresse_ip)
         if minutes > 0:
             flash(
                 "Trop de tentatives échouées. Par sécurité, la connexion est "
-                f"bloquée pour ce compte : réessayez dans {minutes} minute(s).",
+                f"bloquée depuis cette adresse : réessayez dans {minutes} minute(s).",
                 "danger",
             )
             current_app.logger.warning(
@@ -170,7 +172,8 @@ def login():
             return render_template("login.html")
 
         u = User.query.filter_by(email=email).first()
-        if not u or not u.check_password(password):
+        valid = u.check_password(password) if u else check_password_hash(_UNKNOWN_PASSWORD_HASH, password)
+        if not u or not valid:
             minutes = enregistrer_echec(email, adresse_ip)
             if minutes > 0:
                 current_app.logger.warning(

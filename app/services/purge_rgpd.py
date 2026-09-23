@@ -179,8 +179,9 @@ def participants_inactifs(annees: int | None = None) -> list[dict]:
 
 def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
     """Efface les données identifiantes en conservant l'exploitabilité statistique."""
-    from app.services.insertion import sync_legacy_insertion_fields
     from app.ateliers.historical_privacy import redact_sources
+    from app import models as m
+    from app.services.file_cleanup import schedule
 
     redact_sources(p.id)
 
@@ -190,6 +191,16 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
     p.ville = None
     p.email = None
     p.telephone = None
+    p.annee_naissance = p.annee_naissance or (p.date_naissance.year if p.date_naissance else None)
+    p.date_naissance = None
+    p.portail_code = None
+    for field in ("latitude", "longitude", "geocode_precision", "geocode_score", "geocoded_at", "geocode_query"):
+        setattr(p, field, None)
+    if p.foyer_id:
+        foyer = db.session.get(m.Foyer, p.foyer_id)
+        if foyer and not m.Participant.query.filter(m.Participant.foyer_id == p.foyer_id, m.Participant.id != p.id).first():
+            foyer.nom = f"Foyer anonymisé #{foyer.id}"
+        p.foyer_id = None
     p.pays_origine = None
     p.titre_sejour_type = None
     p.diplome_obtenu = None
@@ -217,6 +228,9 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
         bulletin.date_naissance = None
         bulletin.commentaire = None
         bulletin.reglement_commentaire = None
+        bulletin.ateliers_libre = None
+        bulletin.benevolat_mission = None
+        bulletin.foyer_id = None
 
     # Les membres du foyer déclarés sur un bulletin portent eux aussi une
     # identité. Deux cas, et deux seulement :
@@ -234,7 +248,44 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
         membre.date_naissance = None
         membre.lien_filiation = None
 
-    sync_legacy_insertion_fields(p, actor_id=actor_id)
+    # Conservation des compteurs et montants ; retrait des textes libres et
+    # des identifiants qui permettraient de retrouver la personne.
+    fields = {
+        m.ParticipantInsertionProfile: ("pays_origine", "cir_obtenu"),
+        m.ParticipantInsertionParcours: ("titre_sejour_type_id", "date_debut_titre_sejour", "date_expiration_titre_sejour"),
+        m.ParticipantInsertionPositionnement: ("commentaire",),
+        m.ParticipantInsertionCertification: ("commentaire",),
+        m.HartEvaluation: ("temoignage", "remarque_pro"),
+        m.BenevoleHeures: ("mission", "commentaire"),
+        m.Evaluation: ("commentaire",), m.ObjectifSuivi: ("commentaire",),
+        m.InscriptionActivite: ("commentaire",),
+        m.PresenceActivite: ("motif_autre", "signature_token"),
+        m.OrientationAccesDroit: ("note", "demandeur_libre", "ville", "quartier_id"),
+        m.PortailAttempt: ("external_id",), m.DefiTransition: ("commentaire",),
+    }
+    for model, names in fields.items():
+        for row in model.query.filter_by(participant_id=p.id).all():
+            for name in names:
+                setattr(row, name, None)
+            if isinstance(row, m.OrientationAccesDroit):
+                row.demande = "Donnée effacée"
+            elif isinstance(row, m.DefiTransition):
+                row.titre = "Défi anonymisé"
+    for row in m.RepartitionArreteeLigne.query.filter_by(participant_id=p.id).all():
+        row.participant_nom = f"ANONYME P{p.id}"
+    for row in m.PasseportNote.query.filter_by(participant_id=p.id).all():
+        row.contenu = "Donnée effacée"
+    for row in m.PasseportPieceJointe.query.filter_by(participant_id=p.id).all():
+        schedule(row.file_path)
+        db.session.delete(row)
+    for row in m.PresenceActivite.query.filter_by(participant_id=p.id).all():
+        schedule(row.signature_path)
+        row.signature_path = None
+    for group in m.QuestionnaireResponseGroup.query.filter_by(participant_id=p.id).all():
+        for response in m.QuestionResponse.query.filter_by(response_group_id=group.id).all():
+            # Les réponses numériques restent exploitables pour les bilans.
+            response.value_text = None
+            response.value_json = None
 
 
 def derniere_purge() -> datetime | None:
@@ -272,6 +323,8 @@ def purger_participants_inactifs(annees: int | None = None, declenchement: str =
 def purge_quotidienne_si_necessaire() -> None:
     """Lance la purge au plus une fois par jour. Ne doit jamais casser une requête."""
     try:
+        from app.services.file_cleanup import drain
+        drain()
         derniere = derniere_purge()
         if derniere is None:
             # Première activation: on s'arme sans rien effacer, pour laisser

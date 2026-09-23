@@ -124,11 +124,7 @@ def _pg_dump(db_uri: str, cible: Path) -> None:
             f"Impossible d'exécuter pg_dump ({exe}). Vérifiez l'installation de PostgreSQL."
         ) from exc
     if proc.returncode != 0:
-        detail = (proc.stderr or b"").decode("utf-8", "replace").strip()
-        message = "La sauvegarde PostgreSQL (pg_dump) a échoué."
-        if detail:
-            message += f" Détail : {detail}"
-        raise RuntimeError(message)
+        raise RuntimeError("La sauvegarde PostgreSQL (pg_dump) a échoué. Vérifiez les droits et l'espace disponible.")
 
 
 def _zip_dossier(dossier: Path | None, zip_path: Path) -> None:
@@ -241,17 +237,22 @@ def verifier_integrite(base: str, dossier: Path | None = None):
     if not sidecar.exists():
         return None
     try:
+        checked = set()
         for ligne in sidecar.read_text(encoding="utf-8").splitlines():
             ligne = ligne.strip()
             if not ligne:
                 continue
             attendu, _, nom = ligne.partition("  ")
-            cible = out_dir / nom.strip()
+            nom = nom.strip()
+            if nom not in {f"{base}.sql", f"{base}.db", f"{base}_uploads.zip"} or nom in checked or not re.fullmatch(r"[a-fA-F0-9]{64}", attendu):
+                return False
+            checked.add(nom)
+            cible = out_dir / nom
             if not cible.exists() or _sha256(cible) != attendu.strip():
                 return False
     except OSError:
         return False
-    return True
+    return len(checked) == 2 and f"{base}_uploads.zip" in checked
 
 
 def _lots_du_dossier(dossier: Path) -> list[dict]:

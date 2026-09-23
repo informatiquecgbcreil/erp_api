@@ -146,15 +146,29 @@
       sur le serveur, en Word sinon — qui reste modifiable avant signature.
     </p>
     <div class="inline" style="gap:8px; flex-wrap:wrap;">
+      {% if can('locations:edit') %}
+      <form method="post" action="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='contrat') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn ok" type="submit">Éditer le contrat / la convention</button>
+      </form>
+      {% else %}
       <a class="btn ok" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='contrat') }}">
         📄 {{ 'Convention de mise à disposition' if r.gratuite else 'Contrat de mise à disposition' }}</a>
+      {% endif %}
       <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='etat_lieux_entree') }}">
         📋 État des lieux — entrée</a>
       <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='etat_lieux_sortie') }}">
         📋 État des lieux — sortie</a>
       {% if not r.gratuite %}
+        {% if not r.facture_numero and can('locations:edit') %}
+        <form method="post" action="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='facture') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn" type="submit">Émettre la facture</button>
+        </form>
+        {% elif r.facture_numero %}
         <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='facture') }}">
           🧾 Facture{% if r.facture_numero %} ({{ r.facture_numero }}){% endif %}</a>
+        {% endif %}
       {% endif %}
       <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='attestation') }}">
         ✅ Attestation d'occupation</a>

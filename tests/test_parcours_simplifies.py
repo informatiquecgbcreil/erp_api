@@ -180,7 +180,7 @@ def test_messages_du_kiosque_affiches_en_http(app, monkeypatch):
     client = app.test_client()
     r = client.post("/kiosk/", data={"pin": "0000"}, base_url="http://192.168.1.20:8080")
     cookie = r.headers.get("Set-Cookie", "")
-    assert "session=" in cookie and "Secure" not in cookie
+    assert "session_kiosk=" in cookie and "Secure" not in cookie
     page = client.get("/kiosk/", base_url="http://192.168.1.20:8080").get_data(as_text=True)
     assert "Code invalide" in page
     # En HTTPS (administration), le cookie reste sécurisé.

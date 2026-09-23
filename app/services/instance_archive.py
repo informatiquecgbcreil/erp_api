@@ -19,7 +19,7 @@ MANIFEST = "mcs-backup.json"
 MAX_FILES = 200_000
 MAX_BYTES = 100 * 1024**3
 PATH_COLUMNS = {"signature_path", "file_path", "docx_path", "pdf_path",
-                "corrected_docx_path", "corrected_pdf_path"}
+                "corrected_docx_path", "corrected_pdf_path", "modele_docx_collectif", "modele_docx_individuel"}
 
 
 def digest(path):
@@ -74,9 +74,10 @@ def validate_members(archive):
     names, size = set(), 0
     for member in archive.infolist():
         name = member.filename
-        parts = PurePosixPath(name).parts
+        parts = name.rstrip("/").split("/")
+        reserved = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1,10)), *(f"LPT{i}" for i in range(1,10))}
         if (not parts or name.startswith("/") or "\\" in name or ":" in name
-                or any(p in {".", ".."} or p.endswith((".", " ")) for p in parts)
+                or any(p in {"", ".", ".."} or p.endswith((".", " ")) or p.split(".")[0].upper() in reserved for p in parts)
                 or any(ord(c) < 32 for c in name)
                 or stat.S_ISLNK(member.external_attr >> 16)):
             raise RuntimeError("Archive refusée : chemin de fichier dangereux.")
@@ -109,6 +110,8 @@ def stage_archive(source, staging):
             if member.filename == MANIFEST or member.is_dir():
                 continue
             target = staging / (member.filename if manifest else "uploads/" + member.filename)
+            if not target.resolve().is_relative_to(staging.resolve()):
+                raise RuntimeError("Dossier de décompression contenant un lien interdit.")
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(member) as src, target.open("wb") as out:
                 shutil.copyfileobj(src, out)

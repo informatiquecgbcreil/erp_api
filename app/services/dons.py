@@ -12,8 +12,10 @@ from app.models import Don
 
 def prochain_numero(annee: int) -> str:
     """Numéro d'ordre suivant pour l'année (séquence continue, annulés inclus)."""
-    nb = db.session.query(db.func.count(Don.id)).filter(Don.annee == annee).scalar() or 0
-    return f"{annee}-{nb + 1:04d}"
+    from app.services.financial_sequence import next_number
+    existing = db.session.query(Don.numero).filter(Don.annee == annee).all()
+    number = next_number(f"don:{annee}", [r[0] for r in existing])
+    return f"{annee}-{number:04d}"
 
 
 _UNITES = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",

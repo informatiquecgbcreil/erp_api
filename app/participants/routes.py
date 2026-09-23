@@ -1462,14 +1462,14 @@ def delete_participant(participant_id: int):
     etiquette = f"{p.nom} {p.prenom} (#{p.id})"
 
     supprimer_definitivement(p)
+    from app.services.audit import enregistrer
+    enregistrer("participant.delete", cible=f"participant #{p.id}", details=trace)
     ok = commit_delete(
         f"le participant « {etiquette} »",
         "Fiche supprimée définitivement, avec tout son historique.",
         success_category="warning",
         blocked_message=f"Impossible de supprimer « {etiquette} » : des données y sont encore rattachées. Utilisez plutôt l'anonymisation pour conserver l'historique.",
     )
-    if ok:
-        journaliser("participant.delete", cible=etiquette, details=trace)
     return redirect(url_for("participants.list_participants"))
 
 
@@ -1593,7 +1593,8 @@ def actions_groupees():
             if p.nom == NOM_ANONYME:
                 continue  # déjà anonymisée : on ne retouche pas la fiche
             anonymiser_participant(p, actor_id=getattr(current_user, "id", None))
-            journaliser("participant.anonymize", cible=f"participant #{p.id}")
+            from app.services.audit import enregistrer
+            enregistrer("participant.anonymize", cible=f"participant #{p.id}")
             traites += 1
         db.session.commit()
         flash(
@@ -1643,8 +1644,9 @@ def actions_groupees():
                     "origine": "action groupée",
                 }
                 supprimer_definitivement(p)
+                from app.services.audit import enregistrer
+                enregistrer("participant.delete", cible=f"participant #{p.id}", details=trace)
                 db.session.commit()
-                journaliser("participant.delete", cible=etiquette, details=trace)
                 supprimes += 1
             except IntegrityError:
                 db.session.rollback()

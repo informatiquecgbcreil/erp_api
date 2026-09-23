@@ -11,7 +11,7 @@ def main():
     install, mode = Path(sys.argv[1]), sys.argv[2]
     sys.path.insert(0, str(install))
     from desktop import runtime
-    payload = json.load(sys.stdin)
+    payload = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     c = payload["source"]
     root = Path(c["data_root"])
     if not root.resolve().is_relative_to(Path(os.environ["RUNNER_TEMP"]).resolve()):
@@ -21,6 +21,8 @@ def main():
     from desktop.migration import fingerprints, read_source
 
     if mode == "stop":
+        if not (root / "postgresql/postmaster.pid").exists():
+            return
         runtime.run_tool([install / "postgresql/bin/pg_ctl.exe", "-D", root / "postgresql",
                           "-w", "-m", "fast", "stop"])
         return
@@ -30,26 +32,39 @@ def main():
         with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
                              password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:
             conn.execute("CREATE DATABASE erp_pedagogie OWNER mcs")
-        from app import create_app
+        from flask import Flask
+        from flask_migrate import upgrade
         from app.extensions import db
-        from app.models import Participant, PasseportNote, PasseportPieceJointe
-        app = create_app()
-        runtime.bootstrap_account(app, c)
+        from app.extensions import migrate
+        from config import Config
+        from sqlalchemy import MetaData, Table
+        from werkzeug.security import generate_password_hash
+        from datetime import datetime
+        # Construit directement l'ancien schéma : aucun downgrade destructif
+        # ni import d'une ancienne application dans le processus de migration.
+        app = Flask("legacy-fixture", instance_path=str(root / "instance"))
+        app.config.from_object(Config)
+        db.init_app(app)
+        migrate.init_app(app, db, directory=str(runtime.APP / "migrations"))
         document = root / "instance/passeport_uploads/preuve.txt"
         document.parent.mkdir(parents=True, exist_ok=True)
         document.write_text("Pièce de recette conservée, avec accents.", encoding="utf-8")
         (root / "uploads/logo.txt").write_text("Logo de recette", encoding="utf-8")
         with app.app_context():
-            participant = Participant(nom="RECETTE", prenom="Migration", created_secteur="Familles")
-            db.session.add(participant)
-            db.session.flush()
-            db.session.add(PasseportNote(participant_id=participant.id, secteur="Familles", contenu="Suivi conservé"))
-            db.session.add(PasseportPieceJointe(participant_id=participant.id, secteur="Familles",
-                                               file_path=str(document), original_name="preuve.txt"))
-            db.session.commit()
-            # Revient à une vraie révision antérieure, sans modifier ses données métier.
-            from flask_migrate import downgrade
-            downgrade(directory=str(runtime.APP / "migrations"), revision="de23fa45bc67")
+            upgrade(directory=str(runtime.APP / "migrations"), revision="de23fa45bc67")
+            with db.engine.begin() as connection:
+                metadata = MetaData()
+                def insert(name, **values):
+                    table = Table(name, metadata, autoload_with=connection)
+                    return connection.execute(table.insert().values(**{k:v for k,v in values.items() if k in table.c}).returning(table.c.id)).scalar_one()
+                insert("user", email=c["admin_email"], password_hash=generate_password_hash(c["admin_password"]),
+                       nom=c["admin_name"], role="direction", actif=True, created_at=datetime.now())
+                pid = insert("participant", nom="RECETTE", prenom="Migration", created_secteur="Familles",
+                             type_public="H", droit_image_statut="non_renseigne", est_benevole=False,
+                             statut_inscription="actif", created_at=datetime.now(), updated_at=datetime.now())
+                insert("passeport_note", participant_id=pid, secteur="Familles", contenu="Suivi conservé", categorie="journal")
+                insert("passeport_piece_jointe", participant_id=pid, secteur="Familles", categorie="atelier",
+                       file_path=str(document), original_name="preuve.txt")
             db.session.remove()
             db.engine.dispose()
         uri = os.environ["SQLALCHEMY_DATABASE_URI"]

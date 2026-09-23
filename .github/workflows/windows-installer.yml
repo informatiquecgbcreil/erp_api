@@ -54,6 +54,7 @@ jobs:
           $uninstall = Start-Process "$appDir/unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw 'Désinstallation échouée' }
           if (Get-Service MonCentreSocial -ErrorAction SilentlyContinue) { throw 'Le service subsiste après désinstallation' }
+          if (Get-Service MonCentreSocialHTTPS -ErrorAction SilentlyContinue) { throw 'Le service HTTPS subsiste après désinstallation' }
           if (Test-Path "$appDir/MonCentreSocial.exe") { throw 'Le programme subsiste après désinstallation' }
           if (!(Test-Path "$env:ProgramData/MonCentreSocial/Direction-DSI/Installation-confidentielle.txt")) { throw 'Le dossier confidentiel a été perdu' }
           if (!(Test-Path "$env:ProgramData/MonCentreSocial/postgresql/PG_VERSION")) { throw 'La base a été perdue' }

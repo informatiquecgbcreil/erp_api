@@ -84,6 +84,15 @@ static class SystemSmoke {
                 Check(sid.IsWellKnown(WellKnownSidType.LocalSystemSid) || sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid), "ACL du dossier trop large");
             }
             Check((string)Program.ReadConfiguration()["db_password"] == (string)c["db_password"], "Configuration DPAPI invalide");
+            var serviceJson = Program.Utf8.GetString(System.Security.Cryptography.ProtectedData.Unprotect(File.ReadAllBytes(Program.ServiceConfigFile),null,System.Security.Cryptography.DataProtectionScope.LocalMachine));
+            Check(!serviceJson.Contains("db_admin_password") && !serviceJson.Contains("admin_password"),"Un secret de provisionnement reste accessible au service web");
+            var webSid = (SecurityIdentifier)new NTAccount("NT SERVICE",Program.ServiceName).Translate(typeof(SecurityIdentifier));
+            foreach (var protectedFile in new[] {Program.ConfigFile,Path.Combine(Program.Root,"https","tls","pki","authorities","local","root.key")}) {
+                foreach (FileSystemAccessRule rule in File.GetAccessControl(protectedFile).GetAccessRules(true,true,typeof(SecurityIdentifier)))
+                    Check(rule.AccessControlType != AccessControlType.Allow || !rule.IdentityReference.Equals(webSid),"Le web peut lire la configuration administrative ou la clé CA");
+            }
+            var privileges = (string[])Microsoft.Win32.Registry.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\" + Program.ServiceName,"RequiredPrivileges",new string[0]);
+            Check(Array.IndexOf(privileges,"SeImpersonatePrivilege") < 0,"Le service conserve SeImpersonate");
             Program.StopService();
             Check(!File.Exists(Path.Combine(Program.Root, "postgresql", "postmaster.pid")), "PostgreSQL encore démarré");
             Program.FinishInstallation(c); Healthy(c); KioskHealthy(c);

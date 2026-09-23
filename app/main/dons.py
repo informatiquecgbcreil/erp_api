@@ -90,6 +90,9 @@ def don_create():
         type_donateur = "particulier"
 
     annee = date_don.year
+    if date_don > date.today():
+        flash("La date du don ne peut pas être dans le futur.", "danger")
+        return redirect(url_for("main.dons_registre"))
     don = Don(
         numero=prochain_numero(annee),
         annee=annee,
