@@ -651,7 +651,7 @@ def kiosk_open(session_id: int):
     token = secrets.token_urlsafe(24)
 
     for _ in range(50):
-        pin = f"{secrets.randbelow(10000):04d}"
+        pin = f"{secrets.randbelow(1000000):06d}"
         exists = SessionActivite.query.filter_by(kiosk_open=True, kiosk_pin=pin).first()
         if not exists:
             break

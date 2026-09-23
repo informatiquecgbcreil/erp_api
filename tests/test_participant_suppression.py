@@ -189,7 +189,7 @@ def test_secteur_ne_supprime_pas_une_personne_suivie_ailleurs(app):
     client = app.test_client()
     client.post("/", data={"email": f"resp-{tag}@ex.org", "password": "pw-test-123"})
     r = client.post(f"/participants/{pid}/delete", data={"confirmation_nom": f"DUPONT{tag}"})
-    assert r.status_code == 302
+    assert r.status_code == 403
     with app.app_context():
         assert db.session.get(Participant, pid) is not None, "la fiche aurait dû être protégée"
 

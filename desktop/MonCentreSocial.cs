@@ -207,6 +207,14 @@ static class Program {
         FinishInstallation(c);
     }
     internal static void FinishInstallation(Dictionary<string, object> c) {
+        bool activating = c.ContainsKey("migration_source") && !string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))
+            && (!c.ContainsKey("migration_done") || !Convert.ToBoolean(c["migration_done"])
+                || (c.ContainsKey("migration_pending_activation") && Convert.ToBoolean(c["migration_pending_activation"])));
+        try {
+        if (activating) {
+            StopService();
+            File.WriteAllText(Path.Combine(Root,"private","activation.pending"),"1",Utf8);
+        }
         if (c.ContainsKey("migration_source") && !string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))
             && (!c.ContainsKey("migration_done") || !Convert.ToBoolean(c["migration_done"]))) RunMigration(c);
         // Reprise après une interruption entre l'enregistrement et la création du dossier.
@@ -232,7 +240,28 @@ static class Program {
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
             Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=LocalSubnet profile=private,domain program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
         }
+        if (activating) {
+            var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+            if (oldName.Length > 0) Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled");
+            c.Remove("migration_pending_activation"); c.Remove("migration_restart_old");
+        }
         c.Remove("admin_password"); c.Remove("migration_uri"); SaveConfiguration(c); WriteReport(c);
+        File.Delete(Path.Combine(Root,"private","activation.pending"));
+        } catch {
+            if (activating) {
+                // Aucun retour automatique une fois le centre ouvert aux utilisateurs.
+                // Ici, l'activation n'est pas terminée : on ferme la cible avant de
+                // reprendre l'ancienne instance et on exigera une nouvelle copie.
+                StopService();
+                c["migration_done"] = false; c.Remove("migration_pending_activation");
+                File.Delete(Path.Combine(Root,"runtime","reprise","complete.json"));
+                SaveConfiguration(c);
+                var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+                if (oldName.Length > 0 && c.ContainsKey("migration_restart_old") && Convert.ToBoolean(c["migration_restart_old"]))
+                    using (var old = new ServiceController(oldName)) { if (old.Status == ServiceControllerStatus.Stopped) old.Start(); }
+            }
+            throw;
+        }
     }
     internal static void RunMigration(Dictionary<string, object> c) {
         string oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
@@ -242,6 +271,7 @@ static class Program {
         try {
             if (oldName.Length > 0) using (var old = new ServiceController(oldName)) {
                 wasRunning = old.Status == ServiceControllerStatus.Running;
+                c["migration_restart_old"] = wasRunning;
                 if (old.Status != ServiceControllerStatus.Stopped) { old.Stop(); old.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100)); }
             }
             var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " --migrate") {
@@ -263,8 +293,7 @@ static class Program {
             var result = Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(resultPath,Utf8));
             c["db_name"] = result["db_name"]; c["application_settings"] = result["settings"];
             c["modules"] = result["modules"] ?? new[] { "presences", "statistiques", "adhesions", "finances", "ressources", "accompagnement", "partenaires", "questionnaires", "transitions", "rh" };
-            if (oldName.Length > 0) Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled");
-            c["migration_done"] = true; c.Remove("migration_uri"); SaveConfiguration(c);
+            c["migration_done"] = true; c["migration_pending_activation"] = true; SaveConfiguration(c);
             File.Delete(resultPath);
             // Le rapport consultable ne contient aucun secret ni données nominatives.
             result.Remove("settings");
@@ -461,6 +490,11 @@ sealed class SetupWizard : Form {
             Field("Mot de passe (12 caractères minimum)",password,201); Field("Confirmer le mot de passe",confirm,201,365);
             TextLine("Les composants nécessaires sont inclus. Une connexion Internet n'est pas nécessaire pour installer.",286);
         } else if (step == 1) {
+            if (migrationSource.Length > 0) {
+                heading.Text = "Vos outils sont conservés";
+                TextLine("Les modules actifs seront repris depuis votre base. Vous pourrez ensuite les ajuster dans l'administration.",15,90);
+                return;
+            }
             heading.Text = "De quels outils avez-vous besoin ?";
             TextLine("Partez d'un profil, puis ajustez si besoin. Vous pourrez changer ce choix plus tard, sans réinstaller et sans rien perdre.",0);
             var essentiel = new Button { Text = "Présences et statistiques", Location = new Point(480,62), Size = new Size(226,32) }; essentiel.Click += delegate { Profil(profilEssentiel); }; content.Controls.Add(essentiel);
@@ -475,6 +509,12 @@ sealed class SetupWizard : Form {
             TextLine("En réseau, l'administration est chiffrée (HTTPS). Pour l'émargement, les téléphones et tablettes utilisent une adresse locale dédiée, sans certificat à installer. Le certificat d'administration et les instructions sont fournis automatiquement.",205,75);
             TextLine("Le service fonctionne aussi sans session ouverte sur Windows Server.",292);
         } else if (step == 3) {
+            if (migrationSource.Length > 0) {
+                heading.Text = "Vos paramètres sont conservés";
+                TextLine("Les réglages de messagerie et les autres paramètres compatibles seront lus dans le fichier .env de l'ancienne installation. Les réglages enregistrés en base sont également conservés.",15,110);
+                TextLine("Si votre ancien service définit des paramètres hors de ce fichier, reportez-les dans la configuration avant la bascule.",145,100);
+                return;
+            }
             heading.Text = "Les e-mails de votre structure";
             TextLine("Facultatif : laissez ces champs vides pour configurer l'envoi d'e-mails plus tard depuis l'administration.",0);
             Field("Serveur SMTP",smtpHost,67); Field("Port STARTTLS",smtpPort,67,365,140);
@@ -483,10 +523,10 @@ sealed class SetupWizard : Form {
             TextLine("La connexion au serveur mail utilisera STARTTLS avec validation du certificat.",303);
         } else {
             heading.Text = "Tout est prêt";
-            TextLine("Structure : " + organization.Text + "\nCompte direction : " + email.Text,8,60);
-            TextLine("Accès : " + (network.Checked ? "réseau local sécurisé" : "cet ordinateur uniquement") + "\nOutils sélectionnés : " + modules.CheckedItems.Count,84,60);
-            TextLine("L'installation prépare la base, le compte direction, le démarrage automatique et les sauvegardes quotidiennes.",162,58);
-            TextLine("Votre dossier confidentiel (mots de passe, chemins et messagerie) sera créé dans :\n" + Path.Combine(Program.Root,"Direction-DSI"),230,90);
+            TextLine(migrationSource.Length > 0 ? "Reprise : " + migrationSource + "\nComptes, outils et documents conservés." : "Structure : " + organization.Text + "\nCompte direction : " + email.Text,8,60);
+            TextLine("Accès : " + (network.Checked ? "réseau local sécurisé" : "cet ordinateur uniquement"),84,60);
+            TextLine("L'installation prépare la base, le démarrage automatique et les sauvegardes quotidiennes.",162,58);
+            TextLine("Votre rapport technique (adresses et chemins, sans mots de passe) sera créé dans :\n" + Path.Combine(Program.Root,"Direction-DSI"),230,90);
             status.Text = "Seuls les administrateurs Windows peuvent lire le dossier confidentiel.";
         }
     }

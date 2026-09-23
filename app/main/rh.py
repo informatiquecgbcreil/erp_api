@@ -6,7 +6,7 @@ salariale. Peut être alimenté par import CSV/Excel depuis un outil RH externe
 (la colonne « référence » sert de clé de rapprochement : réimporter met à
 jour au lieu de dupliquer).
 """
-import csv
+from app.utils import spreadsheet_csv as csv
 import io
 from datetime import date
 

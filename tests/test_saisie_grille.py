@@ -1,3 +1,4 @@
+from app.utils.dates import utcnow
 """Saisie en grille + émargements en attente (poste d'accueil).
 
 - la grille coche/décoche des présences en masse, mois par mois ;
@@ -214,7 +215,7 @@ def test_feuille_du_mois_imprimable(app, atelier_grille, admin_client):
 
 # ---------- Façade kiosque publique (hors les murs) ----------
 
-def test_facade_kiosque_bloque_tout_sauf_le_kiosque(app, atelier_grille):
+def test_facade_kiosque_bloque_tout_sauf_le_kiosque(app, atelier_grille, monkeypatch):
     """Par l'hôte public, seules les pages kiosque répondent."""
     from app.extensions import db
     from app.models import SessionActivite
@@ -222,11 +223,13 @@ def test_facade_kiosque_bloque_tout_sauf_le_kiosque(app, atelier_grille):
     with app.app_context():
         s = db.session.get(SessionActivite, g["s1"])
         s.kiosk_open = True
+        s.kiosk_opened_at = utcnow()
         s.kiosk_token = f"toktun{g['suf']}"
         s.kiosk_pin = "4321"
         db.session.commit()
 
     app.config["KIOSK_PUBLIC_HOST"] = "kiosque.exemple.fr"
+    monkeypatch.setitem(app.config, "PUBLIC_BASE_URL", "https://gestion.cgb")
     try:
         c = app.test_client()
         # Par l'hôte public : kiosque OK…

@@ -213,6 +213,8 @@ def test_suppression_groupee_avec_garde_secteur(app):
                             date_session=dt.date.today())
         db.session.add(s)
         db.session.flush()
+        for pid in pids:
+            db.session.get(Participant, pid).created_secteur = mien
         # pids[0] est présent dans l'AUTRE secteur : protégé.
         db.session.add(PresenceActivite(session_id=s.id, participant_id=pids[0]))
         db.session.commit()

@@ -16,6 +16,7 @@ from app.extensions import db
 from app.models import Participant, BenevoleHeures
 from app.services.benevolat import stats_annee
 from app.services.audit import journaliser
+from app.services.access_scope import effective_sector
 
 from app.main.common import bp
 
@@ -34,7 +35,7 @@ def benevolat():
     annee = _annee_demandee()
     secteur = (request.args.get("secteur") or "").strip() or None
     if not can("scope:all_secteurs"):
-        secteur = getattr(current_user, "secteur_assigne", None)
+        secteur = effective_sector()
 
     stats = stats_annee(annee, secteur)
     annees = sorted({l.date_action.year for l in BenevoleHeures.query.all() if l.date_action} | {date.today().year}, reverse=True)
@@ -83,6 +84,7 @@ def benevolat_taux_update():
 @login_required
 @require_perm("participants:edit")
 def benevolat_heures_create():
+    from app.services.access_scope import require_participant, effective_sector
     try:
         participant_id = int(request.form.get("participant_id") or 0)
     except Exception:
@@ -91,6 +93,7 @@ def benevolat_heures_create():
     if participant is None:
         flash("Choisis un bénévole dans la liste (recherche par nom).", "danger")
         return redirect(url_for("main.benevolat"))
+    require_participant(participant)
 
     try:
         heures = round(float(str(request.form.get("heures") or "0").replace(",", ".")), 2)
@@ -110,7 +113,7 @@ def benevolat_heures_create():
         date_action=date_action,
         heures=heures,
         mission=(request.form.get("mission") or "").strip() or None,
-        secteur=(request.form.get("secteur") or "").strip() or getattr(current_user, "secteur_assigne", None),
+        secteur=effective_sector((request.form.get("secteur") or "").strip() or None),
         commentaire=(request.form.get("commentaire") or "").strip() or None,
         created_by_user_id=getattr(current_user, "id", None),
     )
@@ -129,6 +132,8 @@ def benevolat_heures_create():
 @require_perm("participants:edit")
 def benevolat_heures_supprimer(ligne_id: int):
     ligne = db.get_or_404(BenevoleHeures, ligne_id)
+    from app.services.access_scope import require_sector
+    require_sector(ligne.secteur)
     annee = ligne.date_action.year if ligne.date_action else date.today().year
     pid = ligne.participant_id
     db.session.delete(ligne)
@@ -147,7 +152,7 @@ def benevolat_export_xlsx():
     annee = _annee_demandee()
     secteur = (request.args.get("secteur") or "").strip() or None
     if not can("scope:all_secteurs"):
-        secteur = getattr(current_user, "secteur_assigne", None)
+        secteur = effective_sector()
     stats = stats_annee(annee, secteur)
 
     wb = Workbook()

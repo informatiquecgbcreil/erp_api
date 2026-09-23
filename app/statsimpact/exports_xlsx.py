@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from io import BytesIO, StringIO
-import csv
+from app.utils import spreadsheet_csv as csv
 
 import re
 

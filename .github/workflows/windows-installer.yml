@@ -45,6 +45,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Compilation de la recette impossible' }
           & "$appDir/RecetteSysteme.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Recette service échouée' }
+          & "$appDir/RecetteSysteme.exe" migration (Resolve-Path 'desktop/migration_smoke.py').Path
+          if ($LASTEXITCODE -ne 0) { throw 'Reprise de la base ancienne échouée' }
           $update = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
           if ($update.ExitCode -notin 0,3010) { throw 'Mise à jour échouée' }
           & "$appDir/RecetteSysteme.exe" resume
@@ -55,7 +57,7 @@ jobs:
           if (Test-Path "$appDir/MonCentreSocial.exe") { throw 'Le programme subsiste après désinstallation' }
           if (!(Test-Path "$env:ProgramData/MonCentreSocial/Direction-DSI/Installation-confidentielle.txt")) { throw 'Le dossier confidentiel a été perdu' }
           if (!(Test-Path "$env:ProgramData/MonCentreSocial/postgresql/PG_VERSION")) { throw 'La base a été perdue' }
-          'Installation, service, HTTPS, DPAPI, ACL, arrêt, redémarrage, mise à jour et désinstallation : OK.' | Set-Content outputs/recette-systeme.txt
+          'Installation, service, HTTPS, DPAPI, ACL, reprise PostgreSQL ancienne avec comptes et documents, source intacte, arrêt, redémarrage, mise à jour et désinstallation : OK.' | Set-Content outputs/recette-systeme.txt
       - name: Diagnostic protégé en cas d'échec
         if: failure()
         shell: pwsh

@@ -524,7 +524,7 @@ def generate_collectif_docx_pdf(
             ),
             "participants": participants,
         }
-        tpl.render(context)
+        tpl.render(context, autoescape=True)
         tpl.save(out_docx)
 
     # Fallback python-docx
@@ -688,7 +688,7 @@ def generate_individuel_mensuel_docx(app, atelier, annee: int, mois: int) -> str
             "conso_periode": f"mois {mois:02d}/{annee}",
             "participants": rows,
         }
-        tpl.render(context)
+        tpl.render(context, autoescape=True)
         tpl.save(out_docx)
 
     else:
@@ -754,7 +754,7 @@ def generate_participant_bilan_docx(app, participant, rows: list[dict]) -> str:
             "rows": rows,
             "date": date.today().strftime("%d/%m/%Y"),
         }
-        tpl.render(context)
+        tpl.render(context, autoescape=True)
         tpl.save(out_docx)
 
     else:

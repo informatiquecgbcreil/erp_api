@@ -1,4 +1,4 @@
-import csv
+from app.utils import spreadsheet_csv as csv
 import datetime
 
 from app.utils.dates import utcnow
@@ -40,6 +40,35 @@ from app.rbac import require_perm, can
 from . import bp
 from app.utils.delete_guard import commit_delete
 from .services import compute_objectif_scores, participant_timeline, progression_portail
+from app.services.access_scope import require_participant, require_sector, own_sector
+
+
+@bp.before_request
+def _protect_passport_scope():
+    args = request.view_args or {}
+    if not current_user.is_authenticated or "participant_id" not in args:
+        return
+    from app.models import Participant
+    require_participant(db.get_or_404(Participant, args["participant_id"]))
+    for key, model in (("note_id", PasseportNote), ("file_id", PasseportPieceJointe)):
+        if key in args:
+            row = db.get_or_404(model, args[key])
+            if row.participant_id != args["participant_id"]:
+                abort(404)
+            require_sector(row.secteur)
+    if request.method == "POST":
+        if not can("pedagogie:edit") and request.endpoint == "pedagogie.participant_passeport_file_upload":
+            abort(403)
+        sector = (request.form.get("secteur") or "").strip()
+        if sector:
+            require_sector(sector)
+        session_id = request.form.get("session_id", type=int)
+        if session_id:
+            require_sector(db.get_or_404(SessionActivite, session_id).secteur)
+
+
+def _passport_sector():
+    return ((request.form.get("secteur") or "").strip() or None) if can("scope:all_secteurs") else own_sector()
 
 
 PASSPORT_NOTE_CATEGORIES = {
@@ -1116,6 +1145,10 @@ def participant_passeport(participant_id: int):
     portail_progress = progression_portail(participant_id)
 
     selected_secteur = (request.args.get("secteur") or "").strip()
+    if not can("scope:all_secteurs"):
+        if selected_secteur:
+            require_sector(selected_secteur)
+        selected_secteur = own_sector()
     selected_categorie = _normalize_note_category(request.args.get("categorie")) if request.args.get("categorie") else ""
     notes_page = max(request.args.get("notes_page", 1, type=int), 1)
     files_page = max(request.args.get("files_page", 1, type=int), 1)
@@ -1130,6 +1163,8 @@ def participant_passeport(participant_id: int):
     sessions_by_secteur = defaultdict(list)
     for row in presence_rows:
         if not row.session:
+            continue
+        if not can("scope:all_secteurs") and row.session.secteur != own_sector():
             continue
         sec = (row.session.secteur or "Sans secteur").strip()
         sessions_by_secteur[sec].append(row.session)
@@ -1160,6 +1195,8 @@ def participant_passeport(participant_id: int):
     )
 
     all_notes = PasseportNote.query.filter_by(participant_id=participant_id).all()
+    if not can("scope:all_secteurs"):
+        all_notes = [n for n in all_notes if n.secteur == own_sector()]
     sectors = sorted(
         {(e.session.secteur if e.session else "") for e in events if e.session and e.session.secteur}
         | {(n.secteur or "") for n in all_notes if n.secteur}
@@ -1471,6 +1508,8 @@ def participant_passeport_evaluation(participant_id: int):
         .filter_by(participant_id=participant_id, competence_id=comp_id, session_id=session_id)
         .order_by(Evaluation.date_evaluation.desc(), Evaluation.id.desc())
     )
+    if session_id is None and not can("scope:all_secteurs"):
+        q = q.filter(Evaluation.user_id == current_user.id)
 
     existing = q.first()
     dupes = q.offset(1).all()
@@ -1517,7 +1556,7 @@ def participant_passeport_note(participant_id: int):
     note = PasseportNote(
         participant_id=participant_id,
         session_id=request.form.get("session_id", type=int),
-        secteur=(request.form.get("secteur") or "").strip() or None,
+        secteur=_passport_sector(),
         categorie=_normalize_note_category(request.form.get("categorie")),
         contenu=contenu,
         created_by=current_user.id,
@@ -1573,7 +1612,7 @@ def participant_passeport_note_delete(participant_id: int, note_id: int):
 
 @bp.route("/participant/<int:participant_id>/passeport/upload", methods=["POST"], endpoint="participant_passeport_file_upload")
 @login_required
-@require_perm("pedagogie:view")
+@require_perm("pedagogie:edit")
 def participant_passeport_file_upload(participant_id: int):
     f = request.files.get("file")
     if not f or not f.filename:
@@ -1595,7 +1634,7 @@ def participant_passeport_file_upload(participant_id: int):
     row = PasseportPieceJointe(
         participant_id=participant_id,
         session_id=request.form.get("session_id", type=int),
-        secteur=(request.form.get("secteur") or "").strip() or None,
+        secteur=_passport_sector(),
         categorie=(request.form.get("categorie") or "atelier").strip() or "atelier",
         titre=(request.form.get("titre") or "").strip() or None,
         file_path=path,
@@ -1617,6 +1656,10 @@ def participant_passeport_file_download(participant_id: int, file_id: int):
     if row.participant_id != participant_id:
         flash("Pièce jointe invalide.", "danger")
         return redirect(url_for("pedagogie.participant_passeport", participant_id=participant_id))
+    from pathlib import Path
+    root = Path(current_app.instance_path) / "passeport_uploads"
+    if not Path(row.file_path).resolve().is_relative_to(root.resolve()):
+        abort(404)
     return send_file(row.file_path, as_attachment=True, download_name=row.original_name)
 
 

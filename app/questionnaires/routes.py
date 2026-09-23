@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import csv
+from app.utils import spreadsheet_csv as csv
 import json
 from io import StringIO, BytesIO
 
@@ -25,9 +25,32 @@ from app.models import (
 )
 from app.questionnaires.stats import compute_questionnaire_stats, compute_projet_comparison
 from app.utils.delete_guard import commit_delete
-from app.rbac import require_perm
+from app.rbac import require_perm, can
+from app.services.access_scope import require_sector, effective_sector, sector_filter
 
 from . import bp
+
+
+@bp.before_request
+def _questionnaire_scope():
+    if not current_user.is_authenticated or can("scope:all_secteurs"):
+        return
+    sector = effective_sector()
+    args = request.view_args or {}
+    if "session_id" in args:
+        require_sector(db.get_or_404(SessionActivite, args["session_id"]).secteur)
+    questionnaire_id = args.get("questionnaire_id")
+    if "question_id" in args:
+        questionnaire_id = db.get_or_404(Question, args["question_id"]).questionnaire_id
+    if questionnaire_id:
+        questionnaire = db.get_or_404(Questionnaire, questionnaire_id)
+        sectors = {s.secteur for s in questionnaire.secteurs}
+        if sectors and sector not in sectors:
+            abort(403)
+        if request.method == "POST" and request.endpoint != "questionnaires.duplicate" and sectors != {sector}:
+            abort(403)
+        for link in questionnaire.ateliers:
+            require_sector(db.get_or_404(AtelierActivite, link.atelier_id).secteur)
 
 
 def _selected_type() -> str:
@@ -40,13 +63,15 @@ def _selected_projet_id():
     if not raw:
         return None
     try:
-        return int(raw)
-    except Exception:
+        projet_id = int(raw)
+    except ValueError:
         return None
+    require_sector(db.get_or_404(Projet, projet_id).secteur)
+    return projet_id
 
 
 def _projets_for_select():
-    return Projet.query.order_by(Projet.secteur.asc(), Projet.nom.asc()).all()
+    return Projet.query.filter(sector_filter(Projet.secteur)).order_by(Projet.secteur.asc(), Projet.nom.asc()).all()
 
 
 QUESTION_TYPES = [
@@ -58,6 +83,8 @@ QUESTION_TYPES = [
 
 
 def _selected_secteurs() -> list[str]:
+    if not can("scope:all_secteurs"):
+        return [effective_sector()]
     secteurs = request.values.getlist("secteur")
     cleaned = [s.strip() for s in secteurs if s and s.strip()]
     return list(dict.fromkeys(cleaned))
@@ -70,6 +97,8 @@ def _selected_ateliers() -> list[int]:
             ids.append(int(value))
         except Exception:
             continue
+    for atelier_id in ids:
+        require_sector(db.get_or_404(AtelierActivite, atelier_id).secteur)
     return list(dict.fromkeys(ids))
 
 
@@ -332,6 +361,9 @@ def respond(session_id: int):
         except Exception:
             participant_id = None
 
+        if participant_id is not None and participant_id not in {p.id for p in presences}:
+            abort(403)
+
         group = QuestionnaireResponseGroup(
             questionnaire_id=selected_questionnaire.id,
             participant_id=participant_id,
@@ -398,6 +430,7 @@ def export_csv(questionnaire_id: int):
         .join(QuestionnaireResponseGroup, QuestionResponse.response_group_id == QuestionnaireResponseGroup.id)
         .join(Question, QuestionResponse.question_id == Question.id)
         .filter(QuestionnaireResponseGroup.questionnaire_id == questionnaire.id)
+        .filter(sector_filter(QuestionnaireResponseGroup.secteur))
         .order_by(QuestionnaireResponseGroup.created_at.asc())
         .all()
     )
@@ -461,6 +494,7 @@ def export_xlsx(questionnaire_id: int):
     groups = (
         QuestionnaireResponseGroup.query
         .filter_by(questionnaire_id=questionnaire.id)
+        .filter(sector_filter(QuestionnaireResponseGroup.secteur))
         .order_by(QuestionnaireResponseGroup.created_at.asc())
         .all()
     )
@@ -496,6 +530,10 @@ def export_xlsx(questionnaire_id: int):
         for q in questions:
             ligne.append(valeurs.get((g.id, q.id), ""))
         ws.append(ligne)
+    for row in ws:
+        for cell in row:
+            if isinstance(cell.value, str):
+                cell.data_type = "s"
 
     buf = BytesIO()
     wb.save(buf)
@@ -524,8 +562,9 @@ def duplicate(questionnaire_id: int):
     db.session.add(copie)
     db.session.flush()
 
-    for s in src.secteurs:
-        db.session.add(QuestionnaireSecteur(questionnaire_id=copie.id, secteur=s.secteur))
+    copy_sectors = [s.secteur for s in src.secteurs] if can("scope:all_secteurs") else [effective_sector()]
+    for sector in copy_sectors:
+        db.session.add(QuestionnaireSecteur(questionnaire_id=copie.id, secteur=sector))
     for a in src.ateliers:
         db.session.add(QuestionnaireAtelier(questionnaire_id=copie.id, atelier_id=a.atelier_id))
     for q in src.questions:

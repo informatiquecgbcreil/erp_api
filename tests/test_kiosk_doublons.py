@@ -1,3 +1,4 @@
+from app.utils.dates import utcnow
 """Kiosque : prévention des doublons à la création d'une fiche (P4 revue)."""
 import datetime as dt
 import uuid
@@ -17,9 +18,9 @@ def session_kiosque(app):
         db.session.flush()
         s = SessionActivite(atelier_id=at.id, secteur="Numérique", session_type="COLLECTIF",
                             date_session=dt.date(2012, 4, 4),
-                            kiosk_open=True, kiosk_token=f"tok{suf}", kiosk_pin="1234")
+                            kiosk_open=True, kiosk_opened_at=utcnow(), kiosk_token=f"tok{suf}", kiosk_pin="1234")
         db.session.add(s)
-        p = Participant(nom=f"Benali{suf}", prenom="Mohamed", ville="Creil")
+        p = Participant(created_secteur="Numérique", nom=f"Benali{suf}", prenom="Mohamed", ville="Creil")
         db.session.add(p)
         db.session.commit()
         return {"token": s.kiosk_token, "nom": p.nom, "pid": p.id, "suf": suf}

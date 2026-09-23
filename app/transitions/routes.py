@@ -34,6 +34,7 @@ from app.services.transitions import (
 )
 
 from . import bp
+from app.services.access_scope import effective_sector, require_participant, require_sector, participant_filter
 
 
 def _annee_demandee() -> int:
@@ -48,7 +49,7 @@ def _secteur_effectif() -> str | None:
     """Filtre secteur : libre pour la portée globale, forcé sinon."""
     if can("scope:all_secteurs"):
         return (request.args.get("secteur") or "").strip() or None
-    return (getattr(current_user, "secteur_assigne", None) or "").strip() or None
+    return effective_sector()
 
 
 def _parse_date(brut: str | None, defaut: date) -> date:
@@ -72,6 +73,7 @@ def dashboard():
         motif = f"%{q_defi}%"
         resultats_defi = (
             Participant.query
+            .filter(participant_filter())
             .filter(db.or_(Participant.nom.ilike(motif), Participant.prenom.ilike(motif)))
             .order_by(Participant.nom.asc(), Participant.prenom.asc())
             .limit(15)
@@ -210,7 +212,11 @@ def defi_creer():
 
     participant_id = request.form.get("participant_id", type=int)
     participant = db.session.get(Participant, participant_id) if participant_id else None
+    if participant:
+        require_participant(participant)
     objectif_id = request.form.get("objectif_id", type=int) or None
+    if objectif_id:
+        require_sector(db.get_or_404(ObjectifSectoriel, objectif_id).secteur)
 
     defi = DefiTransition(
         titre=titre,
@@ -236,6 +242,20 @@ def defi_creer():
 @require_perm("transitions:edit")
 def defi_statut(defi_id: int):
     defi = db.get_or_404(DefiTransition, defi_id)
+    if not can("scope:all_secteurs"):
+        from flask import abort
+        if defi.objectif_id:
+            require_sector(db.get_or_404(ObjectifSectoriel, defi.objectif_id).secteur)
+        if defi.participant_id:
+            require_participant(db.get_or_404(Participant, defi.participant_id))
+        elif defi.foyer_id:
+            members = Participant.query.filter_by(foyer_id=defi.foyer_id).all()
+            if not members:
+                abort(403)
+            for member in members:
+                require_participant(member)
+        elif not defi.objectif_id and defi.created_by_user_id != current_user.id:
+            abort(403)
     statut = (request.form.get("statut") or "").strip()
     if statut not in STATUTS_DEFI:
         flash("Statut de défi invalide.", "danger")

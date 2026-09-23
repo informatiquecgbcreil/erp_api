@@ -26,7 +26,7 @@ from app.secteurs import get_secteur_labels
 
 
 def _a_vue_globale() -> bool:
-    return current_user.has_perm("scope:all_secteurs") or current_user.has_perm("participants:view_all")
+    return current_user.has_perm("scope:all_secteurs")
 
 
 @bp.route("/impayes")

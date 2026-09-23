@@ -205,7 +205,9 @@ def create_app():
     @app.before_request
     def _enforce_module_scope():
         from flask import abort
-        if request.endpoint == "static" and str((request.view_args or {}).get("filename", "")).replace("\\", "/").startswith("uploads/"):
+        import posixpath
+        static_path = posixpath.normpath(str((request.view_args or {}).get("filename", "")).replace("\\", "/"))
+        if request.endpoint == "static" and (static_path == "uploads" or static_path.startswith("uploads/")):
             abort(404)
         key = endpoint_module(request.endpoint or "")
         if key and not module_enabled(key):
@@ -345,11 +347,8 @@ def create_app():
         version avec « / » final (ex. /kiosk -> /kiosk/), l'endpoint
         n'est pas encore connu à ce stade et vaudrait None — un test sur
         l'endpoint bloquerait alors à tort le kiosque lui-même."""
-        hote_public = (app.config.get("KIOSK_PUBLIC_HOST") or "").strip().lower()
-        if not hote_public:
-            return None
-        hote_requete = (request.host or "").split(":", 1)[0].strip().lower()
-        if hote_requete != hote_public:
+        from app.services.public_ingress import is_public_ingress
+        if not is_public_ingress():
             return None
         chemin = request.path or "/"
         if (

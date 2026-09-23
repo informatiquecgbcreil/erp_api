@@ -1,6 +1,7 @@
 // Harnais de recette compilé uniquement par la CI, jamais dans le programme livré.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.AccessControl;
@@ -10,6 +11,18 @@ using System.ServiceProcess;
 namespace MonCentreSocial {
 static class SystemSmoke {
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
+    static void MigrationHelper(string helper, string mode, Dictionary<string, object> source, Dictionary<string, object> target) {
+        var info = new ProcessStartInfo(Path.Combine(Program.Install,"python","python.exe"),
+            "-B " + Program.Quote(helper) + " " + Program.Quote(Program.Install) + " " + mode) {
+            UseShellExecute=false, CreateNoWindow=true, RedirectStandardInput=true
+        };
+        using (var process = Process.Start(info)) {
+            var payload = Program.Utf8.GetBytes(Program.Json.Serialize(new { source=source, target=target }));
+            process.StandardInput.BaseStream.Write(payload,0,payload.Length); process.StandardInput.Close();
+            if (!process.WaitForExit(600000)) { process.Kill(); throw new Exception("Délai de recette migration dépassé"); }
+            Check(process.ExitCode == 0, "Recette migration : " + mode);
+        }
+    }
     static void Healthy(Dictionary<string, object> config) {
         var request = (HttpWebRequest)WebRequest.Create((string)config["url"] + "/healthz");
         request.Proxy = null; request.Timeout = 30000;
@@ -31,6 +44,23 @@ static class SystemSmoke {
         try {
             Check(Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" && Program.IsAdmin,
                   "Cette recette est réservée à une machine CI Windows éphémère et élevée.");
+            if (args.Length == 2 && args[0] == "migration") {
+                var target = Program.ReadConfiguration();
+                var source = new Dictionary<string,object>(target);
+                source["data_root"] = Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP"),"ancienne-installation");
+                source["db_port"] = Program.FreePort(56432); source["db_name"] = "erp_pedagogie";
+                source["db_password"] = Program.Secret(); source["db_admin_password"] = Program.Secret();
+                source["admin_email"] = "ancien-compte@example.test"; source["admin_password"] = Program.Secret();
+                source["admin_name"] = "Compte conservé";
+                try {
+                    MigrationHelper(args[1], "prepare", source, target);
+                    Program.StopService();
+                    target["migration_source"] = source["data_root"]; target["migration_done"] = false;
+                    Program.FinishInstallation(target); Healthy(target); KioskHealthy(target);
+                    MigrationHelper(args[1], "verify", source, Program.ReadConfiguration());
+                } finally { MigrationHelper(args[1], "stop", source, target); }
+                return 0;
+            }
             if (args.Length == 1 && args[0] == "resume") {
                 var stored = Program.ReadConfiguration(); Program.FinishInstallation(stored); Healthy(stored);
                 Console.WriteLine("REPRISE_MISE_A_JOUR_OK"); return 0;

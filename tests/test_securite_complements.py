@@ -111,7 +111,8 @@ def test_pin_kiosque_freine_apres_10_echecs(app, client):
         kiosque._ECHECS_PIN.reinitialiser()
 
 
-def test_facade_publique_ne_liste_pas_les_seances(app):
+def test_facade_publique_ne_liste_pas_les_seances(app, monkeypatch):
+    monkeypatch.setitem(app.config, "PUBLIC_BASE_URL", "http://192.168.1.10:8080")
     from app.kiosk import routes as kiosque
 
     ancien = app.config.get("KIOSK_PUBLIC_HOST")

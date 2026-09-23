@@ -133,10 +133,19 @@ def web(c):
     from app import create_app
     from waitress import create_server
     app = create_app()
+    @app.before_request
+    def pending_activation():
+        from flask import request
+        if (root / "private/activation.pending").exists() and request.path != "/healthz":
+            return "Reprise en cours. Le centre sera disponible après validation de l'installation.", 503
     trusted_hosts = ["127.0.0.1", "localhost", c["hostname"]]
     lan_ip = str(c.get("lan_ip") or "").strip()
     if lan_ip and lan_ip not in trusted_hosts:
         trusted_hosts.append(lan_ip)
+    from app.services.public_ingress import hostname
+    public_host = hostname(app.config.get("KIOSK_PUBLIC_HOST") or "")
+    if public_host:
+        trusted_hosts.append(public_host)
     app.config["TRUSTED_HOSTS"] = trusted_hosts
     bootstrap_account(app, c)
     server = create_server(app, host="127.0.0.1", port=int(c["web_port"]), threads=12,
@@ -351,8 +360,13 @@ if __name__ == "__main__":
             raise SystemExit(1)
         import traceback
         error = traceback.format_exc()
-        for key, value in config.items():
-            if ("password" in key or key == "secret_key") and value:
-                error = error.replace(str(value), "[confidentiel]").replace(quote(str(value), safe=""), "[confidentiel]")
+        def secrets(values):
+            for key, value in values.items():
+                if isinstance(value, dict):
+                    yield from secrets(value)
+                elif value and any(word in key.lower() for word in ("password", "secret", "migration_uri")):
+                    yield str(value)
+        for value in secrets(config):
+            error = error.replace(value, "[confidentiel]").replace(quote(value, safe=""), "[confidentiel]")
         sys.stderr.write(error)
         sys.exit(1)

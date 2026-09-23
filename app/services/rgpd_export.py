@@ -43,6 +43,8 @@ def _ecrire_feuille(wb: Workbook, titre: str, entetes: list[str], lignes: list[l
         cellule.font = Font(bold=True)
     for ligne in lignes:
         ws.append([_texte(v) for v in ligne])
+        for cell in ws[ws.max_row]:
+            cell.data_type = "s"
     # Largeurs lisibles
     for idx, entete in enumerate(entetes, start=1):
         largeur = max([len(entete)] + [len(_texte(l[idx - 1])) for l in lignes] or [10])
