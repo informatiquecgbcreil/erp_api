@@ -28,6 +28,24 @@ def main():
         return
     if mode == "prepare":
         runtime.configure_environment(c)
+        # Diagnostic de recette uniquement (les outils SQL du produit restent
+        # silencieux). Les secrets aléatoires de la fixture sont masqués.
+        import subprocess
+        import tempfile
+        def run_fixture_tool(args, *, timeout=120):
+            with tempfile.TemporaryFile() as logfile:
+                result = subprocess.run([str(x) for x in args], stdout=logfile,
+                                        stderr=subprocess.STDOUT, timeout=timeout,
+                                        creationflags=runtime.CREATE_NO_WINDOW)
+                logfile.seek(0)
+                output = logfile.read().decode("utf-8", errors="replace")
+            if result.returncode:
+                for key in ("db_password", "db_admin_password", "admin_password", "secret_key"):
+                    if c.get(key):
+                        output = output.replace(str(c[key]), "[secret]")
+                raise RuntimeError(Path(args[0]).name + ": " + output)
+            return result
+        runtime.run_tool = run_fixture_tool
         runtime.start_database(c, root)
         with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
                              password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:

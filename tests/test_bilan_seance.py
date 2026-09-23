@@ -85,7 +85,7 @@ def test_valeur_hors_echelle_ignoree(app, admin_client):
 
 def test_bilan_remonte_dans_l_agenda(app, admin_client):
     """Boucle la demande d'origine : les observations saisies apparaissent
-    dans la description de l'événement (flux iCal et synchro Google)."""
+    dans l'agenda interne ; le partage externe a ses propres restrictions."""
     from app.extensions import db
     from app.models import SessionActivite, User
     from app.services.calendrier import OPTIONS_DEFAUT, evenements_pour_periode

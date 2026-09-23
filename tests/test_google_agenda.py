@@ -105,11 +105,14 @@ def test_corps_evenement_intention_et_observations(app):
         s.bilan_qualitatif = "Groupe très participatif, exercice du dialogue réussi."
         db.session.commit()
         corps = ga.corps_evenement(
-            s, {"titre_format": "{atelier}", "champs_description": ["bilan"]}, lien_base=""
+            s, {"titre_format": "{atelier}", "champs_description": ["bilan"], "partager_bilan_google": True}, lien_base=""
         )
+        sans_accord = ga.corps_evenement(s, {"champs_description": ["bilan"]}, lien_base="")
 
     assert "Intention : Travailler la confiance à l'oral" in corps["description"]
     assert "Observations : Groupe très participatif" in corps["description"]
+    assert "Travailler la confiance" not in sans_accord["description"]
+    assert "Groupe très participatif" not in sans_accord["description"]
 
 
 def test_corps_evenement_journee_entiere_sans_heure(app):

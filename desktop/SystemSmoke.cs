@@ -52,6 +52,16 @@ static class SystemSmoke {
                 source["db_password"] = Program.Secret(); source["db_admin_password"] = Program.Secret();
                 source["admin_email"] = "ancien-compte@example.test"; source["admin_password"] = Program.Secret();
                 source["admin_name"] = "Compte conservé";
+                // initdb retire les droits Administrateurs de son jeton. La source
+                // éphémère doit donc accorder ses droits au compte CI lui-même.
+                var sourceRoot = (string)source["data_root"];
+                Directory.CreateDirectory(sourceRoot);
+                var sourceAcl = new DirectorySecurity();
+                sourceAcl.SetAccessRuleProtection(true,false);
+                sourceAcl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
+                    FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None, AccessControlType.Allow));
+                Directory.SetAccessControl(sourceRoot,sourceAcl);
                 try {
                     MigrationHelper(args[1], "prepare", source, target);
                     Program.StopService();
