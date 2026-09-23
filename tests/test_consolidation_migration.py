@@ -105,3 +105,85 @@ def test_reprise_inachevee_ne_demarre_pas_le_web():
     from desktop.runtime import web
     with pytest.raises(RuntimeError, match='reprise'):
         web({'migration_source': 'ancien'})
+
+
+def test_reprise_conserve_integrations_et_politique_de_retention(tmp_path):
+    from desktop.migration import read_source
+    (tmp_path / '.env').write_text('DATABASE_URL=postgresql://u:p@localhost/une_autre_base\n'
+        'PORTAIL_TOKEN=jeton\nPROGRAMME_FTP_PASSWORD=secret\nPURGE_INACTIFS_AUTO=0\n'
+        'LIBREOFFICE_PATH=C:/outils/soffice.exe\nPASSWORD_RESET_ALLOW_DEBUG_LINK=1\n')
+    settings = read_source(tmp_path)['settings']
+    assert settings['PORTAIL_TOKEN'] == 'jeton'
+    assert settings['PROGRAMME_FTP_PASSWORD'] == 'secret'
+    assert settings['PURGE_INACTIFS_AUTO'] == '0'
+    assert settings['LIBREOFFICE_PATH'] == 'C:/outils/soffice.exe'
+    assert 'PASSWORD_RESET_ALLOW_DEBUG_LINK' not in settings
+
+
+def test_reprise_refuse_document_manquant_ou_externe_et_adapte_chemin_relatif(tmp_path):
+    from sqlalchemy import create_engine, text
+    from desktop.migration import validate_document_paths, MigrationError
+    from app.services.instance_archive import remap_paths
+    old = tmp_path / 'ancien'; documents = old / 'instance'; documents.mkdir(parents=True)
+    source = {'root': old, 'roots': {'instance': documents, 'uploads': old / 'uploads'}}
+    engine = create_engine('sqlite://')
+    with engine.begin() as conn:
+        conn.execute(text('CREATE TABLE piece (id INTEGER PRIMARY KEY, file_path TEXT)'))
+        conn.execute(text("INSERT INTO piece VALUES (1, 'instance/preuve.txt')"))
+        with pytest.raises(MigrationError, match='1 absent'):
+            validate_document_paths(conn, source)
+        (documents / 'preuve.txt').write_text('preuve')
+        validate_document_paths(conn, source)
+        conn.execute(text("INSERT INTO piece VALUES (2, '../secret.txt')"))
+        with pytest.raises(MigrationError, match='1 hors'):
+            validate_document_paths(conn, source)
+        conn.execute(text('DELETE FROM piece WHERE id=2'))
+        remap_paths(conn, {'instance': str(documents)}, {'instance': tmp_path / 'nouveau'}, source_directory=old)
+        assert conn.execute(text('SELECT file_path FROM piece')).scalar_one() == str(tmp_path / 'nouveau/preuve.txt')
+
+
+def test_service_reprise_prepare_uniquement_la_base(tmp_path, monkeypatch):
+    from desktop import runtime
+    root = tmp_path
+    for folder in ('runtime', 'logs', 'postgresql'):
+        (root / folder).mkdir()
+    monkeypatch.setattr(runtime, 'configure_environment', lambda c: root)
+    monkeypatch.setattr(runtime, 'start_database', lambda c, r: None)
+    monkeypatch.setattr(runtime, 'run_tool', lambda *a, **kw: None)
+    def should_not_spawn(*args, **kw):
+        raise AssertionError('Aucun web ni sauvegarde avant migration')
+    monkeypatch.setattr(runtime, 'spawn', should_not_spawn)
+    def request_stop(delay):
+        assert (root / 'runtime/database.ready').exists()
+        assert not (root / 'runtime/ready').exists()
+        (root / 'runtime/stop').write_text('1')
+    monkeypatch.setattr(runtime.time, 'sleep', request_stop)
+    runtime.supervise({'migration_source': 'source', 'migration_done': False})
+    assert not (root / 'runtime/database.ready').exists()
+
+
+def test_psql_echec_reel_preserve_donnees_et_contraintes(app, tmp_path):
+    import uuid
+    from sqlalchemy import inspect, text
+    from app.extensions import db
+    from app.services.sauvegarde import _restaurer_postgres
+    with app.app_context():
+        uri = app.config['SQLALCHEMY_DATABASE_URI']
+        if not uri.startswith('postgresql'):
+            pytest.skip('Validation transactionnelle réelle dans le job PostgreSQL.')
+        name = 'restore_probe_' + uuid.uuid4().hex
+        with db.engine.begin() as conn:
+            conn.execute(text(f'CREATE TABLE {name} (id INTEGER PRIMARY KEY, valeur TEXT UNIQUE)'))
+            conn.execute(text(f"INSERT INTO {name} VALUES (7, 'préservé')"))
+        sql = tmp_path / 'restore_broken.sql'
+        sql.write_text(f'DROP TABLE {name}; CREATE TABLE {name} (id INTEGER, valeur TEXT); SELECT 1/0;', encoding='utf-8')
+        try:
+            with pytest.raises(RuntimeError, match='annulée'):
+                _restaurer_postgres(sql, uri)
+            with db.engine.connect() as conn:
+                assert conn.execute(text(f'SELECT * FROM {name}')).one() == (7, 'préservé')
+                assert inspect(conn).get_pk_constraint(name)['constrained_columns'] == ['id']
+                assert inspect(conn).get_unique_constraints(name)[0]['column_names'] == ['valeur']
+        finally:
+            with db.engine.begin() as conn:
+                conn.execute(text(f'DROP TABLE IF EXISTS {name}'))

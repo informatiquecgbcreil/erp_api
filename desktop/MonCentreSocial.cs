@@ -359,7 +359,8 @@ static class Program {
                 StopService();
                 c["migration_done"] = false; c.Remove("migration_pending_activation");
                 c["migration_uri"] = sourceUri;
-                File.Delete(Path.Combine(Root,"runtime","reprise","complete.json"));
+                var completion = Path.Combine(Root,"runtime","reprise","complete.json");
+                if (File.Exists(completion)) File.Delete(completion);
                 SaveConfiguration(c);
                 var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
                 if (oldName.Length > 0 && c.ContainsKey("migration_old_disabled") && Convert.ToBoolean(c["migration_old_disabled"])) {
@@ -383,6 +384,16 @@ static class Program {
                 c["migration_restart_old"] = wasRunning;
                 c["migration_old_start"] = Microsoft.Win32.Registry.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\" + oldName,"Start",3);
                 if (old.Status != ServiceControllerStatus.Stopped) { old.Stop(); old.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100)); }
+            }
+            // Le compte de service initialise et possède le cluster. Le
+            // processus élevé n'effectue que la copie SQL et des documents.
+            SaveConfiguration(c);
+            var databaseReady = Path.Combine(Root,"runtime","database.ready");
+            if (File.Exists(databaseReady)) File.Delete(databaseReady);
+            StartService();
+            for (int i=0; !File.Exists(databaseReady); i++) {
+                if (i>=240) throw new Exception("La base de destination n'est pas prête. Voir les journaux du service.");
+                Thread.Sleep(500);
             }
             var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " --migrate") {
                 UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
@@ -410,11 +421,12 @@ static class Program {
             File.WriteAllText(Path.Combine(Root,"Direction-DSI","Reprise.json"),Json.Serialize(result),Utf8);
             File.Delete(Path.Combine(Root,"runtime","reprise","complete.json"));
         } catch {
+            StopService();
             if (wasRunning && oldName.Length > 0) using (var old = new ServiceController(oldName)) {
                 if (old.Status == ServiceControllerStatus.Stopped) old.Start();
             }
             throw;
-        }
+        } finally { StopService(); }
     }
     internal static void WriteReport(Dictionary<string, object> c) {
         string path = Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt"); GuardPath(path);

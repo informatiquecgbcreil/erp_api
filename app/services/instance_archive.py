@@ -9,10 +9,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import stat
-import tempfile
 import zipfile
 
 MANIFEST = "mcs-backup.json"
@@ -134,7 +133,7 @@ def install_staged(staging, roots):
             shutil.copy2(source, target)
 
 
-def remap_paths(connection, old_roots, new_roots):
+def remap_paths(connection, old_roots, new_roots, *, source_directory=None):
     """Réécrit uniquement les colonnes de chemins métier, jamais les notes."""
     from sqlalchemy import MetaData, Table, inspect, select, update
     inspector = inspect(connection)
@@ -145,9 +144,11 @@ def remap_paths(connection, old_roots, new_roots):
         table = Table(table_name, MetaData(), autoload_with=connection)
         for column in columns:
             for (old,) in connection.execute(select(table.c[column]).distinct()):
-                if not old:
+                if not old or (column.startswith("modele_docx_") and old.startswith("builtin:")):
                     continue
                 normalized = old.replace("\\", "/")
+                if source_directory and not (PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute()):
+                    normalized = str((Path(source_directory) / old).resolve()).replace("\\", "/")
                 for label, prefix in old_roots.items():
                     if label not in new_roots or not new_roots[label]:
                         continue

@@ -214,7 +214,7 @@ def write_caddy(c, root):
 def supervise(c):
     root = configure_environment(c)
     state = root / "runtime"
-    for name in ("stop", "web.stop", "ready", "web.ready"):
+    for name in ("stop", "web.stop", "ready", "web.ready", "database.ready"):
         (state / name).unlink(missing_ok=True)
     logpath = root / "logs/runtime.log"
     if logpath.exists() and logpath.stat().st_size > 5_000_000:
@@ -226,6 +226,14 @@ def supervise(c):
         try:
             start_database(c, root)
             database_started = True
+            (state / "database.ready").write_text("1", encoding="ascii")
+            if c.get("migration_source") and not c.get("migration_done"):
+                # PostgreSQL reste sous son identité de service, y compris à
+                # l'import. L'assistant élevé ne lance jamais initdb/pg_ctl.
+                # Aucun serveur HTTP ni travail quotidien avant la reprise.
+                while not (state / "stop").exists():
+                    time.sleep(0.5)
+                return
             process = spawn("--web", c, log)
             children.append(process)
             deadline = time.monotonic() + 180
@@ -262,6 +270,7 @@ def supervise(c):
                 time.sleep(1)
         finally:
             (state / "ready").unlink(missing_ok=True)
+            (state / "database.ready").unlink(missing_ok=True)
             (state / "web.stop").write_text("1", encoding="ascii")
             if backup_task is not None and backup_task.poll() is None:
                 backup_task.terminate(); backup_task.wait(timeout=10)
@@ -277,32 +286,24 @@ def supervise(c):
 
 
 def migrate_installation(c):
-    """Prépare une base jetable différente à chaque tentative, avant le service."""
+    """Prépare une base distincte sur le service PostgreSQL, web encore fermé."""
     import uuid
     import psycopg
     from psycopg import sql
     from desktop.migration import migrate
     root = configure_environment(c)
-    started = False
-    try:
-        start_database(c, root)
-        started = True
-        completed = root / "runtime/reprise/complete.json"
-        if completed.exists():
-            report = json.loads(completed.read_text(encoding="utf-8"))
-        else:
-            c["db_name"] = "mcs_reprise_" + uuid.uuid4().hex[:16]
-            with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
-                                 password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:
-                conn.execute(sql.SQL("CREATE DATABASE {} OWNER mcs").format(sql.Identifier(c["db_name"])))
-                conn.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(c["db_name"])))
-            configure_environment(c)
-            report = migrate(c, sys.modules[__name__])
-        (root / "private/migration-result.json").write_text(json.dumps(report), encoding="utf-8")
-    finally:
-        if started:
-            run_tool([INSTALL / "postgresql/bin/pg_ctl.exe", "-D", root / "postgresql",
-                      "-w", "-t", "30", "-m", "fast", "stop"], timeout=45)
+    completed = root / "runtime/reprise/complete.json"
+    if completed.exists():
+        report = json.loads(completed.read_text(encoding="utf-8"))
+    else:
+        c["db_name"] = "mcs_reprise_" + uuid.uuid4().hex[:16]
+        with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
+                             password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:
+            conn.execute(sql.SQL("CREATE DATABASE {} OWNER mcs").format(sql.Identifier(c["db_name"])))
+            conn.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(c["db_name"])))
+        configure_environment(c)
+        report = migrate(c, sys.modules[__name__])
+    (root / "private/migration-result.json").write_text(json.dumps(report), encoding="utf-8")
 
 
 if __name__ == "__main__":

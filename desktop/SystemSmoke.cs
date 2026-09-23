@@ -65,6 +65,12 @@ static class SystemSmoke {
                 try {
                     MigrationHelper(args[1], "prepare", source, target);
                     Program.StopService();
+                    // La reprise est testée sur un cluster de destination neuf,
+                    // pas uniquement après une initialisation qui masquerait
+                    // un problème de droits du premier lancement.
+                    Directory.Move(Path.Combine(Program.Root,"postgresql"),Path.Combine(Program.Root,"runtime","recette-installation-vierge"));
+                    Program.SecureDirectory(Path.Combine(Program.Root,"postgresql"),true,true);
+                    File.Delete(Path.Combine(Program.Root,"runtime","provisioned"));
                     target["migration_source"] = source["data_root"]; target["migration_done"] = false;
                     Program.FinishInstallation(target); Healthy(target); KioskHealthy(target);
                     MigrationHelper(args[1], "verify", source, Program.ReadConfiguration());

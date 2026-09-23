@@ -122,6 +122,25 @@ def main():
     engine.dispose()
     assert target["application_settings"]["MAIL_HOST"] == "mail.example.test"
     assert (Path(target["data_root"]) / "uploads/logo.txt").read_bytes() == (root / "uploads/logo.txt").read_bytes()
+    # Le compte importé doit se connecter par le vrai HTTPS, avec CSRF actif,
+    # et ouvrir le module pédagogique avec ses droits migrés.
+    import http.cookiejar
+    import re
+    import ssl
+    import urllib.parse
+    import urllib.request
+    ca = Path(target["data_root"]) / "https/tls/pki/authorities/local/root.crt"
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+                                        urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=str(ca))))
+    with opener.open(target["url"] + "/", timeout=30) as response:
+        body = response.read().decode("utf-8")
+    csrf = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', body).group(1)
+    data = urllib.parse.urlencode({"email": c["admin_email"], "password": c["admin_password"], "csrf_token": csrf}).encode()
+    request = urllib.request.Request(target["url"] + "/", data=data, headers={"Referer": target["url"] + "/"})
+    with opener.open(request, timeout=30) as response:
+        assert response.status == 200 and "/dashboard" in response.url
+    with opener.open(target["url"] + "/participants/", timeout=30) as response:
+        assert response.status == 200 and "RECETTE" in response.read().decode("utf-8")
     print("MIGRATION_BASE_ANCIENNE_COMPTES_DOCUMENTS_PARAMETRES_SOURCE_INTACTE_OK")
 
 
