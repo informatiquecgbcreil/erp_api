@@ -43,14 +43,18 @@ import pytest
 
 # Dossiers jetables AVANT l'import de la config (config.py crée des
 # dossiers au moment de l'import).
-_TMP = tempfile.mkdtemp(prefix="juin-tests-")
+_TMP = os.environ.get("MCS_TEST_SESSION_ROOT") or tempfile.mkdtemp(prefix="juin-tests-")
+os.environ["MCS_TEST_SESSION_ROOT"] = _TMP
 os.environ["APP_DATA_DIR"] = os.path.join(_TMP, "data")
 os.environ["APP_UPLOAD_DIR"] = os.path.join(_TMP, "uploads")
 os.environ["ERP_LOG_DIR"] = os.path.join(_TMP, "logs")
+os.environ["MCS_INSTANCE_DIR"] = os.path.join(_TMP, "instance")
+os.environ["MCS_BACKUP_DIR"] = os.path.join(_TMP, "backups")
+os.environ["BACKUP_OFFSITE_DIRS"] = ""
 # On neutralise une éventuelle base configurée dans l'environnement :
 # les tests ne doivent JAMAIS toucher une vraie base.
-os.environ.pop("DATABASE_URL", None)
-os.environ.pop("SQLALCHEMY_DATABASE_URI", None)
+os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TMP, "bootstrap.db")
+os.environ["SQLALCHEMY_DATABASE_URI"] = os.environ["DATABASE_URL"]
 
 from config import Config  # noqa: E402
 

@@ -740,16 +740,16 @@ def create_app():
     with app.app_context():
         if app.config.get("DB_AUTO_UPGRADE_ON_START", True):
             try:
-                from flask_migrate import upgrade, stamp
+                from flask_migrate import upgrade
 
                 insp_pre = inspect(db.engine)
                 tables = set(insp_pre.get_table_names())
                 has_legacy_core = {"user", "role", "permission", "atelier_activite"}.issubset(tables)
                 if has_legacy_core and "alembic_version" not in tables:
-                    app.logger.warning(
-                        "Base existante détectée sans alembic_version: stamp(head) avant upgrade."
+                    raise RuntimeError(
+                        "Base existante sans historique Alembic : démarrage refusé. "
+                        "Faites analyser une copie du schéma avant la reprise ; aucun marquage automatique n'est effectué."
                     )
-                    stamp(revision="head")
 
                 upgrade()
             except Exception:

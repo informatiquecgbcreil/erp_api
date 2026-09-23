@@ -73,6 +73,7 @@ class Config:
     # - Priorité aux variables d'environnement (Postgres ou autre)
     # - Fallback SQLite local si rien n'est défini
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {"hide_parameters": True}
 
     INSTANCE_DIR = os.environ.get("MCS_INSTANCE_DIR", os.path.join(BASE_DIR, "instance"))
     os.makedirs(INSTANCE_DIR, exist_ok=True)

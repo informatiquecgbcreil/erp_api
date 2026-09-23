@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app import create_app
-from app.services.sauvegarde import _restaurer_postgres, extraire_zip_securisee
+from app.services.sauvegarde import _restaurer_postgres, _restaurer_uploads
 
 
 def _restore_sqlite(src_db: Path, db_uri: str) -> None:
@@ -29,7 +29,7 @@ def _restore_postgres(src_sql: Path, db_uri: str) -> None:
 
 def _restore_uploads(zip_file: Path, upload_dir: Path) -> None:
     # Extraction durcie : refuse toute entrée qui écrirait hors du dossier cible.
-    extraire_zip_securisee(zip_file, upload_dir)
+    _restaurer_uploads(zip_file, upload_dir)
 
 
 def main() -> int:

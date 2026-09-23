@@ -46,7 +46,7 @@ static class SystemSmoke {
             Healthy(c); KioskHealthy(c);
             using (var service = new ServiceController(Program.ServiceName)) Check(service.Status == ServiceControllerStatus.Running, "Service non démarré");
             var report = Path.Combine(Program.Root, "Direction-DSI", "Installation-confidentielle.txt");
-            Check(File.ReadAllText(report).Contains((string)c["db_password"]), "Dossier confidentiel incomplet");
+            Check(!File.ReadAllText(report).Contains((string)c["secret_key"]) && !File.ReadAllText(report).Contains((string)c["db_password"]), "Un secret figure dans le rapport");
             var security = File.GetAccessControl(report);
             foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier))) {
                 if (rule.AccessControlType != AccessControlType.Allow) continue;

@@ -21,6 +21,7 @@ APP = INSTALL / "application"
 if not APP.exists():  # Exécution depuis les sources pour la recette.
     APP = INSTALL
 sys.path.insert(0, str(APP))
+sys.path.insert(0, str(INSTALL))
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -28,8 +29,12 @@ def configure_environment(c):
     root = Path(c["data_root"])
     for name in ("instance", "uploads", "logs", "backups", "runtime"):
         (root / name).mkdir(exist_ok=True, parents=True)
+    database_name = c.get("db_name", "moncentresocial")
+    import re
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", database_name):
+        raise ValueError("Nom de base gérée invalide.")
     uri = (f"postgresql+psycopg://mcs:{quote(c['db_password'], safe='')}"
-           f"@127.0.0.1:{int(c['db_port'])}/moncentresocial")
+           f"@127.0.0.1:{int(c['db_port'])}/{database_name}")
     values = {
         "ERP_ENV": "production", "APP_NAME": "Mon Centre Social",
         "SECRET_KEY": c["secret_key"], "DATABASE_URL": uri, "SQLALCHEMY_DATABASE_URI": uri,
@@ -49,6 +54,8 @@ def configure_environment(c):
         "PASSWORD_RESET_ALLOW_DEBUG_LINK": "0", "PYTHONDONTWRITEBYTECODE": "1",
     }
     os.environ.update(values)
+    from desktop.migration import SETTINGS
+    os.environ.update({k: str(v) for k, v in c.get("application_settings", {}).items() if k in SETTINGS})
     os.chdir(APP)
     return root
 
@@ -120,6 +127,8 @@ def bootstrap_account(app, c):
 
 
 def web(c):
+    if c.get("migration_source") and not c.get("migration_done"):
+        raise RuntimeError("La reprise doit être terminée dans l'assistant avant le démarrage.")
     root = configure_environment(c)
     from app import create_app
     from waitress import create_server
@@ -159,7 +168,8 @@ def spawn(mode, c, log):
     process = subprocess.Popen([sys.executable, "-B", str(Path(__file__).resolve()), mode],
                                stdin=subprocess.PIPE, stdout=log, stderr=log,
                                creationflags=CREATE_NO_WINDOW)
-    process.stdin.write(json.dumps(c).encode("utf-8"))
+    child_config = {k: v for k, v in c.items() if k not in {"db_admin_password", "migration_uri"}}
+    process.stdin.write(json.dumps(child_config).encode("utf-8"))
     process.stdin.close()
     return process
 
@@ -299,12 +309,46 @@ def supervise(c):
                           "-w", "-t", "30", "-m", "fast", "stop"], timeout=45)
 
 
+def migrate_installation(c):
+    """Prépare une base jetable différente à chaque tentative, avant le service."""
+    import uuid
+    import psycopg
+    from psycopg import sql
+    from desktop.migration import migrate
+    root = configure_environment(c)
+    started = False
+    try:
+        start_database(c, root)
+        started = True
+        completed = root / "runtime/reprise/complete.json"
+        if completed.exists():
+            report = json.loads(completed.read_text(encoding="utf-8"))
+        else:
+            c["db_name"] = "mcs_reprise_" + uuid.uuid4().hex[:16]
+            with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
+                                 password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:
+                conn.execute(sql.SQL("CREATE DATABASE {} OWNER mcs").format(sql.Identifier(c["db_name"])))
+                conn.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(c["db_name"])))
+            configure_environment(c)
+            report = migrate(c, sys.modules[__name__])
+        (root / "private/migration-result.json").write_text(json.dumps(report), encoding="utf-8")
+    finally:
+        if started:
+            run_tool([INSTALL / "postgresql/bin/pg_ctl.exe", "-D", root / "postgresql",
+                      "-w", "-t", "30", "-m", "fast", "stop"], timeout=45)
+
+
 if __name__ == "__main__":
     config = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     try:
-        {"--supervise": supervise, "--web": web, "--backup": backup}[sys.argv[1]](config)
-    except Exception:
+        {"--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation}[sys.argv[1]](config)
+    except Exception as exc:
         # Le fichier de log est protégé par les ACL, mais ne conserve pas les secrets.
+        if sys.argv[1] == "--migrate":
+            from desktop.migration import MigrationError
+            message = str(exc) if isinstance(exc, MigrationError) else "La reprise a échoué. Vérifiez les connexions, les dossiers et l'espace disponible."
+            (Path(config["data_root"]) / "private/migration-error.txt").write_text(message, encoding="utf-8")
+            raise SystemExit(1)
         import traceback
         error = traceback.format_exc()
         for key, value in config.items():

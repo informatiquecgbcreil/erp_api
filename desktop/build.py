@@ -88,7 +88,7 @@ def build(args):
     if not lock.exists(): raise RuntimeError("Générer le verrou de dépendances avant la construction.")
     run(sys.executable, "-m", "pip", "install", "--require-hashes", "--only-binary=:all:", "--no-compile", "--target", python_dir / "Lib/site-packages", "-r", lock)
     # Liste Git explicite : jamais de copie des bases, uploads ou configurations locales.
-    sources = subprocess.check_output(["git","ls-files","--cached","--others","--exclude-standard"],cwd=REPO,text=True).splitlines()
+    sources = subprocess.check_output(["git","ls-files","--cached"],cwd=REPO,text=True).splitlines()
     with zipfile.ZipFile(payload / "sources-Mon-Centre-Social.zip", "w", zipfile.ZIP_DEFLATED) as source_zip:
         for relative in sources:
             file = REPO / relative
@@ -99,6 +99,7 @@ def build(args):
                 dest.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(file,dest)
     (payload / "desktop").mkdir()
     shutil.copy2(REPO / "desktop/runtime.py", payload / "desktop/runtime.py")
+    shutil.copy2(REPO / "desktop/migration.py", payload / "desktop/migration.py")
     shutil.copy2(REPO / "docs/GUIDE-WINDOWS.md", payload / "GUIDE-WINDOWS.md")
     shutil.copy2(downloads / "vc_redist.x64.exe",payload)
     icon(payload / "mon-centre-social.ico")
