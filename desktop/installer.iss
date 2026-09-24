@@ -7,8 +7,8 @@
 [Setup]
 AppId={{867301CB-6143-4C33-BF2A-EDC1CFC2DE6A}
 AppName=Mon Centre Social
-AppVersion=1.0.0-rc1
-AppVerName=Mon Centre Social 1.0.0-rc1
+AppVersion=1.0.0-rc2
+AppVerName=Mon Centre Social 1.0.0-rc2
 AppPublisher=Mon Centre Social — projet associatif
 AppPublisherURL=https://github.com/informatiquecgbcreil/erp_api
 DefaultDirName={autopf}\Mon Centre Social
@@ -20,7 +20,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 OutputDir={#Deliverables}
-OutputBaseFilename=Mon-Centre-Social-1.0.0-rc1-Setup-x64
+OutputBaseFilename=Mon-Centre-Social-1.0.0-rc2-Setup-x64
 SetupIconFile={#Payload}\mon-centre-social.ico
 UninstallDisplayIcon={app}\MonCentreSocial.exe
 LicenseFile={#Payload}\application\LICENSE

@@ -131,3 +131,15 @@ Les sauvegardes locales ne couvrent pas la perte du poste. Prévoir une copie
 hors machine et une recette de restauration métier. Le certificat de signature
 éditeur, le DNS local et la configuration du serveur SMTP ne peuvent pas être
 inventés par l'installateur.
+
+## Compatibilité PostgreSQL de la rc2
+
+Le paquet livre PostgreSQL 18.6 pour les nouvelles bases et conserve séparément
+17.11 pour les installations existantes. Le fichier PG_VERSION détermine les
+binaires de démarrage, sauvegarde, restauration et arrêt. Une reprise inachevée
+en 17 est conservée à part avant de créer la destination 18. Les sources 10 à 18
+sont admises ; une source plus récente que la destination reste refusée.
+
+La recette supplémentaire utilise les binaires officiels 18.1, vérifiés par
+empreinte, sur une source en IPv6 et avec un mot de passe comportant !.
+Référence : https://www.postgresql.org/docs/18/app-pgdump.html#APP-PGDUMP-NOTES

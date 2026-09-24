@@ -16,6 +16,11 @@ def main():
     root = Path(c["data_root"])
     if not root.resolve().is_relative_to(Path(os.environ["RUNNER_TEMP"]).resolve()):
         raise RuntimeError("La source de recette doit rester dans RUNNER_TEMP.")
+    # Binaire 18.1 téléchargé uniquement dans le runner, jamais dans le produit.
+    fixture_bin = Path(os.environ["MCS_TEST_POSTGRES_BIN"]).resolve()
+    if not fixture_bin.is_relative_to(Path(os.environ["RUNNER_TEMP"]).resolve()):
+        raise RuntimeError("Les outils de recette doivent rester dans RUNNER_TEMP.")
+    runtime.postgres_bin = lambda root, config=None: fixture_bin
     import psycopg
     from sqlalchemy import create_engine, text
     from desktop.migration import fingerprints, read_source
@@ -23,7 +28,7 @@ def main():
     if mode == "stop":
         if not (root / "postgresql/postmaster.pid").exists():
             return
-        runtime.run_tool([install / "postgresql/bin/pg_ctl.exe", "-D", root / "postgresql",
+        runtime.run_tool([fixture_bin / "pg_ctl.exe", "-D", root / "postgresql",
                           "-w", "-m", "fast", "stop"])
         return
     if mode == "prepare":
@@ -47,8 +52,13 @@ def main():
             return result
         runtime.run_tool = run_fixture_tool
         runtime.start_database(c, root)
+        runtime.run_tool([fixture_bin / "pg_ctl.exe", "-D", root / "postgresql", "-w", "-m", "fast", "stop"])
+        with (root / "postgresql/postgresql.conf").open("a", encoding="utf-8") as config_file:
+            config_file.write("\nlisten_addresses = '127.0.0.1,::1'\n")
+        runtime.run_tool([fixture_bin / "pg_ctl.exe", "-D", root / "postgresql", "-w", "start", "-l", root / "logs/source-start.log"])
         with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
                              password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:
+            assert int(conn.execute("SHOW server_version_num").fetchone()[0]) == 180001
             conn.execute("CREATE DATABASE erp_pedagogie OWNER mcs")
         from flask import Flask
         from flask_migrate import upgrade
@@ -85,7 +95,10 @@ def main():
                        file_path=str(document), original_name="preuve.txt")
             db.session.remove()
             db.engine.dispose()
-        uri = os.environ["SQLALCHEMY_DATABASE_URI"]
+        from sqlalchemy.engine import make_url
+        uri = make_url(os.environ["SQLALCHEMY_DATABASE_URI"]).set(
+            username="postgres", password=c["db_admin_password"], host="::1"
+        ).render_as_string(hide_password=False).replace("%21", "!")
         (root / ".env").write_text("SQLALCHEMY_DATABASE_URI=" + uri + "\n"
                                    "MCS_INSTANCE_DIR=instance\nAPP_UPLOAD_DIR=uploads\n"
                                    "MAIL_HOST=mail.example.test\n", encoding="utf-8")
@@ -101,6 +114,7 @@ def main():
     # Vérification indépendante : aucune écriture, aucun create_app sur la source.
     source = create_engine(read_source(root)["url"])
     with source.connect() as connection:
+        assert int(connection.execute(text("SHOW server_version_num")).scalar_one()) == 180001
         assert fingerprints(connection) == json.loads((root / "expected.json").read_text(encoding="utf-8"))
     source.dispose()
     target = payload["target"]
@@ -108,6 +122,7 @@ def main():
     engine = create_engine(os.environ["SQLALCHEMY_DATABASE_URI"])
     from werkzeug.security import check_password_hash
     with engine.connect() as connection:
+        assert 180000 <= int(connection.execute(text("SHOW server_version_num")).scalar_one()) < 190000
         account = connection.execute(text('SELECT password_hash FROM "user" WHERE email=:email'), {"email": c["admin_email"]}).scalar_one()
         assert check_password_hash(account, c["admin_password"])
         assert connection.execute(text("SELECT nom FROM participant")).scalar_one() == "RECETTE"
@@ -141,6 +156,7 @@ def main():
         assert response.status == 200 and "/dashboard" in response.url
     with opener.open(target["url"] + "/participants/", timeout=30) as response:
         assert response.status == 200 and "RECETTE" in response.read().decode("utf-8")
+    print("MIGRATION_POSTGRESQL_18_1_IPV6_MOT_DE_PASSE_EXCLAMATION_OK")
     print("MIGRATION_BASE_ANCIENNE_COMPTES_DOCUMENTS_PARAMETRES_SOURCE_INTACTE_OK")
 
 

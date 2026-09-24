@@ -19,6 +19,7 @@ REPO = Path(__file__).resolve().parents[1]
 DOWNLOADS = {
     "python-3.13.15-embed-amd64.zip": ("https://www.python.org/ftp/python/3.13.15/python-3.13.15-embed-amd64.zip", "d1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf"),
     "postgresql-17.11-windows-x64.zip": ("https://sbp.enterprisedb.com/getfile.jsp?fileid=1260569", "b9424ee7bc60b52450ff910a3630225df32e633f3cb29c1d126d9299d59aea28"),
+    "postgresql-18.6-windows-x64.zip": ("https://get.enterprisedb.com/postgresql/postgresql-18.6-4-windows-x64-binaries.zip", "1df55002afe95b945d934c078b13e82c1603fa546731e511d068aa983b4ead28"),
     "caddy_2.11.4_windows_amd64.zip": ("https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_windows_amd64.zip", "1708333f79e274c7697285afe6d592ab39314e0b131e9ec6bea08ad27df62ebf"),
     "vc_redist.x64.exe": ("https://aka.ms/vs/17/release/vc_redist.x64.exe", "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b"),
 }
@@ -72,16 +73,18 @@ def build(args):
     payload.mkdir()
     for archive, target in [("python-3.13.15-embed-amd64.zip","python"), ("caddy_2.11.4_windows_amd64.zip","caddy")]:
         with zipfile.ZipFile(downloads / archive) as z: z.extractall(payload / target)
-    with zipfile.ZipFile(downloads / "postgresql-17.11-windows-x64.zip") as z:
-        for name in z.namelist():
-            parts = Path(name).parts
-            if len(parts) < 2 or parts[0] != "pgsql": continue
-            if parts[1] not in {"bin","lib","share"} and "license" not in parts[1].lower(): continue
-            target = payload / "postgresql" / Path(*parts[1:])
-            if name.endswith("/"): target.mkdir(parents=True,exist_ok=True)
-            else:
-                target.parent.mkdir(parents=True,exist_ok=True)
-                with z.open(name) as src, target.open("wb") as dest: shutil.copyfileobj(src,dest)
+    # Deux moteurs séparés : 18 pour les nouvelles reprises, 17 pour les clusters existants.
+    for archive, folder in [("postgresql-17.11-windows-x64.zip", "postgresql"), ("postgresql-18.6-windows-x64.zip", "postgresql18")]:
+        with zipfile.ZipFile(downloads / archive) as z:
+            for name in z.namelist():
+                parts = Path(name).parts
+                if len(parts) < 2 or parts[0] != "pgsql": continue
+                if parts[1] not in {"bin","lib","share"} and "license" not in parts[1].lower(): continue
+                target = payload / folder / Path(*parts[1:])
+                if name.endswith("/"): target.mkdir(parents=True,exist_ok=True)
+                else:
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    with z.open(name) as src, target.open("wb") as dest: shutil.copyfileobj(src,dest)
     python_dir = payload / "python"
     (python_dir / "python313._pth").write_text("python313.zip\n.\nLib/site-packages\nimport site\n", encoding="ascii")
     lock = REPO / "desktop/requirements-windows.lock"
@@ -112,11 +115,11 @@ def build(args):
     version = subprocess.check_output(["git","rev-parse","HEAD"],cwd=REPO,text=True).strip()
     base = subprocess.check_output(["git","merge-base","origin/main","HEAD"],cwd=REPO,text=True).strip()
     dirty = bool(subprocess.check_output(["git","status","--porcelain"],cwd=REPO,text=True).strip())
-    manifest = {"version":"1.0.0-rc1", "source_commit":version, "base_commit":base, "uncommitted_changes":dirty,"platform":"Windows x64","components":DOWNLOADS,
+    manifest = {"version":"1.0.0-rc2", "source_commit":version, "base_commit":base, "uncommitted_changes":dirty,"platform":"Windows x64","components":DOWNLOADS,
                 "files":{str(p.relative_to(payload)).replace("\\","/"):sha(p) for p in sorted(payload.rglob("*")) if p.is_file()}}
     (payload / "manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
     run(args.iscc, "/DPayload=" + str(payload), "/DDeliverables=" + str(output), REPO / "desktop/installer.iss")
-    installer = output / "Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe"
+    installer = output / "Mon-Centre-Social-1.0.0-rc2-Setup-x64.exe"
     (output / (installer.name + ".sha256")).write_text(sha(installer) + "  " + installer.name + "\n",encoding="ascii")
     print("Livraison :", installer)
 

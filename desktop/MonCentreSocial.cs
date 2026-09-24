@@ -373,12 +373,41 @@ static class Program {
             throw;
         }
     }
+    internal static void PrepareMigrationCluster(Dictionary<string, object> c) {
+        // Appelé après arrêt du service, uniquement pour une reprise non activée.
+        // Le cluster incomplet 17 reste intégralement conservé. Une installation
+        // déjà en service continue à utiliser ses binaires 17 sans conversion.
+        var data = Path.Combine(Root,"postgresql");
+        var version = Path.Combine(data,"PG_VERSION");
+        var completed = Path.Combine(Root,"runtime","reprise","complete.json");
+        var provisioned = Path.Combine(Root,"runtime","provisioned");
+        if (File.Exists(completed)) {
+            if (!File.Exists(version)) throw new Exception("Le cluster de la copie terminée est introuvable. La reprise est suspendue.");
+            return;
+        }
+        if (!File.Exists(version)) {
+            // Reprise idempotente, y compris après une coupure suivant le déplacement.
+            c.Remove("db_major");
+            if (File.Exists(provisioned)) File.Delete(provisioned);
+            SecureDirectory(data,true,true); return;
+        }
+        if (File.ReadAllText(version).Trim() != "17") return;
+        GuardPath(data);
+        if (File.Exists(Path.Combine(data,"postmaster.pid")))
+            throw new Exception("Le cluster de la tentative précédente doit être arrêté avant la reprise.");
+        var archived = Path.Combine(Root,"runtime","reprise-pg17-" + Guid.NewGuid().ToString("N"));
+        GuardPath(archived); Directory.Move(data,archived);
+        c.Remove("db_major");
+        if (File.Exists(provisioned)) File.Delete(provisioned);
+        SecureDirectory(data,true,true);
+    }
     internal static void RunMigration(Dictionary<string, object> c) {
         string oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
         if (oldName == ServiceName || (oldName.Length > 0 && !Regex.IsMatch(oldName, "^[A-Za-z0-9_. -]{1,150}$")))
             throw new Exception("Nom d'ancien service invalide.");
         bool wasRunning = false;
         try {
+            PrepareMigrationCluster(c);
             if (oldName.Length > 0) using (var old = new ServiceController(oldName)) {
                 wasRunning = old.Status == ServiceControllerStatus.Running;
                 c["migration_restart_old"] = wasRunning;
@@ -582,7 +611,7 @@ sealed class InstallationChoice : Form {
         Controls.Add(new Label { Text = "Nom de l'ancien service Windows (vide si vous l'avez déjà arrêté)", Location = new Point(24,234), AutoSize = true });
         service.SetBounds(24,260,676,28); Controls.Add(service);
         maintenance.SetBounds(24,301,676,30); Controls.Add(maintenance);
-        Controls.Add(new Label { Text = "L'ancien service sera arrêté puis désactivé après réussite. La base source reste conservée.\nEn cas d'échec, le service précédemment actif est relancé. PostgreSQL 10 à 17 pris en charge.", Location = new Point(24,340), Size = new Size(676,50) });
+        Controls.Add(new Label { Text = "L'ancien service sera arrêté puis désactivé après réussite. La base source reste conservée.\nEn cas d'échec, le service précédemment actif est relancé. PostgreSQL 10 à 18 pris en charge.", Location = new Point(24,340), Size = new Size(676,50) });
         var next = new Button { Text = "Continuer", Location = new Point(570,400), Size = new Size(130,30) };
         next.Click += delegate {
             if (existing.Checked && (!Directory.Exists(Source) || !maintenance.Checked)) { MessageBox.Show("Sélectionnez le dossier source et confirmez l'interruption des saisies."); return; }

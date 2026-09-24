@@ -39,13 +39,17 @@ jobs:
   # cas la suite était au vert — elle ne tournait que sur SQLite. Ce second
   # passage existe pour que cette famille d'erreurs s'arrête ici.
   postgres:
-    name: Tests (PostgreSQL)
+    name: Tests (PostgreSQL ${{ matrix.postgres }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: [16, 18]
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: erp
           POSTGRES_PASSWORD: erp
@@ -82,7 +86,13 @@ jobs:
 
       - name: Installer le client PostgreSQL
         # pg_dump est appelé par le module de sauvegarde, qui est testé.
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-${{ matrix.postgres }}
+          echo "/usr/lib/postgresql/${{ matrix.postgres }}/bin" >> "$GITHUB_PATH"
 
       - name: Lancer les tests sur PostgreSQL
         env:

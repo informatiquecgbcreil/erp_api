@@ -1,4 +1,5 @@
 name: Installateur Windows
+# La suite applicative couvre aussi PostgreSQL 18 dans tests.yml.
 on:
   workflow_dispatch:
   push:
@@ -35,7 +36,7 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path "$env:ProgramData/MonCentreSocial") { throw 'Une instance existe déjà' }
-          $installer = (Resolve-Path 'outputs/Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe').Path
+          $installer = (Resolve-Path 'outputs/Mon-Centre-Social-1.0.0-rc2-Setup-x64.exe').Path
           $installation = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru
           if ($installation.ExitCode -notin 0,3010) { throw "Installation : $($installation.ExitCode)" }
           $appDir = Join-Path $env:ProgramFiles 'Mon Centre Social'
@@ -45,6 +46,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Compilation de la recette impossible' }
           & "$appDir/RecetteSysteme.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Recette service échouée' }
+          # Reproduit la version réelle de la source, distincte du moteur 18.6 livré.
+          $pgFixture = Join-Path $env:RUNNER_TEMP 'postgresql-18.1-fixture'
+          $pgZip = Join-Path $env:RUNNER_TEMP 'postgresql-18.1.zip'
+          Invoke-WebRequest 'https://get.enterprisedb.com/postgresql/postgresql-18.1-1-windows-x64-binaries.zip' -OutFile $pgZip
+          if ((Get-FileHash $pgZip).Hash -ne 'B2A7302ECB78088209EDD96A936EC360FC12C58EC27DC8CC4E8CE5AEFB9F8D3B') { throw 'Empreinte PostgreSQL 18.1 invalide' }
+          Expand-Archive $pgZip $pgFixture
+          $env:MCS_TEST_POSTGRES_BIN = Join-Path $pgFixture 'pgsql/bin'
           & "$appDir/RecetteSysteme.exe" migration (Resolve-Path 'desktop/migration_smoke.py').Path
           if ($LASTEXITCODE -ne 0) { throw 'Reprise de la base ancienne échouée' }
           $update = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -Wait -PassThru

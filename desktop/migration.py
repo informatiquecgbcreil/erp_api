@@ -151,6 +151,14 @@ def pg_tool(executable, url, *arguments):
         raise MigrationError("Échec de " + Path(executable).stem + ". La source n'a pas été modifiée.")
 
 
+def validate_postgres_versions(source, target):
+    source_major, target_major = source // 10000, target // 10000
+    if not 10 <= source_major <= 18:
+        raise MigrationError(f"PostgreSQL source {source_major} détecté. Cette distribution accepte les sources 10 à 18.")
+    if target_major not in {17, 18} or source_major > target_major:
+        raise MigrationError(f"Copie PostgreSQL {source_major} vers {target_major} refusée : la destination doit être de même version majeure ou plus récente.")
+
+
 def migrate(c, runtime):
     """Appel administrateur, ancien service arrêté, nouveau service non démarré."""
     source = read_source(c["migration_source"], c.get("migration_uri", ""))
@@ -174,13 +182,14 @@ def migrate(c, runtime):
             if inspect(connection).get_table_names():
                 raise MigrationError("La destination contient déjà des données. Aucune base existante ne sera écrasée ; reprenez avec une destination vide.")
         from app.services.instance_archive import create_archive, stage_archive, install_staged, remap_paths
-        pg = runtime.INSTALL / "postgresql" / "bin"
+        pg = runtime.postgres_bin(root, c)
         extension = ".exe" if os.name == "nt" else ""
         with src.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
             with connection.begin():
                 version = int(connection.execute(text("SHOW server_version_num")).scalar_one())
-                if not 100000 <= version < 180000:
-                    raise MigrationError("Cette distribution accepte les sources PostgreSQL 10 à 17. Utilisez une distribution adaptée à la version source.")
+                with target.connect() as destination:
+                    target_version = int(destination.execute(text("SHOW server_version_num")).scalar_one())
+                validate_postgres_versions(version, target_version)
                 revisions = validate_revision(connection, runtime.APP)
                 validate_document_paths(connection, source)
                 snapshot = connection.execute(text("SELECT pg_export_snapshot()")).scalar_one()

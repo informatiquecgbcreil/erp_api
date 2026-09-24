@@ -10,7 +10,7 @@ installation **de cet ERP**. Aucun nom de base ni dossier historique n'est
 imposé. Le dossier source contient normalement son fichier .env ; une connexion
 PostgreSQL peut être renseignée dans l'assistant sans être affichée dans les logs.
 
-Sources prises en charge : PostgreSQL 10 à 17, historique Alembic connu. Une
+Sources prises en charge : PostgreSQL 10 à 18, historique Alembic connu. Une
 base sans historique ou provenant d'une version inconnue est refusée, sans
 modification. Cela exige une analyse de schéma préalable, pas un stamp(head)
 aveugle. La conversion SQLite vers PostgreSQL n'est pas proposée par ce parcours.
@@ -88,7 +88,7 @@ vert avec la validation d'une modification ultérieure.
 La CI Windows construit l'EXE puis vérifie une installation neuve, les services,
 HTTPS avec vérification du certificat, DPAPI, les ACL et privilèges, les sauvegardes,
 l'arrêt/redémarrage, la mise à jour et la désinstallation avec conservation des données.
-Elle reprend ensuite une base PostgreSQL 17 nommée `erp_pedagogie`, à la révision
+Depuis la rc2, elle reprend une base PostgreSQL 18.1 nommée `erp_pedagogie`, à la révision
 historique `de23fa45bc67`, avec comptes, documents et paramètres. Elle vérifie la
 source inchangée et une connexion réelle en HTTPS avec le compte repris, CSRF actif.
 Ce nom de base appartient uniquement au scénario de test ; le parcours ne l'impose pas.
@@ -130,3 +130,16 @@ Cette branche ne clôt pas tous les constats du rapport d'audit. En particulier 
 
 Le guide [GUIDE-WINDOWS.md](GUIDE-WINDOWS.md) décrit la reprise et les limites de
 retour arrière. Ne pas supprimer l'ancienne installation avant la recette réelle.
+
+## Complément rc2 — PostgreSQL 18
+
+Le moteur des nouvelles destinations est PostgreSQL 18.6. Le paquet conserve
+17.11 dans un dossier de binaires distinct pour les clusters déjà activés en 17.
+La sélection dépend du fichier PG_VERSION ; une tentative 17 non achevée est
+archivée avant la création de la nouvelle destination 18. La recette reproduit
+une source 18.1, l'adresse IPv6 ::1 et un mot de passe contenant un point
+d'exclamation. Le contrôle de version refuse toujours les rétrogradations.
+
+Les deux archives 18.6 et 18.1 de recette ont été téléchargées depuis le serveur
+HTTPS EDB et leur SHA-256 est figé dans le build/workflow. Seuls les moteurs 17.11
+et 18.6 sont distribués. La fixture 18.1 reste sur le runner temporaire.
