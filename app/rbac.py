@@ -79,6 +79,7 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     # Participants
     ("participants:view", "Voir les participants (secteur)"),
     ("participants:view_all", "Voir les participants (tous secteurs)"),
+    ("participants:edit_all", "Modifier les fiches et cotisations de tous les secteurs (accueil)"),
     ("participants:edit", "Créer / modifier un participant"),
     ("participants:delete", "Supprimer un participant"),
     ("participants:anonymize", "Anonymiser un participant"),
@@ -322,8 +323,12 @@ ROLE_TEMPLATES["accueil"] = {
     "label": "Accueil",
     "perms": [
         "dashboard:view",
-        # L'accueil reçoit tout le monde : annuaire complet.
+        # L'accueil reçoit tout le monde : annuaire complet, et droit de modifier
+        # toutes les fiches (adhésion, cotisation, coordonnées) quel que soit le
+        # secteur qui les a créées. Permission dédiée : « scope:all_secteurs »
+        # ouvrirait aussi le pilotage financier, le journal et les exports RGPD.
         "participants:view", "participants:view_all", "participants:edit",
+        "participants:edit_all",
         # Rattrapage des feuilles d'émargement papier : saisie, pas de suppression.
         "ateliers:view", "emargement:view", "emargement:edit",
         "inscriptions:view", "inscriptions:edit",
@@ -352,6 +357,8 @@ ROLE_LABELS: dict[str, str] = {
 # Sans cela, seules les nouvelles installations en bénéficieraient (les
 # gabarits de rôles ne sont pas réappliqués sur les rôles existants).
 PERMS_AUTO_GRANT = {
+    # Accueil existant : le contrôle de secteur des écritures l'aurait bloqué.
+    "participants:edit_all": ("accueil",),
     "dons:view": ("direction", "directrice", "finance"),
     "dons:edit": ("direction", "directrice", "finance"),
     "benevolat:taux": ("direction", "directrice", "finance"),

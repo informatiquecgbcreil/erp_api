@@ -66,12 +66,36 @@ def squelette_nom(texte: str) -> str:
     return "".join(out)
 
 
+def _une_faute(a: str, b: str) -> bool:
+    """Au plus une lettre ajoutée, retirée ou remplacée (« michut »/« michot »)."""
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) > len(b):
+        a, b = b, a
+    i = j = ecarts = 0
+    while i < len(a) and j < len(b):
+        if a[i] == b[j]:
+            i += 1; j += 1
+            continue
+        ecarts += 1
+        if ecarts > 1:
+            return False
+        if len(a) == len(b):
+            i += 1
+        j += 1
+    return ecarts + (len(b) - j) + (len(a) - i) <= 1
+
+
 def _proches(a: str, b: str) -> bool:
     if a == b:
         return True
     if squelette_nom(a) == squelette_nom(b):
         return True
-    return len(a) >= 3 and len(b) >= 3 and (a.startswith(b) or b.startswith(a))
+    if len(a) >= 3 and len(b) >= 3 and (a.startswith(b) or b.startswith(a)):
+        return True
+    # Faute de frappe sur un nom assez long pour qu'elle ne rapproche pas
+    # deux personnes différentes (« Léa »/« Léo » restent distincts).
+    return min(len(a), len(b)) >= 5 and _une_faute(a, b)
 
 
 def candidats_doublons(nom: str, prenom: str, *, exclure_id: int | None = None) -> list[Participant]:

@@ -79,6 +79,13 @@ Une base sans version Alembic, d'une version inconnue, SQLite ou provenant d'un
 autre logiciel nécessite une étude préalable ; l'assistant refuse de la marquer
 artificiellement comme à jour.
 
+Faire la reprise sur la machine qui héberge l'ancienne installation : les
+documents référencés par un chemin absolu (`C:\...`) doivent être lisibles à ce
+chemin. En cas d'échec, le message indique la cause principale (mot de passe
+refusé, version, droits, connexion) sans afficher de secret. Les copies de
+travail (sauvegarde de la base et des documents) sont supprimées à la fin de
+chaque tentative, réussie ou non.
+
 Après réussite, l'ancien service sélectionné est désactivé. En cas d'échec avant
 activation, le nouveau service est arrêté et l'ancien est relancé s'il tournait
 au départ. Si l'ancien service a été arrêté manuellement, sa remise en route est
@@ -111,7 +118,9 @@ Les binaires de sauvegarde et de restauration suivent le moteur du cluster.
 L'icône maison et habitants apparaît dans la zone de notification, parfois sous
 la flèche des icônes masquées. Son menu offre **Ouvrir la page d'administration**,
 **Redémarrer** et **Fermer**. Redémarrer/fermer le service demande les droits
-administrateur Windows, car cela affecte tous les postes. Fermer arrête le
+administrateur Windows, car cela affecte tous les postes. Tant qu'une reprise
+n'est pas terminée, **Redémarrer** ne fait rien et renvoie vers « Configurer Mon
+Centre Social » : l'icône n'arrête jamais l'ancien service en production. Fermer arrête le
 service jusqu'à son redémarrage ou au prochain démarrage de Windows.
 
 Le service fonctionne en arrière-plan avant toute ouverture de session. Les

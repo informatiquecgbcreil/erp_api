@@ -71,12 +71,23 @@ def _is_global_role() -> bool:
     return current_user.has_perm("participants:view_all") or current_user.has_perm("scope:all_secteurs")
 
 
-def _can_read_participant(p: Participant) -> bool:
-    return bool(can('participants:view') or can('participants:edit') or can('participants:delete')) and (_is_global_role() or participant_allowed(p))
+def _has_scope_all() -> bool:
+    """Portée d'ACTION sur tous les secteurs. « participants:view_all » ouvre la
+    lecture de l'annuaire, jamais la modification ou la suppression ailleurs."""
+    return bool(current_user.has_perm("scope:all_secteurs"))
+
+
+def _can_read_participant(p: Participant | None) -> bool:
+    if not (can('participants:view') or can('participants:edit') or can('participants:delete')):
+        return False
+    # Sans fiche précise (écrans de liste), le périmètre est appliqué par la requête.
+    return p is None or _is_global_role() or participant_allowed(p)
 
 
 def _can_edit_participant(p: Participant) -> bool:
-    return bool(can('participants:edit')) and participant_allowed(p)
+    # « participants:edit_all » (accueil) : modifier toute fiche, sans ouvrir
+    # pour autant les autres écrans réservés à la portée structure.
+    return bool(can('participants:edit')) and (bool(can('participants:edit_all')) or participant_allowed(p))
 
 
 def _can_view_sensitive_insertion() -> bool:
@@ -800,7 +811,6 @@ def synthese_participant(participant_id: int):
         .filter(AtelierActivite.is_deleted.is_(False))
         .group_by(AtelierActivite.id)
         .order_by(count_expr.desc(), db.func.max(session_date).desc())
-        .limit(8)
     )
     secteur_stats_query = (
         db.session.query(SessionActivite.secteur, count_expr.label("presence_count"))
@@ -816,6 +826,8 @@ def synthese_participant(participant_id: int):
     if not _is_global_role():
         atelier_stats_query = atelier_stats_query.filter(SessionActivite.secteur == _current_secteur())
         secteur_stats_query = secteur_stats_query.filter(SessionActivite.secteur == _current_secteur())
+    # Limite APRÈS le filtre de secteur (SQLAlchemy refuse l'inverse : erreur 500).
+    atelier_stats_query = atelier_stats_query.limit(8)
 
     show_orientations = can("partenaires:view")
     orientations_query = OrientationAccesDroit.query.filter(OrientationAccesDroit.participant_id == participant.id)
@@ -1384,7 +1396,7 @@ def anonymize_participant(participant_id: int):
     enregistrer("participant.anonymize", cible=f"participant #{p.id}")
 
     strict = (request.form.get("strict") or "").strip() == "1"
-    if strict and _is_global_role():
+    if strict and _has_scope_all():
         p.genre = None
         p.date_naissance = None
         p.annee_naissance = None
@@ -1496,7 +1508,8 @@ def _retour_annuaire():
 def definir_date_naissance(participant_id: int):
     """Ajout rapide de la date de naissance depuis l'annuaire, sans ouvrir la fiche."""
     p = db.get_or_404(Participant, participant_id)
-    require_participant(p)
+    if not _can_edit_participant(p):
+        abort(403)
     d = (request.form.get("date_naissance") or "").strip()
     try:
         p.date_naissance = datetime.strptime(d, "%Y-%m-%d").date()
@@ -1547,7 +1560,7 @@ def actions_groupees():
             return _retour_annuaire()
         keep = next(p for p in membres if p.id == keep_id)
         victime = next(p for p in membres if p.id != keep_id)
-        if not _is_global_role():
+        if not _has_scope_all():
             secteur = _current_secteur()
             if not secteur or any(p.created_secteur != secteur for p in membres):
                 abort(403)
@@ -1717,7 +1730,7 @@ def cleanup_fakes():
 
     # On limite au secteur de l'utilisateur (sauf rôles globaux)
     sec = _current_secteur()
-    if not _is_global_role() and not sec:
+    if not _has_scope_all() and not sec:
         abort(403)
 
     # Regex simple : commence par un des mots-clés (avec ou sans accents), + éventuellement " ?"
@@ -1746,7 +1759,7 @@ def cleanup_fakes():
 
     # Base query (filtre secteur si non global)
     q = Participant.query
-    if not _is_global_role():
+    if not _has_scope_all():
         q = q.filter(Participant.created_secteur == sec)
 
     # On charge un lot raisonnable
@@ -2145,7 +2158,7 @@ def merge_participants():
         return redirect(retour)
     # Le périmètre de la liste doit valoir pour l'action : sans ce contrôle, des
     # identifiants postés à la main fusionneraient des fiches d'un autre secteur.
-    if not _is_global_role():
+    if not _has_scope_all():
         secteur = _current_secteur()
         if not secteur or any(p.created_secteur != secteur for p in [keep] + victims):
             abort(403)

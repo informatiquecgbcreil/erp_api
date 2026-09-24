@@ -13,13 +13,30 @@ def _allowed(path):
 
 
 def schedule(path):
+    """Programme l'effacement d'un document après validation de la transaction.
+
+    Un chemin hors des dossiers métier (ancien serveur, dossier déplacé,
+    sauvegarde restaurée sans reprise des chemins) n'est jamais effacé, mais
+    ne bloque pas non plus l'anonymisation ou la purge qui l'a demandé. Il
+    reste inscrit dans la file ``pending_file_deletion`` : l'administrateur y
+    retrouve le fichier à traiter à la main (le journal ne cite que le numéro
+    de ligne, le chemin pouvant être nominatif).
+    """
     if not path:
         return
-    if not _allowed(path):
-        raise ValueError("Le document à effacer se trouve hors des dossiers métier. Vérifiez sa reprise.")
+    try:
+        allowed = _allowed(path)
+        stored = str(Path(path).resolve())
+    except (OSError, ValueError):
+        allowed, stored = False, str(path)
     from app.models import PendingFileDeletion
-    db.session.add(PendingFileDeletion(file_path=str(Path(path).resolve())))
-    db.session.info["file_cleanup_pending"] = True
+    db.session.add(PendingFileDeletion(file_path=stored))
+    if allowed:
+        db.session.info["file_cleanup_pending"] = True
+    else:
+        current_app.logger.warning(
+            "Document hors des dossiers métier : conservé et inscrit dans la file "
+            "d'effacement (pending_file_deletion) pour contrôle manuel.")
 
 
 def drain():

@@ -71,7 +71,27 @@ static class Program {
                         return wizard.ShowDialog() == DialogResult.OK ? 0 : 1;
                 }
             }
-            if (mode == "--restart") { StopService(); FinishInstallation(ReadConfiguration()); return 0; }
+            if (mode == "--restart") {
+                var current = ReadConfiguration();
+                // L'icône ne doit jamais arrêter l'ancien service en production ni
+                // basculer une reprise inachevée : cela passe par l'assistant.
+                if (MigrationIncomplete(current)) throw new Exception("La reprise de l'ancienne installation n'est pas terminée. Relancez « Configurer Mon Centre Social » depuis le menu Démarrer pour la reprendre ; rien n'a été arrêté.");
+                StopService(); FinishInstallation(current); return 0;
+            }
+            if (mode == "--upgrade") {
+                // Mise à jour silencieuse (/VERYSILENT) : aucune fenêtre. Remet en place
+                // les services de la nouvelle version (dont le service HTTPS séparé),
+                // sinon l'accès réseau resterait coupé jusqu'au prochain « Configurer ».
+                if (!File.Exists(ConfigFile)) return 0;
+                try {
+                    var current = ReadConfiguration();
+                    if (MigrationIncomplete(current)) return 0;
+                    FinishInstallation(current); return 0;
+                } catch (Exception ex) {
+                    try { File.WriteAllText(Path.Combine(Root, "logs", "mise-a-jour-erreur.txt"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + ex.Message, Utf8); } catch (Exception) { }
+                    return 1;
+                }
+            }
             if (mode == "--stop") { StopService(); return 0; }
             if (mode == "--uninstall") {
                 StopService();
@@ -97,6 +117,12 @@ static class Program {
         }
     }
 
+    internal static bool MigrationIncomplete(Dictionary<string, object> c) {
+        if (!c.ContainsKey("migration_source") || string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))) return false;
+        bool done = c.ContainsKey("migration_done") && Convert.ToBoolean(c["migration_done"]);
+        bool pending = c.ContainsKey("migration_pending_activation") && Convert.ToBoolean(c["migration_pending_activation"]);
+        return !done || pending;
+    }
     internal static string SystemExe(string name) { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), name); }
     internal static string Quote(string s) {
         var b = new StringBuilder("\""); int slashes = 0;

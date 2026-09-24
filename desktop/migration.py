@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import os
+import shutil
 import subprocess
 
 from sqlalchemy import create_engine, inspect, text
@@ -19,7 +20,7 @@ SETTINGS = {
     "MAIL_USE_TLS", "MAIL_TIMEOUT_SECONDS", "GOOGLE_OAUTH_CLIENT_ID",
     "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_BASE",
     "BACKUP_OFFSITE_DIRS", "BACKUP_RETENTION_LOTS", "KIOSK_PUBLIC_HOST",
-    "KIOSK_PUBLIC_BASE_URL", "ORGANIZATION_NAME", "MCS_MODULES",
+    "KIOSK_PUBLIC_BASE_URL", "ERP_LAN_HOSTS", "ORGANIZATION_NAME", "MCS_MODULES",
     "PROGRAMME_FTP_HOST", "PROGRAMME_FTP_PORT", "PROGRAMME_FTP_USER",
     "PROGRAMME_FTP_PASSWORD", "PROGRAMME_FTP_DIR", "PROGRAMME_FTP_FILENAME",
     "PROGRAMME_PUBLIC_URL", "PORTAIL_BASE_URL", "PORTAIL_TOKEN",
@@ -136,6 +137,66 @@ def validate_document_paths(connection, source):
                              "Vérifiez les dossiers instance/uploads de la source. " + "; ".join(problems))
 
 
+# Chiffres décimaux complets : un serveur PostgreSQL 10/11 renvoie sinon 15
+# chiffres (0.3) quand le serveur cible en renvoie 17 (0.30000000000000004),
+# et la comparaison des empreintes refuserait à tort la reprise.
+FLOAT_OPTIONS = "-c extra_float_digits=3"
+
+
+def tool_arguments(executable, url, *arguments):
+    """Ligne de commande d'un outil PostgreSQL, SANS mot de passe.
+
+    Le mot de passe passe par PGPASSWORD (environnement du seul processus
+    enfant). Les arguments, eux, sont visibles de tout le poste (Gestionnaire
+    des tâches, journaux d'audit Windows 4688, antivirus) : ne jamais les y
+    mettre. Attention, ``URL.set(password=None)`` de SQLAlchemy signifie
+    « inchangé » et conservait le mot de passe dans l'adresse.
+    """
+    public = url._replace(drivername="postgresql", password=None)
+    return [str(executable), *map(str, arguments), "--dbname", public.render_as_string(hide_password=False)]
+
+
+def _diagnostic(stderr, url):
+    """Cause principale d'un échec, sans secret, pour orienter la DSI."""
+    text_ = (stderr or b"").decode("utf-8", errors="replace")
+    for secret in filter(None, [url.password]):
+        text_ = text_.replace(secret, "[confidentiel]")
+    lines = [line.strip() for line in text_.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    hints = (
+        ("password authentication failed", "Mot de passe de la base source refusé."),
+        ("server version mismatch", "Version de PostgreSQL source plus récente que les outils fournis."),
+        ("permission denied", "Droits insuffisants sur la base source (lecture de toutes les tables nécessaire)."),
+        ("could not connect", "Connexion à la base source impossible (serveur arrêté, port ou nom d'hôte)."),
+        ("does not exist", "Base, rôle ou extension introuvable."),
+    )
+    lowered = " ".join(lines).lower()
+    for needle, message in hints:
+        if needle in lowered:
+            return message
+    return "Détail technique : " + lines[-1][:300]
+
+
+def clean_work(work):
+    """Supprime dump, archive et dossier de préparation d'une reprise."""
+    work = Path(work)
+    for name in ("source.dump", "fichiers.zip"):
+        (work / name).unlink(missing_ok=True)
+    staging = work / "files"
+    if staging.is_symlink():
+        staging.unlink()
+    elif staging.exists():
+        shutil.rmtree(staging)
+
+
+def _discard(work):
+    try:
+        clean_work(work)
+    except OSError:
+        pass  # Retenté au début de la tentative suivante.
+
+
 def pg_tool(executable, url, *arguments):
     env = os.environ.copy()
     env.pop("PGOPTIONS", None)
@@ -143,12 +204,11 @@ def pg_tool(executable, url, *arguments):
         env["PGPASSWORD"] = url.password
     else:
         env.pop("PGPASSWORD", None)
-    public_uri = url.set(drivername="postgresql", password=None).render_as_string(hide_password=False)
-    result = subprocess.run([str(executable), *map(str, arguments), "--dbname", public_uri],
+    result = subprocess.run(tool_arguments(executable, url, *arguments),
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             timeout=3600, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode:
-        raise MigrationError("Échec de " + Path(executable).stem + ". La source n'a pas été modifiée.")
+        raise MigrationError("Échec de " + Path(executable).stem + ". La source n'a pas été modifiée. " + _diagnostic(result.stderr, url))
 
 
 def validate_postgres_versions(source, target):
@@ -174,9 +234,9 @@ def migrate(c, runtime):
     completed = work / "complete.json"
     if completed.exists():
         return json.loads(completed.read_text(encoding="utf-8"))
-    target = create_engine(target_url, hide_parameters=True)
+    target = create_engine(target_url, hide_parameters=True, connect_args={"options": FLOAT_OPTIONS})
     src = create_engine(source["url"], hide_parameters=True,
-                        connect_args={"connect_timeout": 10, "options": "-c default_transaction_read_only=on"})
+                        connect_args={"connect_timeout": 10, "options": "-c default_transaction_read_only=on " + FLOAT_OPTIONS})
     try:
         with target.connect() as connection:
             if inspect(connection).get_table_names():
@@ -184,6 +244,8 @@ def migrate(c, runtime):
         from app.services.instance_archive import create_archive, stage_archive, install_staged, remap_paths
         pg = runtime.postgres_bin(root, c)
         extension = ".exe" if os.name == "nt" else ""
+        # Une tentative précédente ne doit rien laisser dans la copie de travail.
+        clean_work(work)
         with src.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
             with connection.begin():
                 version = int(connection.execute(text("SHOW server_version_num")).scalar_one())
@@ -245,11 +307,22 @@ def migrate(c, runtime):
         temp = completed.with_suffix(".new")
         temp.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
         temp.replace(completed)
+        # Copies complètes de la base et des documents : inutiles une fois la
+        # cible vérifiée (la source reste intacte), à ne pas laisser traîner hors
+        # rotation des sauvegardes et hors effacement RGPD.
+        clean_work(work)
         return report
     except MigrationError:
+        _discard(work)
         raise
-    except Exception:
-        raise MigrationError("La reprise n'a pas abouti. La source est intacte ; vérifiez connexion, version, espace disque et droits sur les fichiers.") from None
+    except Exception as exc:
+        _discard(work)
+        from sqlalchemy.exc import OperationalError
+        detail = ""
+        if isinstance(exc, OperationalError):
+            # Connexion refusée, mot de passe, base introuvable : message utile, sans secret.
+            detail = " " + _diagnostic(str(getattr(exc, "orig", None) or exc).encode(), source["url"])
+        raise MigrationError("La reprise n'a pas abouti. La source est intacte ; vérifiez connexion, version, espace disque et droits sur les fichiers." + detail.rstrip()) from None
     finally:
         src.dispose()
         target.dispose()

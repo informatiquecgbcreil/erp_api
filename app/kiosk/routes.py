@@ -69,13 +69,41 @@ _ECHECS_PIN = Limiteur(maximum=10, fenetre_secondes=600)
 # (IPv6 temporaires) ne multiplie pas ses essais sur un code à 4 chiffres.
 _ECHECS_PIN_TOTAL = Limiteur(maximum=60, fenetre_secondes=600)
 _RECHERCHES = Limiteur(maximum=120, fenetre_secondes=60)
-_CREATIONS = Limiteur(maximum=10, fenetre_secondes=600)
+# Inscriptions : 30 fiches en 10 minutes par appareil et par séance, de quoi
+# absorber l'arrivée d'un groupe (fête de quartier, rentrée) sur une tablette.
+_CREATIONS = Limiteur(maximum=30, fenetre_secondes=600)
+# Derrière un tunnel qui ne transmet pas l'adresse du visiteur, tout Internet
+# partage un même compteur : plafond plus large pour qu'une poignée d'erreurs
+# ne bloque pas tous les participants hors les murs (PIN à 6 chiffres et
+# séances fermées après 12 h : 50 essais par 10 minutes restent négligeables).
+_ECHECS_PIN_PARTAGE = Limiteur(maximum=50, fenetre_secondes=600)
 _POINTAGES = Limiteur(maximum=60, fenetre_secondes=60)
 _AVIS = Limiteur(maximum=30, fenetre_secondes=600)
 
 
+_BOUCLE_LOCALE = {"127.0.0.1", "::1", ""}
+
+
 def _adresse_client() -> str:
-    return request.remote_addr or "?"
+    """Clé des compteurs anti-abus.
+
+    Par Tailscale Funnel, la requête arrive de tailscaled sur la boucle locale :
+    toutes les adresses se confondraient. tailscaled réécrit lui-même
+    X-Forwarded-For (le visiteur ne peut pas y glisser une valeur) ; on retient
+    la dernière adresse de la chaîne. Quand un proxy intermédiaire l'a remplacée
+    par la boucle locale (Caddy de la distribution Windows), ou sans elle :
+    compteur commun « funnel:? », au plafond élargi.
+    """
+    adresse = request.remote_addr or "?"
+    if "Tailscale-Funnel-Request" in request.headers and adresse in _BOUCLE_LOCALE:
+        chaine = [x.strip() for x in (request.headers.get("X-Forwarded-For") or "").split(",") if x.strip()]
+        dernier = chaine[-1] if chaine else ""
+        return "funnel:" + ("?" if dernier in _BOUCLE_LOCALE else dernier)
+    return adresse
+
+
+def _compteur_pin(cle: str):
+    return _ECHECS_PIN_PARTAGE if cle == "funnel:?" else _ECHECS_PIN
 
 
 def _via_facade_publique() -> bool:
@@ -97,14 +125,38 @@ def _active_kiosks():
 
 
 def _participants_for_session(s):
-    from app.services.access_scope import participant_filter
-    from app.models import InscriptionActivite
-    from sqlalchemy import exists, or_
-    registered = exists().where(InscriptionActivite.participant_id == Participant.id,
-                                InscriptionActivite.atelier_id == s.atelier_id,
-                                InscriptionActivite.statut == "inscrit",
-                                or_(InscriptionActivite.session_id.is_(None), InscriptionActivite.session_id == s.id))
-    return Participant.query.filter(or_(participant_filter(s.secteur), registered))
+    """Personnes qu'une séance ouverte peut retrouver et faire émarger.
+
+    Choix du centre : TOUT l'annuaire, quel que soit le secteur. Un habitant
+    connu d'un autre secteur doit se retrouver au lieu de recevoir une nouvelle
+    fiche (« Celine michu » à côté de « Céline Michut ») ; l'analyse des
+    doublons après coup ne rattrape pas ces variantes. Le kiosque n'affiche
+    que le nom et le prénom ; les fiches anonymisées sont exclues.
+    """
+    return Participant.query.filter(~Participant.nom.like("ANONYME%"))
+
+
+def _filtre_nom(query, texte):
+    """Chaque mot tapé doit apparaître dans le nom ou le prénom, sans tenir
+    compte des accents ni des majuscules (« celine mich » -> « Céline Michut »)."""
+    from app.services.recherche_texte import NOM_FONCTION_SQL, sans_accent, unaccent_disponible
+    dialecte = (db.engine.dialect.name or "").lower()
+    sans_accents = dialecte == "sqlite" or (dialecte == "postgresql" and unaccent_disponible(db.engine))
+
+    def colonne(col):
+        if dialecte == "sqlite":
+            return getattr(db.func, NOM_FONCTION_SQL)(db.func.coalesce(col, ""))
+        if sans_accents:
+            return db.func.lower(db.func.unaccent(db.func.coalesce(col, "")))
+        return db.func.lower(db.func.coalesce(col, ""))
+
+    for mot in texte.split()[:4]:
+        mot = (sans_accent(mot) if sans_accents else mot.lower()).replace("%", "").replace("_", "").replace("\\", "")
+        if not mot:
+            continue
+        motif = f"%{mot}%"
+        query = query.filter(db.or_(colonne(Participant.nom).like(motif), colonne(Participant.prenom).like(motif)))
+    return query
 
 
 def _get_open_session_by_pin(pin: str):
@@ -217,13 +269,14 @@ def _open_sessions_today() -> list[dict]:
 def kiosk_home():
     """Page publique: saisie PIN + liste des sessions ouvertes."""
     if request.method == "POST":
-        if _ECHECS_PIN.depasse(_adresse_client()):
+        cle = _adresse_client()
+        if _compteur_pin(cle).depasse(cle):
             flash("Trop de codes erronés. Patientez quelques minutes ou demandez à l'animateur.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         pin = (request.form.get("pin") or "").strip()
         s = _get_open_session_by_pin(pin)
         if not s:
-            _ECHECS_PIN.noter(_adresse_client())
+            _compteur_pin(cle).noter(cle)
             _ECHECS_PIN_TOTAL.noter("*")
             flash("Code invalide ou session fermée.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
@@ -260,22 +313,15 @@ def kiosk_search(token: str):
     if len(q_norm.strip()) < 2:
         return jsonify({"results": []})
 
-    # Recherche simple nom/prénom (LIKE). SQLite: case-insensitive sur ASCII, mais c'est ok.
     candidates = (
-        _participants_for_session(s).filter(
-            (Participant.nom.ilike(f"%{q_norm}%")) | (Participant.prenom.ilike(f"%{q_norm}%"))
-        )
+        _filtre_nom(_participants_for_session(s), q_norm)
         .order_by(Participant.nom.asc(), Participant.prenom.asc())
         .limit(12)
         .all()
     )
 
-    res = []
-    for p in candidates:
-        label = f"{p.nom} {p.prenom}"
-        if p.ville:
-            label += f" · {p.ville}"
-        res.append({"id": p.id, "label": label})
+    # Nom et prénom seulement : rien d'autre de la fiche n'est affiché.
+    res = [{"id": p.id, "label": f"{p.nom} {p.prenom}"} for p in candidates]
     return jsonify({"results": res})
 
 
@@ -322,7 +368,7 @@ def kiosk_session(token: str):
             # (sauf si la personne a confirmé « créer quand même »).
             if request.form.get("force_creation") != "1":
                 candidats = [p for p in _candidats_doublons(nom, prenom)
-                             if _participants_for_session(s).filter(Participant.id == p.id).first()]
+                             if not (p.nom or "").upper().startswith("ANONYME")]
                 if candidats:
                     return render_template(
                         "kiosk/session.html",
@@ -435,7 +481,7 @@ def kiosk_session(token: str):
         try:
             hp = db.session.get(Participant, int(highlight))
             if hp:
-                highlight_label = f"{hp.nom} {hp.prenom}" + (f" · {hp.ville}" if hp.ville else "")
+                highlight_label = f"{hp.nom} {hp.prenom}"
         except Exception:
             highlight = None
 

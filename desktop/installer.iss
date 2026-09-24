@@ -40,6 +40,12 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "vc_redist.x64.exe"
 Source: "{#Payload}\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
+[InstallDelete]
+; Binaires PostgreSQL remplacés en bloc : aucun fichier d'une version
+; précédente ne doit rester mêlé aux nouveaux (les données sont ailleurs).
+Type: filesandordirs; Name: "{app}\postgresql"
+Type: filesandordirs; Name: "{app}\postgresql18"
+
 [Icons]
 Name: "{group}\Mon Centre Social"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--tray"
 Name: "{group}\Configurer Mon Centre Social"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--configure"
@@ -82,6 +88,10 @@ begin
         RaiseException('L''assistant ne peut pas démarrer.');
       if Code <> 0 then
         RaiseException('La configuration reste à terminer. Relancez « Configurer Mon Centre Social » dans le menu Démarrer.');
+    end else begin
+      // Mise à jour silencieuse : relance les services d'une installation déjà
+      // configurée (sans effet sur un poste neuf). Échec consigné dans logs.
+      Exec(ExpandConstant('{app}\MonCentreSocial.exe'), '--upgrade', '', SW_HIDE, ewWaitUntilTerminated, Code);
     end;
   end;
 end;
