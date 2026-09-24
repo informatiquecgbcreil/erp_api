@@ -3,7 +3,8 @@
 L'anonymisation reste la voie normale : elle efface l'identité tout en
 conservant présences et compteurs, donc les bilans déjà rendus aux
 financeurs restent justes. La suppression totale répond à un autre besoin —
-la fiche créée par erreur — et détruit réellement toutes les données liées.
+la fiche créée par erreur. Les encaissements sont détachés et conservés pour
+ne pas modifier le livre de caisse.
 
 Ce module fait deux choses :
 - ``analyser`` : ce que la fiche porte comme historique, pour l'afficher
@@ -102,7 +103,7 @@ def _effacer_fichier(chemin: str | None) -> None:
 
 
 def supprimer_definitivement(participant: Participant) -> dict:
-    """Efface la fiche et tout ce qui s'y rattache.
+    """Efface la fiche et son historique individuel, conserve les encaissements.
 
     Ne commite pas : l'appelant décide du moment, ce qui lui permet
     d'inscrire d'abord la trace au journal dans la même transaction.

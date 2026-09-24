@@ -5,6 +5,28 @@ from pathlib import Path
 import uuid
 
 
+def test_sources_exactes_accessibles_sans_compte_sur_facade(app, tmp_path):
+    import zipfile
+    archive = tmp_path / 'sources.zip'
+    with zipfile.ZipFile(archive, 'w') as z:
+        z.writestr('LICENSE', 'Licence de la version distribuée')
+    previous = app.config.get('SOURCE_ARCHIVE')
+    app.config['SOURCE_ARCHIVE'] = str(archive)
+    try:
+        client = app.test_client()
+        headers = {'Tailscale-Funnel-Request': '?1'}
+        response = client.get('/sources?filename=/etc/passwd', headers=headers)
+        assert response.status_code == 200
+        assert response.data == archive.read_bytes()
+        assert 'attachment' in response.headers['Content-Disposition']
+        assert b'/sources' in client.get('/kiosk/', headers=headers).data
+        assert client.get('/sources/../../config.py', headers=headers).status_code != 200
+        app.config['SOURCE_ARCHIVE'] = ''
+        assert client.get('/sources', headers=headers).status_code == 404
+    finally:
+        app.config['SOURCE_ARCHIVE'] = previous
+
+
 def test_anonymisation_transactionnelle_et_complete_des_fichiers(app):
     from app.extensions import db
     from app.models import Participant, PasseportPieceJointe, PasseportNote, PendingFileDeletion, ParticipantInsertionParcours
@@ -40,7 +62,7 @@ def test_changer_mot_de_passe_revoque_les_sessions(app):
     email=uuid.uuid4().hex+"@session.test"
     with app.app_context():
         u=User(email=email,nom="Session"); u.set_password("ancien-mot-de-passe")
-        u.roles.append(Role.query.filter_by(code="direction").one())
+        u.roles.append(Role.query.filter_by(code="accueil").one())
         db.session.add(u); db.session.commit(); uid=u.id
     client=app.test_client()
     assert client.post("/",data={"email":email,"password":"ancien-mot-de-passe"}).status_code == 302
@@ -79,3 +101,41 @@ def test_ical_ne_publie_pas_les_observations_memes_activees():
     s=SimpleNamespace(rdv_date=None,date_session=date.today(),rdv_debut=None,heure_debut=None,
                       rdv_fin=None,heure_fin=None,intention_seance="Identité privée",bilan_qualitatif="Note privée")
     assert _description_seance(s,None,0,{"champs_description":["bilan"]}) == ""
+
+
+def test_journal_masque_aussi_le_detail_sql_du_pilote(app):
+    import io
+    import logging
+    from sqlalchemy.exc import IntegrityError
+    stream = io.StringIO(); handler = logging.StreamHandler(stream)
+    app.logger.addHandler(handler)
+    try:
+        try:
+            raise IntegrityError('INSERT INTO participant (nom) VALUES (?)', ['IDENTITE_PRIVEE'],
+                                 Exception('DETAIL: Key (nom)=(IDENTITE_PRIVEE) already exists.'), hide_parameters=True)
+        except IntegrityError as error:
+            app.logger.exception('Échec avec détail : %s', error)
+    finally:
+        app.logger.removeHandler(handler)
+    assert 'IDENTITE_PRIVEE' not in stream.getvalue()
+    assert 'IntegrityError' in stream.getvalue()
+
+
+def test_mot_de_passe_trop_court_refuse_pour_creation_et_reset(app, admin_client):
+    from app.extensions import db
+    from app.models import User, Role
+    from app.auth.routes import _build_password_reset_token
+    email=uuid.uuid4().hex+'@password.test'
+    admin_client.post('/admin/users', data={'email':email,'nom':'Test','password':'court','role':'accueil'})
+    with app.app_context():
+        assert User.query.filter_by(email=email).first() is None
+        u=User(email=email,nom='Compte repris'); u.set_password('ancien')
+        u.roles.append(Role.query.filter_by(code='accueil').one())
+        db.session.add(u); db.session.commit(); uid=u.id
+        token=_build_password_reset_token(u)
+    # La politique ne modifie jamais les identifiants importés.
+    assert app.test_client().post('/',data={'email':email,'password':'ancien'}).status_code == 302
+    admin_client.post(f'/admin/users/{uid}/edit',data={'nom':'Compte repris','password':'tropcourt'})
+    app.test_client().post('/password-reset/'+token,data={'password':'tropcourt','password_confirm':'tropcourt'})
+    with app.app_context():
+        assert db.session.get(User,uid).check_password('ancien')

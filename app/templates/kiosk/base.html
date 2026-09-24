@@ -31,7 +31,9 @@
 
     {% block body %}{% endblock %}
 
-    <div class="k-footer">Espace d'émargement · {{ ORGANIZATION_NAME }}</div>
+    <div class="k-footer">Espace d'émargement · {{ ORGANIZATION_NAME }}<br>
+      <a href="{{ SOURCE_URL }}">Code source · AGPL-3.0</a>
+    </div>
   </div>
   {% block scripts %}{% endblock %}
 </body>

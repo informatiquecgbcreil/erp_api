@@ -14,6 +14,31 @@ from app.models import User
 from app.services.dashboard_customization import load_dashboard_pref
 
 
+class _DatabasePrivacyFilter(logging.Filter):
+    """Un diagnostic SQL ne doit pas recopier ses paramètres ou le DETAIL du pilote."""
+    def filter(self, record):
+        from sqlalchemy.exc import SQLAlchemyError
+        import traceback
+        error = record.exc_info[1] if record.exc_info else None
+        seen = set()
+        while error is not None and id(error) not in seen:
+            seen.add(id(error))
+            if isinstance(error, SQLAlchemyError):
+                # hide_parameters ne masque pas le DETAIL PostgreSQL (« clé
+                # email=... existe déjà »). Retirer aussi le texte de l'erreur,
+                # y compris lorsqu'un appelant l'a recopié dans son message.
+                record.msg = "Erreur de base de données (%s). Détails métier masqués."
+                record.args = (type(error).__name__,)
+                record.exc_text = "".join(
+                    f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}\n'
+                    for frame in traceback.extract_tb(record.exc_info[2])
+                )
+                record.exc_info = None
+                break
+            error = error.__cause__ or error.__context__
+        return True
+
+
 def _configure_error_logging(app):
     """Journalise avertissements et erreurs dans un fichier avec rotation.
 
@@ -39,6 +64,10 @@ def _configure_error_logging(app):
         logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
     )
     app.logger.addHandler(handler)
+    if not any(isinstance(f, _DatabasePrivacyFilter) for f in app.logger.filters):
+        # Filtre au niveau du logger : protège également stderr, repris dans
+        # logs/runtime.log par le service Windows.
+        app.logger.addFilter(_DatabasePrivacyFilter())
 
 
 from flask.sessions import SecureCookieSessionInterface
@@ -150,6 +179,21 @@ def create_app():
     @app.route("/healthz")
     def healthz():
         return {"status": "ok"}, 200
+
+    @app.route("/sources")
+    def source_archive():
+        from flask import abort, send_file
+        from pathlib import Path
+        archive = app.config.get("SOURCE_ARCHIVE")
+        if not archive or not Path(archive).is_file():
+            abort(404)
+        # Chemin fixé au déploiement, jamais issu d'un paramètre de requête.
+        return send_file(archive, as_attachment=True, download_name="sources-Mon-Centre-Social.zip")
+
+    @app.context_processor
+    def _inject_source_offer():
+        return {"SOURCE_URL": url_for("source_archive") if app.config.get("SOURCE_ARCHIVE")
+                else "https://github.com/informatiquecgbcreil/erp_api"}
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -370,7 +414,8 @@ def create_app():
         if (
             chemin == "/kiosk" or chemin.startswith("/kiosk/")
             or chemin == "/static" or chemin.startswith("/static/")
-            or chemin == "/healthz"
+            or chemin in {"/healthz", "/sources"}
+            or chemin.startswith("/media/branding/")
             # Flux calendrier iCal : lu par Google/Apple depuis internet, protégé
             # par un jeton secret dans l'URL (aucune donnée personnelle exposée).
             or chemin.startswith("/calendrier/")
@@ -392,7 +437,7 @@ def create_app():
         from app.models import User
 
         endpoint = (request.endpoint or "")
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
         if User.query.count() == 0:
@@ -415,7 +460,7 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None  # Une prévisualisation de migration ne déclenche aucune purge.
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
         from app.services.purge_rgpd import purge_auto_active, purge_quotidienne_si_necessaire
@@ -444,7 +489,7 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
         from app.utils.dates import utcnow
@@ -476,7 +521,7 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
         # Jamais de collecte réseau pendant les tests, ni si désactivée.
@@ -515,7 +560,7 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
         if app.config.get("TESTING") or not app.config.get("GOOGLE_AGENDA_AUTO", True) or not module_enabled("presences"):
             return None

@@ -4,6 +4,7 @@ from app.extensions import db
 from app.setup import bp
 from app.models import User, Role, InstanceSettings
 from app.rbac import bootstrap_rbac
+from app.utils.passwords import MIN_PASSWORD_LENGTH, PASSWORD_REQUIREMENT
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -33,8 +34,8 @@ def wizard():
             flash("Veuillez saisir un email admin valide.", "danger")
             return render_template("setup/wizard.html")
 
-        if len(admin_password) < 8:
-            flash("Le mot de passe admin doit contenir au moins 8 caractères.", "danger")
+        if len(admin_password) < MIN_PASSWORD_LENGTH:
+            flash(PASSWORD_REQUIREMENT, "danger")
             return render_template("setup/wizard.html")
 
         if smtp_host and (not smtp_port or smtp_port <= 0):

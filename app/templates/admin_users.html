@@ -79,7 +79,8 @@
         <div class="field-stack">
           <div>
             <label>Mot de passe {{ ux.tooltip("Choisissez un mot de passe temporaire. L'utilisateur pourra ensuite demander sa réinitialisation si la messagerie est configurée.") }}</label>
-            <input name="password" type="password" required>
+            <input name="password" type="password" minlength="12" autocomplete="new-password" required>
+            <span class="muted">12 caractères minimum.</span>
           </div>
         </div>
 

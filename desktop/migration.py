@@ -222,6 +222,8 @@ def migrate(c, runtime):
                         raise MigrationError("Schéma incomplet après migration : colonnes de " + table.name)
             settings = InstanceSettings.query.first()
             modules = json.loads(settings.enabled_modules_json) if settings and settings.enabled_modules_json else None
+            organization = (settings.organization_name if settings else None) or source["settings"].get("ORGANIZATION_NAME") or "Structure reprise"
+            source["settings"].setdefault("ORGANIZATION_NAME", organization)
             if settings:
                 settings.public_base_url = c["url"]
                 db.session.commit()
@@ -229,7 +231,7 @@ def migrate(c, runtime):
             db.engine.dispose()
         report = {"format": 1, "database": source["url"].database, "db_name": c["db_name"], "revisions_source": revisions,
                   "tables": {k: v["rows"] for k, v in before.items()}, "files": len(manifest["files"]),
-                  "accounts_preserved": True, "modules": modules, "settings": source["settings"]}
+                  "accounts_preserved": True, "organization": organization, "modules": modules, "settings": source["settings"]}
         # Ce fichier contient des paramètres privés, dans le dossier protégé runtime.
         temp = completed.with_suffix(".new")
         temp.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")

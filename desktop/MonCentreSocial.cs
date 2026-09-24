@@ -413,6 +413,7 @@ static class Program {
             var resultPath = Path.Combine(Root,"private","migration-result.json");
             var result = Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(resultPath,Utf8));
             c["db_name"] = result["db_name"]; c["application_settings"] = result["settings"];
+            if (result.ContainsKey("organization")) c["organization"] = result["organization"];
             c["modules"] = result["modules"] ?? new[] { "presences", "statistiques", "adhesions", "finances", "ressources", "accompagnement", "partenaires", "questionnaires", "transitions", "rh" };
             c["migration_done"] = true; c["migration_pending_activation"] = true; SaveConfiguration(c);
             File.Delete(resultPath);

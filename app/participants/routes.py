@@ -1466,7 +1466,7 @@ def delete_participant(participant_id: int):
     enregistrer("participant.delete", cible=f"participant #{p.id}", details=trace)
     ok = commit_delete(
         f"le participant « {etiquette} »",
-        "Fiche supprimée définitivement, avec tout son historique.",
+        "Fiche et historique individuel supprimés. Les encaissements sont conservés pour la caisse.",
         success_category="warning",
         blocked_message=f"Impossible de supprimer « {etiquette} » : des données y sont encore rattachées. Utilisez plutôt l'anonymisation pour conserver l'historique.",
     )

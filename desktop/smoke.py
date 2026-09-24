@@ -2,6 +2,8 @@
 
 python desktop/smoke.py --payload C:/build/mcs/payload --data-root "C:/recette/Centre Équipe"
 Refuse tout dossier de données préexistant. N'envoie aucun e-mail.
+Exécute le serveur web et le proxy comme deux processus distincts. La recette
+des identités de service et des ACL reste celle de SystemSmoke.cs dans la CI.
 """
 import argparse
 import http.cookiejar
@@ -40,15 +42,29 @@ def smoke(payload, root):
     cfg["kiosk_url"] = f"http://127.0.0.1:{cfg['kiosk_http_port']}"
     results = {}
     process = None
+    proxy = None
     log = (root / "smoke-supervisor.log").open("wb")
+    certificate = root / "https/tls/pki/authorities/local/root.crt"
+
+    def stop_proxy():
+        nonlocal proxy
+        if proxy is not None:
+            if proxy.poll() is None:
+                proxy.terminate()
+            proxy.wait(timeout=10)
+            proxy = None
 
     def stop(p):
+        stop_proxy()
         (root / "runtime/stop").write_text("1")
         if p.wait(timeout=100) != 0:
             raise RuntimeError("Le runtime s'est terminé en erreur.")
 
     def start():
-        nonlocal process
+        nonlocal process, proxy
+        subprocess.run([str(payload / "python/python.exe"), "-B", str(payload / "desktop/runtime.py"), "--prepare-proxy"],
+                       input=json.dumps(cfg).encode("utf-8"), stdout=log, stderr=log,
+                       creationflags=subprocess.CREATE_NO_WINDOW, check=True, timeout=30)
         process = subprocess.Popen([str(payload / "python/python.exe"), "-B", str(payload / "desktop/runtime.py"), "--supervise"],
                                    stdin=subprocess.PIPE, stdout=log, stderr=log, creationflags=subprocess.CREATE_NO_WINDOW)
         process.stdin.write(json.dumps(cfg, ensure_ascii=False).encode("utf-8")); process.stdin.close()
@@ -56,13 +72,30 @@ def smoke(payload, root):
             if process.poll() is not None:
                 raise RuntimeError("Échec du démarrage : consulter smoke-supervisor.log.")
             if (root / "runtime/ready").exists():
-                return process
+                break
             time.sleep(0.5)
-        raise RuntimeError("Délai de démarrage dépassé.")
+        else:
+            raise RuntimeError("Délai de démarrage dépassé.")
+        proxy = subprocess.Popen([str(payload / "caddy/caddy.exe"), "run", "--config", str(root / "https/Caddyfile"),
+                                  "--adapter", "caddyfile"], cwd=root / "https", stdout=log, stderr=log,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+        for _ in range(120):
+            if proxy.poll() is not None:
+                raise RuntimeError("Échec du proxy : consulter smoke-supervisor.log.")
+            if certificate.exists():
+                try:
+                    with urllib.request.urlopen(cfg["url"] + "/healthz", timeout=2,
+                                                context=ssl.create_default_context(cafile=str(certificate))) as response:
+                        if response.status == 200:
+                            return process
+                except (OSError, ssl.SSLError):
+                    pass
+            time.sleep(0.5)
+        raise RuntimeError("Délai de démarrage HTTPS dépassé.")
 
     try:
         start(); results["base_vierge_et_chemin_accentue"] = True
-        context = ssl.create_default_context(cafile=str(root / "runtime/tls/pki/authorities/local/root.crt"))
+        context = ssl.create_default_context(cafile=str(certificate))
         jar = http.cookiejar.CookieJar()
         opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), urllib.request.HTTPSHandler(context=context))
         def get(path):
@@ -111,6 +144,7 @@ def smoke(payload, root):
         assert all(cfg[k] not in logtext for k in ("admin_password", "db_password", "db_admin_password", "secret_key"))
         results["journaux_sans_secrets"] = True
     finally:
+        stop_proxy()
         if process is not None and process.poll() is None:
             try: stop(process)
             except Exception:

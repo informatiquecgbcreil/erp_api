@@ -187,3 +187,21 @@ def test_psql_echec_reel_preserve_donnees_et_contraintes(app, tmp_path):
         finally:
             with db.engine.begin() as conn:
                 conn.execute(text(f'DROP TABLE IF EXISTS {name}'))
+
+
+def test_restauration_cli_valide_archive_avant_demarrage(tmp_path, monkeypatch):
+    from tools import restore_instance
+    from config import Config
+    import sys
+    source = tmp_path / 'sauvegarde.db'; source.write_bytes(b'non lu avant le zip')
+    archive = tmp_path / 'sauvegarde_uploads.zip'
+    with zipfile.ZipFile(archive, 'w') as z:
+        z.writestr('../fuite', 'interdit')
+    monkeypatch.setattr(Config, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///' + str(tmp_path / 'cible.db'))
+    monkeypatch.setattr(sys, 'argv', ['restore_instance.py', '--db', str(source), '--uploads', str(archive)])
+    def forbidden():
+        raise AssertionError('L’application et ses migrations ne doivent pas démarrer')
+    monkeypatch.setattr(restore_instance, 'create_app', forbidden)
+    with pytest.raises(RuntimeError, match='Archive refusée'):
+        restore_instance.main()
+    assert not (tmp_path / 'cible.db').exists()

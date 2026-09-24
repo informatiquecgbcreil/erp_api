@@ -32,6 +32,11 @@ static class SystemSmoke {
         var request = (HttpWebRequest)WebRequest.Create((string)config["kiosk_url"] + "/kiosk/");
         request.Proxy = null; request.Timeout = 30000;
         using (var response = (HttpWebResponse)request.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "Kiosque mobile indisponible");
+        var sources = (HttpWebRequest)WebRequest.Create((string)config["kiosk_url"] + "/sources");
+        sources.Proxy = null; sources.Timeout = 30000;
+        using (var response = (HttpWebResponse)sources.GetResponse())
+            Check(response.StatusCode == HttpStatusCode.OK && response.ContentLength == new FileInfo(Path.Combine(Program.Install,"sources-Mon-Centre-Social.zip")).Length,
+                  "Les sources de la version installée sont indisponibles");
         try {
             var blocked = (HttpWebRequest)WebRequest.Create((string)config["kiosk_url"] + "/dashboard"); blocked.Proxy = null; blocked.Timeout = 30000;
             using (var response = (HttpWebResponse)blocked.GetResponse()) Check(false, "Le point d'accès mobile expose l'administration");

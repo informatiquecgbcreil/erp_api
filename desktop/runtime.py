@@ -43,6 +43,7 @@ def configure_environment(c):
         "ERP_LOG_DIR": str(root / "logs"), "MCS_BACKUP_DIR": str(root / "backups"),
         "MCS_MODULES": ",".join(c["modules"]), "MCS_SETUP_DISABLED": "1",
         "ERP_PUBLIC_BASE_URL": c["url"],
+        "MCS_SOURCE_ARCHIVE": str(INSTALL / "sources-Mon-Centre-Social.zip"),
         "KIOSK_PUBLIC_BASE_URL": c.get("kiosk_url") or c["url"],
         "SESSION_COOKIE_SECURE": "1" if c["network"] else "0",
         "PG_DUMP_PATH": str(INSTALL / "postgresql/bin/pg_dump.exe"),
@@ -126,6 +127,16 @@ def bootstrap_account(app, c):
         db.session.commit()
 
 
+def protect_pending_activation(app, root):
+    def pending_activation():
+        from flask import request
+        if (root / "private/activation.pending").exists() and request.path != "/healthz":
+            return "Reprise en cours. Le centre sera disponible après validation de l'installation.", 503
+    # Avant CSRF, connexion et tâches quotidiennes : même une requête refusée
+    # ne doit pas provoquer de purge, de synchronisation ou d'envoi de mail.
+    app.before_request_funcs.setdefault(None, []).insert(0, pending_activation)
+
+
 def web(c):
     if c.get("migration_source") and not c.get("migration_done"):
         raise RuntimeError("La reprise doit être terminée dans l'assistant avant le démarrage.")
@@ -133,11 +144,7 @@ def web(c):
     from app import create_app
     from waitress import create_server
     app = create_app()
-    @app.before_request
-    def pending_activation():
-        from flask import request
-        if (root / "private/activation.pending").exists() and request.path != "/healthz":
-            return "Reprise en cours. Le centre sera disponible après validation de l'installation.", 503
+    protect_pending_activation(app, root)
     trusted_hosts = ["127.0.0.1", "localhost", c["hostname"]]
     lan_ip = str(c.get("lan_ip") or "").strip()
     if lan_ip and lan_ip not in trusted_hosts:
@@ -200,7 +207,7 @@ def write_caddy(c, root):
         f"https://{hostname}:{int(c['https_port'])} {{\n tls internal\n"
         f" reverse_proxy 127.0.0.1:{web_port}\n}}\n"
         f":{kiosk_port} {{\n"
-        " @kiosk path /kiosk /kiosk/* /static /static/* /media/branding /media/branding/* /healthz\n"
+        " @kiosk path /kiosk /kiosk/* /static /static/* /media/branding /media/branding/* /healthz /sources\n"
         " handle @kiosk {\n"
         f"  reverse_proxy 127.0.0.1:{web_port}\n"
         " }\n"
