@@ -3,7 +3,8 @@
 L'anonymisation reste la voie normale : elle efface l'identité tout en
 conservant présences et compteurs, donc les bilans déjà rendus aux
 financeurs restent justes. La suppression totale répond à un autre besoin —
-la fiche créée par erreur — et détruit réellement toutes les données liées.
+la fiche créée par erreur. Les encaissements sont détachés et conservés pour
+ne pas modifier le livre de caisse.
 
 Ce module fait deux choses :
 - ``analyser`` : ce que la fiche porte comme historique, pour l'afficher
@@ -88,42 +89,21 @@ def analyser(participant: Participant) -> dict:
 
 
 def instantane(participant: Participant) -> dict:
-    """Copie des informations d'identité, pour le journal d'audit.
-
-    Une suppression ne laisse rien derrière elle : sans cette trace, plus
-    aucun moyen de savoir qui a été effacé, ni de le recréer en cas de
-    fausse manœuvre.
-    """
+    """Trace technique minimale, sans recopier l'identité supprimée."""
     return {
         "id": participant.id,
-        "nom": participant.nom,
-        "prenom": participant.prenom,
-        "date_naissance": participant.date_naissance.isoformat() if participant.date_naissance else None,
-        "genre": participant.genre,
-        "ville": participant.ville,
-        "adresse": participant.adresse,
-        "email": participant.email,
-        "telephone": participant.telephone,
-        "quartier_id": participant.quartier_id,
-        "type_public": participant.type_public,
         "created_secteur": participant.created_secteur,
         "cree_le": participant.created_at.isoformat() if getattr(participant, "created_at", None) else None,
     }
 
 
 def _effacer_fichier(chemin: str | None) -> None:
-    """Retire un fichier du disque sans jamais faire échouer la suppression."""
-    if not chemin:
-        return
-    try:
-        if os.path.exists(chemin):
-            os.remove(chemin)
-    except OSError:
-        pass
+    from app.services.file_cleanup import schedule
+    schedule(chemin)
 
 
 def supprimer_definitivement(participant: Participant) -> dict:
-    """Efface la fiche et tout ce qui s'y rattache.
+    """Efface la fiche et son historique individuel, conserve les encaissements.
 
     Ne commite pas : l'appelant décide du moment, ce qui lui permet
     d'inscrire d'abord la trace au journal dans la même transaction.
@@ -152,11 +132,14 @@ def supprimer_definitivement(participant: Participant) -> dict:
             QuestionResponse.response_group_id.in_(groupes)
         ).delete(synchronize_session=False)
 
-    cotisations = [c.id for c in Cotisation.query.filter_by(participant_id=pid).all()]
-    if cotisations:
-        db.session.query(Paiement).filter(
-            Paiement.cotisation_id.in_(cotisations)
-        ).delete(synchronize_session=False)
+    # Les encaissements alimentent le livre de caisse : une suppression de
+    # fiche ne peut jamais les annuler. On conserve leurs pièces comptables
+    # sans lien nominatif, puis on retire seulement les obligations non payées.
+    for cotisation in Cotisation.query.filter_by(participant_id=pid).all():
+        if cotisation.paiements:
+            cotisation.participant_id = None
+    db.session.flush()
+    db.session.expire(participant, ["cotisations"])
 
     # Bulletins d'inscription annuelle : supprimés PAR L'ORM et non en masse,
     # pour que les créneaux de bénévolat et les ateliers souhaités partent avec

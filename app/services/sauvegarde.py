@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -123,11 +124,7 @@ def _pg_dump(db_uri: str, cible: Path) -> None:
             f"Impossible d'exécuter pg_dump ({exe}). Vérifiez l'installation de PostgreSQL."
         ) from exc
     if proc.returncode != 0:
-        detail = (proc.stderr or b"").decode("utf-8", "replace").strip()
-        message = "La sauvegarde PostgreSQL (pg_dump) a échoué."
-        if detail:
-            message += f" Détail : {detail}"
-        raise RuntimeError(message)
+        raise RuntimeError("La sauvegarde PostgreSQL (pg_dump) a échoué. Vérifiez les droits et l'espace disponible.")
 
 
 def _zip_dossier(dossier: Path | None, zip_path: Path) -> None:
@@ -164,7 +161,15 @@ def creer_sauvegarde() -> dict:
         raise RuntimeError(f"Type de base de données non pris en charge : {type_base}")
 
     uploads_zip = out_dir / f"{base}_uploads.zip"
-    _zip_dossier(uploads, uploads_zip)
+    from app.services.instance_archive import create_archive
+    excludes = [out_dir, Path(current_app.instance_path) / "logs"]
+    if current_app.config.get("ERP_LOG_DIR"):
+        excludes.append(Path(current_app.config["ERP_LOG_DIR"]))
+    if db_uri.startswith("sqlite:///"):
+        from sqlalchemy.engine import make_url
+        database = make_url(db_uri).database
+        excludes.extend(Path(database + suffix) for suffix in ("", "-wal", "-shm", "-journal"))
+    create_archive(uploads_zip, {"uploads": uploads, "instance": current_app.instance_path}, excludes)
 
     # Empreintes d'intégrité (format compatible « sha256sum ») pour vérifier
     # plus tard qu'une sauvegarde n'est pas corrompue avant de la restaurer.
@@ -232,17 +237,22 @@ def verifier_integrite(base: str, dossier: Path | None = None):
     if not sidecar.exists():
         return None
     try:
+        checked = set()
         for ligne in sidecar.read_text(encoding="utf-8").splitlines():
             ligne = ligne.strip()
             if not ligne:
                 continue
             attendu, _, nom = ligne.partition("  ")
-            cible = out_dir / nom.strip()
+            nom = nom.strip()
+            if nom not in {f"{base}.sql", f"{base}.db", f"{base}_uploads.zip"} or nom in checked or not re.fullmatch(r"[a-fA-F0-9]{64}", attendu):
+                return False
+            checked.add(nom)
+            cible = out_dir / nom
             if not cible.exists() or _sha256(cible) != attendu.strip():
                 return False
     except OSError:
         return False
-    return True
+    return len(checked) == 2 and f"{base}_uploads.zip" in checked
 
 
 def _lots_du_dossier(dossier: Path) -> list[dict]:
@@ -393,11 +403,10 @@ def _restaurer_postgres(src_sql: Path, db_uri: str) -> None:
     db.session.remove()
     db.engine.dispose()
     uri, pg_env = _private_pg_connection(db_uri)
-    cmd = [exe, uri, "-v", "ON_ERROR_STOP=1", "-f", str(src_sql)]
+    cmd = [exe, "-X", uri, "--single-transaction", "-v", "ON_ERROR_STOP=1", "-f", str(src_sql)]
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=pg_env)
     if proc.returncode != 0:
-        detail = (proc.stderr or b"").decode("utf-8", "replace").strip()
-        raise RuntimeError(f"La restauration PostgreSQL (psql) a échoué. Détail : {detail}")
+        raise RuntimeError("La restauration PostgreSQL a échoué ; sa transaction a été annulée.")
 
 
 def _zip_entrees_suspectes(zf: zipfile.ZipFile, dest: Path) -> list[str]:
@@ -431,6 +440,8 @@ def extraire_zip_securisee(zip_file: Path, dest: Path) -> int:
     dest.mkdir(parents=True, exist_ok=True)
     extraits = 0
     with zipfile.ZipFile(zip_file, "r") as zf:
+        from app.services.instance_archive import validate_members
+        validate_members(zf)
         suspectes = _zip_entrees_suspectes(zf, dest)
         if suspectes:
             exemples = ", ".join(suspectes[:3])
@@ -451,7 +462,15 @@ def extraire_zip_securisee(zip_file: Path, dest: Path) -> int:
 
 
 def _restaurer_uploads(zip_file: Path, upload_dir: Path) -> None:
-    extraire_zip_securisee(zip_file, upload_dir)
+    from app.services.instance_archive import stage_archive, install_staged, remap_paths
+    from app.extensions import db
+    roots = {"uploads": upload_dir, "instance": current_app.instance_path}
+    with tempfile.TemporaryDirectory(prefix="mcs-restore-") as temporary:
+        manifest = stage_archive(zip_file, temporary)
+        install_staged(temporary, roots)
+        if manifest:
+            with db.engine.begin() as connection:
+                remap_paths(connection, manifest["roots"], roots)
 
 
 def restaurer_lot(base: str) -> dict:
@@ -477,6 +496,11 @@ def restaurer_lot(base: str) -> dict:
 
     if verifier_integrite(base) is False:
         raise RuntimeError("Contrôle d'intégrité échoué : la sauvegarde semble corrompue. Restauration annulée.")
+
+    # L'archive est entièrement validée avant le moindre changement de base.
+    from app.services.instance_archive import stage_archive
+    with tempfile.TemporaryDirectory(prefix="mcs-validate-") as temporary:
+        stage_archive(uploads_file, temporary)
 
     # Filet de sécurité : on sauvegarde l'état courant AVANT d'écraser.
     try:

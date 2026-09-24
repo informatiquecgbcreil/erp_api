@@ -9,6 +9,7 @@ base de données ne sont jamais exposées sur internet.
 from __future__ import annotations
 
 import io
+import ssl
 from datetime import datetime
 from ftplib import FTP_TLS, all_errors, error_perm
 from pathlib import Path
@@ -57,7 +58,7 @@ def _marquer_publication() -> None:
 
 def _envoyer_ftps(cfg: dict, contenu: bytes) -> None:
     try:
-        ftps = FTP_TLS()
+        ftps = FTP_TLS(context=ssl.create_default_context())
         ftps.connect(cfg["host"], cfg["port"], timeout=30)
         ftps.login(cfg["user"], cfg["password"])
         ftps.prot_p()  # chiffre aussi le canal de données

@@ -435,7 +435,7 @@ def test_les_documents_se_telechargent(admin_client, app, bail):
         rid = r.id
 
     for genre in ("contrat", "etat_lieux_entree", "etat_lieux_sortie", "facture", "attestation"):
-        reponse = admin_client.get(f"/salles/reservation/{rid}/document/{genre}")
+        reponse = admin_client.post(f"/salles/reservation/{rid}/document/{genre}")
         assert reponse.status_code == 200, genre
         assert len(reponse.data) > 8000, f"{genre} : fichier suspicieusement petit"
         # Un .docx est une archive ZIP : les deux premiers octets le disent.
@@ -450,6 +450,9 @@ def test_la_facture_prend_un_numero_a_la_premiere_edition(admin_client, app, bai
         assert r.facture_numero is None
 
     admin_client.get(f"/salles/reservation/{rid}/document/facture")
+    with app.app_context():
+        assert db.session.get(Reservation, rid).facture_numero is None
+    admin_client.post(f"/salles/reservation/{rid}/document/facture")
     with app.app_context():
         r = db.session.get(Reservation, rid)
         premier = r.facture_numero

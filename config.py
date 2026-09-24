@@ -73,6 +73,7 @@ class Config:
     # - Priorité aux variables d'environnement (Postgres ou autre)
     # - Fallback SQLite local si rien n'est défini
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {"hide_parameters": True}
 
     INSTANCE_DIR = os.environ.get("MCS_INSTANCE_DIR", os.path.join(BASE_DIR, "instance"))
     os.makedirs(INSTANCE_DIR, exist_ok=True)
@@ -131,6 +132,7 @@ class Config:
     # URL publique (LAN) de l'application, utilisée pour générer des QR codes.
     # Exemple : http://erp-cgb:8000 ou http://192.168.1.10:8000
     PUBLIC_BASE_URL = os.environ.get("ERP_PUBLIC_BASE_URL", "")
+    SOURCE_ARCHIVE = os.environ.get("MCS_SOURCE_ARCHIVE", "")
 
     # --- Synchronisation Google Agenda (push temps réel) ---------------------
     # Identifiants OAuth 2.0 créés dans la console Google Cloud (type

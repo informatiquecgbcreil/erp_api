@@ -440,7 +440,8 @@ def corps_evenement(s: SessionActivite, options: dict, *, lien_base: str = "") -
         titre = f"Annulée · {titre}"
 
     presences = _presences_par_session([s.id]).get(s.id, 0)
-    description = _description_seance(s, atelier, presences, options)
+    description = _description_seance(s, atelier, presences, options,
+                                     inclure_bilan=bool(options.get("partager_bilan_google", False)))
     if annulee:
         description = ("⚠️ Séance annulée.\n" + description).strip()
     lien_base = (lien_base or "").rstrip("/")

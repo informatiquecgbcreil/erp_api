@@ -16,6 +16,17 @@ from flask_login import current_user
 from app.extensions import db
 
 
+def enregistrer(action: str, cible=None, details=None):
+    """Ajoute une trace dans la transaction métier ; aucun commit implicite."""
+    from app.models import AuditLog
+    row = AuditLog(user_id=getattr(current_user, "id", None),
+                   user_email=getattr(current_user, "email", None),
+                   action=action[:60], cible=str(cible)[:255] if cible is not None else None,
+                   details=json.dumps(details, ensure_ascii=False, default=str) if details is not None else None)
+    db.session.add(row)
+    return row
+
+
 def journaliser(action: str, cible=None, details=None) -> None:
     """Ajoute une entrée au journal d'audit (best-effort, ne lève jamais).
 

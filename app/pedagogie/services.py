@@ -26,6 +26,14 @@ def participant_timeline(participant_id: int):
         .order_by(Evaluation.date_evaluation.asc(), Evaluation.id.asc())
         .all()
     )
+    from flask import has_request_context
+    from app.rbac import can
+    if has_request_context() and not can("scope:all_secteurs"):
+        from app.services.access_scope import own_sector, require_participant
+        from flask_login import current_user
+        require_participant(participant)
+        events = [e for e in events if (e.session and e.session.secteur == own_sector())
+                  or (e.session_id is None and e.user_id == current_user.id)]
     current_levels: dict[int, int] = {}
     for e in events:
         current_levels[e.competence_id] = e.etat

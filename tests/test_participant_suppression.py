@@ -108,7 +108,9 @@ def test_suppression_efface_tout(app, admin_client):
             reste = db.session.query(modele).filter_by(participant_id=pid).count()
             assert reste == 0, f"{modele.__name__} : {reste} ligne(s) orpheline(s)"
         # Le paiement rattaché à la cotisation part avec elle.
-        assert db.session.get(Paiement, paiement_id) is None
+        paiement = db.session.get(Paiement, paiement_id)
+        assert paiement is not None
+        assert paiement.cotisation.participant_id is None
 
 
 def test_confirmation_par_le_nom_obligatoire(app, admin_client):
@@ -155,12 +157,12 @@ def test_suppression_journalisee_avec_instantane(app, admin_client):
         entree = (AuditLog.query.filter_by(action="participant.delete")
                   .order_by(AuditLog.id.desc()).first())
         assert entree is not None, "aucune trace au journal"
-        assert f"DUPONT{tag}" in (entree.cible or "")
+        assert f"DUPONT{tag}" not in (entree.cible or "")
         assert entree.user_email, "l'auteur de la suppression doit être identifié"
         details = json.loads(entree.details)
         assert details["participant"]["id"] == pid
-        assert details["participant"]["nom"] == f"DUPONT{tag}"
-        assert details["participant"]["date_naissance"] == "1990-01-01"
+        assert "nom" not in details["participant"]
+        assert "date_naissance" not in details["participant"]
         assert details["motif"] == "doublon de saisie"
         assert details["total_elements_supprimes"] >= 6
         assert details["historique_supprime"]["présences à des séances"] == 1
@@ -189,7 +191,7 @@ def test_secteur_ne_supprime_pas_une_personne_suivie_ailleurs(app):
     client = app.test_client()
     client.post("/", data={"email": f"resp-{tag}@ex.org", "password": "pw-test-123"})
     r = client.post(f"/participants/{pid}/delete", data={"confirmation_nom": f"DUPONT{tag}"})
-    assert r.status_code == 302
+    assert r.status_code == 403
     with app.app_context():
         assert db.session.get(Participant, pid) is not None, "la fiche aurait dû être protégée"
 

@@ -165,6 +165,7 @@ def mon_agenda_preferences():
         "titre_format": (request.form.get("titre_format") or "").strip() or "{atelier}",
         "champs_description": request.form.getlist("champs_description"),
         "inclure_lien": request.form.get("inclure_lien") == "1",
+        "partager_bilan_google": request.form.get("partager_bilan_google") == "1",
         "inclure_annulees": request.form.get("inclure_annulees") == "1",
         "evenements_tous_secteurs": request.form.get("evenements_tous_secteurs") == "1",
         "inclure_creneaux": request.form.get("inclure_creneaux") == "1",

@@ -138,9 +138,9 @@ def test_ordinary_finance_cannot_change_structure_modules(app, module_scope):
         u = User(email="modules-finance@example.org", nom="Finance")
         u.set_password("Test-module-finances-12")
         u.roles.append(Role.query.filter_by(code="finance").one())
-        db.session.add(u); db.session.commit(); uid = u.id
+        db.session.add(u); db.session.commit(); uid = u.id; session_id = u.get_id()
     client = app.test_client()
-    with client.session_transaction() as s: s["_user_id"] = str(uid); s["_fresh"] = True
+    with client.session_transaction() as s: s["_user_id"] = session_id; s["_fresh"] = True
     try:
         assert client.post("/admin/modules", data={"modules": ["finances"]}).status_code == 403
         assert client.get("/admin/users").status_code == 403

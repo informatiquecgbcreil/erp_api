@@ -14,6 +14,31 @@ from app.models import User
 from app.services.dashboard_customization import load_dashboard_pref
 
 
+class _DatabasePrivacyFilter(logging.Filter):
+    """Un diagnostic SQL ne doit pas recopier ses paramètres ou le DETAIL du pilote."""
+    def filter(self, record):
+        from sqlalchemy.exc import SQLAlchemyError
+        import traceback
+        error = record.exc_info[1] if record.exc_info else None
+        seen = set()
+        while error is not None and id(error) not in seen:
+            seen.add(id(error))
+            if isinstance(error, SQLAlchemyError):
+                # hide_parameters ne masque pas le DETAIL PostgreSQL (« clé
+                # email=... existe déjà »). Retirer aussi le texte de l'erreur,
+                # y compris lorsqu'un appelant l'a recopié dans son message.
+                record.msg = "Erreur de base de données (%s). Détails métier masqués."
+                record.args = (type(error).__name__,)
+                record.exc_text = "".join(
+                    f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}\n'
+                    for frame in traceback.extract_tb(record.exc_info[2])
+                )
+                record.exc_info = None
+                break
+            error = error.__cause__ or error.__context__
+        return True
+
+
 def _configure_error_logging(app):
     """Journalise avertissements et erreurs dans un fichier avec rotation.
 
@@ -39,6 +64,10 @@ def _configure_error_logging(app):
         logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
     )
     app.logger.addHandler(handler)
+    if not any(isinstance(f, _DatabasePrivacyFilter) for f in app.logger.filters):
+        # Filtre au niveau du logger : protège également stderr, repris dans
+        # logs/runtime.log par le service Windows.
+        app.logger.addFilter(_DatabasePrivacyFilter())
 
 
 from flask.sessions import SecureCookieSessionInterface
@@ -56,6 +85,13 @@ class _SessionKiosqueHttp(SecureCookieSessionInterface):
     n'est donc non sécurisé que pour les pages du kiosque servies en HTTP ;
     l'administration garde un cookie sécurisé.
     """
+
+    def get_cookie_name(self, app):
+        from flask import has_request_context, request
+        name = super().get_cookie_name(app)
+        if has_request_context() and request.path.startswith("/kiosk"):
+            return name + "_kiosk"
+        return name
 
     def get_cookie_secure(self, app):
         securise = super().get_cookie_secure(app)
@@ -77,7 +113,10 @@ def create_app():
 
     _configure_error_logging(app)
 
-    default_secret = app.config.get("SECRET_KEY") == DEFAULT_SECRET_KEY
+    default_secret = app.config.get("SECRET_KEY") in {
+        DEFAULT_SECRET_KEY, "change-me-local-dev", "remplacer-par-une-cle-tres-longue-et-aleatoire",
+        "une-cle-longue-aleatoire",
+    }
     is_prod_env = app.config.get("ERP_ENV") == "production"
 
     if is_prod_env and (default_secret or not app.config.get("SECRET_KEY") or len(app.config["SECRET_KEY"]) < 32):
@@ -141,9 +180,30 @@ def create_app():
     def healthz():
         return {"status": "ok"}, 200
 
+    @app.route("/sources")
+    def source_archive():
+        from flask import abort, send_file
+        from pathlib import Path
+        archive = app.config.get("SOURCE_ARCHIVE")
+        if not archive or not Path(archive).is_file():
+            abort(404)
+        # Chemin fixé au déploiement, jamais issu d'un paramètre de requête.
+        return send_file(archive, as_attachment=True, download_name="sources-Mon-Centre-Social.zip")
+
+    @app.context_processor
+    def _inject_source_offer():
+        return {"SOURCE_URL": url_for("source_archive") if app.config.get("SOURCE_ARCHIVE")
+                else "https://github.com/informatiquecgbcreil/erp_api"}
+
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(User, int(user_id))
+        import hmac
+        try:
+            identifiant, _ = user_id.split(".", 1)
+            user = db.session.get(User, int(identifiant))
+        except (ValueError, AttributeError, TypeError):
+            return None
+        return user if user and user.is_active and hmac.compare_digest(user.get_id(), user_id) else None
 
     # ------------------------------------------------------------------
     # Blueprints
@@ -205,7 +265,9 @@ def create_app():
     @app.before_request
     def _enforce_module_scope():
         from flask import abort
-        if request.endpoint == "static" and str((request.view_args or {}).get("filename", "")).replace("\\", "/").startswith("uploads/"):
+        import posixpath
+        static_path = posixpath.normpath(str((request.view_args or {}).get("filename", "")).replace("\\", "/"))
+        if request.endpoint == "static" and (static_path == "uploads" or static_path.startswith("uploads/")):
             abort(404)
         key = endpoint_module(request.endpoint or "")
         if key and not module_enabled(key):
@@ -345,17 +407,15 @@ def create_app():
         version avec « / » final (ex. /kiosk -> /kiosk/), l'endpoint
         n'est pas encore connu à ce stade et vaudrait None — un test sur
         l'endpoint bloquerait alors à tort le kiosque lui-même."""
-        hote_public = (app.config.get("KIOSK_PUBLIC_HOST") or "").strip().lower()
-        if not hote_public:
-            return None
-        hote_requete = (request.host or "").split(":", 1)[0].strip().lower()
-        if hote_requete != hote_public:
+        from app.services.public_ingress import is_public_ingress
+        if not is_public_ingress():
             return None
         chemin = request.path or "/"
         if (
             chemin == "/kiosk" or chemin.startswith("/kiosk/")
             or chemin == "/static" or chemin.startswith("/static/")
-            or chemin == "/healthz"
+            or chemin in {"/healthz", "/sources"}
+            or chemin.startswith("/media/branding/")
             # Flux calendrier iCal : lu par Google/Apple depuis internet, protégé
             # par un jeton secret dans l'URL (aucune donnée personnelle exposée).
             or chemin.startswith("/calendrier/")
@@ -377,7 +437,7 @@ def create_app():
         from app.models import User
 
         endpoint = (request.endpoint or "")
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
         if User.query.count() == 0:
@@ -400,14 +460,15 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None  # Une prévisualisation de migration ne déclenche aucune purge.
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
         from app.services.purge_rgpd import purge_auto_active, purge_quotidienne_si_necessaire
 
         if not purge_auto_active():
             return None
-        aujourd_hui = _date.today()
+        from app.utils.dates import utcnow
+        aujourd_hui = utcnow().date()
         if _purge_marqueur["jour"] == aujourd_hui:
             return None
         _purge_marqueur["jour"] = aujourd_hui
@@ -428,10 +489,11 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
-        aujourd_hui = _date.today()
+        from app.utils.dates import utcnow
+        aujourd_hui = utcnow().date()
         if _digest_marqueur["jour"] == aujourd_hui:
             return None
         _digest_marqueur["jour"] = aujourd_hui
@@ -459,7 +521,7 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
         # Jamais de collecte réseau pendant les tests, ni si désactivée.
@@ -498,7 +560,7 @@ def create_app():
         endpoint = (request.endpoint or "")
         if endpoint.startswith("admin.historical_"):
             return None
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz"}:
+        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
         if app.config.get("TESTING") or not app.config.get("GOOGLE_AGENDA_AUTO", True) or not module_enabled("presences"):
             return None
@@ -740,16 +802,16 @@ def create_app():
     with app.app_context():
         if app.config.get("DB_AUTO_UPGRADE_ON_START", True):
             try:
-                from flask_migrate import upgrade, stamp
+                from flask_migrate import upgrade
 
                 insp_pre = inspect(db.engine)
                 tables = set(insp_pre.get_table_names())
                 has_legacy_core = {"user", "role", "permission", "atelier_activite"}.issubset(tables)
                 if has_legacy_core and "alembic_version" not in tables:
-                    app.logger.warning(
-                        "Base existante détectée sans alembic_version: stamp(head) avant upgrade."
+                    raise RuntimeError(
+                        "Base existante sans historique Alembic : démarrage refusé. "
+                        "Faites analyser une copie du schéma avant la reprise ; aucun marquage automatique n'est effectué."
                     )
-                    stamp(revision="head")
 
                 upgrade()
             except Exception:

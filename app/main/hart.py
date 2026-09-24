@@ -16,6 +16,7 @@ from app.extensions import db
 from app.models import Participant, HartEvaluation, HART_TYPES_EVALUATION, HART_TYPES_DICT
 from app.services import hart as hart_service
 from app.services.audit import journaliser
+from app.services.access_scope import require_participant, require_sector, effective_sector
 
 from app.main.common import bp
 
@@ -55,7 +56,7 @@ def hart_collectif():
 
     secteur = (request.args.get("secteur") or "").strip() or None
     if not portee_globale:
-        secteur = getattr(current_user, "secteur_assigne", None)
+        secteur = effective_sector()
 
     date_from, date_to, annee = _periode_depuis_requete()
     stats = hart_service.stats_collectives(secteur, date_from, date_to)
@@ -106,6 +107,7 @@ def hart_collectif():
 def hart_evaluer(participant_id: int):
     """Pose une évaluation (initiale / suivi / mi-parcours / fin de parcours)."""
     participant = db.get_or_404(Participant, participant_id)
+    require_participant(participant)
 
     try:
         niveau = int(request.form.get("niveau") or 0)
@@ -126,7 +128,7 @@ def hart_evaluer(participant_id: int):
         niveau=niveau,
         type_evaluation=type_evaluation,
         date_evaluation=date_eval,
-        secteur=(request.form.get("secteur") or "").strip() or getattr(current_user, "secteur_assigne", None),
+        secteur=effective_sector((request.form.get("secteur") or "").strip() or None),
         temoignage=(request.form.get("temoignage") or "").strip() or None,
         remarque_pro=(request.form.get("remarque_pro") or "").strip() or None,
         created_by_user_id=getattr(current_user, "id", None),
@@ -144,6 +146,7 @@ def hart_evaluer(participant_id: int):
 @require_perm("participants:edit")
 def hart_evaluation_supprimer(evaluation_id: int):
     ev = db.get_or_404(HartEvaluation, evaluation_id)
+    require_sector(ev.secteur)
     pid = ev.participant_id
     db.session.delete(ev)
     db.session.commit()

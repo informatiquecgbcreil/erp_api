@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 
 from app.extensions import db
+from flask import has_request_context
 from app.models import (
     Question,
     QuestionnaireResponseGroup,
@@ -31,11 +32,12 @@ def _options_for(question: Question) -> list[str]:
 
 def compute_questionnaire_stats(questionnaire) -> dict:
     """Synthèse complète d'un questionnaire (KPIs + dépouillement par question)."""
-    groups = (
-        QuestionnaireResponseGroup.query
-        .filter_by(questionnaire_id=questionnaire.id)
-        .all()
-    )
+    query = QuestionnaireResponseGroup.query.filter_by(questionnaire_id=questionnaire.id)
+    from flask import has_request_context
+    if has_request_context():
+        from app.services.access_scope import sector_filter
+        query = query.filter(sector_filter(QuestionnaireResponseGroup.secteur))
+    groups = query.all()
     group_ids = [g.id for g in groups]
     nb_reponses = len(groups)
     nb_identifies = sum(1 for g in groups if g.participant_id)
@@ -124,15 +126,18 @@ def compute_questionnaire_stats(questionnaire) -> dict:
 
 def scale_average_global(questionnaire) -> float | None:
     """Moyenne de toutes les réponses aux questions à échelle d'un questionnaire."""
-    rows = (
+    query = (
         db.session.query(QuestionResponse.value_number)
         .join(QuestionnaireResponseGroup, QuestionResponse.response_group_id == QuestionnaireResponseGroup.id)
         .join(Question, QuestionResponse.question_id == Question.id)
         .filter(QuestionnaireResponseGroup.questionnaire_id == questionnaire.id)
         .filter(Question.kind == "scale")
         .filter(QuestionResponse.value_number.isnot(None))
-        .all()
     )
+    if has_request_context():
+        from app.services.access_scope import sector_filter
+        query = query.filter(sector_filter(QuestionnaireResponseGroup.secteur))
+    rows = query.all()
     vals = [r[0] for r in rows if r[0] is not None]
     return round(sum(vals) / len(vals), 2) if vals else None
 

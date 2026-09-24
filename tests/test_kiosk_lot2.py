@@ -1,3 +1,4 @@
+from app.utils.dates import utcnow
 """Lot 2 Terrain — kiosque robuste : reçu, bannière hors-ligne, cache de recherche."""
 import datetime as dt
 import uuid
@@ -14,9 +15,9 @@ def _open_session(app):
     db.session.add(at)
     db.session.flush()
     s = SessionActivite(atelier_id=at.id, secteur="Numérique", date_session=dt.date(2026, 5, 12),
-                        session_type="COLLECTIF", kiosk_open=True, kiosk_token=token)
+                        session_type="COLLECTIF", kiosk_open=True, kiosk_opened_at=utcnow(), kiosk_token=token)
     db.session.add(s)
-    p = Participant(nom=f"Kio{uuid.uuid4().hex[:6]}", prenom="T")
+    p = Participant(created_secteur="Numérique", nom=f"Kio{uuid.uuid4().hex[:6]}", prenom="T")
     db.session.add(p)
     db.session.commit()
     return token, p.id

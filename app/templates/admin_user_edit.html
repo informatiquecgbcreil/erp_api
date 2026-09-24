@@ -60,8 +60,8 @@
       <div class="field-stack">
         <div>
           <label>Nouveau mot de passe {{ ux.tooltip("Laissez vide pour ne pas changer. Sinon, communiquez-le à l'utilisateur ; il pourra le changer ensuite.") }}</label>
-          <input name="password" type="text" autocomplete="new-password" placeholder="(laisser vide pour conserver le mot de passe actuel)">
-          <div class="muted" style="font-size:12px;">8 caractères minimum. Utile pour dépanner un utilisateur qui ne reçoit pas l'e-mail de réinitialisation.</div>
+          <input name="password" type="password" minlength="12" autocomplete="new-password" placeholder="(laisser vide pour conserver le mot de passe actuel)">
+          <div class="muted" style="font-size:12px;">12 caractères minimum. Utile pour dépanner un utilisateur qui ne reçoit pas l'e-mail de réinitialisation.</div>
         </div>
       </div>
 

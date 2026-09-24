@@ -1,134 +1,97 @@
-# Kiosque hors les murs — mode d'emploi
+# Kiosque hors les murs
 
-Objectif : permettre l'émargement au kiosque (téléphone/tablette) **en dehors
-de la structure** (pied d'immeuble, sorties, activités délocalisées), alors que
-le serveur reste sur le réseau local et n'est pas exposé à internet.
+Ce guide concerne la distribution Windows consolidée. Le tunnel donne une
+adresse HTTPS publique au **port réservé au kiosque**. Ce port est filtré par
+Caddy avant d'atteindre l'application. Ne publiez ni le port interne de Waitress,
+ni l'adresse HTTPS de l'administration.
 
-Principe : un **tunnel sortant** est installé une fois pour toutes sur le
-serveur Windows. Il donne une adresse publique en HTTPS. Côté application, la
-**façade kiosque** fait que, par cette adresse, SEUL l'émargement kiosque
-répond : la page de connexion, les données et l'administration renvoient
-« porte close ». L'ERP ne sort jamais du réseau local.
+Le VPN de l'équipe reste utilisable pour l'administration avec les droits du
+compte connecté. Le kiosque public permet l'émargement sans compte salarié ;
+son lien est un accès à la séance, à transmettre uniquement aux personnes concernées.
 
----
+## 1. Vérifier le point d'entrée local
 
-## « J'ai déjà WireGuard, ça ne suffit pas ? »
+Choisir le mode réseau dans l'installateur. Le dossier de données contient
+`public/kiosk-url.txt`, par exemple `http://192.168.1.20:8080`.
+Relever son **port**. Sur le serveur, vérifier que
+`http://127.0.0.1:8080/kiosk/` répond et que
+`http://127.0.0.1:8080/` renvoie **403**. Adapter `8080` au port indiqué.
 
-Non, et il ne faut pas le remplacer : les deux outils font des choses opposées.
+Une installation artisanale doit d'abord disposer d'un proxy avec cette même
+liste de chemins autorisés. La variable `KIOSK_PUBLIC_HOST` seule ne remplace
+pas le filtrage du port public. Le modèle est dans `desktop/runtime.py`.
 
-- **WireGuard (votre VPN)** : un accès **privé** et total. La personne
-  connectée entre virtuellement dans le réseau local et voit toute
-  l'application. Parfait pour la direction ou l'admin en déplacement —
-  mais il faut installer et configurer un client sur chaque appareil,
-  et chaque appareil configuré a accès à tout.
-- **Le tunnel kiosque** : un accès **public** et minuscule. N'importe quel
-  téléphone avec le lien peut pointer les présences d'une séance (jeton +
-  code PIN), et ne peut rien faire d'autre — la façade kiosque bloque tout
-  le reste. Rien à installer côté bénévole.
+## 2. Relier le tunnel à ce port
 
-Donner WireGuard à un bénévole reviendrait à lui donner les clés de tout le
-bâtiment pour qu'il signe une feuille dans l'entrée. Gardez WireGuard pour
-vous ; le tunnel, c'est pour eux.
+Après installation et connexion de Tailscale sur le serveur, exemple pour le
+port kiosque `8080` :
 
-Bon signe au passage : si WireGuard fonctionne, le serveur sait déjà établir
-des connexions sortantes — le tunnel s'installera sans difficulté.
-
-## Étape 1 — Choisir le tunnel
-
-Deux solutions gratuites et sans ouverture de port sur la box :
-
-| | Tailscale Funnel | Cloudflare Tunnel |
-|---|---|---|
-| Nom de domaine à acheter | Non (adresse en `*.ts.net`) | Oui (≈ 10 €/an) |
-| Adresse obtenue | `gestion-cgb.tail1234.ts.net` | `kiosque.votre-domaine.fr` |
-| Difficulté | Facile | Moyenne |
-| Conseil | **Pour démarrer** | Si vous voulez une adresse « propre » |
-
-## Étape 2A — Tailscale Funnel (recommandé pour démarrer)
-
-Sur le serveur Windows (compte administrateur) :
-
-1. Télécharger et installer Tailscale : https://tailscale.com/download/windows
-2. Se connecter (créer un compte gratuit, par exemple avec l'adresse Google de
-   la structure) : icône Tailscale → *Log in*.
-3. Ouvrir une invite de commandes **en administrateur** et taper :
-
-   ```
-   tailscale funnel --bg 8000
-   ```
-
-   (remplacer `8000` par le port réel de l'application s'il est différent —
-   celui de l'adresse `http://gestion.cgb:PORT`).
-4. La commande affiche l'adresse publique, du type
-   `https://NOM-DU-SERVEUR.tail1234.ts.net`. **La noter.**
-
-## Étape 2B — Cloudflare Tunnel (si vous avez un domaine)
-
-1. Créer un compte sur https://dash.cloudflare.com et y rattacher votre domaine.
-2. Zero Trust → Networks → Tunnels → *Create a tunnel* (type Cloudflared),
-   suivre l'installation Windows proposée (un service s'installe tout seul).
-3. Dans *Public hostnames*, ajouter : `kiosque.votre-domaine.fr` →
-   `http://localhost:8000` (le port de l'application).
-
-## Étape 3 — Activer la façade kiosque dans l'application
-
-Sur le serveur, ouvrir le fichier `.env` à la racine de l'application
-(le créer s'il n'existe pas, à côté de `config.py`) et ajouter :
-
-```
-KIOSK_PUBLIC_HOST=NOM-DU-SERVEUR.tail1234.ts.net
+```powershell
+tailscale funnel --bg http://127.0.0.1:8080
+tailscale funnel status
 ```
 
-(l'adresse notée à l'étape 2, **sans** `https://` ni port), puis **redémarrer
-le service de l'application**.
+Le statut doit désigner cette destination locale. Si un ancien Funnel publiait
+le port général de l'application, le retirer avant de configurer le kiosque.
+`tailscale funnel reset` retire toutes les publications Funnel de cette machine :
+vérifier auparavant qu'elles ne servent pas à un autre usage.
+La syntaxe et les prérequis sont documentés dans la
+[référence officielle Tailscale](https://tailscale.com/docs/reference/tailscale-cli/funnel).
+Ces commandes doivent être vérifiées sur le serveur ; la CI de l'ERP ne se
+connecte pas à un véritable compte Tailscale.
 
-C'est tout. À partir de là :
+Avec Cloudflare Tunnel, le service HTTP de destination doit également être
+`http://127.0.0.1:8080`, avec le port kiosque réel. Le fournisseur du tunnel et son
+nom public sont indépendants de la base de données et du nom de la structure.
 
-- les liens et QR codes du kiosque (page d'émargement d'une séance → bouton
-  Kiosque) utilisent automatiquement l'adresse publique : ils fonctionnent
-  dans les murs comme dehors ;
-- par l'adresse publique, seules les pages `/kiosk` répondent ; tout le reste
-  affiche « Cet accès sert uniquement à l'émargement » ;
-- l'accès LAN habituel (`http://gestion.cgb`) ne change pas d'un poil.
+## 3. Générer les QR codes avec l'adresse publique
 
-## Étape 4 — Le circuit côté équipe
+Renseigner le nom DNS public, sans protocole ni port :
 
-⚠️ **Point important** : le bouton qui ouvre le kiosque d'une séance (et donc
-qui génère le lien + le QR) se trouve sur la page d'émargement de
-l'application — une page réservée à l'équipe, donc **bloquée par la façade**
-depuis l'extérieur, comme toutes les pages hors kiosque. Il faut donc
-**ouvrir le kiosque AVANT de partir**, depuis un poste du centre (ou via
-votre VPN WireGuard perso si vous êtes déjà dehors). Une fois ouvert, le
-lien fonctionne ensuite sur n'importe quel téléphone, sans compte.
+```dotenv
+KIOSK_PUBLIC_HOST=nom-du-serveur.tail1234.ts.net
+```
 
-1. Avant la séance hors les murs, depuis le centre (ou en WireGuard),
-   l'animateur ou l'accueil ouvre la séance dans l'application → bouton
-   **Kiosque** → le lien + code PIN + QR s'affichent.
-2. Envoyer le lien au bénévole/animateur (SMS, WhatsApp…) ou imprimer le QR.
-3. Sur place : ouvrir le lien sur le téléphone, saisir le code PIN, faire
-   pointer les participants. Aucun compte nécessaire, aucune autre page
-   accessible.
-4. Les présences arrivent en direct dans l'application : rien à ressaisir.
+- **Reprise d'une ancienne installation :** renseigner cette valeur dans son
+  `.env` avant la reprise. L'assistant la conserve dans sa configuration protégée.
+- **Installation neuve :** renseigner cette ligne dans le `.env` du dossier
+  `application` installé sous `Program Files/Mon Centre Social`, avec les droits
+  administrateur, puis redémarrer le service. Les variables reprises dans la
+  configuration protégée sont prioritaires sur ce fichier : cette méthode ne
+  remplace pas une valeur déjà importée.
 
-## Vérifier que la façade protège bien
+Les liens et QR codes utilisent ensuite le nom public. Le dossier de données,
+les ports locaux et l'accès de l'équipe restent ceux indiqués par l'assistant.
 
-Depuis un téléphone en 4G (hors du réseau de la structure, wifi ET
-WireGuard coupés) :
+## 4. Utiliser le kiosque
 
-- `https://ADRESSE-PUBLIQUE/kiosk/` (avec le « / » final) → doit afficher
-  l'écran kiosque ✅
-- `https://ADRESSE-PUBLIQUE/` (ou `/dashboard`) → doit afficher
-  « Cet accès sert uniquement à l'émargement » ✅
+Depuis l'ERP sur le réseau du centre ou via son VPN, ouvrir le kiosque de la
+séance avant de partir. Partager le lien ou le QR avec la personne chargée de
+l'émargement. Le lien contient un jeton secret et ouvre directement la séance ;
+le PIN permet d'y accéder depuis l'accueil du kiosque. Ce ne sont pas deux
+facteurs d'authentification cumulés.
 
-Si le second test montre la page de connexion : la variable
-`KIOSK_PUBLIC_HOST` est mal renseignée (vérifier l'orthographe exacte de
-l'hôte, sans `https://`), ou le service n'a pas été redémarré.
+Les nouvelles ouvertures ont un PIN de six chiffres et expirent après douze
+heures. Les anciens PIN à quatre chiffres restent acceptés pendant leur période
+d'ouverture. Refermer le kiosque après la séance. La recherche et l'émargement
+sont limités au secteur de la séance ou aux inscriptions de son atelier.
 
-**Si le premier test échoue** (le kiosque lui-même semble bloqué) :
-vérifiez que vous avez bien tapé l'adresse en entier, avec `/kiosk/` — un
-navigateur peut afficher l'adresse sans le « / » final, mais en la
-retapant à la main il arrive de l'omettre, ce qui déclenchait ce même
-blocage avant correction. Le lien généré par le bouton **Kiosque** de
-l'application, lui, est toujours complet et ne pose pas ce problème —
-en cas de doute, préférez toujours ce lien-là (ou le QR) à une adresse
-retapée à la main.
+## 5. Contrôler depuis l'extérieur
+
+Sur un téléphone hors Wi-Fi et hors VPN :
+
+- `/kiosk/` affiche l'accueil ; un lien de séance ouverte permet de pointer.
+- `/`, `/dashboard` et `/admin/users` doivent répondre **403**.
+- Le logo public, les fichiers statiques nécessaires et `/sources` restent
+  accessibles. Les justificatifs, signatures et documents individuels ne le sont pas.
+
+Si l'écran de connexion de l'ERP apparaît, couper la publication du tunnel et
+corriger sa destination avant de le rouvrir. Un simple test avec le bon nom DNS
+ne remplace pas le filtrage du port kiosque : le client peut changer son en-tête
+`Host`. Les tests automatisés couvrent ce cas, le point final dans le nom et
+l'en-tête ajouté par Tailscale Funnel.
+
+La limitation de débit utilise l'adresse vue par l'application. Selon le tunnel,
+plusieurs visiteurs peuvent partager cette adresse et donc le même quota. Les
+quotas freinent les abus mais ne constituent pas une protection individuelle
+contre le blocage par un autre visiteur.

@@ -7,7 +7,7 @@ que les inscriptions de son secteur.
 """
 from __future__ import annotations
 
-import csv
+from app.utils import spreadsheet_csv as csv
 import io
 from datetime import date
 

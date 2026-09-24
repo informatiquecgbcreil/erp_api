@@ -21,6 +21,7 @@ APP = INSTALL / "application"
 if not APP.exists():  # Exécution depuis les sources pour la recette.
     APP = INSTALL
 sys.path.insert(0, str(APP))
+sys.path.insert(0, str(INSTALL))
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -28,8 +29,12 @@ def configure_environment(c):
     root = Path(c["data_root"])
     for name in ("instance", "uploads", "logs", "backups", "runtime"):
         (root / name).mkdir(exist_ok=True, parents=True)
+    database_name = c.get("db_name", "moncentresocial")
+    import re
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", database_name):
+        raise ValueError("Nom de base gérée invalide.")
     uri = (f"postgresql+psycopg://mcs:{quote(c['db_password'], safe='')}"
-           f"@127.0.0.1:{int(c['db_port'])}/moncentresocial")
+           f"@127.0.0.1:{int(c['db_port'])}/{database_name}")
     values = {
         "ERP_ENV": "production", "APP_NAME": "Mon Centre Social",
         "SECRET_KEY": c["secret_key"], "DATABASE_URL": uri, "SQLALCHEMY_DATABASE_URI": uri,
@@ -38,6 +43,7 @@ def configure_environment(c):
         "ERP_LOG_DIR": str(root / "logs"), "MCS_BACKUP_DIR": str(root / "backups"),
         "MCS_MODULES": ",".join(c["modules"]), "MCS_SETUP_DISABLED": "1",
         "ERP_PUBLIC_BASE_URL": c["url"],
+        "MCS_SOURCE_ARCHIVE": str(INSTALL / "sources-Mon-Centre-Social.zip"),
         "KIOSK_PUBLIC_BASE_URL": c.get("kiosk_url") or c["url"],
         "SESSION_COOKIE_SECURE": "1" if c["network"] else "0",
         "PG_DUMP_PATH": str(INSTALL / "postgresql/bin/pg_dump.exe"),
@@ -49,6 +55,8 @@ def configure_environment(c):
         "PASSWORD_RESET_ALLOW_DEBUG_LINK": "0", "PYTHONDONTWRITEBYTECODE": "1",
     }
     os.environ.update(values)
+    from desktop.migration import SETTINGS
+    os.environ.update({k: str(v) for k, v in c.get("application_settings", {}).items() if k in SETTINGS})
     os.chdir(APP)
     return root
 
@@ -119,15 +127,32 @@ def bootstrap_account(app, c):
         db.session.commit()
 
 
+def protect_pending_activation(app, root):
+    def pending_activation():
+        from flask import request
+        if (root / "private/activation.pending").exists() and request.path != "/healthz":
+            return "Reprise en cours. Le centre sera disponible après validation de l'installation.", 503
+    # Avant CSRF, connexion et tâches quotidiennes : même une requête refusée
+    # ne doit pas provoquer de purge, de synchronisation ou d'envoi de mail.
+    app.before_request_funcs.setdefault(None, []).insert(0, pending_activation)
+
+
 def web(c):
+    if c.get("migration_source") and not c.get("migration_done"):
+        raise RuntimeError("La reprise doit être terminée dans l'assistant avant le démarrage.")
     root = configure_environment(c)
     from app import create_app
     from waitress import create_server
     app = create_app()
+    protect_pending_activation(app, root)
     trusted_hosts = ["127.0.0.1", "localhost", c["hostname"]]
     lan_ip = str(c.get("lan_ip") or "").strip()
     if lan_ip and lan_ip not in trusted_hosts:
         trusted_hosts.append(lan_ip)
+    from app.services.public_ingress import hostname
+    public_host = hostname(app.config.get("KIOSK_PUBLIC_HOST") or "")
+    if public_host:
+        trusted_hosts.append(public_host)
     app.config["TRUSTED_HOSTS"] = trusted_hosts
     bootstrap_account(app, c)
     server = create_server(app, host="127.0.0.1", port=int(c["web_port"]), threads=12,
@@ -159,7 +184,8 @@ def spawn(mode, c, log):
     process = subprocess.Popen([sys.executable, "-B", str(Path(__file__).resolve()), mode],
                                stdin=subprocess.PIPE, stdout=log, stderr=log,
                                creationflags=CREATE_NO_WINDOW)
-    process.stdin.write(json.dumps(c).encode("utf-8"))
+    child_config = {k: v for k, v in c.items() if k not in {"db_admin_password", "migration_uri"}}
+    process.stdin.write(json.dumps(child_config).encode("utf-8"))
     process.stdin.close()
     return process
 
@@ -170,17 +196,18 @@ def write_caddy(c, root):
     import re
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}", hostname):
         raise ValueError("Nom de serveur invalide.")
-    storage = json.dumps(str(root / "runtime/tls").replace("\\", "/"), ensure_ascii=False)
+    storage = json.dumps(str(root / "https/tls").replace("\\", "/"), ensure_ascii=False)
     kiosk_port = int(c["kiosk_http_port"])
     web_port = int(c["web_port"])
-    target = root / "runtime/Caddyfile"
+    target = root / "https/Caddyfile"
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         "{\n admin off\n auto_https disable_redirects\n skip_install_trust\n persist_config off\n"
         f" storage file_system {storage}\n}}\n"
         f"https://{hostname}:{int(c['https_port'])} {{\n tls internal\n"
         f" reverse_proxy 127.0.0.1:{web_port}\n}}\n"
         f":{kiosk_port} {{\n"
-        " @kiosk path /kiosk /kiosk/* /static /static/* /media/branding /media/branding/* /healthz\n"
+        " @kiosk path /kiosk /kiosk/* /static /static/* /media/branding /media/branding/* /healthz /sources\n"
         " handle @kiosk {\n"
         f"  reverse_proxy 127.0.0.1:{web_port}\n"
         " }\n"
@@ -194,7 +221,7 @@ def write_caddy(c, root):
 def supervise(c):
     root = configure_environment(c)
     state = root / "runtime"
-    for name in ("stop", "web.stop", "ready", "web.ready"):
+    for name in ("stop", "web.stop", "ready", "web.ready", "database.ready"):
         (state / name).unlink(missing_ok=True)
     logpath = root / "logs/runtime.log"
     if logpath.exists() and logpath.stat().st_size > 5_000_000:
@@ -206,6 +233,14 @@ def supervise(c):
         try:
             start_database(c, root)
             database_started = True
+            (state / "database.ready").write_text("1", encoding="ascii")
+            if c.get("migration_source") and not c.get("migration_done"):
+                # PostgreSQL reste sous son identité de service, y compris à
+                # l'import. L'assistant élevé ne lance jamais initdb/pg_ctl.
+                # Aucun serveur HTTP ni travail quotidien avant la reprise.
+                while not (state / "stop").exists():
+                    time.sleep(0.5)
+                return
             process = spawn("--web", c, log)
             children.append(process)
             deadline = time.monotonic() + 180
@@ -221,49 +256,6 @@ def supervise(c):
                 time.sleep(0.5)
             else:
                 raise RuntimeError("Le démarrage de l'application a dépassé le délai de 3 minutes.")
-            if c["network"]:
-                config = write_caddy(c, root)
-                proxy = subprocess.Popen([str(INSTALL / "caddy/caddy.exe"), "run", "--config", str(config), "--adapter", "caddyfile"],
-                                         stdout=log, stderr=log, creationflags=CREATE_NO_WINDOW)
-                children.append(proxy)
-                certificate = state / "tls/pki/authorities/local/root.crt"
-                for _ in range(60):
-                    if proxy.poll() is not None:
-                        raise RuntimeError("Le serveur HTTPS n'a pas démarré.")
-                    if certificate.exists():
-                        break
-                    time.sleep(0.5)
-                else:
-                    raise RuntimeError("Le certificat du centre n'a pas pu être créé.")
-                import socket
-                import ssl
-                tls_context = ssl.create_default_context(cafile=str(certificate))
-                for _ in range(60):
-                    try:
-                        with socket.create_connection(("127.0.0.1", int(c["https_port"])), timeout=2) as connection:
-                            with tls_context.wrap_socket(connection, server_hostname=c["hostname"]):
-                                break
-                    except OSError:
-                        if proxy.poll() is not None:
-                            raise RuntimeError("Le serveur HTTPS s'est arrêté.")
-                        time.sleep(0.5)
-                else:
-                    raise RuntimeError("La connexion HTTPS n'a pas pu être vérifiée.")
-                # Le second point d'entrée est volontairement HTTP et limité
-                # par Caddy aux routes kiosque/static/branding/healthz. Cela
-                # permet à un téléphone ou une tablette de fonctionner sans
-                # installer l'autorité de certification privée de l'ERP.
-                for _ in range(60):
-                    try:
-                        with urlopen(f"http://127.0.0.1:{int(c['kiosk_http_port'])}/healthz", timeout=2) as response:
-                            if response.status == 200:
-                                break
-                    except OSError:
-                        if proxy.poll() is not None:
-                            raise RuntimeError("Le point d'accès kiosque n'a pas démarré.")
-                        time.sleep(0.5)
-                else:
-                    raise RuntimeError("La connexion kiosque locale n'a pas pu être vérifiée.")
             (state / "ready").write_text("1", encoding="ascii")
             last_backup_day = ""
             while not (state / "stop").exists():
@@ -285,6 +277,7 @@ def supervise(c):
                 time.sleep(1)
         finally:
             (state / "ready").unlink(missing_ok=True)
+            (state / "database.ready").unlink(missing_ok=True)
             (state / "web.stop").write_text("1", encoding="ascii")
             if backup_task is not None and backup_task.poll() is None:
                 backup_task.terminate(); backup_task.wait(timeout=10)
@@ -299,16 +292,47 @@ def supervise(c):
                           "-w", "-t", "30", "-m", "fast", "stop"], timeout=45)
 
 
+def migrate_installation(c):
+    """Prépare une base distincte sur le service PostgreSQL, web encore fermé."""
+    import uuid
+    import psycopg
+    from psycopg import sql
+    from desktop.migration import migrate
+    root = configure_environment(c)
+    completed = root / "runtime/reprise/complete.json"
+    if completed.exists():
+        report = json.loads(completed.read_text(encoding="utf-8"))
+    else:
+        c["db_name"] = "mcs_reprise_" + uuid.uuid4().hex[:16]
+        with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
+                             password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:
+            conn.execute(sql.SQL("CREATE DATABASE {} OWNER mcs").format(sql.Identifier(c["db_name"])))
+            conn.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(c["db_name"])))
+        configure_environment(c)
+        report = migrate(c, sys.modules[__name__])
+    (root / "private/migration-result.json").write_text(json.dumps(report), encoding="utf-8")
+
+
 if __name__ == "__main__":
-    config = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    config = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     try:
-        {"--supervise": supervise, "--web": web, "--backup": backup}[sys.argv[1]](config)
-    except Exception:
+        {"--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation, "--prepare-proxy": lambda c: write_caddy(c, Path(c["data_root"]))}[sys.argv[1]](config)
+    except Exception as exc:
         # Le fichier de log est protégé par les ACL, mais ne conserve pas les secrets.
+        if sys.argv[1] == "--migrate":
+            from desktop.migration import MigrationError
+            message = str(exc) if isinstance(exc, MigrationError) else "La reprise a échoué. Vérifiez les connexions, les dossiers et l'espace disponible."
+            (Path(config["data_root"]) / "private/migration-error.txt").write_text(message, encoding="utf-8")
+            raise SystemExit(1)
         import traceback
         error = traceback.format_exc()
-        for key, value in config.items():
-            if ("password" in key or key == "secret_key") and value:
-                error = error.replace(str(value), "[confidentiel]").replace(quote(str(value), safe=""), "[confidentiel]")
+        def secrets(values):
+            for key, value in values.items():
+                if isinstance(value, dict):
+                    yield from secrets(value)
+                elif value and any(word in key.lower() for word in ("password", "secret", "migration_uri")):
+                    yield str(value)
+        for value in secrets(config):
+            error = error.replace(value, "[confidentiel]").replace(quote(value, safe=""), "[confidentiel]")
         sys.stderr.write(error)
         sys.exit(1)

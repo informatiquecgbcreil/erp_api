@@ -109,7 +109,7 @@ def _partner_competence_labels(partenaire: Partenaire) -> list[str]:
 
 
 def _can_scope_all() -> bool:
-    return bool(can("scope:all_secteurs") or can("participants:view_all"))
+    return bool(can("scope:all_secteurs"))
 
 
 def _current_scope_secteur() -> str | None:
@@ -197,7 +197,9 @@ def _orientation_filtered_query(year: int):
 
     secteur = (request.values.get("secteur_filter") or "").strip()
     if not _can_scope_all():
-        secteur = _current_scope_secteur() or secteur
+        secteur = _current_scope_secteur()
+        if not secteur:
+            return q.filter(db.false())
     if secteur:
         q = q.filter(OrientationAccesDroit.secteur == secteur)
 
@@ -444,6 +446,9 @@ def orientations():
         partenaire_id = _parse_int(request.form.get("partenaire_id"))
         quartier_id = _parse_int(request.form.get("quartier_id"))
         participant = db.session.get(Participant, participant_id) if participant_id else None
+        if participant_id:
+            from app.services.access_scope import require_participant
+            require_participant(db.get_or_404(Participant, participant_id))
         partenaire = db.session.get(Partenaire, partenaire_id) if partenaire_id else None
         quartier = db.session.get(Quartier, quartier_id) if quartier_id else None
         if not quartier and participant and getattr(participant, "quartier", None):
@@ -456,7 +461,8 @@ def orientations():
 
         secteur = (request.form.get("secteur") or "").strip() or _current_scope_secteur()
         if not _can_scope_all():
-            secteur = _current_scope_secteur()
+            from app.services.access_scope import effective_sector
+            secteur = effective_sector()
 
         item = OrientationAccesDroit(
             date_orientation=_parse_date(request.form.get("date_orientation")) or date.today(),
@@ -536,8 +542,8 @@ def orientations():
 @require_perm("partenaires:edit")
 def update_orientation_status(orientation_id: int):
     item = db.get_or_404(OrientationAccesDroit, orientation_id)
-    if not _can_scope_all() and item.secteur and item.secteur != _current_scope_secteur():
-        abort(403)
+    from app.services.access_scope import require_sector
+    require_sector(item.secteur)
     item.statut = _clean_choice(request.form.get("statut"), ORIENTATION_STATUTS, item.statut or "oriente")
     item.suite_prevue = _parse_date(request.form.get("suite_prevue"))
     extra_note = (request.form.get("note") or "").strip()
@@ -553,8 +559,8 @@ def update_orientation_status(orientation_id: int):
 @require_perm("partenaires:edit")
 def delete_orientation(orientation_id: int):
     item = db.get_or_404(OrientationAccesDroit, orientation_id)
-    if not _can_scope_all() and item.secteur and item.secteur != _current_scope_secteur():
-        abort(403)
+    from app.services.access_scope import require_sector
+    require_sector(item.secteur)
     year = (item.date_orientation or date.today()).year
     db.session.delete(item)
     db.session.commit()

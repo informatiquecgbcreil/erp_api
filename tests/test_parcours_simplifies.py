@@ -180,7 +180,7 @@ def test_messages_du_kiosque_affiches_en_http(app, monkeypatch):
     client = app.test_client()
     r = client.post("/kiosk/", data={"pin": "0000"}, base_url="http://192.168.1.20:8080")
     cookie = r.headers.get("Set-Cookie", "")
-    assert "session=" in cookie and "Secure" not in cookie
+    assert "session_kiosk=" in cookie and "Secure" not in cookie
     page = client.get("/kiosk/", base_url="http://192.168.1.20:8080").get_data(as_text=True)
     assert "Code invalide" in page
     # En HTTPS (administration), le cookie reste sécurisé.
@@ -196,7 +196,7 @@ def test_page_de_lancement_donne_l_adresse_kiosque(app, client, monkeypatch):
     assert "http://192.168.1.20:8080/kiosk/" in page
 
 
-def test_pin_plafond_commun_a_tous_les_appareils(app):
+def test_pin_un_abus_ne_bloque_pas_les_autres_appareils(app):
     from app.kiosk import routes as kiosque
 
     kiosque._ECHECS_PIN.reinitialiser()
@@ -207,7 +207,7 @@ def test_pin_plafond_commun_a_tous_les_appareils(app):
             c.post("/kiosk/", data={"pin": "0000"}, environ_base={"REMOTE_ADDR": f"10.0.{i // 250}.{i % 250 + 1}"})
         r = app.test_client().post("/kiosk/", data={"pin": "1234"}, environ_base={"REMOTE_ADDR": "10.9.9.9"},
                                    follow_redirects=True)
-        assert "Trop de codes erronés".encode() in r.data
+        assert "Trop de codes erronés".encode() not in r.data
     finally:
         kiosque._ECHECS_PIN.reinitialiser()
         kiosque._ECHECS_PIN_TOTAL.reinitialiser()

@@ -52,7 +52,11 @@ def test_publier_envoie_le_fichier(app, monkeypatch):
         def quit(self):
             envois["quit"] = True
 
-    monkeypatch.setattr(publication_web, "FTP_TLS", lambda: FauxFTPS())
+    def ftps_factory(*, context):
+        import ssl
+        assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
+        return FauxFTPS()
+    monkeypatch.setattr(publication_web, "FTP_TLS", ftps_factory)
 
     with app.app_context():
         app.config.update(

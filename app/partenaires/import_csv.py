@@ -13,7 +13,7 @@ jour les fiches au lieu de les dupliquer. Les colonnes laissées vides ne
 
 from __future__ import annotations
 
-import csv
+from app.utils import spreadsheet_csv as csv
 import io
 import json
 import unicodedata

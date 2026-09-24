@@ -1,3 +1,4 @@
+from app.utils.dates import utcnow
 """Tests du kiosque public d'émargement (accueil, session, création, présence, avis).
 
 Le kiosque est public (sans connexion) : ces flux doivent fonctionner
@@ -28,7 +29,7 @@ def session_kiosk(app):
             date_session=date.today(),
             heure_debut="14:00",
             heure_fin="16:00",
-            kiosk_open=True,
+            kiosk_open=True, kiosk_opened_at=utcnow(),
             kiosk_pin="4242",
             kiosk_token=f"tok{suffixe}",
         )
@@ -63,7 +64,7 @@ def test_accueil_kiosque_liste_les_sessions_ouvertes_hors_date(app, client):
                 date_session=date.today() - timedelta(days=1),
                 heure_debut="09:00",
                 heure_fin="11:00",
-                kiosk_open=True,
+                kiosk_open=True, kiosk_opened_at=utcnow(),
                 kiosk_pin=f"{int(suffixe[:4], 16) % 10000:04d}",
                 kiosk_token=f"tokveille{suffixe}",
             )
@@ -139,7 +140,7 @@ def test_emargement_enregistre_presence(app, client, session_kiosk):
         from app.extensions import db
         from app.models import Participant
 
-        p = Participant(nom=f"KioskPres{uuid.uuid4().hex[:6]}", prenom="Test")
+        p = Participant(created_secteur="Numérique", nom=f"KioskPres{uuid.uuid4().hex[:6]}", prenom="Test")
         db.session.add(p)
         db.session.commit()
         pid = p.id
@@ -165,7 +166,7 @@ def test_recherche_participant_kiosk(app, client, session_kiosk):
         from app.extensions import db
         from app.models import Participant
 
-        db.session.add(Participant(nom="Zorglub", prenom="Marcel"))
+        db.session.add(Participant(created_secteur="Numérique", nom="Zorglub", prenom="Marcel"))
         db.session.commit()
 
     r = client.get(f"/kiosk/session/{session_kiosk['token']}/search?q=Zorg")

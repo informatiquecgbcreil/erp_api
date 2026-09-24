@@ -5,6 +5,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
+from app.utils.passwords import MIN_PASSWORD_LENGTH, PASSWORD_REQUIREMENT
 from app.models import User, Role, Permission, Secteur, InstanceSettings, Framework, Skill
 from app.utils.delete_guard import commit_delete
 from app.rbac import require_perm, can, can_access_secteur, HIDDEN_LEGACY_PERMS
@@ -102,15 +103,15 @@ def users():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         nom = request.form.get("nom", "").strip()
-        # Strip cohérent avec la page de connexion (qui strip aussi) et le
-        # wizard d'installation : évite un « mot de passe incorrect » dû à un
-        # espace en trop collé au moment de la création.
-        password = request.form.get("password", "").strip()
+        password = request.form.get("password", "")
         role_code = request.form.get("role")
         secteur = request.form.get("secteur_assigne") or None
 
         if not email or not password or not role_code:
             flash("Certains champs obligatoires sont manquants.", "danger")
+            return redirect(url_for("admin.users"))
+        if len(password) < MIN_PASSWORD_LENGTH:
+            flash(PASSWORD_REQUIREMENT, "danger")
             return redirect(url_for("admin.users"))
 
         if User.query.filter_by(email=email).first():
@@ -206,10 +207,10 @@ def edit_user(user_id):
                 u.roles = [nouveau_role]
 
         # Réinitialisation du mot de passe par l'admin (optionnel, sans SMTP).
-        new_pw = (request.form.get("password") or "").strip()
+        new_pw = request.form.get("password") or ""
         if new_pw:
-            if len(new_pw) < 8:
-                flash("Le mot de passe doit contenir au moins 8 caractères.", "danger")
+            if len(new_pw) < MIN_PASSWORD_LENGTH:
+                flash(PASSWORD_REQUIREMENT, "danger")
                 return redirect(url_for("admin.edit_user", user_id=u.id))
             u.set_password(new_pw)
             current_app.logger.warning(

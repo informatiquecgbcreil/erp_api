@@ -1,7 +1,7 @@
 import os
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.utils.dates import utcnow
 
@@ -14,6 +14,7 @@ from flask import (
     current_app,
     jsonify,
     flash,
+    session as browser_session,
 )
 
 from app.extensions import db, csrf
@@ -68,6 +69,9 @@ _ECHECS_PIN = Limiteur(maximum=10, fenetre_secondes=600)
 # (IPv6 temporaires) ne multiplie pas ses essais sur un code à 4 chiffres.
 _ECHECS_PIN_TOTAL = Limiteur(maximum=60, fenetre_secondes=600)
 _RECHERCHES = Limiteur(maximum=120, fenetre_secondes=60)
+_CREATIONS = Limiteur(maximum=10, fenetre_secondes=600)
+_POINTAGES = Limiteur(maximum=60, fenetre_secondes=60)
+_AVIS = Limiteur(maximum=30, fenetre_secondes=600)
 
 
 def _adresse_client() -> str:
@@ -82,10 +86,25 @@ def _via_facade_publique() -> bool:
     la recherche dans l'annuaire. On entre alors par le lien/QR code
     transmis par l'équipe, ou par le code PIN.
     """
-    hote_public = (current_app.config.get("KIOSK_PUBLIC_HOST") or "").strip().lower()
-    if not hote_public:
-        return False
-    return (request.host or "").split(":", 1)[0].strip().lower() == hote_public
+    from app.services.public_ingress import is_public_ingress
+    return is_public_ingress()
+
+
+def _active_kiosks():
+    return SessionActivite.query.filter(
+        SessionActivite.kiosk_open.is_(True), SessionActivite.is_deleted.is_(False),
+        SessionActivite.kiosk_opened_at >= utcnow() - timedelta(hours=12))
+
+
+def _participants_for_session(s):
+    from app.services.access_scope import participant_filter
+    from app.models import InscriptionActivite
+    from sqlalchemy import exists, or_
+    registered = exists().where(InscriptionActivite.participant_id == Participant.id,
+                                InscriptionActivite.atelier_id == s.atelier_id,
+                                InscriptionActivite.statut == "inscrit",
+                                or_(InscriptionActivite.session_id.is_(None), InscriptionActivite.session_id == s.id))
+    return Participant.query.filter(or_(participant_filter(s.secteur), registered))
 
 
 def _get_open_session_by_pin(pin: str):
@@ -95,8 +114,8 @@ def _get_open_session_by_pin(pin: str):
     if not pin:
         return None
     return (
-        SessionActivite.query
-        .filter_by(kiosk_open=True, kiosk_pin=pin)
+        _active_kiosks()
+        .filter_by(kiosk_pin=pin)
         .filter(SessionActivite.is_deleted.is_(False))
         .order_by(SessionActivite.created_at.desc())
         .first()
@@ -110,8 +129,8 @@ def _get_open_session_by_token(token: str):
     if not token:
         return None
     return (
-        SessionActivite.query
-        .filter_by(kiosk_open=True, kiosk_token=token)
+        _active_kiosks()
+        .filter_by(kiosk_token=token)
         .filter(SessionActivite.is_deleted.is_(False))
         .first()
     )
@@ -163,7 +182,7 @@ def _open_sessions_today() -> list[dict]:
     pourtant ouverts et accessibles par PIN/token.
     """
     sessions = (
-        SessionActivite.query.filter_by(kiosk_open=True)
+        _active_kiosks()
         .filter(SessionActivite.is_deleted.is_(False))
         .order_by(
             SessionActivite.date_session.asc(),
@@ -198,7 +217,7 @@ def _open_sessions_today() -> list[dict]:
 def kiosk_home():
     """Page publique: saisie PIN + liste des sessions ouvertes."""
     if request.method == "POST":
-        if _ECHECS_PIN.depasse(_adresse_client()) or _ECHECS_PIN_TOTAL.depasse("*"):
+        if _ECHECS_PIN.depasse(_adresse_client()):
             flash("Trop de codes erronés. Patientez quelques minutes ou demandez à l'animateur.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         pin = (request.form.get("pin") or "").strip()
@@ -238,10 +257,12 @@ def kiosk_search(token: str):
         return jsonify({"results": []})
 
     q_norm = q.replace("%", "").replace("_", "")
+    if len(q_norm.strip()) < 2:
+        return jsonify({"results": []})
 
     # Recherche simple nom/prénom (LIKE). SQLite: case-insensitive sur ASCII, mais c'est ok.
     candidates = (
-        Participant.query.filter(
+        _participants_for_session(s).filter(
             (Participant.nom.ilike(f"%{q_norm}%")) | (Participant.prenom.ilike(f"%{q_norm}%"))
         )
         .order_by(Participant.nom.asc(), Participant.prenom.asc())
@@ -277,6 +298,8 @@ def kiosk_session(token: str):
         action = request.form.get("action")
 
         if action == "add_participant":
+            if not _CREATIONS.autoriser(f"{_adresse_client()}|{s.id}"):
+                abort(429)
             nom = (request.form.get("nom") or "").strip()
             prenom = (request.form.get("prenom") or "").strip()
             from app.services.villes import normaliser as normaliser_ville
@@ -298,7 +321,8 @@ def kiosk_session(token: str):
             # Anti-doublons : avant de créer, proposer les personnes proches
             # (sauf si la personne a confirmé « créer quand même »).
             if request.form.get("force_creation") != "1":
-                candidats = _candidats_doublons(nom, prenom)
+                candidats = [p for p in _candidats_doublons(nom, prenom)
+                             if _participants_for_session(s).filter(Participant.id == p.id).first()]
                 if candidats:
                     return render_template(
                         "kiosk/session.html",
@@ -336,13 +360,17 @@ def kiosk_session(token: str):
                 genre=genre,
                 date_naissance=dn,
                 quartier_id=qid,
+                created_secteur=s.secteur,
             )
             db.session.add(p)
             db.session.commit()
+            browser_session["kiosk_highlight"] = [s.id, p.id]
             flash("Participant créé. Sélectionne-le ci-dessous puis signe.", "success")
             return redirect(url_for("kiosk.kiosk_session", token=token, highlight=p.id))
 
         if action == "emarger":
+            if not _POINTAGES.autoriser(f"{_adresse_client()}|{s.id}"):
+                abort(429)
             participant_id = request.form.get("participant_id")
             motif = request.form.get("motif") or None
             motif_autre = (request.form.get("motif_autre") or "").strip() or None
@@ -352,24 +380,22 @@ def kiosk_session(token: str):
                 flash("Choisis ton nom dans la liste.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
 
-            participant = db.session.get(Participant, int(participant_id))
+            try:
+                participant = _participants_for_session(s).filter(Participant.id == int(participant_id)).first()
+            except (TypeError, ValueError):
+                abort(400)
             if not participant:
                 flash("Participant introuvable.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
 
-            sig_path = None
-            if signature_data and signature_data.startswith("data:image"):
-                try:
-                    header, b64data = signature_data.split(",", 1)
-                    binary = base64.b64decode(b64data)
-                    sig_dir = os.path.join(current_app.instance_path, "signatures_tmp")
-                    os.makedirs(sig_dir, exist_ok=True)
-                    sig_filename = f"sig_kiosk_s{s.id}_p{participant.id}_{int(utcnow().timestamp())}.png"
-                    sig_path = os.path.join(sig_dir, sig_filename)
-                    with open(sig_path, "wb") as f:
-                        f.write(binary)
-                except Exception:
-                    sig_path = None
+            from app.services.signatures import save_signature
+            try:
+                sig_path = save_signature(signature_data,
+                    os.path.join(current_app.instance_path, "signatures_tmp"),
+                    f"sig_kiosk_s{s.id}_p{participant.id}")
+            except ValueError as error:
+                flash(str(error), "danger")
+                return redirect(url_for("kiosk.kiosk_session", token=token))
 
             try:
                 pr = PresenceActivite(
@@ -381,10 +407,17 @@ def kiosk_session(token: str):
                 )
                 db.session.add(pr)
                 db.session.commit()
-            except Exception:
+            except Exception as error:
                 db.session.rollback()
-                flash("Tu es déjà émargé(e) sur cette séance.", "warning")
-                return redirect(url_for("kiosk.kiosk_session", token=token))
+                if sig_path:
+                    from pathlib import Path
+                    Path(sig_path).unlink(missing_ok=True)
+                from sqlalchemy.exc import IntegrityError
+                if isinstance(error, IntegrityError) and PresenceActivite.query.filter_by(session_id=s.id, participant_id=participant.id).first():
+                    flash("Tu es déjà émargé(e) sur cette séance.", "warning")
+                    return redirect(url_for("kiosk.kiosk_session", token=token))
+                current_app.logger.warning("Pointage kiosque interrompu (%s).", type(error).__name__)
+                abort(503)
 
             # Actions post (individuel mensuel)
             if s.session_type == "INDIVIDUEL_MENSUEL":
@@ -394,7 +427,9 @@ def kiosk_session(token: str):
             message_ok = "Merci, c’est bon !"
             recu = pr.id
 
-    highlight = request.args.get("highlight")
+    highlight = request.args.get("highlight", type=int)
+    if browser_session.get("kiosk_highlight") != [s.id, highlight]:
+        highlight = None
     highlight_label = None
     if highlight:
         try:
@@ -472,6 +507,11 @@ def kiosk_feedback(token: str):
 
         participant_id = request.form.get("participant_id", type=int)
 
+        if participant_id is not None and participant_id not in {p.id for p in presences}:
+            abort(403)
+        if not _AVIS.autoriser(f"{s.id}:{_adresse_client()}"):
+            abort(429)
+
         group = QuestionnaireResponseGroup(
             questionnaire_id=selected_questionnaire.id,
             participant_id=participant_id,
@@ -542,19 +582,12 @@ def signer(token: str):
 
     if request.method == "POST":
         signature_data = request.form.get("signature_data")
-        sig_path = None
-        if signature_data and signature_data.startswith("data:image"):
-            try:
-                header, b64data = signature_data.split(",", 1)
-                binary = base64.b64decode(b64data)
-                sig_dir = os.path.join(current_app.instance_path, "signatures_tmp")
-                os.makedirs(sig_dir, exist_ok=True)
-                sig_filename = f"sig_distance_s{s.id}_p{participant.id}_{int(utcnow().timestamp())}.png"
-                sig_path = os.path.join(sig_dir, sig_filename)
-                with open(sig_path, "wb") as f:
-                    f.write(binary)
-            except Exception:
-                sig_path = None
+        from app.services.signatures import save_signature
+        try:
+            sig_path = save_signature(signature_data, os.path.join(current_app.instance_path, "signatures_tmp"),
+                                      f"distance_s{s.id}_p{participant.id}")
+        except ValueError:
+            sig_path = None
         if not sig_path:
             flash("La signature est vide : signe dans le cadre puis valide.", "danger")
             return redirect(url_for("kiosk.signer", token=token))

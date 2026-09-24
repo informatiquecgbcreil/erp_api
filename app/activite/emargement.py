@@ -357,19 +357,13 @@ def emargement(session_id: int):
                 flash("Participant introuvable.", "danger")
                 return _redirect_emargement_with_period(session_id)
 
-            sig_path = None
-            if signature_data and signature_data.startswith("data:image"):
-                try:
-                    _, b64data = signature_data.split(",", 1)
-                    binary = base64.b64decode(b64data)
-                    sig_dir = os.path.join(current_app.instance_path, "signatures_tmp")
-                    os.makedirs(sig_dir, exist_ok=True)
-                    sig_filename = f"sig_s{session_id}_p{participant.id}_{int(utcnow().timestamp())}.png"
-                    sig_path = os.path.join(sig_dir, sig_filename)
-                    with open(sig_path, "wb") as f:
-                        f.write(binary)
-                except Exception:
-                    sig_path = None
+            from app.services.signatures import save_signature
+            try:
+                sig_path = save_signature(signature_data, os.path.join(current_app.instance_path, "signatures_tmp"),
+                                          f"sig_s{session_id}_p{participant.id}")
+            except ValueError as error:
+                flash(str(error), "danger")
+                return _redirect_emargement_with_period(session_id)
 
             try:
                 pr = PresenceActivite.query.filter_by(session_id=session_id, participant_id=participant.id).first()
@@ -651,7 +645,7 @@ def kiosk_open(session_id: int):
     token = secrets.token_urlsafe(24)
 
     for _ in range(50):
-        pin = f"{secrets.randbelow(10000):04d}"
+        pin = f"{secrets.randbelow(1000000):06d}"
         exists = SessionActivite.query.filter_by(kiosk_open=True, kiosk_pin=pin).first()
         if not exists:
             break

@@ -135,6 +135,11 @@
           </label>
         {% endfor %}
         <label class="case" style="font-weight:400;">
+          <input type="checkbox" name="partager_bilan_google" value="1" {% if options.partager_bilan_google %}checked{% endif %}>
+          <span>Partager aussi l'intention et les observations avec mon agenda Google connecté</span>
+        </label>
+        <p class="muted" style="font-size:.8rem;">Les observations restent visibles dans l'agenda interne. Elles sont exclues des liens iCal. Si tu actives le partage Google, elles seront lisibles par les personnes ayant accès à cet agenda : vérifie qu'elles ne contiennent aucune donnée confidentielle.</p>
+        <label class="case" style="font-weight:400;">
           <input type="checkbox" name="inclure_lien" value="1" {% if options.inclure_lien %}checked{% endif %}>
           <span>Lien vers la séance dans l'application</span>
         </label>

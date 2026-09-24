@@ -43,6 +43,8 @@ def _ecrire_feuille(wb: Workbook, titre: str, entetes: list[str], lignes: list[l
         cellule.font = Font(bold=True)
     for ligne in lignes:
         ws.append([_texte(v) for v in ligne])
+        for cell in ws[ws.max_row]:
+            cell.data_type = "s"
     # Largeurs lisibles
     for idx, entete in enumerate(entetes, start=1):
         largeur = max([len(entete)] + [len(_texte(l[idx - 1])) for l in lignes] or [10])
@@ -66,6 +68,12 @@ def construire_export_rgpd(participant: Participant) -> Workbook:
         ("Nom", participant.nom),
         ("Prénom", participant.prenom),
         ("Date de naissance", participant.date_naissance),
+        ("Année de naissance", participant.annee_naissance),
+        ("Latitude", participant.latitude), ("Longitude", participant.longitude),
+        ("Adresse géocodée", participant.geocode_query),
+        ("Précision géographique", participant.geocode_precision),
+        ("Score géographique", participant.geocode_score), ("Géocodage le", participant.geocoded_at),
+        ("Code portail", participant.portail_code),
         ("Genre", _genre_lisible(participant)),
         ("Adresse", participant.adresse),
         ("Ville", participant.ville),
@@ -228,6 +236,21 @@ def construire_export_rgpd(participant: Participant) -> Workbook:
                 lignes_insertion.append([attr, _resume_objet(obj)])
     _ecrire_feuille(wb, "Insertion", ["Rubrique", "Détail"], lignes_insertion)
 
+    from app import models as m
+    from app.extensions import db
+    for title, model in [("Profil insertion", m.ParticipantInsertionProfile),
+                         ("Parcours insertion", m.ParticipantInsertionParcours),
+                         ("Positionnements", m.ParticipantInsertionPositionnement),
+                         ("Certifications", m.ParticipantInsertionCertification),
+                         ("Bénévolat", m.BenevoleHeures), ("Participation HART", m.HartEvaluation),
+                         ("Cotisations", m.Cotisation), ("Inscriptions activités", m.InscriptionActivite),
+                         ("Portail apprenant", m.PortailAttempt), ("Défis", m.DefiTransition)]:
+        columns = [c.name for c in model.__table__.columns if c.name != "participant_id"]
+        rows = model.query.filter_by(participant_id=participant.id).all()
+        _ecrire_feuille(wb, title, columns, [[getattr(row, name) for name in columns] for row in rows])
+    payments = m.Paiement.query.join(m.Cotisation).filter(m.Cotisation.participant_id == participant.id).all()
+    columns = [c.name for c in m.Paiement.__table__.columns]
+    _ecrire_feuille(wb, "Règlements", columns, [[getattr(row, name) for name in columns] for row in payments])
     return wb
 
 

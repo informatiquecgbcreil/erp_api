@@ -42,8 +42,8 @@ def participant_has_presence_outside_secteur(participant_id: int, secteur: str, 
 
 
 def anonymize_participant_fields(participant: Participant, *, strict: bool = False, tag_with_id: bool = True) -> Participant:
-    from app.ateliers.historical_privacy import redact_sources
-    redact_sources(participant.id)
+    from app.services.purge_rgpd import anonymiser_participant
+    anonymiser_participant(participant)
     participant.nom = "ANONYME"
     participant.prenom = f"P{participant.id}" if tag_with_id else "ANONYME"
     participant.adresse = None

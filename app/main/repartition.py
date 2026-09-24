@@ -46,7 +46,7 @@ from app.services.prorata import (
 
 def _a_vue_globale() -> bool:
     return (current_user.has_perm("scope:all_secteurs")
-            or current_user.has_perm("participants:view_all"))
+           )
 
 
 def _secteur_impose() -> str | None:
@@ -57,7 +57,8 @@ def _secteur_impose() -> str | None:
     """
     if _a_vue_globale():
         return None
-    return (getattr(current_user, "secteur_assigne", "") or "").strip() or None
+    from app.services.access_scope import effective_sector
+    return effective_sector()
 
 
 def _vue_depuis_un_arrete(arrete: RepartitionArretee) -> dict:

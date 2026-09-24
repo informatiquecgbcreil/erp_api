@@ -4,8 +4,8 @@ Deux gestes différents, à ne pas confondre :
 
 | | Anonymisation | Suppression définitive |
 |---|---|---|
-| Ce qui part | l'identité (nom, coordonnées, insertion…) | **tout**, y compris présences et cotisations |
-| Ce qui reste | présences, statistiques, bilans | rien |
+| Ce qui part | les identifiants et textes individuels traités par la fonction, signatures et pièces de passeport | fiche, présences et données individuelles rattachées |
+| Ce qui reste | présences, compteurs, montants et certains attributs statistiques | trace d'audit minimale et pièces comptables encaissées, détachées de la fiche |
 | Pour qui | une personne réellement venue qui demande l'effacement | une **erreur de saisie** (doublon, fiche de test) |
 | Réversible | non | non |
 
@@ -38,22 +38,42 @@ conservé au journal.
 ## Ce qui est journalisé
 
 Une entrée `participant.delete` dans **Administration → Journal**, écrite
-avant l'effacement, avec : qui a supprimé, quand, l'identité complète de la
-fiche (nom, prénom, date de naissance, coordonnées, secteur de création),
-le décompte de chaque type de donnée détruite, et le motif éventuel.
+dans la même transaction que l'effacement : auteur, date, identifiant de la
+fiche, secteur/date de création, décompte des éléments traités et motif éventuel.
+Le nom, la naissance complète, l'adresse, le mail et le téléphone ne sont plus
+recopiés dans les nouvelles traces. Éviter toute identité dans le motif libre.
 
-C'est la seule trace qui subsiste : elle permet de savoir qui a été effacé,
-et de recréer la fiche à l'identique en cas de fausse manœuvre.
+Cette trace ne permet pas de recréer la fiche. Les instantanés nominatifs des
+anciens journaux et leurs règles de conservation nécessitent encore une reprise
+dédiée ; ce correctif ne les efface pas rétroactivement.
 
 ## Ce qui est effacé
 
 Présences (et consommations de matériel associées), inscriptions,
 évaluations, notes et pièces jointes de passeport, suivis d'objectifs,
-évaluations Hart, heures de bénévolat, adhésions et leurs paiements,
+évaluations Hart, heures de bénévolat, cotisations sans encaissement,
 réponses aux questionnaires, orientations accès aux droits, défis
 transition, et l'ensemble du dossier insertion. Les fichiers correspondants
-(signatures, pièces jointes) sont retirés du disque. Les tentatives de
+(signatures, pièces jointes) sont retirés du disque après validation de la
+transaction. Un échec disque reste en file d'attente pour réessai ; un rollback
+ne détruit pas le fichier. Les tentatives de
 connexion au portail sont conservées mais détachées de la personne.
+
+Les cotisations déjà payées et leurs paiements sont conservés sans lien vers la
+fiche supprimée : leur suppression aurait changé le théorique de caisse.
+
+## Limites de l'anonymisation
+
+L'anonymisation remplace le nom/prénom par `ANONYME P<id>`, retire les coordonnées,
+la naissance complète (année conservée), la géolocalisation, les données de
+séjour, textes individuels, notes, pièces et signatures traités par le service.
+Les réponses numériques et historiques nécessaires aux statistiques restent.
+Le foyer de la personne est détaché ; les autres membres gardent leurs fiches.
+
+Cela ne garantit pas une anonymisation irréversible de tous les documents :
+les feuilles collectives déjà éditées, copies envoyées, exports, anciennes traces
+et sauvegardes peuvent encore identifier la personne. Leur traitement et leur
+durée de conservation demandent une revue documentaire de la structure.
 
 Le code vit dans `app/services/participant_suppression.py` ; l'inventaire
 des données concernées y est déclaré en un seul endroit.

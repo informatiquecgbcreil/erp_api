@@ -24,12 +24,14 @@ using System.Runtime.InteropServices;
 namespace MonCentreSocial {
 static class Program {
     internal const string ServiceName = "MonCentreSocial";
+    internal const string ProxyServiceName = "MonCentreSocialHTTPS";
     internal static readonly string Install = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
     internal static readonly string Root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MonCentreSocial");
     internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     internal static readonly Encoding Utf8 = new UTF8Encoding(false);
     internal static string Exe { get { return Path.Combine(Install, "MonCentreSocial.exe"); } }
     internal static string ConfigFile { get { return Path.Combine(Root, "private", "configuration.dpapi"); } }
+    internal static string ServiceConfigFile { get { return Path.Combine(Root, "private", "service.dpapi"); } }
     internal static bool IsAdmin { get { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); } }
     internal static Icon Logo { get { return new Icon(Path.Combine(Install, "mon-centre-social.ico")); } }
 
@@ -40,6 +42,7 @@ static class Program {
         string mode = args.Length == 0 ? "--tray" : args[0];
         try {
             if (mode == "--service") { ServiceBase.Run(new CentreService()); return 0; }
+            if (mode == "--proxy-service") { ServiceBase.Run(new ProxyService()); return 0; }
             if (mode == "--self-test") {
                 // Vérifie le chiffrement et la validation sans toucher l'installation.
                 byte[] value = Utf8.GetBytes("test local sans secret");
@@ -57,14 +60,31 @@ static class Program {
             if (mode == "--tray") { bool created; using (var mutex = new Mutex(true, "Local\\MonCentreSocialTray", out created)) { if (created) Application.Run(new Tray()); else Open(); } return 0; }
             if (!IsAdmin) { var p = Process.Start(new ProcessStartInfo(Exe, mode) { UseShellExecute = true, Verb = "runas" }); p.WaitForExit(); return p.ExitCode; }
             if (mode == "--configure") {
-                if (File.Exists(ConfigFile)) { FinishInstallation(ReadConfiguration()); return 0; }
-                using (var wizard = new SetupWizard()) return wizard.ShowDialog() == DialogResult.OK ? 0 : 1;
+                if (File.Exists(ConfigFile)) {
+                    var existing = ReadConfiguration();
+                    if (MessageBox.Show("Une installation existe déjà dans " + Root + ".\n\nReprendre cette installation avec sa base et ses comptes actuels ?", "Installation existante", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) return 1;
+                    FinishInstallation(existing); return 0;
+                }
+                using (var choice = new InstallationChoice()) {
+                    if (choice.ShowDialog() != DialogResult.OK) return 1;
+                    using (var wizard = new SetupWizard(choice.Source, choice.Connection, choice.LegacyService))
+                        return wizard.ShowDialog() == DialogResult.OK ? 0 : 1;
+                }
             }
-            if (mode == "--restart") { StopService(); StartService(); return 0; }
+            if (mode == "--restart") { StopService(); FinishInstallation(ReadConfiguration()); return 0; }
             if (mode == "--stop") { StopService(); return 0; }
             if (mode == "--uninstall") {
                 StopService();
                 if (ServiceExists()) Run(SystemExe("sc.exe"), "delete " + ServiceName, false);
+                if (ServiceExists(ProxyServiceName)) Run(SystemExe("sc.exe"), "delete " + ProxyServiceName, false);
+                var certPath = Path.Combine(Root,"public","Certificat-du-centre.cer");
+                if (File.Exists(certPath)) {
+                    var cert = new X509Certificate2(File.ReadAllBytes(certPath));
+                    using (var store = new X509Store(StoreName.Root,StoreLocation.LocalMachine)) {
+                        store.Open(OpenFlags.ReadWrite);
+                        foreach (var installed in store.Certificates.Find(X509FindType.FindByThumbprint,cert.Thumbprint,false)) store.Remove(installed);
+                    }
+                }
                 Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social HTTPS\"", false);
                 Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
                 return 0; // Les données et le dossier de direction restent conservés.
@@ -94,8 +114,11 @@ static class Program {
             return p.ExitCode;
         }
     }
-    internal static bool ServiceExists() { foreach (var s in ServiceController.GetServices()) using (s) if (s.ServiceName == ServiceName) return true; return false; }
+    internal static bool ServiceExists(string name = ServiceName) { foreach (var s in ServiceController.GetServices()) using (s) if (s.ServiceName == name) return true; return false; }
     internal static void StopService() {
+        if (ServiceExists(ProxyServiceName)) using (var proxy = new ServiceController(ProxyServiceName)) {
+            if (proxy.Status != ServiceControllerStatus.Stopped) { proxy.Stop(); proxy.WaitForStatus(ServiceControllerStatus.Stopped,TimeSpan.FromSeconds(30)); }
+        }
         if (!ServiceExists()) return;
         using (var s = new ServiceController(ServiceName)) {
             if (s.Status != ServiceControllerStatus.Stopped) { if (s.Status != ServiceControllerStatus.StopPending) s.Stop(); s.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100)); }
@@ -112,6 +135,11 @@ static class Program {
         Run(SystemExe("sc.exe"), "description " + ServiceName + " \"Mon Centre Social : application, base locale et sauvegarde quotidienne.\"");
         Run(SystemExe("sc.exe"), "failure " + ServiceName + " reset= 86400 actions= restart/10000/restart/30000/restart/60000");
         Run(SystemExe("sc.exe"), "sidtype " + ServiceName + " unrestricted");
+        Run(SystemExe("sc.exe"), "privs " + ServiceName + " SeChangeNotifyPrivilege");
+        if (!ServiceExists(ProxyServiceName)) Run(SystemExe("sc.exe"), "create " + ProxyServiceName + " binPath= " + Quote(Quote(Exe) + " --proxy-service") + " start= demand obj= " + Quote("NT SERVICE\\" + ProxyServiceName) + " depend= " + ServiceName);
+        Run(SystemExe("sc.exe"), "privs " + ProxyServiceName + " SeChangeNotifyPrivilege");
+        Run(SystemExe("sc.exe"), "sidtype " + ProxyServiceName + " unrestricted");
+        Run(SystemExe("sc.exe"), "failure " + ProxyServiceName + " reset= 86400 actions= restart/10000/restart/30000/restart/60000");
     }
     internal static string Secret() { var bytes = new byte[32]; using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(bytes); return Convert.ToBase64String(bytes); }
     internal static void GuardPath(string path) {
@@ -131,13 +159,73 @@ static class Program {
         Directory.SetAccessControl(path, security);
     }
     internal static Dictionary<string, object> ReadConfiguration() {
-        return Json.Deserialize<Dictionary<string, object>>(Utf8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(ConfigFile), null, DataProtectionScope.LocalMachine)));
+        GuardTrustedStorage();
+        return Json.Deserialize<Dictionary<string, object>>(Utf8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(IsAdmin ? ConfigFile : ServiceConfigFile), null, DataProtectionScope.LocalMachine)));
     }
     internal static void SaveConfiguration(Dictionary<string, object> c) {
-        GuardPath(ConfigFile);
+        WriteConfiguration(c, ConfigFile, false);
+        var service = new Dictionary<string,object>(c);
+        service.Remove("migration_uri");
+        if (File.Exists(Path.Combine(Root,"runtime","provisioned"))) service.Remove("db_admin_password");
+        WriteConfiguration(service, ServiceConfigFile, true);
+    }
+    internal static void WriteConfiguration(Dictionary<string, object> c, string path, bool serviceRead) {
+        GuardPath(path);
         byte[] encrypted = ProtectedData.Protect(Utf8.GetBytes(Json.Serialize(c)), null, DataProtectionScope.LocalMachine);
-        var temporary = ConfigFile + ".new"; GuardPath(temporary); File.WriteAllBytes(temporary, encrypted);
-        if (File.Exists(ConfigFile)) File.Replace(temporary, ConfigFile, null); else File.Move(temporary, ConfigFile);
+        var temporary = path + ".new"; GuardPath(temporary); File.WriteAllBytes(temporary,new byte[0]);
+        var acl = new FileSecurity(); acl.SetAccessRuleProtection(true,false);
+        foreach (var sid in new[] { WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.LocalSystemSid })
+            acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid,null),FileSystemRights.FullControl,AccessControlType.Allow));
+        if (serviceRead) acl.AddAccessRule(new FileSystemAccessRule(new NTAccount("NT SERVICE",ServiceName),FileSystemRights.Read,AccessControlType.Allow));
+        acl.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null));
+        File.SetAccessControl(temporary,acl); File.WriteAllBytes(temporary,encrypted);
+        if (File.Exists(path)) File.Replace(temporary,path,null); else File.Move(temporary,path);
+        File.SetAccessControl(path,acl);
+    }
+    internal static void GuardTrustedStorage() {
+        GuardPath(Root);
+        foreach (var path in new[] {Root,Path.Combine(Root,"private")}) {
+            if (!Directory.Exists(path)) continue;
+            var owner = (SecurityIdentifier)Directory.GetAccessControl(path).GetOwner(typeof(SecurityIdentifier));
+            if (!owner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid) && !owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
+                throw new Exception("Le dossier existant n'appartient pas aux administrateurs Windows : reprise automatique refusée. Conservez-le et faites vérifier ses droits.");
+            foreach (FileSystemAccessRule rule in Directory.GetAccessControl(path).GetAccessRules(true,true,typeof(SecurityIdentifier))) {
+                if (rule.AccessControlType != AccessControlType.Allow || (rule.FileSystemRights & (FileSystemRights.Write | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership | FileSystemRights.Delete)) == 0) continue;
+                var sid = (SecurityIdentifier)rule.IdentityReference;
+                if (!sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid) && !sid.IsWellKnown(WellKnownSidType.LocalSystemSid))
+                    throw new Exception("Le stockage existant est modifiable par un compte non autorisé. Faites vérifier ses droits avant de reprendre l'installation.");
+            }
+        }
+    }
+    internal static void SecureProxyDirectory(string path) {
+        GuardPath(path); Directory.CreateDirectory(path);
+        var acl = new DirectorySecurity(); acl.SetAccessRuleProtection(true,false);
+        var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        foreach (var sid in new[] { WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.LocalSystemSid })
+            acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid,null),FileSystemRights.FullControl,inherit,PropagationFlags.None,AccessControlType.Allow));
+        acl.AddAccessRule(new FileSystemAccessRule(new NTAccount("NT SERVICE",ProxyServiceName),FileSystemRights.Modify,inherit,PropagationFlags.None,AccessControlType.Allow));
+        acl.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null)); Directory.SetAccessControl(path,acl);
+    }
+    internal static void PrepareProxy(Dictionary<string,object> c) {
+        var proxyRoot = Path.Combine(Root,"https"); SecureProxyDirectory(proxyRoot);
+        var legacy = Path.Combine(Root,"runtime","tls"); var storage = Path.Combine(proxyRoot,"tls");
+        if (Directory.Exists(legacy) && !Directory.Exists(storage)) {
+            GuardPath(legacy); Directory.Move(legacy,storage);
+            SecureProxyDirectory(storage);
+            foreach (var dir in Directory.GetDirectories(storage,"*",SearchOption.AllDirectories)) SecureProxyDirectory(dir);
+            foreach (var file in Directory.GetFiles(storage,"*",SearchOption.AllDirectories)) {
+                GuardPath(file);
+                var acl = new FileSecurity(); acl.SetAccessRuleProtection(false,false);
+                acl.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null)); File.SetAccessControl(file,acl);
+            }
+        }
+        var psi = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"),"-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " --prepare-proxy") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true };
+        using (var process = Process.Start(psi)) {
+            var bytes = Utf8.GetBytes(Json.Serialize(c)); process.StandardInput.BaseStream.Write(bytes,0,bytes.Length); process.StandardInput.Close();
+            if (!process.WaitForExit(30000)) { process.Kill(); throw new Exception("Configuration HTTPS trop longue."); }
+            if (process.ExitCode != 0) throw new Exception("Configuration HTTPS impossible.");
+        }
+        Run(SystemExe("sc.exe"), "config " + ProxyServiceName + " start= auto");
     }
     internal static int FreePort(int start) {
         for (int port = start; port < start + 100; port++) try { var l = new TcpListener(IPAddress.Loopback, port); l.Start(); l.Stop(); return port; } catch (SocketException) {}
@@ -183,6 +271,7 @@ static class Program {
     }
     internal static void InstallConfiguration(Dictionary<string, object> c, Action<string> progress) {
         if (File.Exists(ConfigFile)) throw new Exception("Une configuration existe déjà. Relancez l'assistant pour la reprendre.");
+        GuardTrustedStorage();
         progress("Préparation du service et protection des dossiers…");
         GuardPath(Root); RegisterService();
         SecureDirectory(Root, true, false);
@@ -203,6 +292,18 @@ static class Program {
         FinishInstallation(c);
     }
     internal static void FinishInstallation(Dictionary<string, object> c) {
+        GuardTrustedStorage(); StopService(); RegisterService();
+        bool bootstrap = c.ContainsKey("admin_password");
+        string sourceUri = c.ContainsKey("migration_uri") ? Convert.ToString(c["migration_uri"]) : "";
+        bool activating = c.ContainsKey("migration_source") && !string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))
+            && (!c.ContainsKey("migration_done") || !Convert.ToBoolean(c["migration_done"])
+                || (c.ContainsKey("migration_pending_activation") && Convert.ToBoolean(c["migration_pending_activation"])));
+        try {
+        if (activating || bootstrap) {
+            File.WriteAllText(Path.Combine(Root,"private","activation.pending"),"1",Utf8);
+        }
+        if (c.ContainsKey("migration_source") && !string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))
+            && (!c.ContainsKey("migration_done") || !Convert.ToBoolean(c["migration_done"]))) RunMigration(c);
         // Reprise après une interruption entre l'enregistrement et la création du dossier.
         EnsureNetworkSettings(c);
         SaveConfiguration(c);
@@ -215,7 +316,10 @@ static class Program {
         var ready = Path.Combine(Root, "runtime", "ready");
         for (int i = 0; i < 480; i++) { if (File.Exists(ready)) break; Thread.Sleep(500); if (i == 479) throw new Exception("Le service n'est pas prêt. Le diagnostic est dans " + Path.Combine(Root, "logs") + "."); }
         if ((bool)c["network"]) {
-            var certPath = Path.Combine(Root, "runtime", "tls", "pki", "authorities", "local", "root.crt");
+            PrepareProxy(c);
+            using (var proxy = new ServiceController(ProxyServiceName)) { proxy.Start(); proxy.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(30)); }
+            var certPath = Path.Combine(Root, "https", "tls", "pki", "authorities", "local", "root.crt");
+            for (int i=0; !File.Exists(certPath); i++) { if (i>=120) throw new Exception("Le certificat HTTPS n'est pas prêt."); Thread.Sleep(500); }
             var pem = File.ReadAllText(certPath).Replace("-----BEGIN CERTIFICATE-----", "").Replace("-----END CERTIFICATE-----", "");
             var certificate = new X509Certificate2(Convert.FromBase64String(pem));
             using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine)) { store.Open(OpenFlags.ReadWrite); store.Add(certificate); }
@@ -224,19 +328,117 @@ static class Program {
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social HTTPS\"", false);
             Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social HTTPS\" dir=in action=allow protocol=TCP localport=" + c["https_port"] + " remoteip=LocalSubnet profile=private,domain program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
-            Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=LocalSubnet profile=private,domain,public program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
+            Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=LocalSubnet profile=private,domain program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
         }
+        c.Remove("admin_password"); SaveConfiguration(c); WriteReport(c);
+        // Le premier démarrage provisionne PostgreSQL et le compte direction.
+        // Redémarre sans ces secrets avant d'ouvrir l'application aux utilisateurs.
+        if (bootstrap) {
+            StopService(); StartService();
+            if ((bool)c["network"]) using (var proxy = new ServiceController(ProxyServiceName)) proxy.Start();
+        }
+        for (int i=0; i<120; i++) {
+            try {
+                var check = (HttpWebRequest)WebRequest.Create(Convert.ToString(c["url"]) + "/healthz"); check.Proxy=null; check.Timeout=2000;
+                using (var response = (HttpWebResponse)check.GetResponse()) { if (response.StatusCode == HttpStatusCode.OK) break; }
+            } catch (WebException) { if (i==119) throw new Exception("L'application ne répond pas après sa préparation."); }
+            Thread.Sleep(500);
+        }
+        if (activating) {
+            var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+            if (oldName.Length > 0) { Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled"); c["migration_old_disabled"] = true; }
+            c.Remove("migration_pending_activation");
+        }
+        c.Remove("migration_uri"); SaveConfiguration(c);
+        File.Delete(Path.Combine(Root,"private","activation.pending"));
+        } catch {
+            if (activating) {
+                // Aucun retour automatique une fois le centre ouvert aux utilisateurs.
+                // Ici, l'activation n'est pas terminée : on ferme la cible avant de
+                // reprendre l'ancienne instance et on exigera une nouvelle copie.
+                StopService();
+                c["migration_done"] = false; c.Remove("migration_pending_activation");
+                c["migration_uri"] = sourceUri;
+                var completion = Path.Combine(Root,"runtime","reprise","complete.json");
+                if (File.Exists(completion)) File.Delete(completion);
+                SaveConfiguration(c);
+                var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+                if (oldName.Length > 0 && c.ContainsKey("migration_old_disabled") && Convert.ToBoolean(c["migration_old_disabled"])) {
+                    Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= " + (c.ContainsKey("migration_old_start") && Convert.ToInt32(c["migration_old_start"]) == 2 ? "auto" : "demand"));
+                    c.Remove("migration_old_disabled"); SaveConfiguration(c);
+                }
+                if (oldName.Length > 0 && c.ContainsKey("migration_restart_old") && Convert.ToBoolean(c["migration_restart_old"]))
+                    using (var old = new ServiceController(oldName)) { if (old.Status == ServiceControllerStatus.Stopped) old.Start(); }
+            }
+            throw;
+        }
+    }
+    internal static void RunMigration(Dictionary<string, object> c) {
+        string oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+        if (oldName == ServiceName || (oldName.Length > 0 && !Regex.IsMatch(oldName, "^[A-Za-z0-9_. -]{1,150}$")))
+            throw new Exception("Nom d'ancien service invalide.");
+        bool wasRunning = false;
+        try {
+            if (oldName.Length > 0) using (var old = new ServiceController(oldName)) {
+                wasRunning = old.Status == ServiceControllerStatus.Running;
+                c["migration_restart_old"] = wasRunning;
+                c["migration_old_start"] = Microsoft.Win32.Registry.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\" + oldName,"Start",3);
+                if (old.Status != ServiceControllerStatus.Stopped) { old.Stop(); old.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100)); }
+            }
+            // Le compte de service initialise et possède le cluster. Le
+            // processus élevé n'effectue que la copie SQL et des documents.
+            SaveConfiguration(c);
+            var databaseReady = Path.Combine(Root,"runtime","database.ready");
+            if (File.Exists(databaseReady)) File.Delete(databaseReady);
+            StartService();
+            for (int i=0; !File.Exists(databaseReady); i++) {
+                if (i>=240) throw new Exception("La base de destination n'est pas prête. Voir les journaux du service.");
+                Thread.Sleep(500);
+            }
+            var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " --migrate") {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
+                RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Install
+            };
+            using (var process = Process.Start(info)) {
+                process.OutputDataReceived += delegate {}; process.ErrorDataReceived += delegate {};
+                process.BeginOutputReadLine(); process.BeginErrorReadLine();
+                byte[] payload = Utf8.GetBytes(Json.Serialize(c));
+                process.StandardInput.BaseStream.Write(payload,0,payload.Length); process.StandardInput.Close();
+                if (!process.WaitForExit(3600000)) { process.Kill(); throw new Exception("La reprise a dépassé son délai. L'ancien dossier et sa base sont conservés."); }
+                if (process.ExitCode != 0) {
+                    var errorFile = Path.Combine(Root,"private","migration-error.txt");
+                    throw new Exception(File.Exists(errorFile) ? File.ReadAllText(errorFile,Utf8) : "Reprise interrompue : source conservée, nouvelle application non démarrée.");
+                }
+            }
+            var resultPath = Path.Combine(Root,"private","migration-result.json");
+            var result = Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(resultPath,Utf8));
+            c["db_name"] = result["db_name"]; c["application_settings"] = result["settings"];
+            if (result.ContainsKey("organization")) c["organization"] = result["organization"];
+            c["modules"] = result["modules"] ?? new[] { "presences", "statistiques", "adhesions", "finances", "ressources", "accompagnement", "partenaires", "questionnaires", "transitions", "rh" };
+            c["migration_done"] = true; c["migration_pending_activation"] = true; SaveConfiguration(c);
+            File.Delete(resultPath);
+            // Le rapport consultable ne contient aucun secret ni données nominatives.
+            result.Remove("settings");
+            File.WriteAllText(Path.Combine(Root,"Direction-DSI","Reprise.json"),Json.Serialize(result),Utf8);
+            File.Delete(Path.Combine(Root,"runtime","reprise","complete.json"));
+        } catch {
+            StopService();
+            if (wasRunning && oldName.Length > 0) using (var old = new ServiceController(oldName)) {
+                if (old.Status == ServiceControllerStatus.Stopped) old.Start();
+            }
+            throw;
+        } finally { StopService(); }
     }
     internal static void WriteReport(Dictionary<string, object> c) {
         string path = Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt"); GuardPath(path);
         var text = new StringBuilder();
         text.AppendLine("MON CENTRE SOCIAL — DOSSIER CONFIDENTIEL DIRECTION / DSI");
         text.AppendLine("Créé le " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        text.AppendLine("Contient des mots de passe. Conserver dans le coffre-fort de la structure.");
+        text.AppendLine("Rapport technique sans mots de passe. Conserver avec les sauvegardes hors machine.");
         text.AppendLine("Accès Windows : Administrateurs et SYSTEM uniquement. La DSI peut donner un accès NTFS nominatif à la direction.");
         text.AppendLine("Photographie de l'installation ; les changements effectués ensuite dans l'administration ne sont pas recopiés ici.");
-        foreach (var pair in new[] { new[] { "Structure", "organization" }, new[] { "Adresse de connexion administration", "url" }, new[] { "Adresse kiosque tablettes/téléphones", "kiosk_url" }, new[] { "Adresse IPv4 du serveur sur le LAN", "lan_ip" }, new[] { "Compte direction", "admin_email" }, new[] { "Mot de passe initial du compte", "admin_password" }, new[] { "Port PostgreSQL (127.0.0.1 exclusivement)", "db_port" }, new[] { "Mot de passe base (utilisateur mcs)", "db_password" }, new[] { "Mot de passe maintenance PostgreSQL (postgres)", "db_admin_password" }, new[] { "Clé des sessions", "secret_key" }, new[] { "Serveur SMTP", "smtp_host" }, new[] { "Port SMTP / STARTTLS", "smtp_port" }, new[] { "Identifiant SMTP", "smtp_user" }, new[] { "Mot de passe SMTP", "smtp_password" }, new[] { "Expéditeur", "smtp_sender" } }) text.AppendLine(pair[0] + " : " + c[pair[1]]);
-        text.AppendLine("Base : moncentresocial. Compte applicatif non superutilisateur : mcs.");
+        foreach (var pair in new[] { new[] { "Structure", "organization" }, new[] { "Adresse de connexion administration", "url" }, new[] { "Adresse kiosque tablettes/téléphones", "kiosk_url" }, new[] { "Adresse IPv4 du serveur sur le LAN", "lan_ip" }, new[] { "Compte direction", "admin_email" }, new[] { "Port PostgreSQL (127.0.0.1 exclusivement)", "db_port" }, new[] { "Serveur SMTP", "smtp_host" }, new[] { "Port SMTP / STARTTLS", "smtp_port" }, new[] { "Identifiant SMTP", "smtp_user" }, new[] { "Expéditeur", "smtp_sender" } }) text.AppendLine(pair[0] + " : " + c[pair[1]]);
+        text.AppendLine("Compte applicatif non superutilisateur : mcs. La base gérée est indiquée dans la configuration protégée.");
         text.AppendLine("Modules initiaux : " + Json.Serialize(c["modules"]));
         text.AppendLine("Programme : " + Install);
         text.AppendLine("Données : " + Root);
@@ -265,6 +467,37 @@ static class Program {
         if (!Uri.TryCreate(url, UriKind.Absolute, out address) || (address.Scheme != "http" && address.Scheme != "https")) throw new Exception("Adresse locale invalide.");
         Process.Start(new ProcessStartInfo(url + "/admin/instance") { UseShellExecute = true });
     }
+}
+
+// Identité distincte : le processus web ne peut ni lire ni modifier la clé CA.
+sealed class ProxyService : ServiceBase {
+    Process proxy;
+    StreamWriter log;
+    IntPtr job;
+    volatile bool stopping;
+    internal ProxyService() { ServiceName=Program.ProxyServiceName; CanStop=true; CanShutdown=true; AutoLog=true; }
+    protected override void OnStart(string[] args) {
+        var root = Path.Combine(Program.Root,"https");
+        log = new StreamWriter(Path.Combine(root,"proxy.log"),true,Program.Utf8) {AutoFlush=true};
+        var psi = new ProcessStartInfo(Path.Combine(Program.Install,"caddy","caddy.exe"),
+            "run --config " + Program.Quote(Path.Combine(root,"Caddyfile")) + " --adapter caddyfile") {
+            UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=root
+        };
+        proxy = new Process {StartInfo=psi,EnableRaisingEvents=true};
+        proxy.OutputDataReceived += delegate(object sender,DataReceivedEventArgs e) { if(e.Data!=null) lock(log) log.WriteLine(e.Data); };
+        proxy.ErrorDataReceived += delegate(object sender,DataReceivedEventArgs e) { if(e.Data!=null) lock(log) log.WriteLine(e.Data); };
+        proxy.Exited += delegate { if(!stopping) Environment.Exit(1); };
+        job=Job.Create(); proxy.Start();
+        if(!Job.AssignProcessToJobObject(job,proxy.Handle)) { proxy.Kill(); throw new Exception("Protection du service HTTPS impossible."); }
+        proxy.BeginOutputReadLine(); proxy.BeginErrorReadLine();
+    }
+    protected override void OnStop() {
+        stopping=true;
+        if(proxy!=null && !proxy.HasExited) { proxy.Kill(); proxy.WaitForExit(10000); }
+        if(job!=IntPtr.Zero) { Job.CloseHandle(job); job=IntPtr.Zero; }
+        if(log!=null) log.Dispose();
+    }
+    protected override void OnShutdown() { OnStop(); }
 }
 
 sealed class CentreService : ServiceBase {
@@ -328,7 +561,38 @@ sealed class Tray : ApplicationContext {
     protected override void Dispose(bool disposing) { if (disposing) icon.Dispose(); base.Dispose(disposing); }
 }
 
+sealed class InstallationChoice : Form {
+    readonly RadioButton fresh = new RadioButton { Text = "Nouvelle installation", Checked = true };
+    readonly RadioButton existing = new RadioButton { Text = "Reprendre une ancienne installation de cet ERP" };
+    readonly TextBox folder = new TextBox(); readonly TextBox connection = new TextBox(); readonly TextBox service = new TextBox();
+    readonly CheckBox maintenance = new CheckBox { Text = "Les saisies et tâches de modification seront suspendues pendant la reprise." };
+    internal string Source { get { return existing.Checked ? folder.Text.Trim() : ""; } }
+    internal string Connection { get { return existing.Checked ? connection.Text.Trim() : ""; } }
+    internal string LegacyService { get { return existing.Checked ? service.Text.Trim() : ""; } }
+    internal InstallationChoice() {
+        Text = "Mon Centre Social — Votre installation"; ClientSize = new Size(720,445);
+        Font = new Font("Segoe UI",10); StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
+        fresh.SetBounds(24,15,660,30); existing.SetBounds(24,50,660,30); Controls.Add(fresh); Controls.Add(existing);
+        Controls.Add(new Label { Text = "Dossier de l'ancienne application (contenant son fichier .env)", Location = new Point(24,96), AutoSize = true });
+        folder.SetBounds(24,122,570,28); Controls.Add(folder);
+        var browse = new Button { Text = "Parcourir…", Location = new Point(600,121), Size = new Size(100,30) };
+        browse.Click += delegate { using (var dialog = new FolderBrowserDialog()) { if (dialog.ShowDialog() == DialogResult.OK) { folder.Text = dialog.SelectedPath; existing.Checked = true; } } }; Controls.Add(browse);
+        Controls.Add(new Label { Text = "Connexion PostgreSQL (facultative si elle figure déjà dans .env)", Location = new Point(24,166), AutoSize = true });
+        connection.SetBounds(24,192,676,28); connection.UseSystemPasswordChar = true; Controls.Add(connection);
+        Controls.Add(new Label { Text = "Nom de l'ancien service Windows (vide si vous l'avez déjà arrêté)", Location = new Point(24,234), AutoSize = true });
+        service.SetBounds(24,260,676,28); Controls.Add(service);
+        maintenance.SetBounds(24,301,676,30); Controls.Add(maintenance);
+        Controls.Add(new Label { Text = "L'ancien service sera arrêté puis désactivé après réussite. La base source reste conservée.\nEn cas d'échec, le service précédemment actif est relancé. PostgreSQL 10 à 17 pris en charge.", Location = new Point(24,340), Size = new Size(676,50) });
+        var next = new Button { Text = "Continuer", Location = new Point(570,400), Size = new Size(130,30) };
+        next.Click += delegate {
+            if (existing.Checked && (!Directory.Exists(Source) || !maintenance.Checked)) { MessageBox.Show("Sélectionnez le dossier source et confirmez l'interruption des saisies."); return; }
+            DialogResult = DialogResult.OK; Close();
+        }; Controls.Add(next); AcceptButton = next;
+    }
+}
+
 sealed class SetupWizard : Form {
+    readonly string migrationSource, migrationUri, migrationService;
     readonly Panel content = new Panel(); readonly Label heading = new Label(); readonly Label stepLabel = new Label();
     readonly Button next = new Button(); readonly Button back = new Button(); readonly Label status = new Label();
     readonly TextBox organization = new TextBox(); readonly TextBox adminName = new TextBox(); readonly TextBox email = new TextBox(); readonly TextBox password = new TextBox(); readonly TextBox confirm = new TextBox();
@@ -340,7 +604,8 @@ sealed class SetupWizard : Form {
     static readonly string[] profilEssentiel = { "presences", "statistiques" };
     static readonly string[] profilAnimation = { "presences", "statistiques", "adhesions", "ressources", "partenaires", "accompagnement", "questionnaires" };
     int step; bool busy;
-    internal SetupWizard() {
+    internal SetupWizard(string source = "", string sourceUri = "", string oldService = "") {
+        migrationSource = source; migrationUri = sourceUri; migrationService = oldService;
         Text = "Mon Centre Social — Installation"; Icon = Program.Logo; ClientSize = new Size(780, 650); AutoScaleMode = AutoScaleMode.Dpi; Font = new Font("Segoe UI", 10); BackColor = Color.White; StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
         var banner = new Panel { Dock = DockStyle.Top, Height = 102, BackColor = Color.FromArgb(19,91,99) };
         banner.Controls.Add(new PictureBox { Image = Image.FromFile(Path.Combine(Program.Install,"mon-centre-social.png")), SizeMode = PictureBoxSizeMode.Zoom, Location = new Point(28,22), Size = new Size(58,58) });
@@ -366,12 +631,24 @@ sealed class SetupWizard : Form {
     void ShowStep() {
         content.Controls.Clear(); status.Text = ""; back.Enabled = step > 0; next.Text = step == 4 ? "Installer" : "Continuer"; stepLabel.Text = "ÉTAPE " + (step+1) + " SUR 5";
         if (step == 0) {
+            if (migrationSource.Length > 0) {
+                heading.Text = "Reprendre votre centre";
+                TextLine("Source : " + migrationSource,10,65);
+                TextLine("Les comptes, mots de passe et données existants seront conservés. Aucun nouveau compte direction n'est créé.",90,70);
+                TextLine("L'assistant vérifiera l'historique des migrations, les données copiées et les documents avant de démarrer la nouvelle application. Une base inconnue ou incomplète bloque la reprise.",180,100);
+                return;
+            }
             heading.Text = "Bienvenue dans votre centre";
             TextLine("Créez le compte de la direction. Vous ajouterez les membres de l'équipe ensuite, avec leurs propres droits.",0);
             Field("Nom de la structure",organization,60,0,706); Field("Nom de la personne responsable",adminName,128); Field("Adresse e-mail de connexion",email,128,365);
             Field("Mot de passe (12 caractères minimum)",password,201); Field("Confirmer le mot de passe",confirm,201,365);
             TextLine("Les composants nécessaires sont inclus. Une connexion Internet n'est pas nécessaire pour installer.",286);
         } else if (step == 1) {
+            if (migrationSource.Length > 0) {
+                heading.Text = "Vos outils sont conservés";
+                TextLine("Les modules actifs seront repris depuis votre base. Vous pourrez ensuite les ajuster dans l'administration.",15,90);
+                return;
+            }
             heading.Text = "De quels outils avez-vous besoin ?";
             TextLine("Partez d'un profil, puis ajustez si besoin. Vous pourrez changer ce choix plus tard, sans réinstaller et sans rien perdre.",0);
             var essentiel = new Button { Text = "Présences et statistiques", Location = new Point(480,62), Size = new Size(226,32) }; essentiel.Click += delegate { Profil(profilEssentiel); }; content.Controls.Add(essentiel);
@@ -386,6 +663,12 @@ sealed class SetupWizard : Form {
             TextLine("En réseau, l'administration est chiffrée (HTTPS). Pour l'émargement, les téléphones et tablettes utilisent une adresse locale dédiée, sans certificat à installer. Le certificat d'administration et les instructions sont fournis automatiquement.",205,75);
             TextLine("Le service fonctionne aussi sans session ouverte sur Windows Server.",292);
         } else if (step == 3) {
+            if (migrationSource.Length > 0) {
+                heading.Text = "Vos paramètres sont conservés";
+                TextLine("Les réglages de messagerie et les autres paramètres compatibles seront lus dans le fichier .env de l'ancienne installation. Les réglages enregistrés en base sont également conservés.",15,110);
+                TextLine("Si votre ancien service définit des paramètres hors de ce fichier, reportez-les dans la configuration avant la bascule.",145,100);
+                return;
+            }
             heading.Text = "Les e-mails de votre structure";
             TextLine("Facultatif : laissez ces champs vides pour configurer l'envoi d'e-mails plus tard depuis l'administration.",0);
             Field("Serveur SMTP",smtpHost,67); Field("Port STARTTLS",smtpPort,67,365,140);
@@ -394,15 +677,15 @@ sealed class SetupWizard : Form {
             TextLine("La connexion au serveur mail utilisera STARTTLS avec validation du certificat.",303);
         } else {
             heading.Text = "Tout est prêt";
-            TextLine("Structure : " + organization.Text + "\nCompte direction : " + email.Text,8,60);
-            TextLine("Accès : " + (network.Checked ? "réseau local sécurisé" : "cet ordinateur uniquement") + "\nOutils sélectionnés : " + modules.CheckedItems.Count,84,60);
-            TextLine("L'installation prépare la base, le compte direction, le démarrage automatique et les sauvegardes quotidiennes.",162,58);
-            TextLine("Votre dossier confidentiel (mots de passe, chemins et messagerie) sera créé dans :\n" + Path.Combine(Program.Root,"Direction-DSI"),230,90);
+            TextLine(migrationSource.Length > 0 ? "Reprise : " + migrationSource + "\nComptes, outils et documents conservés." : "Structure : " + organization.Text + "\nCompte direction : " + email.Text,8,60);
+            TextLine("Accès : " + (network.Checked ? "réseau local sécurisé" : "cet ordinateur uniquement"),84,60);
+            TextLine("L'installation prépare la base, le démarrage automatique et les sauvegardes quotidiennes.",162,58);
+            TextLine("Votre rapport technique (adresses et chemins, sans mots de passe) sera créé dans :\n" + Path.Combine(Program.Root,"Direction-DSI"),230,90);
             status.Text = "Seuls les administrateurs Windows peuvent lire le dossier confidentiel.";
         }
     }
     void ValidateStep() {
-        if (step == 0) {
+        if (step == 0 && migrationSource.Length == 0) {
             if (organization.Text.Trim().Length == 0 || adminName.Text.Trim().Length == 0) throw new Exception("Indiquez la structure et le nom de la personne responsable.");
             var parsed = new MailAddress(email.Text.Trim()); if (parsed.Address != email.Text.Trim()) throw new Exception("Vérifiez l'adresse e-mail.");
             if (string.IsNullOrWhiteSpace(password.Text) || password.Text.Length < 12 || password.Text != confirm.Text) throw new Exception("Utilisez au moins 12 caractères et confirmez le même mot de passe.");
@@ -422,6 +705,7 @@ sealed class SetupWizard : Form {
             var selected = new List<string>(); for (int i=0;i<keys.Length;i++) if (modules.GetItemChecked(i)) selected.Add(keys[i]);
             if (!selected.Contains("presences")) selected.Insert(0, "presences"); // socle toujours actif
             var c = new Dictionary<string,object> { {"organization",organization.Text.Trim()}, {"admin_name",adminName.Text.Trim()}, {"admin_email",email.Text.Trim().ToLowerInvariant()}, {"admin_password",password.Text}, {"modules",selected.ToArray()}, {"network",network.Checked}, {"hostname",hostname.Text.Trim().ToLowerInvariant()}, {"smtp_host",smtpHost.Text.Trim()}, {"smtp_port",string.IsNullOrWhiteSpace(smtpHost.Text) ? 587 : int.Parse(smtpPort.Text)}, {"smtp_user",smtpUser.Text.Trim()}, {"smtp_password",smtpPassword.Text}, {"smtp_sender",smtpSender.Text.Trim()} };
+            if (migrationSource.Length > 0) { c["migration_source"] = migrationSource; c["migration_uri"] = migrationUri; c["migration_service"] = migrationService; }
             busy = true; next.Enabled = false; back.Enabled = false; UseWaitCursor = true;
             await Task.Run(delegate { Program.InstallConfiguration(c, message => BeginInvoke(new Action(delegate { status.Text = message; }))); });
             busy = false; UseWaitCursor = false;

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import csv
+from app.utils import spreadsheet_csv as csv
 from datetime import datetime, date, timedelta
 
 from io import BytesIO, StringIO
@@ -34,6 +34,7 @@ from app.services.insertion import (
     sync_legacy_insertion_fields,
 )
 from app.services.purge_rgpd import NOM_ANONYME
+from app.services.access_scope import participant_allowed, require_participant
 
 
 
@@ -71,11 +72,11 @@ def _is_global_role() -> bool:
 
 
 def _can_read_participant(p: Participant) -> bool:
-    return bool(can('participants:view') or can('participants:edit') or can('participants:delete'))
+    return bool(can('participants:view') or can('participants:edit') or can('participants:delete')) and (_is_global_role() or participant_allowed(p))
 
 
 def _can_edit_participant(p: Participant) -> bool:
-    return bool(can('participants:edit'))
+    return bool(can('participants:edit')) and participant_allowed(p)
 
 
 def _can_view_sensitive_insertion() -> bool:
@@ -1272,7 +1273,7 @@ def edit_participant(participant_id: int):
             p.date_sortie_dispositif = _parse_iso_date(request.form.get("date_sortie_dispositif"))
 
         # finance/directrice peuvent requalifier created_secteur
-        if _is_global_role():
+        if can("scope:all_secteurs"):
             p.created_secteur = (request.form.get("created_secteur") or "").strip() or None
 
         _appliquer_droit_image(p)
@@ -1369,6 +1370,7 @@ def export_rgpd(participant_id: int):
 
 @bp.route("/<int:participant_id>/anonymize", methods=["POST"])
 @login_required
+@require_perm("participants:anonymize")
 def anonymize_participant(participant_id: int):
 
     p = db.get_or_404(Participant, participant_id)
@@ -1378,6 +1380,8 @@ def anonymize_participant(participant_id: int):
     from app.services.purge_rgpd import anonymiser_participant
 
     anonymiser_participant(p, actor_id=getattr(current_user, "id", None))
+    from app.services.audit import enregistrer
+    enregistrer("participant.anonymize", cible=f"participant #{p.id}")
 
     strict = (request.form.get("strict") or "").strip() == "1"
     if strict and _is_global_role():
@@ -1458,14 +1462,14 @@ def delete_participant(participant_id: int):
     etiquette = f"{p.nom} {p.prenom} (#{p.id})"
 
     supprimer_definitivement(p)
+    from app.services.audit import enregistrer
+    enregistrer("participant.delete", cible=f"participant #{p.id}", details=trace)
     ok = commit_delete(
         f"le participant « {etiquette} »",
-        "Fiche supprimée définitivement, avec tout son historique.",
+        "Fiche et historique individuel supprimés. Les encaissements sont conservés pour la caisse.",
         success_category="warning",
         blocked_message=f"Impossible de supprimer « {etiquette} » : des données y sont encore rattachées. Utilisez plutôt l'anonymisation pour conserver l'historique.",
     )
-    if ok:
-        journaliser("participant.delete", cible=etiquette, details=trace)
     return redirect(url_for("participants.list_participants"))
 
 
@@ -1492,6 +1496,7 @@ def _retour_annuaire():
 def definir_date_naissance(participant_id: int):
     """Ajout rapide de la date de naissance depuis l'annuaire, sans ouvrir la fiche."""
     p = db.get_or_404(Participant, participant_id)
+    require_participant(p)
     d = (request.form.get("date_naissance") or "").strip()
     try:
         p.date_naissance = datetime.strptime(d, "%Y-%m-%d").date()
@@ -1524,6 +1529,8 @@ def actions_groupees():
         if pid not in ids:
             ids.append(pid)
     membres = [p for p in (db.session.get(Participant, pid) for pid in ids) if p is not None]
+    for participant in membres:
+        require_participant(participant)
 
     if not membres:
         flash("Coche d'abord au moins une personne dans la liste.", "warning")
@@ -1586,7 +1593,8 @@ def actions_groupees():
             if p.nom == NOM_ANONYME:
                 continue  # déjà anonymisée : on ne retouche pas la fiche
             anonymiser_participant(p, actor_id=getattr(current_user, "id", None))
-            journaliser("participant.anonymize", cible=f"participant #{p.id}")
+            from app.services.audit import enregistrer
+            enregistrer("participant.anonymize", cible=f"participant #{p.id}")
             traites += 1
         db.session.commit()
         flash(
@@ -1636,8 +1644,9 @@ def actions_groupees():
                     "origine": "action groupée",
                 }
                 supprimer_definitivement(p)
+                from app.services.audit import enregistrer
+                enregistrer("participant.delete", cible=f"participant #{p.id}", details=trace)
                 db.session.commit()
-                journaliser("participant.delete", cible=etiquette, details=trace)
                 supprimes += 1
             except IntegrityError:
                 db.session.rollback()

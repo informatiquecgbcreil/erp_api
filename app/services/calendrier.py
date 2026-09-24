@@ -40,7 +40,7 @@ CHAMPS_DESCRIPTION_LABELS = {
     "type": "Type de séance (collective / individuelle / événement)",
     "horaire": "Horaire",
     "modules": "Thématiques / modules pédagogiques travaillés",
-    "bilan": "Intention de séance et observations (bilan pédagogique)",
+    "bilan": "Intention et observations (agenda interne ; partage Google séparé)",
     "capacite": "Capacité de l'atelier",
     "presences": "Nombre de présences saisies (jamais les noms)",
     "emargement": "Rappel « émargement à faire » sur les séances passées",
@@ -59,6 +59,7 @@ OPTIONS_DEFAUT: dict = {
     "titre_format": "{atelier}",
     "champs_description": list(CHAMPS_DESCRIPTION),
     "inclure_lien": True,
+    "partager_bilan_google": False,
     "inclure_annulees": True,
     "evenements_tous_secteurs": False,
     "inclure_creneaux": True,
@@ -91,7 +92,7 @@ def _assainir_options(options: dict) -> dict:
     if not isinstance(champs, list):
         champs = list(CHAMPS_DESCRIPTION)
     o["champs_description"] = [c for c in champs if c in CHAMPS_DESCRIPTION]
-    for cle in ("inclure_lien", "inclure_annulees", "evenements_tous_secteurs", "inclure_creneaux"):
+    for cle in ("inclure_lien", "inclure_annulees", "evenements_tous_secteurs", "inclure_creneaux", "partager_bilan_google"):
         o[cle] = bool(o.get(cle))
     try:
         o["preparation_minutes"] = max(0, min(240, int(o.get("preparation_minutes") or 0)))
@@ -290,7 +291,7 @@ def _rendre_titre(gabarit: str, *, atelier: str, secteur: str, type_seance: str,
     return rendu[:200]
 
 
-def _description_seance(s, atelier, presences: int, options: dict) -> str:
+def _description_seance(s, atelier, presences: int, options: dict, *, inclure_bilan=False) -> str:
     champs = options.get("champs_description") or []
     today = date.today()
     d = s.rdv_date or s.date_session
@@ -305,15 +306,13 @@ def _description_seance(s, atelier, presences: int, options: dict) -> str:
         noms = sorted({(m.nom or "").strip() for m in (getattr(s, "modules", []) or []) if getattr(m, "nom", None)})
         if noms:
             lignes.append("Thématiques : " + ", ".join(noms))
-    if "bilan" in champs:
-        intention = (getattr(s, "intention_seance", None) or "").strip()
-        if intention:
-            lignes.append(f"Intention : {intention}")
-        observations = (getattr(s, "bilan_qualitatif", None) or "").strip()
-        if observations:
-            if len(observations) > 500:
-                observations = observations[:500].rstrip() + "…"
-            lignes.append(f"Observations : {observations}")
+    # Le lien iCal est un secret partageable, pas une session authentifiée.
+    # Les observations restent dans l'ERP, sauf partage Google explicite.
+    if inclure_bilan and "bilan" in champs:
+        for champ, libelle in (("intention_seance", "Intention"), ("bilan_qualitatif", "Observations")):
+            valeur = (getattr(s, champ, None) or "").strip()
+            if valeur:
+                lignes.append(f"{libelle} : " + (valeur[:500].rstrip() + "…" if len(valeur) > 500 else valeur))
     if "capacite" in champs and atelier and atelier.capacite_defaut:
         lignes.append(f"Capacité : {atelier.capacite_defaut} places")
     if "presences" in champs and presences:
@@ -482,9 +481,8 @@ def _categorie_seance(s) -> str:
 def evenements_pour_periode(user, *, du: date, au: date, options: dict | None = None) -> list[dict]:
     """Séances et créneaux d'une période, normalisés pour l'affichage calendrier.
 
-    Même périmètre et mêmes réglages que le flux iCal : ce qui s'affiche ici
-    est exactement ce qui part dans l'agenda abonné ou synchronisé — un seul
-    endroit à régler, aucun écart possible entre les deux.
+    Même périmètre que le flux iCal. Les observations libres sont réservées
+    à cet affichage authentifié et ne sont jamais incluses dans le flux iCal.
     """
     options = _assainir_options(options if options is not None else charger_options(user))
     evenements: list[dict] = []
@@ -499,7 +497,7 @@ def evenements_pour_periode(user, *, du: date, au: date, options: dict | None = 
         atelier = s.atelier
         nom_atelier = atelier.nom if atelier else f"Atelier #{s.atelier_id}"
         presences = presences_par_sid.get(s.id, 0)
-        description = _description_seance(s, atelier, presences, options)
+        description = _description_seance(s, atelier, presences, options, inclure_bilan=True)
         evenements.append({
             "type": "seance",
             "id": s.id,
