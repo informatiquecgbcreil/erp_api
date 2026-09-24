@@ -105,12 +105,63 @@ def fingerprints(connection):
     return result
 
 
-def validate_document_paths(connection, source):
-    """Refuse une bascule qui abandonnerait des documents référencés en base."""
+# Documents rattachés hors des dossiers instance/uploads : seuls ces formats
+# sont recopiés (pièces jointes, signatures, feuilles d'émargement), jamais un
+# fichier système désigné par une valeur inattendue de la base.
+EXTERNAL_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".doc", ".docx", ".odt",
+                     ".xls", ".xlsx", ".ods", ".csv", ".txt", ".rtf"}
+EXTERNAL_MAX_BYTES = 50 * 1024**2
+_MARKERS = {"instance": ("instance",), "uploads": ("uploads",)}
+
+
+def _split(raw):
+    import re
+    return [p for p in re.split(r"[\\/]+", raw) if p]
+
+
+def _relocate(raw, roots):
+    """Fichier déplacé avec son dossier : retrouve « …/instance/signatures_tmp/x.png »
+    sous le dossier instance actuel de la source, quel que soit l'ancien chemin."""
+    parts = _split(raw)
+    for label, markers in _MARKERS.items():
+        root = roots.get(label)
+        if not root:
+            continue
+        positions = [i for i, part in enumerate(parts) if part.casefold() in markers]
+        for i in reversed(positions):
+            tail = parts[i + 1:]
+            if not tail or any(t in {".", ".."} for t in tail):
+                continue
+            candidate = Path(root).joinpath(*tail)
+            if candidate.is_file():
+                return label, candidate.resolve()
+    return None
+
+
+def _copiable(path):
+    try:
+        return (path.suffix.casefold() in EXTERNAL_SUFFIXES and path.is_file()
+                and path.stat().st_size <= EXTERNAL_MAX_BYTES)
+    except OSError:
+        return False
+
+
+def plan_documents(connection, source):
+    """Inventaire des documents référencés en base, sans rien bloquer.
+
+    - dans instance/uploads et présent : copié avec le dossier ;
+    - ancien chemin, fichier retrouvé sous instance/uploads (dossier déplacé) :
+      chemin corrigé ;
+    - hors de ces dossiers mais lisible : recopié dans instance/documents_repris ;
+    - introuvable nulle part : déjà perdu dans la source, référence conservée
+      telle quelle et comptée dans le rapport.
+    Aucun chemin n'est inscrit dans le rapport, seulement des compteurs.
+    """
     from app.services.instance_archive import PATH_COLUMNS
     from sqlalchemy import MetaData, Table, select
+    roots = {k: Path(v).resolve() for k, v in source["roots"].items()}
+    plan = {"relocated": {}, "external": {}, "missing": {}}
     inspector = inspect(connection)
-    problems = []
     for name in inspector.get_table_names():
         if name == "pending_file_deletion":
             continue  # Un fichier déjà effacé peut attendre le retrait de son ticket.
@@ -119,22 +170,63 @@ def validate_document_paths(connection, source):
             continue
         table = Table(name, MetaData(), autoload_with=connection)
         for column in sorted(columns):
-            counts = {"missing": 0, "outside": 0}
+            missing = 0
             for raw in connection.execute(select(table.c[column]).distinct()).scalars():
                 if not raw or (column.startswith("modele_docx_") and raw.startswith("builtin:")):
                     continue
                 path = Path(raw)
-                path = (path if path.is_absolute() else source["root"] / path).resolve()
-                if not any(path.is_relative_to(root) for root in source["roots"].values()):
-                    counts["outside"] += 1
-                elif not path.is_file():
-                    counts["missing"] += 1
-            if any(counts.values()):
-                problems.append(f"{name}.{column} : {counts['missing']} absent(s), {counts['outside']} hors dossiers métier")
-    if problems:
-        # Noms de tables et compteurs uniquement, aucun chemin nominatif.
-        raise MigrationError("Reprise arrêtée avant copie : des documents référencés ne peuvent pas être conservés. "
-                             "Vérifiez les dossiers instance/uploads de la source. " + "; ".join(problems))
+                try:
+                    path = (path if path.is_absolute() else source["root"] / path).resolve()
+                except (OSError, ValueError):
+                    missing += 1
+                    continue
+                inside = next((label for label, root in roots.items() if path.is_relative_to(root)), None)
+                if inside and path.is_file():
+                    continue
+                found = _relocate(raw, roots)
+                if found:
+                    plan["relocated"][raw] = found
+                elif not inside and _copiable(path):
+                    plan["external"][raw] = path
+                else:
+                    missing += 1
+            if missing:
+                plan["missing"][f"{name}.{column}"] = missing
+    return plan
+
+
+def apply_document_plan(connection, plan, source_roots, new_roots):
+    """Réécrit les chemins retrouvés et copie les documents externes."""
+    from app.services.instance_archive import PATH_COLUMNS
+    from sqlalchemy import MetaData, Table, update
+    import shutil as _shutil
+    mapping = {}
+    for raw, (label, found) in plan["relocated"].items():
+        relative = found.relative_to(Path(source_roots[label]).resolve())
+        mapping[raw] = str(Path(new_roots[label]) / relative)
+    if plan["external"]:
+        target_dir = Path(new_roots["instance"]) / "documents_repris"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for number, (raw, path) in enumerate(sorted(plan["external"].items()), start=1):
+            target = target_dir / f"{number:06d}_{path.name}"
+            _shutil.copy2(path, target)
+            mapping[raw] = str(target)
+    if not mapping:
+        return
+    inspector = inspect(connection)
+    for name in inspector.get_table_names():
+        columns = PATH_COLUMNS & {c["name"] for c in inspector.get_columns(name)}
+        if not columns:
+            continue
+        table = Table(name, MetaData(), autoload_with=connection)
+        for column in columns:
+            for old, new in mapping.items():
+                connection.execute(update(table).where(table.c[column] == old).values({column: new}))
+
+
+def validate_document_paths(connection, source):
+    """Compatibilité : inventaire des documents (ne bloque plus la reprise)."""
+    return plan_documents(connection, source)
 
 
 # Chiffres décimaux complets : un serveur PostgreSQL 10/11 renvoie sinon 15
@@ -253,7 +345,7 @@ def migrate(c, runtime):
                     target_version = int(destination.execute(text("SHOW server_version_num")).scalar_one())
                 validate_postgres_versions(version, target_version)
                 revisions = validate_revision(connection, runtime.APP)
-                validate_document_paths(connection, source)
+                documents = plan_documents(connection, source)
                 snapshot = connection.execute(text("SELECT pg_export_snapshot()")).scalar_one()
                 before = fingerprints(connection)
                 if not before["user"]["rows"]:
@@ -274,6 +366,7 @@ def migrate(c, runtime):
         install_staged(staging, new_roots)
         with target.begin() as connection:
             remap_paths(connection, manifest["roots"], new_roots, source_directory=source["root"])
+            apply_document_plan(connection, documents, source["roots"], new_roots)
         # Config a été importée avec les chemins de la cible, jamais de la source.
         from app import create_app
         app = create_app()
@@ -302,7 +395,11 @@ def migrate(c, runtime):
             db.engine.dispose()
         report = {"format": 1, "database": source["url"].database, "db_name": c["db_name"], "revisions_source": revisions,
                   "tables": {k: v["rows"] for k, v in before.items()}, "files": len(manifest["files"]),
-                  "accounts_preserved": True, "organization": organization, "modules": modules, "settings": source["settings"]}
+                  "accounts_preserved": True, "organization": organization,
+                  "documents": {"copies_avec_les_dossiers": len(manifest["files"]),
+                                "retrouves_apres_deplacement": len(documents["relocated"]),
+                                "recopies_hors_dossiers": len(documents["external"]),
+                                "introuvables_dans_la_source": documents["missing"]}, "modules": modules, "settings": source["settings"]}
         # Ce fichier contient des paramètres privés, dans le dossier protégé runtime.
         temp = completed.with_suffix(".new")
         temp.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")

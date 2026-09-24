@@ -120,26 +120,45 @@ def test_reprise_conserve_integrations_et_politique_de_retention(tmp_path):
     assert 'PASSWORD_RESET_ALLOW_DEBUG_LINK' not in settings
 
 
-def test_reprise_refuse_document_manquant_ou_externe_et_adapte_chemin_relatif(tmp_path):
+def test_reprise_documents_retrouves_recopies_ou_comptes(tmp_path):
+    """Cas réel : signatures enregistrées sous un ancien dossier, fichiers
+    présents dans le dossier actuel, quelques pièces ailleurs, d'autres perdues."""
     from sqlalchemy import create_engine, text
-    from desktop.migration import validate_document_paths, MigrationError
+    from desktop.migration import plan_documents, apply_document_plan
     from app.services.instance_archive import remap_paths
-    old = tmp_path / 'ancien'; documents = old / 'instance'; documents.mkdir(parents=True)
+    old = tmp_path / 'AppGestion'; documents = old / 'instance'
+    (documents / 'signatures_tmp').mkdir(parents=True)
+    (documents / 'preuve.txt').write_text('preuve')
+    (documents / 'signatures_tmp' / 'sig_1.png').write_bytes(b'png')
+    ailleurs = tmp_path / 'Partage'; ailleurs.mkdir()
+    (ailleurs / 'feuille.docx').write_bytes(b'docx')
+    (ailleurs / 'systeme.dll').write_bytes(b'x')
     source = {'root': old, 'roots': {'instance': documents, 'uploads': old / 'uploads'}}
     engine = create_engine('sqlite://')
     with engine.begin() as conn:
         conn.execute(text('CREATE TABLE piece (id INTEGER PRIMARY KEY, file_path TEXT)'))
-        conn.execute(text("INSERT INTO piece VALUES (1, 'instance/preuve.txt')"))
-        with pytest.raises(MigrationError, match='1 absent'):
-            validate_document_paths(conn, source)
-        (documents / 'preuve.txt').write_text('preuve')
-        validate_document_paths(conn, source)
-        conn.execute(text("INSERT INTO piece VALUES (2, '../secret.txt')"))
-        with pytest.raises(MigrationError, match='1 hors'):
-            validate_document_paths(conn, source)
-        conn.execute(text('DELETE FROM piece WHERE id=2'))
-        remap_paths(conn, {'instance': str(documents)}, {'instance': tmp_path / 'nouveau'}, source_directory=old)
-        assert conn.execute(text('SELECT file_path FROM piece')).scalar_one() == str(tmp_path / 'nouveau/preuve.txt')
+        rows = ['instance/preuve.txt',                                    # dans les dossiers
+                r'C:\Users\infor\Desktop\ERP\instance\signatures_tmp\sig_1.png',  # dossier déplacé
+                str(ailleurs / 'feuille.docx'),                           # externe lisible
+                str(ailleurs / 'systeme.dll'),                            # format refusé
+                r'C:\ancien\instance\signatures_tmp\perdue.png',      # perdu
+                'instance/absente.txt']                                   # perdu
+        for i, value in enumerate(rows, 1):
+            conn.execute(text('INSERT INTO piece VALUES (:i, :v)'), {'i': i, 'v': value})
+        plan = plan_documents(conn, source)
+        assert len(plan['relocated']) == 1 and len(plan['external']) == 1
+        assert plan['missing'] == {'piece.file_path': 3}
+        new = {'instance': tmp_path / 'nouveau/instance', 'uploads': tmp_path / 'nouveau/uploads'}
+        (new['instance'] / 'signatures_tmp').mkdir(parents=True)
+        (new['instance'] / 'signatures_tmp' / 'sig_1.png').write_bytes(b'png')  # copié avec le dossier
+        remap_paths(conn, {'instance': str(documents)}, new, source_directory=old)
+        apply_document_plan(conn, plan, source['roots'], new)
+        values = dict(conn.execute(text('SELECT id, file_path FROM piece')).all())
+    assert values[1] == str(new['instance'] / 'preuve.txt')
+    assert values[2] == str(new['instance'] / 'signatures_tmp' / 'sig_1.png')
+    assert Path(values[3]).parent == new['instance'] / 'documents_repris' and Path(values[3]).read_bytes() == b'docx'
+    assert values[4] == rows[3] and values[5] == rows[4]  # références conservées, rien de copié
+    assert not any(p.suffix == '.dll' for p in (new['instance'] / 'documents_repris').iterdir())
 
 
 def test_service_reprise_prepare_uniquement_la_base(tmp_path, monkeypatch):

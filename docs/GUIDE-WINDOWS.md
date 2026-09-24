@@ -59,9 +59,19 @@ direction n'est créé dans ce mode. Les outils actifs sont repris depuis la bas
 Le logiciel vérifie un historique Alembic connu, compare les effectifs et
 empreintes de toutes les tables avant migration, puis les comptes après migration.
 Les pièces jointes, signatures, archives d'émargement et modèles situés dans
-`instance` et le dossier d'uploads sont copiés et leurs chemins adaptés. Un
-document référencé par un chemin explicite mais absent ou hors de ces dossiers
-bloque la reprise : corriger la source ou organiser une reprise accompagnée.
+`instance` et le dossier d'uploads sont copiés et leurs chemins adaptés. Les
+documents référencés ailleurs ne bloquent plus la reprise :
+
+- chemin d'un ancien emplacement (dossier déplacé ou renommé), fichier présent
+  sous `instance` ou `uploads` : retrouvé par la fin de son chemin et corrigé ;
+- fichier lisible hors de ces dossiers (partage, autre disque) : recopié dans
+  `instance\documents_repris` s'il s'agit d'un document (image, PDF, Word,
+  tableur, texte) de 50 Mo au plus ;
+- fichier introuvable : déjà perdu dans l'ancienne installation, la référence
+  est conservée telle quelle.
+
+`Direction-DSI\Reprise.json` indique le nombre de documents de chaque cas, par
+table, sans aucun chemin.
 
 Les paramètres SMTP, Google Agenda, portail, publication FTP, cartographie,
 conservation et autres intégrations déclarées dans `.env` sont repris selon la
