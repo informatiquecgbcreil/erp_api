@@ -73,3 +73,16 @@ def test_connexion_source_ipv6_et_exclamation(tmp_path):
     assert source['url'].host == '::1'
     assert source['url'].password == 'secret!'
     assert source['url'].database == 'erp_pedagogie'
+
+
+@pytest.mark.parametrize("lan_ip,expected", [
+    ("192.168.1.200", "https://centre-social:8443, https://192.168.1.200:8443 {"),
+    ("127.0.0.1", "https://centre-social:8443 {"),
+    ("", "https://centre-social:8443 {"),
+    ("pas-une-ip", "https://centre-social:8443 {"),
+])
+def test_certificat_couvre_l_adresse_ip_du_reseau_local(tmp_path, lan_ip, expected):
+    config = {"hostname": "centre-social", "https_port": 8443, "kiosk_http_port": 8082,
+              "web_port": 18080, "lan_ip": lan_ip}
+    text = runtime.write_caddy(config, tmp_path).read_text(encoding="utf-8")
+    assert expected in text
