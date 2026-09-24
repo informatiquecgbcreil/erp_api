@@ -89,7 +89,7 @@
     <p class="k-card__sub">Pour éviter les fiches en double : est-ce vous ?</p>
     {% for c in doublons_candidats %}
       <div class="k-row" style="justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #eee; flex-wrap:wrap;">
-        <strong>{{ c.nom }} {{ c.prenom }}</strong>{% if c.ville %}<span class="k-hint">{{ c.ville }}</span>{% endif %}
+        <strong>{{ c.nom }} {{ c.prenom }}</strong>
         <a class="k-btn" href="{{ url_for('kiosk.kiosk_session', token=token, highlight=c.id) }}">✔ C'est moi</a>
       </div>
     {% endfor %}

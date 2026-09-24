@@ -1,6 +1,6 @@
 # Mon Centre Social — installation Windows
 
-Version 1.0.0-rc1. Windows 10 à partir de 1809, Windows 11 et Windows Server
+Version 1.0.0-rc2. Windows 10 à partir de 1809, Windows 11 et Windows Server
 2019/2022/2025 **x64**, avec interface graphique. Server Core n'est pas pris en
 charge par l'assistant graphique. Prévoir 2 Go d'espace disponible, puis l'espace
 nécessaire aux données et sauvegardes. Le programme utilise .NET Framework 4.7.2
@@ -8,7 +8,7 @@ ou supérieur, fourni par ces versions de Windows.
 
 ## Installer
 
-1. Double-cliquer sur `Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe` et accepter
+1. Double-cliquer sur `Mon-Centre-Social-1.0.0-rc2-Setup-x64.exe` et accepter
    l'élévation Windows avec le compte administrateur de la structure.
 2. Choisir **Nouvelle installation** ou **Reprendre une ancienne installation
    de cet ERP**. Pour une installation neuve, saisir la structure et le premier
@@ -72,11 +72,19 @@ avant reprise. Les chemins de programmes externes (notamment LibreOffice), les
 droits d'accès aux partages et les URI de retour OAuth restent à vérifier sur
 la machine de destination.
 
-Sources acceptées : PostgreSQL 10 à 17 avec historique de migrations reconnu.
-La recette automatisée utilise PostgreSQL 17 et un ancien schéma de l'ERP.
+Sources acceptées : PostgreSQL 10 à 18 avec historique de migrations reconnu.
+La recette automatisée reprend PostgreSQL 18.1 vers 18.6 avec un ancien schéma
+de l'ERP ; elle vérifie aussi le fonctionnement d'un cluster local 17 existant.
 Une base sans version Alembic, d'une version inconnue, SQLite ou provenant d'un
 autre logiciel nécessite une étude préalable ; l'assistant refuse de la marquer
 artificiellement comme à jour.
+
+Faire la reprise sur la machine qui héberge l'ancienne installation : les
+documents référencés par un chemin absolu (`C:\...`) doivent être lisibles à ce
+chemin. En cas d'échec, le message indique la cause principale (mot de passe
+refusé, version, droits, connexion) sans afficher de secret. Les copies de
+travail (sauvegarde de la base et des documents) sont supprimées à la fin de
+chaque tentative, réussie ou non.
 
 Après réussite, l'ancien service sélectionné est désactivé. En cas d'échec avant
 activation, le nouveau service est arrêté et l'ancien est relancé s'il tournait
@@ -86,12 +94,33 @@ Avant toute saisie sur la nouvelle instance, on peut revenir à l'ancienne base
 intacte. Après de nouvelles saisies, un retour arrière nécessite de reprendre
 ces changements.
 
+## Reprise bloquée par la limite PostgreSQL 10–17 de la rc1
+
+La rc2 embarque PostgreSQL 18.6 pour les nouvelles installations et les nouvelles
+reprises. PostgreSQL 17.11 reste livré séparément : une instance 17 déjà activée
+continue à fonctionner avec le moteur 17. Aucun fichier de données 17 n'est
+ouvert directement par le moteur 18.
+
+Si la rc1 a refusé une source 18.1, fermer son assistant, installer la rc2 au même
+emplacement et relancer **Configurer Mon Centre Social**, puis confirmer la
+reprise de la configuration existante. La connexion saisie précédemment est
+conservée dans la configuration protégée. Ne pas désinstaller PostgreSQL source
+et ne pas supprimer le dossier ProgramData.
+
+Pour cette reprise non terminée, l'ancien cluster de destination 17 est conservé
+sous `runtime/reprise-pg17-<identifiant>`, puis une nouvelle destination 18 est
+créée. La source est de nouveau copiée et vérifiée. Un import déjà achevé et en
+attente d'activation garde son cluster, sans nouvelle conversion implicite.
+Les binaires de sauvegarde et de restauration suivent le moteur du cluster.
+
 ## Utilisation quotidienne
 
 L'icône maison et habitants apparaît dans la zone de notification, parfois sous
 la flèche des icônes masquées. Son menu offre **Ouvrir la page d'administration**,
 **Redémarrer** et **Fermer**. Redémarrer/fermer le service demande les droits
-administrateur Windows, car cela affecte tous les postes. Fermer arrête le
+administrateur Windows, car cela affecte tous les postes. Tant qu'une reprise
+n'est pas terminée, **Redémarrer** ne fait rien et renvoie vers « Configurer Mon
+Centre Social » : l'icône n'arrête jamais l'ancien service en production. Fermer arrête le
 service jusqu'à son redémarrage ou au prochain démarrage de Windows.
 
 Le service fonctionne en arrière-plan avant toute ouverture de session. Les

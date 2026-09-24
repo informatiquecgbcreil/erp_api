@@ -25,6 +25,15 @@ sys.path.insert(0, str(INSTALL))
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def postgres_bin(root, c=None):
+    """Ne jamais ouvrir un cluster existant avec un autre moteur majeur."""
+    version_file = Path(root) / "postgresql/PG_VERSION"
+    major = version_file.read_text(encoding="ascii").strip() if version_file.exists() else str((c or {}).get("db_major", 18))
+    if major not in {"17", "18"}:
+        raise RuntimeError("Version du cluster local non prise en charge : " + major)
+    return INSTALL / ("postgresql" if major == "17" else "postgresql18") / "bin"
+
+
 def configure_environment(c):
     root = Path(c["data_root"])
     for name in ("instance", "uploads", "logs", "backups", "runtime"):
@@ -46,8 +55,8 @@ def configure_environment(c):
         "MCS_SOURCE_ARCHIVE": str(INSTALL / "sources-Mon-Centre-Social.zip"),
         "KIOSK_PUBLIC_BASE_URL": c.get("kiosk_url") or c["url"],
         "SESSION_COOKIE_SECURE": "1" if c["network"] else "0",
-        "PG_DUMP_PATH": str(INSTALL / "postgresql/bin/pg_dump.exe"),
-        "PSQL_PATH": str(INSTALL / "postgresql/bin/psql.exe"),
+        "PG_DUMP_PATH": str(postgres_bin(root, c) / "pg_dump.exe"),
+        "PSQL_PATH": str(postgres_bin(root, c) / "psql.exe"),
         "DB_AUTO_UPGRADE_ON_START": "1", "DB_ENABLE_LEGACY_SCHEMA_PATCH": "0",
         "MAIL_HOST": c.get("smtp_host", ""), "MAIL_PORT": str(c.get("smtp_port", 587)),
         "MAIL_USERNAME": c.get("smtp_user", ""), "MAIL_PASSWORD": c.get("smtp_password", ""),
@@ -77,10 +86,12 @@ def run_tool(args, *, timeout=120):
 def start_database(c, root):
     import psycopg
     from psycopg import sql
-    pg = INSTALL / "postgresql/bin"
+    pg = postgres_bin(root, c)
     data = root / "postgresql"
     data.mkdir(exist_ok=True)
     if not (data / "PG_VERSION").exists():
+        # Le marqueur d'une tentative antérieure ne provisionne pas un nouveau cluster.
+        (root / "runtime/provisioned").unlink(missing_ok=True)
         pwfile = root / "runtime/init.password"
         try:
             pwfile.write_text(c["db_admin_password"], encoding="utf-8")
@@ -288,7 +299,7 @@ def supervise(c):
                     p.terminate()
                     p.wait(timeout=10)
             if database_started or (root / "postgresql/postmaster.pid").exists():
-                run_tool([INSTALL / "postgresql/bin/pg_ctl.exe", "-D", root / "postgresql",
+                run_tool([postgres_bin(root, c) / "pg_ctl.exe", "-D", root / "postgresql",
                           "-w", "-t", "30", "-m", "fast", "stop"], timeout=45)
 
 

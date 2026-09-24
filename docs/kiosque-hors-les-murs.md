@@ -63,6 +63,36 @@ KIOSK_PUBLIC_HOST=nom-du-serveur.tail1234.ts.net
 Les liens et QR codes utilisent ensuite le nom public. Le dossier de données,
 les ports locaux et l'accès de l'équipe restent ceux indiqués par l'assistant.
 
+### Qui est « public », qui est « réseau local » ?
+
+L'application ne se fie pas au nom demandé par le navigateur, que n'importe qui
+peut choisir. Dans l'ordre :
+
+1. Une requête qui porte l'en-tête posé par Tailscale Funnel
+   (`Tailscale-Funnel-Request`) est **toujours** publique : seul le kiosque
+   répond. Avec `KIOSK_PUBLIC_HOST` renseigné, il en va de même de l'en-tête de
+   Cloudflare (`Cf-Connecting-Ip`).
+2. Sinon, si `KIOSK_PUBLIC_HOST` est renseigné : ce nom, un nom vide ou un nom
+   inconnu sont publics ; restent internes l'hôte de `ERP_PUBLIC_BASE_URL`,
+   `localhost`, le nom de ce serveur (par exemple `servisa`), les adresses IP
+   privées (192.168.x.x, 10.x.x.x, 172.16-31.x.x) ou du tailnet (100.64.x.x à
+   100.127.x.x), et les noms en `.local`, `.lan`, `.home.arpa`, `.internal`.
+3. Tout autre nom utilisé par l'équipe (alias court, nom de domaine résolu par
+   le DNS interne) doit être déclaré :
+
+```dotenv
+ERP_LAN_HOSTS=erp-cgb,erp.mon-centre.fr
+```
+
+Avec un autre type de tunnel qui n'ajoute aucun en-tête reconnaissable,
+publier uniquement le port kiosque filtré (étape 1) : la reconnaissance par nom
+d'hôte n'est alors qu'une seconde barrière.
+
+Derrière Tailscale Funnel, les compteurs anti-abus du kiosque (PIN, créations)
+utilisent l'adresse transmise par tailscaled ; à défaut, un compteur commun aux
+visiteurs d'Internet, plus large, évite qu'une poignée d'erreurs bloque tout le
+monde.
+
 ## 4. Utiliser le kiosque
 
 Depuis l'ERP sur le réseau du centre ou via son VPN, ouvrir le kiosque de la
@@ -73,8 +103,11 @@ facteurs d'authentification cumulés.
 
 Les nouvelles ouvertures ont un PIN de six chiffres et expirent après douze
 heures. Les anciens PIN à quatre chiffres restent acceptés pendant leur période
-d'ouverture. Refermer le kiosque après la séance. La recherche et l'émargement
-sont limités au secteur de la séance ou aux inscriptions de son atelier.
+d'ouverture. Refermer le kiosque après la séance. La recherche porte sur tout
+l'annuaire (nom et prénom seuls affichés) pour qu'un habitant connu d'un autre
+secteur se retrouve au lieu d'être recréé : le lien d'une séance ouverte permet
+donc de vérifier qu'un nom est connu du centre. Le transmettre uniquement aux
+personnes concernées et refermer le kiosque après la séance.
 
 ## 5. Contrôler depuis l'extérieur
 

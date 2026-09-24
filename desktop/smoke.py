@@ -149,7 +149,7 @@ def smoke(payload, root):
             try: stop(process)
             except Exception:
                 process.terminate(); process.wait(timeout=10)
-                subprocess.run([str(payload / "postgresql/bin/pg_ctl.exe"), "-D", str(root / "postgresql"), "-w", "-m", "fast", "stop"],
+                subprocess.run([str(payload / "postgresql18/bin/pg_ctl.exe"), "-D", str(root / "postgresql"), "-w", "-m", "fast", "stop"],
                                stdout=log, stderr=log, timeout=45, creationflags=subprocess.CREATE_NO_WINDOW)
         log.close()
         (root / "resultats.json").write_text(json.dumps(results, indent=2), encoding="utf-8")

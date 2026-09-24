@@ -10,7 +10,7 @@ installation **de cet ERP**. Aucun nom de base ni dossier historique n'est
 imposé. Le dossier source contient normalement son fichier .env ; une connexion
 PostgreSQL peut être renseignée dans l'assistant sans être affichée dans les logs.
 
-Sources prises en charge : PostgreSQL 10 à 17, historique Alembic connu. Une
+Sources prises en charge : PostgreSQL 10 à 18, historique Alembic connu. Une
 base sans historique ou provenant d'une version inconnue est refusée, sans
 modification. Cela exige une analyse de schéma préalable, pas un stamp(head)
 aveugle. La conversion SQLite vers PostgreSQL n'est pas proposée par ce parcours.
@@ -88,7 +88,7 @@ vert avec la validation d'une modification ultérieure.
 La CI Windows construit l'EXE puis vérifie une installation neuve, les services,
 HTTPS avec vérification du certificat, DPAPI, les ACL et privilèges, les sauvegardes,
 l'arrêt/redémarrage, la mise à jour et la désinstallation avec conservation des données.
-Elle reprend ensuite une base PostgreSQL 17 nommée `erp_pedagogie`, à la révision
+Depuis la rc2, elle reprend une base PostgreSQL 18.1 nommée `erp_pedagogie`, à la révision
 historique `de23fa45bc67`, avec comptes, documents et paramètres. Elle vérifie la
 source inchangée et une connexion réelle en HTTPS avec le compte repris, CSRF actif.
 Ce nom de base appartient uniquement au scénario de test ; le parcours ne l'impose pas.
@@ -130,3 +130,57 @@ Cette branche ne clôt pas tous les constats du rapport d'audit. En particulier 
 
 Le guide [GUIDE-WINDOWS.md](GUIDE-WINDOWS.md) décrit la reprise et les limites de
 retour arrière. Ne pas supprimer l'ancienne installation avant la recette réelle.
+
+## Complément rc2 — PostgreSQL 18
+
+Le moteur des nouvelles destinations est PostgreSQL 18.6. Le paquet conserve
+17.11 dans un dossier de binaires distinct pour les clusters déjà activés en 17.
+La sélection dépend du fichier PG_VERSION ; une tentative 17 non achevée est
+archivée avant la création de la nouvelle destination 18. La recette reproduit
+une source 18.1, l'adresse IPv6 ::1 et un mot de passe contenant un point
+d'exclamation. Le contrôle de version refuse toujours les rétrogradations.
+
+Les deux archives 18.6 et 18.1 de recette ont été téléchargées depuis le serveur
+HTTPS EDB et leur SHA-256 est figé dans le build/workflow. Seuls les moteurs 17.11
+et 18.6 sont distribués. La fixture 18.1 reste sur le runner temporaire.
+
+## Relecture et correctifs (branche Claude-Avant-Servisa)
+
+Relecture de main 605cadc avant mise à jour d'un serveur en production, puis
+correctifs posés sur la branche PostgreSQL 18 de Codex (rc2), chacun couvert
+par `tests/test_avant_servisa.py` :
+
+| Constat | Correctif |
+|---|---|
+| Façade : sur un déploiement sans assistant, tout nom autre que celui de `ERP_PUBLIC_BASE_URL` était traité comme Internet (403 pour l'équipe) | En-tête Funnel d'abord ; nom de ce serveur, IP privées ou du tailnet et suffixes locaux reconnus ; `ERP_LAN_HOSTS` pour les autres noms internes |
+| Accueil bloqué hors de son secteur (ou partout sans secteur) | Permission dédiée `participants:edit_all`, attribuée automatiquement aux rôles Accueil existants ; pas de `scope:all_secteurs`, qui ouvrirait pilotage financier, journal et exports RGPD |
+| Synthèse d'un participant en erreur 500 pour tout rôle non global (antérieur) | Limite appliquée après le filtre de secteur |
+| Fusion et nettoyage des fausses fiches possibles hors secteur via `participants:view_all` | Portée d'action sur `scope:all_secteurs` uniquement |
+| `/participants/duplicates` en erreur 500 pour l'animateur | Garde de lecture sans fiche |
+| Un document hors des dossiers métier bloquait l'anonymisation et la purge quotidienne | Fichier jamais effacé, laissé dans `pending_file_deletion` pour contrôle manuel ; l'opération aboutit |
+| Kiosque : une personne connue d'un autre secteur recevait une nouvelle fiche, variantes d'écriture non reconnues | Recherche et anti-doublon sur tout l'annuaire, sans accents ni majuscules, une faute de frappe tolérée (noms de 5 lettres et plus) ; nom et prénom seuls affichés |
+| Kiosque : compteurs partagés derrière le tunnel, 10 inscriptions en 10 minutes | Adresse transmise par tailscaled quand elle existe, sinon compteur public élargi ; 30 inscriptions |
+| Reprise : mot de passe des bases dans la ligne de commande de pg_dump/pg_restore (`URL.set(password=None)` ne retire rien) | Adresse sans mot de passe, contrôle avant lancement, test |
+| Reprise : sources 10/11 refusées à tort (nombres décimaux) | `extra_float_digits=3` des deux côtés |
+| Reprise : copies complètes de la base et des documents laissées sur disque | Supprimées à chaque fin de tentative |
+| Reprise : message d'échec muet | Cause principale sans secret (mot de passe, version, droits, connexion) |
+| « Redémarrer » depuis l'icône relançait une reprise inachevée | Refus avec renvoi vers l'assistant |
+| Mise à jour silencieuse : service HTTPS non recréé | Mode `--upgrade` lancé par l'installateur silencieux |
+
+Choix du centre pour le kiosque : l'annuaire entier est retrouvable, quel que
+soit le secteur, sans accents ni majuscules, avec une faute de frappe tolérée
+dans l'anti-doublon. Une personne connue d'un autre secteur se retrouve au lieu
+de recevoir une nouvelle fiche (« Celine michu » à côté de « Céline Michut »),
+que l'analyse des doublons ne rattrape pas de façon fiable. Seuls le nom et le
+prénom sont affichés ; les fiches anonymisées sont exclues. Contrepartie
+assumée : quiconque détient le lien d'une séance ouverte peut vérifier qu'un
+nom figure dans l'annuaire. Émarger ajoute une présence dans le secteur de la
+séance, qui voit dès lors la fiche comme toute personne venue à ses ateliers.
+
+Toujours ouverts après cette relecture : activation interrompue qui basculerait
+sur une copie ancienne (vérifier l'absence de saisies dans l'ancien service avant
+de relancer l'assistant), paramètres `.env` repris prioritaires sur ceux de
+l'installateur (adresse du kiosque, copies externes des sauvegardes), chemins de
+documents écrits différemment de leur dossier réel (jonctions, casse), exports
+Excel contenant encore des formules `=HYPERLINK`, lecture des défis d'autres
+secteurs dans /transitions.

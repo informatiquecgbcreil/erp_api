@@ -7,8 +7,8 @@
 [Setup]
 AppId={{867301CB-6143-4C33-BF2A-EDC1CFC2DE6A}
 AppName=Mon Centre Social
-AppVersion=1.0.0-rc1
-AppVerName=Mon Centre Social 1.0.0-rc1
+AppVersion=1.0.0-rc2
+AppVerName=Mon Centre Social 1.0.0-rc2
 AppPublisher=Mon Centre Social — projet associatif
 AppPublisherURL=https://github.com/informatiquecgbcreil/erp_api
 DefaultDirName={autopf}\Mon Centre Social
@@ -20,7 +20,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 OutputDir={#Deliverables}
-OutputBaseFilename=Mon-Centre-Social-1.0.0-rc1-Setup-x64
+OutputBaseFilename=Mon-Centre-Social-1.0.0-rc2-Setup-x64
 SetupIconFile={#Payload}\mon-centre-social.ico
 UninstallDisplayIcon={app}\MonCentreSocial.exe
 LicenseFile={#Payload}\application\LICENSE
@@ -39,6 +39,12 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "vc_redist.x64.exe"
 Source: "{#Payload}\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+
+[InstallDelete]
+; Binaires PostgreSQL remplacés en bloc : aucun fichier d'une version
+; précédente ne doit rester mêlé aux nouveaux (les données sont ailleurs).
+Type: filesandordirs; Name: "{app}\postgresql"
+Type: filesandordirs; Name: "{app}\postgresql18"
 
 [Icons]
 Name: "{group}\Mon Centre Social"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--tray"
@@ -82,6 +88,10 @@ begin
         RaiseException('L''assistant ne peut pas démarrer.');
       if Code <> 0 then
         RaiseException('La configuration reste à terminer. Relancez « Configurer Mon Centre Social » dans le menu Démarrer.');
+    end else begin
+      // Mise à jour silencieuse : relance les services d'une installation déjà
+      // configurée (sans effet sur un poste neuf). Échec consigné dans logs.
+      Exec(ExpandConstant('{app}\MonCentreSocial.exe'), '--upgrade', '', SW_HIDE, ewWaitUntilTerminated, Code);
     end;
   end;
 end;

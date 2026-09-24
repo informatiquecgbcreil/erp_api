@@ -54,7 +54,7 @@ static class SystemSmoke {
                 var source = new Dictionary<string,object>(target);
                 source["data_root"] = Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP"),"ancienne-installation");
                 source["db_port"] = Program.FreePort(56432); source["db_name"] = "erp_pedagogie";
-                source["db_password"] = Program.Secret(); source["db_admin_password"] = Program.Secret();
+                source["db_password"] = Program.Secret(); source["db_admin_password"] = Program.Secret() + "!";
                 source["admin_email"] = "ancien-compte@example.test"; source["admin_password"] = Program.Secret();
                 source["admin_name"] = "Compte conservé";
                 // initdb retire les droits Administrateurs de son jeton. La source
@@ -70,15 +70,21 @@ static class SystemSmoke {
                 try {
                     MigrationHelper(args[1], "prepare", source, target);
                     Program.StopService();
-                    // La reprise est testée sur un cluster de destination neuf,
-                    // pas uniquement après une initialisation qui masquerait
-                    // un problème de droits du premier lancement.
+                    // Après l'installation neuve 18, vérifie aussi un cluster 17
+                    // encore actif, puis la reprise d'une tentative 17 inachevée.
                     Directory.Move(Path.Combine(Program.Root,"postgresql"),Path.Combine(Program.Root,"runtime","recette-installation-vierge"));
                     Program.SecureDirectory(Path.Combine(Program.Root,"postgresql"),true,true);
                     File.Delete(Path.Combine(Program.Root,"runtime","provisioned"));
+                    target["db_major"] = 17; target["admin_password"] = Program.Secret();
+                    Program.FinishInstallation(target); Healthy(target); Program.StopService();
+                    Check(File.ReadAllText(Path.Combine(Program.Root,"postgresql","PG_VERSION")).Trim() == "17", "Le cluster 17 existant a changé de moteur");
                     target["migration_source"] = source["data_root"]; target["migration_done"] = false;
                     Program.FinishInstallation(target); Healthy(target); KioskHealthy(target);
+                    Check(File.ReadAllText(Path.Combine(Program.Root,"postgresql","PG_VERSION")).Trim() == "18", "La reprise n'utilise pas PostgreSQL 18");
+                    var retained = Directory.GetDirectories(Path.Combine(Program.Root,"runtime"),"reprise-pg17-*");
+                    Check(retained.Length == 1 && File.ReadAllText(Path.Combine(retained[0],"PG_VERSION")).Trim() == "17", "Le cluster de la tentative précédente n'a pas été conservé");
                     MigrationHelper(args[1], "verify", source, Program.ReadConfiguration());
+                    Console.WriteLine("REPRISE_APRES_TENTATIVE_POSTGRESQL17_CONSERVEE_OK");
                 } finally { MigrationHelper(args[1], "stop", source, target); }
                 return 0;
             }

@@ -1,6 +1,7 @@
 """Contrats du reverse-proxy Windows pour l'accès kiosque mobile."""
 
 from desktop import runtime
+import pytest
 
 
 def test_caddy_expose_seulement_le_kiosque_sur_le_port_mobile(tmp_path):
@@ -38,3 +39,37 @@ def test_activation_bloque_avant_les_taches_et_saisies(tmp_path):
     marker.unlink(); calls.clear()
     assert client.get('/').status_code == 200
     assert calls == ['traitement']
+
+
+def test_moteur_correspond_au_cluster_existant(tmp_path):
+    assert runtime.postgres_bin(tmp_path) == runtime.INSTALL / 'postgresql18/bin'
+    version = tmp_path / 'postgresql/PG_VERSION'
+    version.parent.mkdir(); version.write_text('17\n')
+    assert runtime.postgres_bin(tmp_path, {'db_major': 18}) == runtime.INSTALL / 'postgresql/bin'
+    assert version.read_text() == '17\n'
+    version.write_text('18\n')
+    assert runtime.postgres_bin(tmp_path, {'db_major': 17}) == runtime.INSTALL / 'postgresql18/bin'
+    version.write_text('19\n')
+    with pytest.raises(RuntimeError, match='non prise en charge'):
+        runtime.postgres_bin(tmp_path)
+
+
+@pytest.mark.parametrize('source,target', [(100023,180006), (170011,180006), (180001,180006), (170011,170011)])
+def test_reprise_versions_compatibles(source, target):
+    from desktop.migration import validate_postgres_versions
+    validate_postgres_versions(source, target)
+
+
+@pytest.mark.parametrize('source,target', [(180001,170011), (190000,180006), (90624,180006), (180001,160000)])
+def test_reprise_refuse_retrogradation_et_versions_inconnues(source, target):
+    from desktop.migration import validate_postgres_versions, MigrationError
+    with pytest.raises(MigrationError):
+        validate_postgres_versions(source, target)
+
+
+def test_connexion_source_ipv6_et_exclamation(tmp_path):
+    from desktop.migration import read_source
+    source = read_source(tmp_path, 'postgresql://postgres:secret!@[::1]:5432/erp_pedagogie')
+    assert source['url'].host == '::1'
+    assert source['url'].password == 'secret!'
+    assert source['url'].database == 'erp_pedagogie'

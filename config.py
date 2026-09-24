@@ -153,6 +153,12 @@ class Config:
     # (connexion, données, admin) renvoie 403. Vide = désactivé.
     # Exemple : kiosque-cgb.exemple.fr (sans http:// ni port).
     KIOSK_PUBLIC_HOST = os.environ.get("KIOSK_PUBLIC_HOST", "").strip().lower()
+    # Noms sous lesquels les salariés joignent l'ERP sur le réseau local, en
+    # plus de ceux reconnus d'office (hôte de ERP_PUBLIC_BASE_URL, nom de ce
+    # serveur, adresses IP privées ou du tailnet, noms en .local/.lan/
+    # .home.arpa/.internal). Séparés par des virgules, ex. « erp-cgb,erp.cgb.fr ».
+    # Sans effet si la façade « hors les murs » (KIOSK_PUBLIC_HOST) est vide.
+    LAN_HOSTS = [h.strip().lower() for h in os.environ.get("ERP_LAN_HOSTS", "").split(",") if h.strip()]
     # Adresse LAN dédiée aux QR codes du kiosque Windows. Elle est générée par
     # l'assistant quand le mode réseau est choisi et reste distincte de l'URL
     # HTTPS d'administration (les téléphones n'ont alors aucun certificat à

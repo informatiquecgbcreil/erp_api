@@ -147,6 +147,8 @@ def test_merging_refuses_a_fiche_outside_the_user_sector(app, admin_client, monk
     garde = _participant(app, created_secteur="Numérique")
     doublon = _participant(app, created_secteur="Familles")
     monkeypatch.setattr(routes, "_is_global_role", lambda: False)
+    # La portée d'action (fusion, suppression) repose sur scope:all_secteurs.
+    monkeypatch.setattr(routes, "_has_scope_all", lambda: False)
     monkeypatch.setattr(routes, "_current_secteur", lambda: "Numérique")
     reponse = admin_client.post("/participants/merge", data={"keep_id": garde, "merge_ids": [doublon]})
     assert reponse.status_code == 403

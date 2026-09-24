@@ -88,11 +88,16 @@ def test_kiosque_restreint_et_expire(app, scoped_people):
                             kiosk_token=token, kiosk_opened_at=utcnow())
         db.session.add(s); db.session.commit(); sid=s.id
     client=app.test_client(); url=f'/kiosk/session/{token}'
+    # « highlight » reste lié à la fiche créée par ce navigateur.
     assert secret_name.encode() not in client.get(url+f'?highlight={foreign}').data
-    assert client.get(url+'/search',query_string={'q':secret_name}).get_json()['results'] == []
+    # Choix du centre : tout l'annuaire est retrouvable au kiosque (pas de fiche
+    # en double pour un habitant connu d'un autre secteur), nom et prénom seuls.
+    resultats = client.get(url+'/search',query_string={'q':secret_name.lower()}).get_json()['results']
+    assert [r['id'] for r in resultats] == [foreign]
+    assert '@' not in resultats[0]['label']
     client.post(url,data={'action':'emarger','participant_id':foreign})
     with app.app_context():
-        assert not PresenceActivite.query.filter_by(session_id=sid,participant_id=foreign).first()
+        assert PresenceActivite.query.filter_by(session_id=sid,participant_id=foreign).first()
         db.session.get(SessionActivite,sid).kiosk_opened_at=utcnow()-timedelta(hours=13)
         db.session.commit()
     assert client.get(url).status_code == 404
