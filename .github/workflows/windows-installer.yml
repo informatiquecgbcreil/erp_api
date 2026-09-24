@@ -3,7 +3,7 @@ name: Installateur Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, codex/consolidation-installateur-migration, Claude-Avant-Servisa]
+    branches: [main, codex/consolidation-installateur-migration, Claude-Avant-Servisa, Claude-Reprise-Documents]
     paths: ['desktop/**', 'app/**', 'migrations/**', 'config.py', 'requirements.txt', '.github/workflows/windows-installer.yml']
   pull_request:
     branches: [main]
