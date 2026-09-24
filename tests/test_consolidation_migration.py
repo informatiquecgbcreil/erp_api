@@ -224,3 +224,27 @@ def test_restauration_cli_valide_archive_avant_demarrage(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match='Archive refusée'):
         restore_instance.main()
     assert not (tmp_path / 'cible.db').exists()
+
+
+def test_reprise_complete_les_colonnes_manquantes():
+    """Base ancienne dont le schéma a dérivé (colonne ajoutée hors Alembic)."""
+    import sqlalchemy as sa
+    from desktop.migration import reconcile_columns, MigrationError
+    metadata = sa.MetaData()
+    sa.Table('ligne', metadata, sa.Column('id', sa.Integer, primary_key=True),
+             sa.Column('libelle', sa.String(50)), sa.Column('facultative', sa.Integer, nullable=True),
+             sa.Column('quantite', sa.Integer, nullable=False, default=1))
+    engine = sa.create_engine('sqlite://')
+    with engine.begin() as conn:
+        conn.execute(sa.text("CREATE TABLE ligne (id INTEGER PRIMARY KEY, libelle VARCHAR(50))"))
+        conn.execute(sa.text("INSERT INTO ligne VALUES (1, 'a')"))
+    assert reconcile_columns(engine, metadata) == ['ligne.facultative', 'ligne.quantite']
+    with engine.connect() as conn:
+        assert conn.execute(sa.text('SELECT facultative, quantite FROM ligne')).one() == (None, 1)
+    assert reconcile_columns(engine, metadata) == []  # idempotent
+    sa.Table('autre', metadata, sa.Column('id', sa.Integer, primary_key=True),
+             sa.Column('obligatoire', sa.Integer, nullable=False))
+    with engine.begin() as conn:
+        conn.execute(sa.text("CREATE TABLE autre (id INTEGER PRIMARY KEY)"))
+    with pytest.raises(MigrationError, match='autre.obligatoire'):
+        reconcile_columns(engine, metadata)

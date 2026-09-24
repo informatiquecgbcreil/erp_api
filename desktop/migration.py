@@ -224,6 +224,44 @@ def apply_document_plan(connection, plan, source_roots, new_roots):
                 connection.execute(update(table).where(table.c[column] == old).values({column: new}))
 
 
+def reconcile_columns(engine, metadata):
+    """Ajoute les colonnes que le logiciel attend et que la base n'a pas.
+
+    Seules des AJOUTS sont faits, jamais de suppression ni de modification :
+    colonne facultative ajoutée vide ; colonne obligatoire avec une valeur par
+    défaut simple, ajoutée puis remplie avec cette valeur. Une colonne
+    obligatoire sans valeur connue bloque la reprise (analyse nécessaire).
+    Les contraintes de clé étrangère ne sont pas recréées. Rend la liste
+    « table.colonne » ajoutée, pour le rapport.
+    """
+    from sqlalchemy import inspect as _inspect
+    added = []
+    with engine.begin() as connection:
+        actual = _inspect(connection)
+        preparer = connection.dialect.identifier_preparer
+        for table in metadata.sorted_tables:
+            if not actual.has_table(table.name):
+                continue  # Signalé par le contrôle qui suit.
+            present = {c["name"] for c in actual.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in present:
+                    continue
+                default = column.default.arg if column.default is not None and column.default.is_scalar else None
+                if not column.nullable and default is None and column.server_default is None:
+                    raise MigrationError(f"Colonne obligatoire absente de l'ancienne base : {table.name}.{column.name}. "
+                                         "Une analyse du schéma est nécessaire ; la source est intacte.")
+                name = preparer.quote(column.name)
+                table_name = preparer.format_table(table)
+                sql_type = column.type.compile(dialect=connection.dialect)
+                connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {sql_type}"))
+                if default is not None:
+                    connection.execute(text(f"UPDATE {table_name} SET {name} = :v"), {"v": default})
+                    if not column.nullable and connection.dialect.name == "postgresql":
+                        connection.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN {name} SET NOT NULL"))
+                added.append(f"{table.name}.{column.name}")
+    return added
+
+
 def validate_document_paths(connection, source):
     """Compatibilité : inventaire des documents (ne bloque plus la reprise)."""
     return plan_documents(connection, source)
@@ -373,6 +411,9 @@ def migrate(c, runtime):
         from app.extensions import db
         from app.models import InstanceSettings
         with app.app_context():
+            # Bases anciennes dont le schéma a dérivé de l'historique Alembic
+            # (colonnes ajoutées à la main ou par l'ancien correctif de schéma).
+            completed_columns = reconcile_columns(db.engine, db.metadata)
             with db.engine.connect() as connection:
                 after_accounts = list(connection.execute(text('SELECT id, email, password_hash FROM "user" ORDER BY id')))
                 if accounts != after_accounts:
@@ -396,6 +437,7 @@ def migrate(c, runtime):
         report = {"format": 1, "database": source["url"].database, "db_name": c["db_name"], "revisions_source": revisions,
                   "tables": {k: v["rows"] for k, v in before.items()}, "files": len(manifest["files"]),
                   "accounts_preserved": True, "organization": organization,
+                  "colonnes_completees": completed_columns,
                   "documents": {"copies_avec_les_dossiers": len(manifest["files"]),
                                 "retrouves_apres_deplacement": len(documents["relocated"]),
                                 "recopies_hors_dossiers": len(documents["external"]),
