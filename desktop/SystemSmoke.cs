@@ -27,6 +27,10 @@ static class SystemSmoke {
         var request = (HttpWebRequest)WebRequest.Create((string)config["url"] + "/healthz");
         request.Proxy = null; request.Timeout = 30000;
         using (var response = (HttpWebResponse)request.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "HTTPS indisponible");
+        // Adresse IP du réseau local : certificat valable et vérifié sans DNS.
+        var byIp = (HttpWebRequest)WebRequest.Create(Program.AccessUrl(config) + "/healthz");
+        byIp.Proxy = null; byIp.Timeout = 30000;
+        using (var response = (HttpWebResponse)byIp.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "HTTPS par adresse IP indisponible");
     }
     static void KioskHealthy(Dictionary<string, object> config) {
         var request = (HttpWebRequest)WebRequest.Create((string)config["kiosk_url"] + "/kiosk/");

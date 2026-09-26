@@ -117,6 +117,13 @@ static class Program {
         }
     }
 
+    /// Adresse d'accès des postes : IP du réseau local (sans DNS) en mode réseau.
+    internal static string AccessUrl(Dictionary<string, object> c) {
+        bool network = c.ContainsKey("network") && Convert.ToBoolean(c["network"]);
+        string ip = c.ContainsKey("lan_ip") ? Convert.ToString(c["lan_ip"]) : "";
+        if (!network || string.IsNullOrWhiteSpace(ip) || ip == "127.0.0.1") return Convert.ToString(c["url"]);
+        return "https://" + ip + ":" + c["https_port"];
+    }
     internal static bool MigrationIncomplete(Dictionary<string, object> c) {
         if (!c.ContainsKey("migration_source") || string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))) return false;
         bool done = c.ContainsKey("migration_done") && Convert.ToBoolean(c["migration_done"]);
@@ -336,7 +343,7 @@ static class Program {
         var reportPath = Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt");
         if (!File.Exists(reportPath) || !File.ReadAllText(reportPath, Utf8).Contains("Adresse kiosque")) WriteReport(c);
         var publicFile = Path.Combine(Root, "public", "url.txt"); GuardPath(publicFile);
-        File.WriteAllText(publicFile, (string)c["url"], Utf8);
+        File.WriteAllText(publicFile, AccessUrl(c), Utf8);
         var kioskFile = Path.Combine(Root, "public", "kiosk-url.txt"); GuardPath(kioskFile); File.WriteAllText(kioskFile, (string)c["kiosk_url"] + "/kiosk/", Utf8);
         RegisterService(); StartService();
         var ready = Path.Combine(Root, "runtime", "ready");
@@ -363,12 +370,20 @@ static class Program {
             StopService(); StartService();
             if ((bool)c["network"]) using (var proxy = new ServiceController(ProxyServiceName)) proxy.Start();
         }
-        for (int i=0; i<120; i++) {
+        // Vérification par l'adresse IP du réseau local, jamais par le nom : sur un
+        // serveur dont le nom renvoie plusieurs adresses (VPN, Tailscale, IPv6 de
+        // lien local), la résolution seule consommait le délai de chaque essai.
+        // Le certificat couvre cette adresse et reste vérifié normalement.
+        var healthUrl = AccessUrl(c) + "/healthz";
+        var deadline = DateTime.UtcNow.AddSeconds(120);
+        string lastError = "aucune réponse";
+        while (true) {
             try {
-                var check = (HttpWebRequest)WebRequest.Create(Convert.ToString(c["url"]) + "/healthz"); check.Proxy=null; check.Timeout=2000;
-                using (var response = (HttpWebResponse)check.GetResponse()) { if (response.StatusCode == HttpStatusCode.OK) break; }
-            } catch (WebException) { if (i==119) throw new Exception("L'application ne répond pas après sa préparation."); }
-            Thread.Sleep(500);
+                var check = (HttpWebRequest)WebRequest.Create(healthUrl); check.Proxy=null; check.Timeout=10000; check.ReadWriteTimeout=10000;
+                using (var response = (HttpWebResponse)check.GetResponse()) { if (response.StatusCode == HttpStatusCode.OK) break; lastError = "code " + (int)response.StatusCode; }
+            } catch (WebException ex) { lastError = ex.Status == WebExceptionStatus.TrustFailure ? "certificat HTTPS refusé" : ex.Message; }
+            if (DateTime.UtcNow > deadline) throw new Exception("L'application ne répond pas après sa préparation (" + healthUrl + " : " + lastError + ").");
+            Thread.Sleep(1000);
         }
         if (activating) {
             var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
@@ -485,6 +500,7 @@ static class Program {
         } finally { StopService(); }
     }
     internal static void WriteReport(Dictionary<string, object> c) {
+        c["access_url"] = AccessUrl(c);
         string path = Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt"); GuardPath(path);
         var text = new StringBuilder();
         text.AppendLine("MON CENTRE SOCIAL — DOSSIER CONFIDENTIEL DIRECTION / DSI");
@@ -492,7 +508,7 @@ static class Program {
         text.AppendLine("Rapport technique sans mots de passe. Conserver avec les sauvegardes hors machine.");
         text.AppendLine("Accès Windows : Administrateurs et SYSTEM uniquement. La DSI peut donner un accès NTFS nominatif à la direction.");
         text.AppendLine("Photographie de l'installation ; les changements effectués ensuite dans l'administration ne sont pas recopiés ici.");
-        foreach (var pair in new[] { new[] { "Structure", "organization" }, new[] { "Adresse de connexion administration", "url" }, new[] { "Adresse kiosque tablettes/téléphones", "kiosk_url" }, new[] { "Adresse IPv4 du serveur sur le LAN", "lan_ip" }, new[] { "Compte direction", "admin_email" }, new[] { "Port PostgreSQL (127.0.0.1 exclusivement)", "db_port" }, new[] { "Serveur SMTP", "smtp_host" }, new[] { "Port SMTP / STARTTLS", "smtp_port" }, new[] { "Identifiant SMTP", "smtp_user" }, new[] { "Expéditeur", "smtp_sender" } }) text.AppendLine(pair[0] + " : " + c[pair[1]]);
+        foreach (var pair in new[] { new[] { "Structure", "organization" }, new[] { "Adresse de connexion administration (nom)", "url" }, new[] { "Adresse de connexion administration (IP, recommandée pour les postes)", "access_url" }, new[] { "Adresse kiosque tablettes/téléphones", "kiosk_url" }, new[] { "Adresse IPv4 du serveur sur le LAN", "lan_ip" }, new[] { "Compte direction", "admin_email" }, new[] { "Port PostgreSQL (127.0.0.1 exclusivement)", "db_port" }, new[] { "Serveur SMTP", "smtp_host" }, new[] { "Port SMTP / STARTTLS", "smtp_port" }, new[] { "Identifiant SMTP", "smtp_user" }, new[] { "Expéditeur", "smtp_sender" } }) text.AppendLine(pair[0] + " : " + c[pair[1]]);
         text.AppendLine("Compte applicatif non superutilisateur : mcs. La base gérée est indiquée dans la configuration protégée.");
         text.AppendLine("Modules initiaux : " + Json.Serialize(c["modules"]));
         text.AppendLine("Programme : " + Install);
@@ -765,7 +781,7 @@ sealed class SetupWizard : Form {
             await Task.Run(delegate { Program.InstallConfiguration(c, message => BeginInvoke(new Action(delegate { status.Text = message; }))); });
             busy = false; UseWaitCursor = false;
             string mobile = (bool)c["network"] ? "\n\nKiosque tablettes/téléphones (même Wi-Fi) : " + c["kiosk_url"] + "/kiosk/" : "";
-            MessageBox.Show("Votre centre est prêt.\n\nAdresse administration : " + c["url"] + mobile + "\n\nLe dossier confidentiel est dans :\n" + Path.Combine(Program.Root,"Direction-DSI") + "\n\nL'icône Mon Centre Social permet d'ouvrir l'administration, de redémarrer et de fermer le service.", "Installation terminée", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show("Votre centre est prêt.\n\nAdresse administration : " + Program.AccessUrl(c) + "\n(ou " + c["url"] + ")" + mobile + "\n\nLe dossier confidentiel est dans :\n" + Path.Combine(Program.Root,"Direction-DSI") + "\n\nL'icône Mon Centre Social permet d'ouvrir l'administration, de redémarrer et de fermer le service.", "Installation terminée", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK; Close();
         } catch (Exception e) { busy = false; UseWaitCursor = false; next.Enabled = true; back.Enabled = true; status.Text = e.Message; MessageBox.Show(e.Message,"Mon Centre Social",MessageBoxButtons.OK,MessageBoxIcon.Warning); }
     }

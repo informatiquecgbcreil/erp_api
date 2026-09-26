@@ -123,6 +123,16 @@ créée. La source est de nouveau copiée et vérifiée. Un import déjà achev�
 attente d'activation garde son cluster, sans nouvelle conversion implicite.
 Les binaires de sauvegarde et de restauration suivent le moteur du cluster.
 
+## Adresse des postes : l'adresse IP plutôt que le nom
+
+Le certificat HTTPS couvre le nom du serveur et son adresse IPv4 sur le réseau
+local. `public\url.txt`, l'icône et le rapport donnent l'adresse par IP (par
+exemple `https://192.168.1.200:8443`) : elle ne dépend pas du DNS. Sur un
+serveur qui porte aussi un VPN ou Tailscale, le nom peut renvoyer plusieurs
+adresses, dont certaines injoignables depuis un poste ; l'accès par le nom
+devient alors lent ou aléatoire. Réserver l'adresse du serveur dans le DHCP ;
+si elle change, « Redémarrer » depuis l'icône régénère le certificat.
+
 ## Utilisation quotidienne
 
 L'icône maison et habitants apparaît dans la zone de notification, parfois sous

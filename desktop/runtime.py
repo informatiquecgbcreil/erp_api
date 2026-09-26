@@ -208,6 +208,18 @@ def write_caddy(c, root):
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}", hostname):
         raise ValueError("Nom de serveur invalide.")
     storage = json.dumps(str(root / "https/tls").replace("\\", "/"), ensure_ascii=False)
+    https_port = int(c["https_port"])
+    # Adresse IPv4 du réseau local dans le certificat : les postes (et la
+    # vérification de l'assistant) passent par elle sans dépendre du DNS, qui
+    # peut renvoyer plusieurs adresses (VPN, Tailscale, IPv6 de lien local).
+    sites = [f"https://{hostname}:{https_port}"]
+    import ipaddress
+    try:
+        lan = ipaddress.IPv4Address(str(c.get("lan_ip") or ""))
+        if not lan.is_loopback and not lan.is_unspecified:
+            sites.append(f"https://{lan}:{https_port}")
+    except ValueError:
+        pass
     kiosk_port = int(c["kiosk_http_port"])
     web_port = int(c["web_port"])
     target = root / "https/Caddyfile"
@@ -215,7 +227,7 @@ def write_caddy(c, root):
     target.write_text(
         "{\n admin off\n auto_https disable_redirects\n skip_install_trust\n persist_config off\n"
         f" storage file_system {storage}\n}}\n"
-        f"https://{hostname}:{int(c['https_port'])} {{\n tls internal\n"
+        f"{', '.join(sites)} {{\n tls internal\n"
         f" reverse_proxy 127.0.0.1:{web_port}\n}}\n"
         f":{kiosk_port} {{\n"
         " @kiosk path /kiosk /kiosk/* /static /static/* /media/branding /media/branding/* /healthz /sources\n"
