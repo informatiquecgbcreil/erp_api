@@ -224,3 +224,23 @@ def admin_client(app):
 def fresh_app():
     """Application sur base vierge (aucun utilisateur)."""
     return _create_app("fresh.db")
+
+
+def signature_tracee() -> str:
+    """Une signature réelle (un trait sur fond blanc), comme le cadre du kiosque."""
+    import base64
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+    image = Image.new("RGB", (300, 120), "white")
+    ImageDraw.Draw(image).line((20, 60, 280, 70), fill=(17, 24, 39), width=3)
+    tampon = BytesIO()
+    image.save(tampon, "PNG")
+    return "data:image/png;base64," + base64.b64encode(tampon.getvalue()).decode()
+
+
+def kiosque_emarger(client, token, participant_id, nom, **extra):
+    """Parcours réel du kiosque : chercher son nom, le toucher, signer."""
+    client.get(f"/kiosk/session/{token}/search", query_string={"q": nom})
+    data = {"action": "emarger", "participant_id": participant_id, "signature_data": signature_tracee()}
+    data.update(extra)
+    return client.post(f"/kiosk/session/{token}", data=data)

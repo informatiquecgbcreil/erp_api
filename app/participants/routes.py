@@ -34,7 +34,7 @@ from app.services.insertion import (
     sync_legacy_insertion_fields,
 )
 from app.services.purge_rgpd import NOM_ANONYME
-from app.services.access_scope import participant_allowed, require_participant
+from app.services.access_scope import participant_allowed, participant_destructible, require_participant
 from app.utils.montants import nombre_fini
 
 
@@ -88,7 +88,7 @@ def _can_read_participant(p: Participant | None) -> bool:
 def _can_edit_participant(p: Participant) -> bool:
     # « participants:edit_all » (accueil) : modifier toute fiche, sans ouvrir
     # pour autant les autres écrans réservés à la portée structure.
-    return bool(can('participants:edit')) and (bool(can('participants:edit_all')) or participant_allowed(p))
+    return bool(can('participants:edit')) and (bool(can('participants:edit_all')) or participant_allowed(p, valide=True))
 
 
 def _can_view_sensitive_insertion() -> bool:
@@ -1135,6 +1135,7 @@ def synthese_participant(participant_id: int):
 
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
+@require_perm("participants:edit")
 def new_participant():
 
     if request.method == "POST":
@@ -1387,7 +1388,7 @@ def export_rgpd(participant_id: int):
 def anonymize_participant(participant_id: int):
 
     p = db.get_or_404(Participant, participant_id)
-    if not _can_edit_participant(p):
+    if not _can_edit_participant(p) or not participant_destructible(p):
         abort(403)
 
     from app.services.purge_rgpd import anonymiser_participant
@@ -1433,7 +1434,7 @@ def delete_participant(participant_id: int):
         abort(403)
 
     p = db.get_or_404(Participant, participant_id)
-    if not _can_edit_participant(p):
+    if not _can_edit_participant(p) or not participant_destructible(p):
         abort(403)
 
     # Garde-fou : on ne supprime pas une personne suivie dans un autre secteur.

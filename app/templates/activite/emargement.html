@@ -880,6 +880,20 @@
                         <option value="absent_excuse" {% if pr.presence_type == 'absent_excuse' %}selected{% endif %}>Absent excusé</option>
                       </select>
                     </form>
+                    {% if pr.origine == 'kiosque' %}
+                    {# Posée par la personne au kiosque : n'ouvre pas la fiche à la
+                       modification tant que l'équipe ne l'a pas validée. #}
+                    <form method="post" style="margin:0;" title="Présence posée au kiosque : validez-la si la personne était bien là.">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
+                      <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
+                      <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
+                      <input type="hidden" name="action" value="valider_presence">
+                      <input type="hidden" name="presence_id" value="{{ pr.id }}">
+                      <span class="muted" style="font-size:.8rem;">📱 Kiosque</span>
+                      <button class="btn" type="submit" style="font-size:.8rem; padding:2px 8px;">✔ Valider</button>
+                    </form>
+                    {% endif %}
                     <form method="post" style="margin:0;" onsubmit="return confirm('Retirer cette présence ?');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
@@ -1238,6 +1252,7 @@
   const ctx = canvas.getContext('2d');
   let drawing = false;
   let last = null;
+  let aTrace = false;
 
   // Le canvas gère lui-même le geste (pas de défilement pendant qu'on signe).
   canvas.style.touchAction = 'none';
@@ -1257,6 +1272,7 @@
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
     last = p;
+    aTrace = true;
   }
 
   if(window.PointerEvent){
@@ -1295,6 +1311,7 @@
   if(clearBtn){
     clearBtn.addEventListener('click', () => {
       ctx.clearRect(0,0,canvas.width,canvas.height);
+      aTrace = false;
     });
   }
 
@@ -1302,7 +1319,8 @@
   if(form){
     form.addEventListener('submit', () => {
       const out = document.getElementById('signature_data');
-      if(out) out.value = canvas.toDataURL('image/png');
+      // Cadre vierge : pas de signature (pointage simple par l'animateur).
+      if(out) out.value = aTrace ? canvas.toDataURL('image/png') : '';
     });
   }
 })();

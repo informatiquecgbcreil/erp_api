@@ -140,15 +140,14 @@ def test_emargement_enregistre_presence(app, client, session_kiosk):
         from app.extensions import db
         from app.models import Participant
 
-        p = Participant(created_secteur="Numérique", nom=f"KioskPres{uuid.uuid4().hex[:6]}", prenom="Test")
+        nom = f"KioskPres{uuid.uuid4().hex[:6]}"
+        p = Participant(created_secteur="Numérique", nom=nom, prenom="Test")
         db.session.add(p)
         db.session.commit()
         pid = p.id
 
-    r = client.post(
-        f"/kiosk/session/{session_kiosk['token']}",
-        data={"action": "emarger", "participant_id": pid},
-    )
+    from conftest import kiosque_emarger
+    r = kiosque_emarger(client, session_kiosk["token"], pid, nom)
     assert r.status_code == 200
     assert "bon" in r.get_data(as_text=True).lower()  # « Merci, c'est bon ! »
 

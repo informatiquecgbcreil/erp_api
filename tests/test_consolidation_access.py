@@ -4,6 +4,7 @@ from io import StringIO
 import uuid
 
 import pytest
+from conftest import signature_tracee
 
 
 @pytest.fixture
@@ -75,6 +76,7 @@ def test_funnel_ne_devient_pas_interne_par_host(app, monkeypatch, host):
     assert client.get('/kiosk/',headers={'Host':host,'Tailscale-Funnel-Request':'?1'}).status_code == 200
 
 
+
 def test_kiosque_restreint_et_expire(app, scoped_people):
     from app.extensions import db
     from app.models import AtelierActivite, SessionActivite, PresenceActivite
@@ -95,9 +97,14 @@ def test_kiosque_restreint_et_expire(app, scoped_people):
     resultats = client.get(url+'/search',query_string={'q':secret_name.lower()}).get_json()['results']
     assert [r['id'] for r in resultats] == [foreign]
     assert '@' not in resultats[0]['label']
+    # Sans signature, le kiosque n'émarge personne (audit C3, 5.5).
     client.post(url,data={'action':'emarger','participant_id':foreign})
     with app.app_context():
-        assert PresenceActivite.query.filter_by(session_id=sid,participant_id=foreign).first()
+        assert PresenceActivite.query.filter_by(session_id=sid,participant_id=foreign).first() is None
+    client.post(url,data={'action':'emarger','participant_id':foreign,'signature_data':signature_tracee()})
+    with app.app_context():
+        pr = PresenceActivite.query.filter_by(session_id=sid,participant_id=foreign).first()
+        assert pr is not None and pr.origine == 'kiosque'
         db.session.get(SessionActivite,sid).kiosk_opened_at=utcnow()-timedelta(hours=13)
         db.session.commit()
     assert client.get(url).status_code == 404

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from io import BytesIO
 from app.utils.montants import nombre_fini
+from app.utils.xlsx_safe import Formule
 
 
 # --- Structure canonique (dérivée du modèle CAF-FADO fourni) -----------------
@@ -353,7 +354,7 @@ def build_workbook(structure: dict, *, organisme: str, exercice, secteur: str | 
             val_cell = ws.cell(row=row, column=col_val)
             col_letter = val_cell.column_letter
             if last_cat_row >= first_cat_row:
-                val_cell.value = f"=SUM({col_letter}{first_cat_row}:{col_letter}{last_cat_row})"
+                val_cell.value = Formule(f"=SUM({col_letter}{first_cat_row}:{col_letter}{last_cat_row})")
             else:
                 val_cell.value = 0
             val_cell.font = bold
@@ -373,9 +374,9 @@ def build_workbook(structure: dict, *, organisme: str, exercice, secteur: str | 
 
     total_row = max(end_charges, end_produits) + 1
     ws.cell(row=total_row, column=1, value="TOTAL DES CHARGES").font = bold
-    tc = ws.cell(row=total_row, column=2, value=("=" + "+".join(charge_subtotals)) if charge_subtotals else 0)
+    tc = ws.cell(row=total_row, column=2, value=Formule("=" + "+".join(charge_subtotals)) if charge_subtotals else 0)
     ws.cell(row=total_row, column=3, value="TOTAL DES PRODUITS").font = bold
-    tp = ws.cell(row=total_row, column=4, value=("=" + "+".join(produit_subtotals)) if produit_subtotals else 0)
+    tp = ws.cell(row=total_row, column=4, value=Formule("=" + "+".join(produit_subtotals)) if produit_subtotals else 0)
     for cell in (tc, tp):
         cell.font = bold
         cell.number_format = "#,##0.00"
@@ -391,9 +392,9 @@ def build_workbook(structure: dict, *, organisme: str, exercice, secteur: str | 
     ws.cell(row=tg_row, column=1, value="TOTAL GÉNÉRAL DES CHARGES").font = bold
     emplois_expr = ("+" + "+".join(emploi_subtotals)) if emploi_subtotals else ""
     ressources_expr = ("+" + "+".join(ressource_subtotals)) if ressource_subtotals else ""
-    tgc = ws.cell(row=tg_row, column=2, value=f"=B{total_row}{emplois_expr}")
+    tgc = ws.cell(row=tg_row, column=2, value=Formule(f"=B{total_row}{emplois_expr}"))
     ws.cell(row=tg_row, column=3, value="TOTAL GÉNÉRAL DES PRODUITS").font = bold
-    tgp = ws.cell(row=tg_row, column=4, value=f"=D{total_row}{ressources_expr}")
+    tgp = ws.cell(row=tg_row, column=4, value=Formule(f"=D{total_row}{ressources_expr}"))
     for cell in (tgc, tgp):
         cell.font = bold
         cell.number_format = "#,##0.00"
@@ -402,7 +403,7 @@ def build_workbook(structure: dict, *, organisme: str, exercice, secteur: str | 
 
     eq_row = tg_row + 2
     ws.cell(row=eq_row, column=3, value="Vérification de l'équilibre (produits - charges)").font = bold
-    eq = ws.cell(row=eq_row, column=4, value=f"=D{tg_row}-B{tg_row}")
+    eq = ws.cell(row=eq_row, column=4, value=Formule(f"=D{tg_row}-B{tg_row}"))
     eq.font = bold
     eq.number_format = "#,##0.00"
 

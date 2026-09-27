@@ -262,7 +262,9 @@
   let drawing = false;
   let last = null;
 
+  let aTrace = false;
   function paintSignatureSurface(){
+    aTrace = false;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -296,6 +298,7 @@
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
     last = p;
+    aTrace = true;
   }
 
   if(window.PointerEvent){
@@ -342,6 +345,11 @@
     if(!pid.value){
       e.preventDefault();
       alert('Touchez d’abord votre nom dans la liste.');
+      return;
+    }
+    if(!aTrace){
+      e.preventDefault();
+      alert('Signez d’abord dans le cadre.');
       return;
     }
     document.getElementById('signature_data').value = canvas.toDataURL('image/png');

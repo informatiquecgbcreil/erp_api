@@ -8,7 +8,7 @@ from flask import (
     url_for,
     flash,
 )
-from flask_login import login_required
+from flask_login import current_user, login_required
 from sqlalchemy import or_, false
 
 from app.extensions import db
@@ -22,7 +22,6 @@ from app.models import (
 from ..rbac import require_perm
 from . import bp
 from app.services.quartiers import normalize_quartier_for_ville
-from app.utils.delete_guard import commit_delete
 from app.activite.helpers import (
     _attestation_document_fields,
     _attestation_options_from_request,
@@ -37,7 +36,6 @@ from app.activite.helpers import (
     _parse_iso_date_arg,
     _require_any_perm,
     _resolve_attestation_secteur,
-    _safe_unlink,
     _user_secteur,
 )
 
@@ -241,35 +239,26 @@ def participant_edit(participant_id: int):
 @bp.route("/participant/<int:participant_id>/anonymize", methods=["POST"])
 @login_required
 def participant_anonymize(participant_id: int):
+    """Anonymise un participant : même traitement complet et journalisé que
+    depuis la fiche (identité, contacts, géocodage, notes, fichiers…).
+
+    L'ancienne version ne remplaçait que nom, prénom et coordonnées : la
+    personne restait identifiable (date de naissance, adresse géocodée,
+    titre de séjour, signature…) et rien n'était tracé.
+    """
     require_perm("participants:anonymize")(lambda: None)()
-    """Anonymise un participant (conserve les stats mais supprime les identifiants)."""
-    secteur = _user_secteur()
+    from app.services.access_scope import participant_destructible
+    from app.services.audit import enregistrer
+    from app.services.purge_rgpd import anonymiser_participant
+
     p = db.get_or_404(Participant, participant_id)
+    if not participant_destructible(p):
+        flash("Accès refusé : seule l'équipe du secteur qui a créé la fiche peut l'anonymiser.", "danger")
+        return redirect(url_for("activite.participants"))
 
-    if not _is_admin_global():
-        in_secteur = (
-            db.session.query(PresenceActivite.id)
-            .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
-            .filter(PresenceActivite.participant_id == p.id)
-            .filter(SessionActivite.secteur == secteur)
-            .first()
-            is not None
-        )
-        if not in_secteur:
-            flash("Accès refusé.", "danger")
-            return redirect(url_for("activite.participants"))
-
-    from app.ateliers.historical_privacy import redact_sources
-    redact_sources(p.id)
-    p.nom = "Anonyme"
-    p.prenom = "Anonyme"
-    p.adresse = None
-    p.ville = None
-    p.email = None
-    p.telephone = None
-
-    strict = (request.form.get("strict") == "1")
-    if strict:
+    anonymiser_participant(p, actor_id=getattr(current_user, "id", None))
+    enregistrer("participant.anonymize", cible=f"participant #{p.id}")
+    if request.form.get("strict") == "1" and _is_admin_global():
         p.genre = None
         p.date_naissance = None
         p.annee_naissance = None
@@ -284,39 +273,13 @@ def participant_anonymize(participant_id: int):
 @bp.route("/participant/<int:participant_id>/delete", methods=["POST"])
 @login_required
 def participant_delete(participant_id: int):
+    """Ancienne suppression rapide, retirée : elle effaçait sans confirmation ni
+    trace (et aurait emporté les paiements). La suppression définitive se fait
+    depuis la fiche, avec confirmation par le nom et journal d'audit."""
     require_perm("participants:delete")(lambda: None)()
-    """Suppression définitive : uniquement si le participant n'existe pas dans d'autres secteurs.
-
-    (Admin global : bypass.)
-    """
-    secteur = _user_secteur()
-    p = db.get_or_404(Participant, participant_id)
-
-    if not _is_admin_global():
-        other = (
-            db.session.query(PresenceActivite.id)
-            .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
-            .filter(PresenceActivite.participant_id == p.id)
-            .filter(SessionActivite.secteur != secteur)
-            .first()
-        )
-        if other is not None:
-            flash("La suppression est refusée : ce participant est utilisé dans d'autres secteurs. Utilisez l'anonymisation à la place.", "warning")
-            return redirect(url_for("activite.participants"))
-
-    presences = PresenceActivite.query.filter_by(participant_id=p.id).all()
-    signature_paths = [pr.signature_path for pr in presences if pr.signature_path]
-    for pr in presences:
-        db.session.delete(pr)
-
-    db.session.delete(p)
-    if commit_delete(
-        f"le participant « {p.nom_complet()} »",
-        "Participant supprimé définitivement.",
-        blocked_message=f"Impossible de supprimer le participant « {p.nom_complet()} » : il est encore référencé ailleurs. Utilisez plutôt l'anonymisation si vous souhaitez conserver l'historique.",
-    ):
-        for rel in signature_paths:
-            _safe_unlink(rel)
-    return redirect(url_for("activite.participants"))
+    db.get_or_404(Participant, participant_id)
+    flash("La suppression définitive se fait depuis la fiche du participant "
+          "(confirmation par le nom de famille).", "warning")
+    return redirect(url_for("participants.edit_participant", participant_id=participant_id))
 
 

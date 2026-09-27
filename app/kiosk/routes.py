@@ -19,6 +19,7 @@ from flask import (
 
 from app.extensions import db, csrf
 from app.models import (
+    ORIGINE_KIOSQUE,
     SessionActivite,
     AtelierActivite,
     Participant,
@@ -135,6 +136,31 @@ def _participants_for_session(s):
     que le nom et le prénom ; les fiches anonymisées sont exclues.
     """
     return Participant.query.filter(~Participant.nom.like("ANONYME%"))
+
+
+_OFFERTS = "kiosk_offerts"
+
+
+def _marquer_offerts(s, ids) -> None:
+    """Retient les personnes proposées à CE navigateur pour cette séance.
+
+    Seules elles peuvent être émargées depuis ce navigateur : sans cela,
+    n'importe qui ayant le lien d'une séance faisait émarger n'importe quel
+    identifiant de l'annuaire (identifiants séquentiels).
+    """
+    ids = [int(i) for i in ids if i is not None]
+    if not ids:
+        return
+    offerts = dict(browser_session.get(_OFFERTS) or {})
+    cle = str(s.id)
+    liste = list(dict.fromkeys((offerts.pop(cle, None) or []) + ids))[-200:]
+    offerts[cle] = liste
+    # Trois séances au plus (une tablette sert plusieurs ateliers dans la journée).
+    browser_session[_OFFERTS] = dict(list(offerts.items())[-3:])
+
+
+def _est_offert(s, participant_id) -> bool:
+    return int(participant_id) in ((browser_session.get(_OFFERTS) or {}).get(str(s.id)) or [])
 
 
 def _filtre_nom(query, texte):
@@ -321,6 +347,7 @@ def kiosk_search(token: str):
         .all()
     )
 
+    _marquer_offerts(s, [p.id for p in candidates])
     # Nom et prénom seulement : rien d'autre de la fiche n'est affiché.
     res = [{"id": p.id, "label": f"{p.nom} {p.prenom}"} for p in candidates]
     return jsonify({"results": res})
@@ -371,6 +398,7 @@ def kiosk_session(token: str):
                 candidats = [p for p in _candidats_doublons(nom, prenom)
                              if not (p.nom or "").upper().startswith("ANONYME")]
                 if candidats:
+                    _marquer_offerts(s, [c.id for c in candidats])
                     return render_template(
                         "kiosk/session.html",
                         session=s,
@@ -412,6 +440,7 @@ def kiosk_session(token: str):
             db.session.add(p)
             db.session.commit()
             browser_session["kiosk_highlight"] = [s.id, p.id]
+            _marquer_offerts(s, [p.id])
             flash("Participant créé. Sélectionne-le ci-dessous puis signe.", "success")
             return redirect(url_for("kiosk.kiosk_session", token=token, highlight=p.id))
 
@@ -428,12 +457,28 @@ def kiosk_session(token: str):
                 return redirect(url_for("kiosk.kiosk_session", token=token))
 
             try:
-                participant = _participants_for_session(s).filter(Participant.id == int(participant_id)).first()
+                participant_id = int(participant_id)
             except (TypeError, ValueError):
                 abort(400)
+            if not _est_offert(s, participant_id):
+                current_app.logger.warning(
+                    "Kiosque : émargement refusé pour une personne non proposée à ce navigateur "
+                    "(séance #%s, participant #%s).", s.id, participant_id)
+                flash("Recherche ton nom dans la liste puis touche-le avant de signer.", "danger")
+                return redirect(url_for("kiosk.kiosk_session", token=token))
+            participant = _participants_for_session(s).filter(Participant.id == participant_id).first()
             if not participant:
                 flash("Participant introuvable.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
+
+            existante = PresenceActivite.query.filter_by(session_id=s.id, participant_id=participant.id).first()
+            if existante is not None and existante.signature_path:
+                flash("Tu es déjà émargé(e) sur cette séance.", "warning")
+                return redirect(url_for("kiosk.kiosk_session", token=token))
+
+            if not signature_data:
+                flash("Signe dans le cadre avant de valider.", "danger")
+                return redirect(url_for("kiosk.kiosk_session", token=token, highlight=participant.id))
 
             from app.services.signatures import save_signature
             try:
@@ -442,17 +487,29 @@ def kiosk_session(token: str):
                     f"sig_kiosk_s{s.id}_p{participant.id}")
             except ValueError as error:
                 flash(str(error), "danger")
-                return redirect(url_for("kiosk.kiosk_session", token=token))
+                return redirect(url_for("kiosk.kiosk_session", token=token, highlight=participant.id))
 
             try:
-                pr = PresenceActivite(
-                    session_id=s.id,
-                    participant_id=participant.id,
-                    motif=motif,
-                    motif_autre=motif_autre,
-                    signature_path=sig_path,
-                )
-                db.session.add(pr)
+                if existante is not None:
+                    # Pointée à l'avance par l'animateur : on ajoute la signature
+                    # à SA présence (qui reste une présence du personnel).
+                    pr = existante
+                    pr.signature_path = sig_path
+                    if pr.presence_type == "absent_excuse":  # finalement venue : elle signe
+                        pr.presence_type = "present"
+                    if motif and not pr.motif:
+                        pr.motif = motif
+                        pr.motif_autre = motif_autre
+                else:
+                    pr = PresenceActivite(
+                        session_id=s.id,
+                        participant_id=participant.id,
+                        motif=motif,
+                        motif_autre=motif_autre,
+                        signature_path=sig_path,
+                        origine=ORIGINE_KIOSQUE,
+                    )
+                    db.session.add(pr)
                 db.session.commit()
             except Exception as error:
                 db.session.rollback()
@@ -475,7 +532,8 @@ def kiosk_session(token: str):
             recu = pr.id
 
     highlight = request.args.get("highlight", type=int)
-    if browser_session.get("kiosk_highlight") != [s.id, highlight]:
+    if highlight is not None and browser_session.get("kiosk_highlight") != [s.id, highlight] \
+            and not _est_offert(s, highlight):
         highlight = None
     highlight_label = None
     if highlight:
