@@ -73,11 +73,19 @@ def annees_inactivite() -> int:
 
 
 def purge_auto_active() -> bool:
+    """La purge quotidienne automatique est-elle allumée ?
+
+    Réglage de la page Contrôle → Purge RGPD (prioritaire), sinon variable
+    d'environnement PURGE_INACTIFS_AUTO. DÉSACTIVÉE par défaut : une
+    anonymisation est irréversible, elle ne doit jamais démarrer seule sur
+    une installation neuve ou juste reprise. La direction l'allume, en
+    connaissance de cause, après avoir relu la liste des fiches en attente.
+    """
     reglages = _reglages_instance()
     valeur = getattr(reglages, "purge_rgpd_auto", None)
     if valeur is not None:
         return bool(valeur)
-    return os.environ.get("PURGE_INACTIFS_AUTO", "1") in {"1", "true", "True", "yes"}
+    return os.environ.get("PURGE_INACTIFS_AUTO", "0").strip() in {"1", "true", "True", "yes"}
 
 
 def _vers_datetime(valeur) -> datetime | None:
