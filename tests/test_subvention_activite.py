@@ -5,7 +5,7 @@ import uuid
 from flask import url_for
 
 
-def _contexte(app, annee=2042):
+def _contexte(app, annee=1992):
     """Subvention (10 000 € attribués) + atelier du même secteur avec activité réelle."""
     from app.extensions import db
     from app.models import (Subvention, AtelierActivite, SessionActivite,
@@ -90,7 +90,7 @@ def test_justificatif_chiffre(app, admin_client):
     from app.models import SubventionAtelier
 
     with app.app_context():
-        sid, aid = _contexte(app, annee=2043)
+        sid, aid = _contexte(app, annee=1993)
         db.session.add(SubventionAtelier(subvention_id=sid, atelier_id=aid,
                                          poids_pct=100, justification="Public jeunes"))
         db.session.commit()
@@ -111,7 +111,7 @@ def test_justificatif_export_xlsx(app, admin_client):
     from io import BytesIO
 
     with app.app_context():
-        sid, aid = _contexte(app, annee=2044)
+        sid, aid = _contexte(app, annee=1994)
         db.session.add(SubventionAtelier(subvention_id=sid, atelier_id=aid, poids_pct=100))
         db.session.commit()
         with app.test_request_context():

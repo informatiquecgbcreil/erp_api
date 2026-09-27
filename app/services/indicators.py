@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.extensions import db
 from app.models import Participant, PresenceActivite, ProjetAtelier, ProjetIndicateur, SessionActivite
 from app.utils.montants import nombre_fini
+from app.services.presences_comptees import seance_tenue, venue_reelle
 
 
 INDICATOR_METRICS = {
@@ -521,7 +522,8 @@ def _participants_metrics(atelier_ids_scope: list[int], dmin, dmax) -> dict:
         SessionActivite.query
         .filter(SessionActivite.atelier_id.in_(atelier_ids_scope))
         .filter(SessionActivite.is_deleted.is_(False))
-        .filter(SessionActivite.statut != "annulee")
+        # Séances tenues : ni annulées, ni encore à venir.
+        .filter(seance_tenue())
     )
 
     session_date = db.func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date)
@@ -534,7 +536,8 @@ def _participants_metrics(atelier_ids_scope: list[int], dmin, dmax) -> dict:
     if not sess_ids:
         return out
 
-    pres_q = PresenceActivite.query.filter(PresenceActivite.session_id.in_(sess_ids))
+    # Venues réelles : une absence excusée n'est pas une présence.
+    pres_q = PresenceActivite.query.filter(PresenceActivite.session_id.in_(sess_ids), venue_reelle())
     out["presences_totales"] = int(pres_q.count())
 
     visit_rows = (

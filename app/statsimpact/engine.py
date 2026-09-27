@@ -6,10 +6,11 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from flask_login import current_user
-from sqlalchemy import func
+from sqlalchemy import and_, func
 
 from app.extensions import db
 from app.models import AtelierActivite, PresenceActivite, SessionActivite, PeriodeFinancement, Participant
+from app.services.presences_comptees import est_seance_tenue, seance_tenue, venue_reelle
 
 
 
@@ -442,6 +443,7 @@ def compute_volume_activity_stats(flt: StatsFilters) -> Dict[str, Any]:
         presences: List[PresenceActivite] = (
             db.session.query(PresenceActivite)
             .filter(PresenceActivite.session_id.in_(session_ids))
+            .filter(venue_reelle())
             .all()
         )
     else:
@@ -451,7 +453,7 @@ def compute_volume_activity_stats(flt: StatsFilters) -> Dict[str, Any]:
     # par atelier, mais les KPI de tête reflètent l'activité RÉALISÉE : on écarte
     # les séances annulées et leurs présences.
     real_session_ids = {
-        s.id for s, _ in sessions_rows if (s.statut or "").strip().lower() != "annulee"
+        s.id for s, _ in sessions_rows if est_seance_tenue(s)
     }
     presences_real = [p for p in presences if p.session_id in real_session_ids]
 
@@ -469,6 +471,8 @@ def compute_volume_activity_stats(flt: StatsFilters) -> Dict[str, Any]:
             )
             .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
             .filter(SessionActivite.is_deleted.is_(False))
+            .filter(venue_reelle())
+            .filter(seance_tenue())
             .group_by(PresenceActivite.participant_id)
             .subquery()
         )
@@ -514,7 +518,8 @@ def compute_volume_activity_stats(flt: StatsFilters) -> Dict[str, Any]:
         per_atelier[gid]["sessions"] += 1
         per_atelier[gid]["sessions_planned"] += 1
 
-        is_real = (session.statut or "").lower() != "annulee"
+        # Réalisée = ni annulée, ni encore à venir.
+        is_real = est_seance_tenue(session)
         if is_real:
             per_atelier[gid]["sessions_real"] += 1
         session_date = session.rdv_date or session.date_session
@@ -743,7 +748,10 @@ def _get_scoped_sessions_and_presences(flt: StatsFilters):
     if session_ids:
         presences = (
             db.session.query(PresenceActivite)
+            .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
             .filter(PresenceActivite.session_id.in_(session_ids))
+            .filter(venue_reelle())
+            .filter(seance_tenue())
             .all()
         )
     else:
@@ -817,6 +825,8 @@ def compute_transversalite_stats(flt: StatsFilters) -> Dict[str, Any]:
         .filter(SessionActivite.is_deleted.is_(False))
         .filter(AtelierActivite.is_deleted.is_(False))
         .filter(PresenceActivite.participant_id.in_(list(scope_participants)))
+        .filter(venue_reelle())
+        .filter(seance_tenue())
     )
     if flt.date_from:
         base = base.filter(_session_date_expr() >= flt.date_from)
@@ -1127,7 +1137,8 @@ def compute_magatomatique(
         )
         .select_from(SessionActivite)
         .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
-        .outerjoin(PresenceActivite, PresenceActivite.session_id == SessionActivite.id)
+        .outerjoin(PresenceActivite, and_(PresenceActivite.session_id == SessionActivite.id,
+                                          venue_reelle(), seance_tenue()))
     )
     sector_rows = _apply_common_filters(sector_rows, flt)
     sector_rows = (
@@ -1147,7 +1158,8 @@ def compute_magatomatique(
         )
         .select_from(SessionActivite)
         .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
-        .outerjoin(PresenceActivite, PresenceActivite.session_id == SessionActivite.id)
+        .outerjoin(PresenceActivite, and_(PresenceActivite.session_id == SessionActivite.id,
+                                          venue_reelle(), seance_tenue()))
     )
     atelier_rows = _apply_common_filters(atelier_rows, flt)
     atelier_rows = (
@@ -1189,6 +1201,7 @@ def compute_magatomatique(
         .select_from(PresenceActivite)
         .join(SessionActivite, PresenceActivite.session_id == SessionActivite.id)
         .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
+        .filter(venue_reelle(), seance_tenue())
     )
     uniq_q = _apply_common_filters(uniq_q, flt)
     total_participants_uniques = int(uniq_q.scalar() or 0)
@@ -1235,6 +1248,7 @@ def compute_magatomatique(
         .join(PresenceActivite, PresenceActivite.participant_id == Participant.id)
         .join(SessionActivite, PresenceActivite.session_id == SessionActivite.id)
         .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
+        .filter(venue_reelle(), seance_tenue())
     )
     part_q = _apply_common_filters(part_q, flt)
 
@@ -1275,6 +1289,7 @@ def compute_magatomatique(
         .select_from(PresenceActivite)
         .join(SessionActivite, PresenceActivite.session_id == SessionActivite.id)
         .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
+        .filter(venue_reelle(), seance_tenue())
     )
     counts_q = _apply_common_filters(counts_q, flt)
     if participant_ids:
@@ -1336,6 +1351,7 @@ def compute_magatomatique(
             db.session.query(PresenceActivite.participant_id, PresenceActivite.session_id)
             .filter(PresenceActivite.session_id.in_(session_ids))
             .filter(PresenceActivite.participant_id.in_(participant_ids))
+            .filter(venue_reelle())
         )
         for pid, sid in pres_q.all():
             matrix[(int(pid), int(sid))] = 1

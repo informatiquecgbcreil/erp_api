@@ -17,6 +17,7 @@ from app.extensions import db
 from app.models import AtelierActivite, SessionActivite, PresenceActivite, Subvention
 
 from app.main.common import bp
+from app.services.presences_comptees import seance_tenue, venue_reelle
 from app.utils.montants import parse_montant
 
 
@@ -48,6 +49,8 @@ def mesures_activite(atelier_ids: list[int], date_from: date, date_to: date) -> 
     eff = db.func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date)
     sess_q = (SessionActivite.query
               .filter(SessionActivite.is_deleted.is_(False))
+              # Séances tenues : une séance annulée ou à venir n'a rien coûté en face-à-face.
+              .filter(seance_tenue())
               .filter(eff >= date_from, eff <= date_to))
     if atelier_ids:
         sess_q = sess_q.filter(SessionActivite.atelier_id.in_(atelier_ids))
@@ -59,9 +62,9 @@ def mesures_activite(atelier_ids: list[int], date_from: date, date_to: date) -> 
     uniques = 0
     if session_ids:
         presences = (db.session.query(db.func.count(PresenceActivite.id))
-                     .filter(PresenceActivite.session_id.in_(session_ids)).scalar() or 0)
+                     .filter(PresenceActivite.session_id.in_(session_ids), venue_reelle()).scalar() or 0)
         uniques = (db.session.query(db.func.count(db.distinct(PresenceActivite.participant_id)))
-                   .filter(PresenceActivite.session_id.in_(session_ids)).scalar() or 0)
+                   .filter(PresenceActivite.session_id.in_(session_ids), venue_reelle()).scalar() or 0)
     return {
         "sessions": len(sessions),
         "heures": round(minutes / 60.0, 1),

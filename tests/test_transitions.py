@@ -198,7 +198,9 @@ def test_referentiel_thematiques(admin_client, app):
 
 
 def test_etiquetage_depuis_la_page(admin_client, app, contexte):
-    r = admin_client.get("/transitions/ateliers")
+    # Recherche par nom : la liste complète est plafonnée à 200 ateliers, et
+    # la base de test partagée en compte davantage.
+    r = admin_client.get("/transitions/ateliers", query_string={"q": f"Témoin {contexte['suf']}"})
     assert r.status_code == 200
     assert f"Témoin {contexte['suf']}" in r.get_data(as_text=True)
 

@@ -51,6 +51,7 @@ from app.statsimpact.common import (
     _individual_consumption_stats_for_filter,
     _query_args_preserve_lists,
 )
+from app.services.presences_comptees import seance_tenue, venue_reelle
 
 def _dialect_name() -> str:
     try:
@@ -92,6 +93,7 @@ def _build_activity_charts(flt):
         .select_from(PresenceActivite)
         .join(SessionActivite, PresenceActivite.session_id == SessionActivite.id)
         .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
+        .filter(venue_reelle(), seance_tenue())
     )
     pres_q = _apply_common_filters(pres_q, flt)
     pres_q = pres_q.group_by("m").order_by("m")
@@ -107,8 +109,8 @@ def _build_activity_charts(flt):
         .join(AtelierActivite, SessionActivite.atelier_id == AtelierActivite.id)
     )
     sess_q = _apply_common_filters(sess_q, flt)
-    # "réelles" = pas annulée (attention: statut peut être None)
-    sess_q = sess_q.filter(func.lower(func.coalesce(SessionActivite.statut, "")) != "annulee")
+    # "réelles" = tenues : ni annulées, ni encore à venir
+    sess_q = sess_q.filter(seance_tenue())
     sess_q = sess_q.group_by("m").order_by("m")
     sess_rows = sess_q.all()
 
