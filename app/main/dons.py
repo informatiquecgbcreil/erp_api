@@ -17,6 +17,7 @@ from app.services.dons import prochain_numero, montant_en_lettres
 from app.services.audit import journaliser
 
 from app.main.common import bp
+from app.utils.montants import parse_montant
 
 
 FORMES_DON = {"numeraire": "Numéraire", "nature": "En nature"}
@@ -66,10 +67,7 @@ def don_create():
         flash("Le nom du donateur est obligatoire.", "danger")
         return redirect(url_for("main.dons_registre"))
 
-    try:
-        montant = round(float(str(request.form.get("montant") or "0").replace(",", ".").replace(" ", "")), 2)
-    except Exception:
-        montant = 0.0
+    montant = parse_montant(request.form.get("montant"), 0.0)
     if montant <= 0:
         flash("Le montant du don doit être supérieur à 0.", "danger")
         return redirect(url_for("main.dons_registre"))

@@ -35,6 +35,7 @@ from app.services.insertion import (
 )
 from app.services.purge_rgpd import NOM_ANONYME
 from app.services.access_scope import participant_allowed, require_participant
+from app.utils.montants import nombre_fini
 
 
 
@@ -1974,10 +1975,7 @@ def duplicates():
 
     # réglages
     mode = (request.args.get("mode") or "certain").strip()  # certain / probable
-    try:
-        threshold = min(max(float(request.args.get("t") or "0.90"), 0.5), 1.0)
-    except ValueError:
-        threshold = 0.90
+    threshold = min(max(nombre_fini(request.args.get("t"), 0.90), 0.5), 1.0)
     try:
         limit = min(max(int(request.args.get("limit") or "5000"), 100), 50000)
     except ValueError:

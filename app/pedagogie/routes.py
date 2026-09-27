@@ -41,6 +41,7 @@ from . import bp
 from app.utils.delete_guard import commit_delete
 from .services import compute_objectif_scores, participant_timeline, progression_portail
 from app.services.access_scope import require_participant, require_sector, own_sector
+from app.utils.montants import nombre_fini
 
 
 @bp.before_request
@@ -842,7 +843,7 @@ def objectifs():
             obj_type = (request.form.get("type") or "").strip()
             titre = (request.form.get("titre") or "").strip()
             description = (request.form.get("description") or "").strip() or None
-            seuil_validation = request.form.get("seuil_validation", type=float) or 0.0
+            seuil_validation = nombre_fini(request.form.get("seuil_validation"), 0.0) or 0.0
             parent_id = request.form.get("parent_id", type=int)
             selected_atelier_id = request.form.get("atelier_id", type=int)
             selected_projet_id = request.form.get("projet_id", type=int)

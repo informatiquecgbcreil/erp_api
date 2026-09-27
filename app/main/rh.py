@@ -19,6 +19,7 @@ from app.models import RecupRhSnapshot, Salarie, SENACS_TYPES_CONTRAT, SENACS_TY
 from app.services.audit import journaliser
 
 from app.main.common import bp
+from app.utils.montants import nombre_fini
 
 
 def _parse_date(raw):
@@ -35,10 +36,7 @@ def _parse_date(raw):
 
 
 def _parse_float(raw, default=None):
-    try:
-        return round(float(str(raw).replace(",", ".").replace(" ", "")), 2)
-    except Exception:
-        return default
+    return nombre_fini(raw, default, decimales=2)
 
 
 def _remplir_salarie(salarie: Salarie, form) -> None:

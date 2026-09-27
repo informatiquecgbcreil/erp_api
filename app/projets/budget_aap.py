@@ -33,6 +33,7 @@ from app.projets.projets_crud import (
 from app.projets.common import (
     bp,
 )
+from app.utils.montants import nombre_fini
 
 # ---------------------------------------------------------------------
 # Budget AAP par projet : Charges / Produits / Ventilation / Synthèse
@@ -254,7 +255,7 @@ def projet_budget_charges(projet_id):
         libelle = (request.form.get("libelle") or "").strip()
         bloc = (request.form.get("bloc") or "directe").strip()
         code_plan = (request.form.get("code_plan") or "60").strip()
-        montant = float(request.form.get("montant_previsionnel") or 0)
+        montant = nombre_fini(request.form.get("montant_previsionnel"), 0.0)
 
         if not libelle:
             flash("Le libellé est obligatoire.", "warning")
@@ -265,7 +266,7 @@ def projet_budget_charges(projet_id):
                 bloc=bloc,
                 code_plan=code_plan,
                 montant_previsionnel=montant,
-                montant_reel=float(request.form.get("montant_reel") or 0),
+                montant_reel=nombre_fini(request.form.get("montant_reel"), 0.0),
                 commentaire=(request.form.get("commentaire") or "").strip() or None,
             )
             db.session.add(c)
@@ -296,8 +297,8 @@ def projet_budget_charge_edit(projet_id, charge_id):
         charge.libelle = (request.form.get("libelle") or "").strip()
         charge.bloc = (request.form.get("bloc") or "directe").strip()
         charge.code_plan = (request.form.get("code_plan") or "60").strip()
-        charge.montant_previsionnel = float(request.form.get("montant_previsionnel") or 0)
-        charge.montant_reel = float(request.form.get("montant_reel") or 0)
+        charge.montant_previsionnel = nombre_fini(request.form.get("montant_previsionnel"), 0.0)
+        charge.montant_reel = nombre_fini(request.form.get("montant_reel"), 0.0)
         charge.commentaire = (request.form.get("commentaire") or "").strip() or None
         db.session.commit()
         flash("La charge a bien été mise à jour.", "success")
@@ -343,9 +344,9 @@ def projet_budget_produits(projet_id):
         financeur = (request.form.get("financeur") or "").strip()
         categorie = (request.form.get("categorie") or "autre").strip()
         statut = (request.form.get("statut") or "prevu").strip()
-        demande = float(request.form.get("montant_demande") or 0)
-        accorde = float(request.form.get("montant_accorde") or 0)
-        recu = float(request.form.get("montant_recu") or 0)
+        demande = nombre_fini(request.form.get("montant_demande"), 0.0)
+        accorde = nombre_fini(request.form.get("montant_accorde"), 0.0)
+        recu = nombre_fini(request.form.get("montant_recu"), 0.0)
 
         if not financeur:
             flash("Le nom du financeur est obligatoire.", "warning")
@@ -389,9 +390,9 @@ def projet_budget_produit_edit(projet_id, produit_id):
         produit.financeur = (request.form.get("financeur") or "").strip()
         produit.categorie = (request.form.get("categorie") or "autre").strip()
         produit.statut = (request.form.get("statut") or "prevu").strip()
-        produit.montant_demande = float(request.form.get("montant_demande") or 0)
-        produit.montant_accorde = float(request.form.get("montant_accorde") or 0)
-        produit.montant_recu = float(request.form.get("montant_recu") or 0)
+        produit.montant_demande = nombre_fini(request.form.get("montant_demande"), 0.0)
+        produit.montant_accorde = nombre_fini(request.form.get("montant_accorde"), 0.0)
+        produit.montant_recu = nombre_fini(request.form.get("montant_recu"), 0.0)
         produit.reference_dossier = (request.form.get("reference_dossier") or "").strip() or None
         produit.commentaire = (request.form.get("commentaire") or "").strip() or None
         db.session.commit()
@@ -453,10 +454,7 @@ def projet_budget_ventilation(projet_id):
                 if key not in request.form:
                     continue
                 raw = (request.form.get(key) or "").strip().replace(",", ".")
-                try:
-                    val = float(raw) if raw else 0.0
-                except ValueError:
-                    val = 0.0
+                val = nombre_fini(raw, 0.0)
                 if val < 0:
                     val = 0.0
                 new_vals[(c.id, p.id)] = val

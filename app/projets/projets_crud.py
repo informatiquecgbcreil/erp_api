@@ -54,6 +54,7 @@ from app.projets.common import (
     bp,
     can_see_secteur,
 )
+from app.utils.montants import nombre_fini
 
 def _projet_finance_context(projet: Projet, year: int) -> dict:
     # Budget prévisionnel global filtré sur ce projet
@@ -614,10 +615,7 @@ def projets_edit(projet_id):
             target_raw = (request.form.get("target") or "").strip().replace(",", ".")
             target = None
             if target_raw:
-                try:
-                    target = float(target_raw)
-                except ValueError:
-                    target = None
+                target = nombre_fini(target_raw)
 
             target_op = (request.form.get("target_op") or "ge").strip()
             if target_op not in TARGET_OP_CHOICES:

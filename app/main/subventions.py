@@ -29,17 +29,14 @@ from app.services.audit import journaliser
 
 from app.main.common import bp, can_see_secteur
 from app.utils.delete_guard import commit_delete
+from app.utils.montants import nombre_fini
 
 # Horizon (en jours) au-delà duquel une échéance n'est plus signalée comme « proche ».
 ECHEANCE_HORIZON_JOURS = 30
 
 
 def _parse_money(value, default=0.0) -> float:
-    raw = str(value or "").replace(" ", "").replace(",", ".")
-    try:
-        return float(raw) if raw else float(default)
-    except Exception:
-        return float(default)
+    return nombre_fini(value, float(default))
 
 
 def _parse_date(value):
@@ -225,9 +222,9 @@ def subvention_create():
     secteur = (request.form.get("secteur") or "").strip()
     annee = int(request.form.get("annee_exercice") or 2025)
 
-    montant_demande = float(request.form.get("montant_demande") or 0)
-    montant_attribue = float(request.form.get("montant_attribue") or 0)
-    montant_recu = float(request.form.get("montant_recu") or 0)
+    montant_demande = _parse_money(request.form.get("montant_demande"))
+    montant_attribue = _parse_money(request.form.get("montant_attribue"))
+    montant_recu = _parse_money(request.form.get("montant_recu"))
 
     financeur = (request.form.get("financeur") or "").strip() or None
     statut = (request.form.get("statut_cycle") or "sollicitee").strip()
@@ -299,9 +296,9 @@ def subvention_pilotage(subvention_id):
 
         # --- Montants globaux ---
         if action == "update_montants":
-            sub.montant_demande = float(request.form.get("montant_demande") or 0)
-            sub.montant_attribue = float(request.form.get("montant_attribue") or 0)
-            sub.montant_recu = float(request.form.get("montant_recu") or 0)
+            sub.montant_demande = _parse_money(request.form.get("montant_demande"))
+            sub.montant_attribue = _parse_money(request.form.get("montant_attribue"))
+            sub.montant_recu = _parse_money(request.form.get("montant_recu"))
             db.session.commit()
             journaliser("subvention.montants", cible=f"subvention#{sub.id}",
                         details={"demande": sub.montant_demande, "attribue": sub.montant_attribue, "recu": sub.montant_recu})
@@ -338,7 +335,7 @@ def subvention_pilotage(subvention_id):
                 flash("Cet atelier est déjà rattaché à la subvention.", "info")
                 return redirect(url_for("main.subvention_pilotage", subvention_id=sub.id))
             try:
-                poids = float(str(request.form.get("poids_pct") or "100").replace(",", "."))
+                poids = nombre_fini(request.form.get("poids_pct") or "100", 100.0)
             except Exception:
                 poids = 100.0
             poids = min(max(poids, 0.0), 100.0)

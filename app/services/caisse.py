@@ -20,6 +20,22 @@ from app.extensions import db
 from app.models import CaisseMouvement, Don, Paiement
 
 
+# Clé du verrou transactionnel PostgreSQL qui sérialise les écritures de caisse.
+VERROU_CAISSE = 724001
+
+
+def verrouiller_caisse() -> None:
+    """Sérialise fond, comptage et dépôt jusqu'à la fin de la transaction.
+
+    Sans lui, deux dépôts envoyés en même temps (double clic) lisaient le même
+    théorique et passaient tous les deux : caisse négative. À appeler AVANT de
+    lire l'état de la caisse ; le verrou tombe au commit ou au rollback.
+    SQLite (tests, poste isolé) sérialise déjà les écritures.
+    """
+    if db.session.get_bind().dialect.name == "postgresql":
+        db.session.execute(db.text("SELECT pg_advisory_xact_lock(:cle)"), {"cle": VERROU_CAISSE})
+
+
 def _somme(query) -> float:
     return round(float(query.scalar() or 0.0), 2)
 
@@ -97,6 +113,7 @@ def enregistrer_comptage(montant_constate: float, *, commentaire: str | None = N
     """Arrêté de caisse : compare le constaté au théorique, trace l'écart,
     et réaligne le théorique via un ajustement automatique si besoin."""
     jour = jour or date.today()
+    verrouiller_caisse()
     theorique = etat_caisse()["theorique_especes"]
     ecart = round(montant_constate - theorique, 2)
 

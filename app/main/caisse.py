@@ -14,14 +14,12 @@ from app.main.common import bp
 from app.models import CaisseMouvement
 from app.rbac import can, require_perm
 from app.services.audit import journaliser
-from app.services.caisse import enregistrer_comptage, etat_caisse, journal
+from app.services.caisse import enregistrer_comptage, etat_caisse, journal, verrouiller_caisse
+from app.utils.montants import parse_montant
 
 
 def _montant_form(champ: str) -> float | None:
-    try:
-        return round(float(str(request.form.get(champ) or "").replace(",", ".").strip()), 2)
-    except Exception:
-        return None
+    return parse_montant(request.form.get(champ), negatif=True)
 
 
 def _date_form(champ: str) -> date:
@@ -52,6 +50,7 @@ def caisse_fond():
     if montant is None or montant < 0:
         flash("Montant du fond de caisse invalide.", "danger")
         return redirect(url_for("main.caisse"))
+    verrouiller_caisse()
     db.session.add(CaisseMouvement(
         type_mouvement="fond", canal="especes", montant=montant,
         date_mouvement=date.today(),
@@ -94,6 +93,7 @@ def caisse_comptage():
 @require_perm("caisse:edit")
 def caisse_depot():
     """Enregistre un dépôt en banque (espèces et/ou chèques)."""
+    verrouiller_caisse()
     etat = etat_caisse()
     especes = _montant_form("montant_especes") or 0.0
     cheques = _montant_form("montant_cheques") or 0.0
@@ -109,6 +109,13 @@ def caisse_depot():
         flash(
             f"Impossible de déposer {especes:.2f} € en espèces : la caisse n'en contient que "
             f"{etat['theorique_especes']:.2f} € en théorie (fais d'abord un comptage si le réel diffère).",
+            "danger",
+        )
+        return redirect(url_for("main.caisse"))
+    if cheques > etat["cheques_en_attente"] + 0.001:
+        flash(
+            f"Impossible de déposer {cheques:.2f} € de chèques : seuls "
+            f"{etat['cheques_en_attente']:.2f} € de chèques sont en attente de dépôt.",
             "danger",
         )
         return redirect(url_for("main.caisse"))

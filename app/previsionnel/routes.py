@@ -31,6 +31,7 @@ from app.previsionnel.referentiel import (
     BudgetModeleReferentiel,
     BudgetModeleLigneReferentiel,
 )
+from app.utils.montants import nombre_fini
 
 bp = Blueprint("previsionnel", __name__, url_prefix="/previsionnel")
 
@@ -60,7 +61,7 @@ def _can_edit() -> bool:
 def _parse_float(value, default=0.0) -> float:
     raw = str(value or "").replace(" ", "").replace(",", ".")
     try:
-        return float(raw) if raw else float(default)
+        return nombre_fini(raw, float(default)) if raw else float(default)
     except Exception:
         return float(default)
 

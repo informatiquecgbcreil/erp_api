@@ -21,6 +21,7 @@ from app.models import (
 from datetime import date
 
 from app.main.common import bp
+from app.utils.montants import nombre_fini
 
 
 def _parse_iso_date(value: str):
@@ -245,7 +246,7 @@ def controle():
             label = (request.form.get("label") or "").strip()
             date_debut = _parse_iso_date(request.form.get("date_debut") or "")
             date_fin = _parse_iso_date(request.form.get("date_fin") or "")
-            co2 = request.form.get("co2_kg_par_kwh", type=float) or 0.06
+            co2 = nombre_fini(request.form.get("co2_kg_par_kwh"), 0.06) or 0.06
 
             if date_debut and date_fin and date_fin < date_debut:
                 flash("La date de fin ne peut pas être antérieure à la date de début.", "danger")
@@ -266,7 +267,7 @@ def controle():
             db.session.flush()
 
             for m in MaterielType.query.order_by(MaterielType.ordre.asc(), MaterielType.nom.asc()).all():
-                watts = request.form.get(f"watts_{m.id}", type=float)
+                watts = nombre_fini(request.form.get(f"watts_{m.id}"))
                 if watts is not None and watts > 0:
                     db.session.add(MaterielConsommationLigne(config_id=cfg.id, materiel_id=m.id, watts=watts))
 
@@ -281,7 +282,7 @@ def controle():
             label = (request.form.get("label") or "").strip()
             date_debut = _parse_iso_date(request.form.get("date_debut") or "")
             date_fin = _parse_iso_date(request.form.get("date_fin") or "")
-            co2 = request.form.get("co2_kg_par_kwh", type=float) or 0.06
+            co2 = nombre_fini(request.form.get("co2_kg_par_kwh"), 0.06) or 0.06
 
             if date_debut and date_fin and date_fin < date_debut:
                 flash("La date de fin ne peut pas être antérieure à la date de début.", "danger")
@@ -299,7 +300,7 @@ def controle():
 
             MaterielConsommationLigne.query.filter_by(config_id=cfg.id).delete()
             for m in MaterielType.query.order_by(MaterielType.ordre.asc(), MaterielType.nom.asc()).all():
-                watts = request.form.get(f"watts_{m.id}", type=float)
+                watts = nombre_fini(request.form.get(f"watts_{m.id}"))
                 if watts is not None and watts > 0:
                     db.session.add(MaterielConsommationLigne(config_id=cfg.id, materiel_id=m.id, watts=watts))
 

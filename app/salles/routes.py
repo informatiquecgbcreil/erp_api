@@ -64,6 +64,7 @@ from app.services.salles_seed import installer_plan
 from app.utils.delete_guard import commit_delete
 
 from . import bp
+from app.utils.montants import nombre_fini
 
 
 # ---------------------------------------------------------------------------
@@ -89,13 +90,7 @@ def _entier(champ: str):
 
 
 def _decimal(champ: str):
-    brut = (request.form.get(champ) or "").strip().replace(",", ".")
-    if not brut:
-        return None
-    try:
-        return float(brut)
-    except ValueError:
-        return None
+    return nombre_fini(request.form.get(champ))
 
 
 def _date(champ: str):

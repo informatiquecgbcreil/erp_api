@@ -30,6 +30,7 @@ from app.projets.common import (
     PROJET_ACTION_CATEGORIES,
     PROJET_ACTION_STATUTS,
 )
+from app.utils.montants import nombre_fini
 
 # ---------------------------------------------------------------------
 # Helpers Budget AAP (UX)
@@ -108,10 +109,7 @@ def _parse_float_fr(value, default=0.0) -> float:
     if not raw:
         return float(default)
     raw = raw.replace('\u00a0', '').replace(' ', '').replace('€', '').replace(',', '.')
-    try:
-        return round(float(raw), 2)
-    except Exception:
-        return float(default)
+    return nombre_fini(raw, float(default), decimales=2)
 
 
 def _parse_date_or_none(value):

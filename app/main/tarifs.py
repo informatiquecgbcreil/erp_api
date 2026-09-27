@@ -16,6 +16,7 @@ from app.main.common import bp
 from app.models import TYPES_TARIF, TYPES_TARIF_LABELS, TarifBareme
 from app.rbac import require_perm
 from app.services.cotisations import annees_scolaires_disponibles, bareme_annee, libelle_annee_scolaire
+from app.utils.montants import parse_montant
 
 
 def _annee_demandee() -> int:
@@ -53,10 +54,7 @@ def tarif_ligne_creer():
         flash("Type de tarif invalide.", "danger")
         return redirect(url_for("main.tarifs_cotisations", annee=annee))
 
-    try:
-        montant = round(float(str(request.form.get("montant") or "0").replace(",", ".")), 2)
-    except Exception:
-        montant = -1
+    montant = parse_montant(request.form.get("montant") or "0", -1)
     if montant < 0:
         flash("Montant invalide.", "danger")
         return redirect(url_for("main.tarifs_cotisations", annee=annee))
