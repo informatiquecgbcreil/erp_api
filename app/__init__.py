@@ -144,6 +144,10 @@ def create_app():
     from app.utils.montants import NombreNonFini, installer_garde_nombres
     installer_garde_nombres()
 
+    # Exports Excel : une chaîne « =… » saisie (kiosque, fiche) reste du texte.
+    from app.utils.xlsx_safe import installer_garde_formules
+    installer_garde_formules()
+
     @app.errorhandler(NombreNonFini)
     def _nombre_non_fini(error):
         db.session.rollback()

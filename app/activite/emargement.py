@@ -302,6 +302,7 @@ def emargement(session_id: int):
                 date_naissance=dn,
                 quartier_id=qid,
                 type_public=type_public,
+                created_secteur=s.secteur,
             )
             db.session.add(p)
             db.session.commit()
@@ -322,6 +323,20 @@ def emargement(session_id: int):
             journaliser("presence.delete", cible=f"session #{session_id} · {cible}")
             flash("Présence retirée.", "success")
             return _redirect_emargement_with_period(session_id)
+
+        if action == "valider_presence":
+            presence_id = request.form.get("presence_id", type=int)
+            pr = PresenceActivite.query.filter_by(id=presence_id, session_id=session_id).first() if presence_id else None
+            if not pr:
+                flash("Présence introuvable pour cette séance.", "danger")
+                return _redirect_emargement_with_period(session_id)
+            if pr.origine is not None:
+                pr.origine = None
+                db.session.commit()
+                from app.services.audit import journaliser
+                journaliser("presence.valider", cible=f"session #{session_id} · participant #{pr.participant_id}")
+            flash("Présence validée.", "success")
+            return _redirect_emargement_with_period(session_id, highlight=pr.participant_id)
 
         if action == "update_presence_type":
             presence_id = request.form.get("presence_id", type=int)
@@ -360,14 +375,21 @@ def emargement(session_id: int):
             from app.services.signatures import save_signature
             try:
                 sig_path = save_signature(signature_data, os.path.join(current_app.instance_path, "signatures_tmp"),
-                                          f"sig_s{session_id}_p{participant.id}")
+                                          f"sig_s{session_id}_p{participant.id}", vide_autorise=True)
             except ValueError as error:
                 flash(str(error), "danger")
                 return _redirect_emargement_with_period(session_id)
 
+            # Pointer quelqu'un que le secteur ne suivait pas encore lui ouvre la
+            # fiche : c'est voulu (l'animateur l'accueille), mais c'est tracé.
+            from app.services.access_scope import participant_allowed
+            hors_secteur = not participant_allowed(participant, valide=True)
+
             try:
                 pr = PresenceActivite.query.filter_by(session_id=session_id, participant_id=participant.id).first()
                 if pr:
+                    # Re-pointée par le personnel : une présence de kiosque devient validée.
+                    pr.origine = None
                     pr.motif = motif
                     pr.motif_autre = motif_autre
                     pr.presence_type = presence_type
@@ -403,6 +425,11 @@ def emargement(session_id: int):
                 _ensure_month_capacity(atelier, s)
                 generate_individuel_mensuel_docx(app=current_app, atelier=atelier, annee=s.rdv_date.year, mois=s.rdv_date.month)
 
+            if hors_secteur:
+                from app.services.audit import journaliser
+                journaliser("presence.hors_secteur",
+                            cible=f"session #{session_id} · participant #{participant.id}",
+                            details={"secteur_seance": s.secteur, "secteur_fiche": participant.created_secteur})
             flash("Émargement enregistré.", "success")
             return _redirect_emargement_with_period(session_id)
 

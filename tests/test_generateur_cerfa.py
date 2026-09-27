@@ -141,6 +141,8 @@ def test_export_xlsx(app, admin_client):
     vals = [c.value for row in ws.iter_rows() for c in row if c.value is not None]
     assert 500.0 in vals and 3000.0 in vals
     assert any(isinstance(v, str) and v.startswith("=SUM(") for v in vals)
+    # Les totaux restent des formules ACTIVES (garde anti-injection des exports).
+    assert any(c.data_type == "f" and str(c.value).startswith("=SUM(") for row in ws.iter_rows() for c in row)
     assert any(isinstance(v, str) and "TOTAL DES CHARGES" in v for v in vals)
     assert any(isinstance(v, str) and "équilibre" in v.lower() for v in vals)
 

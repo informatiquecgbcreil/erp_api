@@ -30,7 +30,13 @@ def test_kiosk_recu_apres_emargement(app, client):
         with app.test_request_context():
             url = url_for("kiosk.kiosk_session", token=token)
 
-    r = client.post(url, data={"action": "emarger", "participant_id": pid, "signature_data": ""},
+    from conftest import signature_tracee
+    from app.models import Participant
+    with app.app_context():
+        from app.extensions import db
+        nom = db.session.get(Participant, pid).nom
+    client.get(url + "/search", query_string={"q": nom})
+    r = client.post(url, data={"action": "emarger", "participant_id": pid, "signature_data": signature_tracee()},
                     follow_redirects=True)
     assert r.status_code == 200
     assert "Reçu n°" in r.get_data(as_text=True)

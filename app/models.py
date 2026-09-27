@@ -1946,6 +1946,9 @@ class AtelierCapaciteMois(db.Model):
     )
 
 
+ORIGINE_KIOSQUE = "kiosque"
+
+
 class PresenceActivite(db.Model):
     __tablename__ = "presence_activite"
     id = db.Column(db.Integer, primary_key=True)
@@ -1973,6 +1976,12 @@ class PresenceActivite(db.Model):
     # participant (lien /signer/<jeton>). Effacé dès que la signature est
     # posée — le lien ne fonctionne qu'une fois.
     signature_token = db.Column(db.String(64), nullable=True, unique=True, index=True)
+
+    # Qui a créé la présence : NULL = le personnel (connecté, tracé) ;
+    # « kiosque » = la personne elle-même sur la page publique. Une présence
+    # de kiosque ouvre la LECTURE de la fiche au secteur de la séance, jamais
+    # la modification, tant que le personnel ne l'a pas validée.
+    origine = db.Column(db.String(20), nullable=True)
 
     created_at = db.Column(db.DateTime, default=utcnow)
 
