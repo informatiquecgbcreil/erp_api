@@ -2762,6 +2762,10 @@ class Don(db.Model):
 
     est_annule = db.Column(db.Boolean, nullable=False, default=False)
     annulation_motif = db.Column(db.String(255), nullable=True)
+    # Annulation d'un don en espèces/chèque : la caisse n'est pas réécrite
+    # rétroactivement, une correction datée du jour l'équilibre (et ce lien).
+    annulation_mouvement_id = db.Column(db.Integer, db.ForeignKey("caisse_mouvement.id", ondelete="SET NULL"),
+                                        nullable=True)
 
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
@@ -4818,6 +4822,13 @@ class Reservation(db.Model):
     contrat_signe_le = db.Column(db.Date, nullable=True)
     facture_numero = db.Column(db.String(30), nullable=True, unique=True, index=True)
     facture_emise_le = db.Column(db.Date, nullable=True)
+    # Facture FIGÉE à l'émission (voir documents_salles.instantane_facture) :
+    # c'est elle qu'on réimprime, jamais les données du moment.
+    facture_snapshot_json = db.Column(db.Text, nullable=True)
+    # Avoir numéroté émis à l'annulation d'une réservation facturée.
+    avoir_numero = db.Column(db.String(30), nullable=True, unique=True, index=True)
+    avoir_emis_le = db.Column(db.Date, nullable=True)
+    avoir_snapshot_json = db.Column(db.Text, nullable=True)
     etat_lieux_entree_le = db.Column(db.Date, nullable=True)
     etat_lieux_sortie_le = db.Column(db.Date, nullable=True)
     degradations_constatees = db.Column(db.Text, nullable=True)
@@ -4843,7 +4854,16 @@ class Reservation(db.Model):
 
     @property
     def montant_du(self) -> float:
-        """Le prix réellement dû, dans l'ordre des priorités métier."""
+        """Le prix réellement dû, dans l'ordre des priorités métier.
+
+        Une fois la facture émise, c'est SON montant qui fait foi (elle ne
+        change plus) ; annulée par un avoir, plus rien n'est dû.
+        """
+        if self.avoir_numero:
+            return 0.0
+        if self.facture_snapshot_json:
+            import json
+            return round(float(json.loads(self.facture_snapshot_json)["total"]), 2)
         if self.gratuite:
             return 0.0
         if self.montant_manuel is not None:

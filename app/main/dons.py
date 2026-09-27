@@ -140,8 +140,29 @@ def don_recu(don_id: int):
 @require_perm("dons:edit")
 def don_annuler(don_id: int):
     don = db.get_or_404(Don, don_id)
+    if don.est_annule:
+        flash(f"Le reçu n° {don.numero} est déjà annulé.", "info")
+        return redirect(url_for("main.dons_registre", annee=don.annee))
+    motif = (request.form.get("motif") or "").strip()
+    if len(motif) < 3:
+        flash("Le motif de l'annulation est obligatoire (il reste au registre).", "danger")
+        return redirect(url_for("main.dons_registre", annee=don.annee))
     don.est_annule = True
-    don.annulation_motif = (request.form.get("motif") or "").strip() or None
+    don.annulation_motif = motif[:255]
+    if don.forme_don == "numeraire" and don.mode_versement in ("especes", "cheque"):
+        # La caisse n'est pas réécrite en arrière (un dépôt a pu être fait
+        # depuis) : une correction datée du jour retire la somme.
+        from app.models import CaisseMouvement
+        from app.services.caisse import verrouiller_caisse
+        verrouiller_caisse()
+        correction = CaisseMouvement(
+            type_mouvement="ajustement", canal=don.mode_versement, montant=-round(float(don.montant), 2),
+            date_mouvement=date.today(), commentaire=f"Annulation du reçu n° {don.numero} : {motif}"[:255],
+            created_by_user_id=getattr(current_user, "id", None),
+        )
+        db.session.add(correction)
+        db.session.flush()
+        don.annulation_mouvement_id = correction.id
     db.session.commit()
     journaliser("don.annule", cible=f"don#{don.id}", details={"numero": don.numero, "motif": don.annulation_motif})
     flash(f"Reçu n° {don.numero} annulé (le numéro reste au registre).", "warning")

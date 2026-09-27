@@ -485,3 +485,97 @@ def test_encaissements_simultanes_sur_un_bulletin(app, bareme, dialecte):
         etat = etat_reglement(db.session.get(InscriptionAnnuelle, bid))
         assert etat["regle"] == 70.0 and etat["trop_percu"] == 30.0
     assert _caisse(app) == (100.0, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# 2.1 : factures figées et avoirs ; mineurs caisse
+# ---------------------------------------------------------------------------
+
+def _texte_docx(document):
+    return "\n".join(p.text for p in document.paragraphs) + "\n".join(
+        c.text for t in document.tables for r in t.rows for c in r.cells)
+
+
+def test_facture_figee_puis_avoir_a_l_annulation(app, bareme, admin_client, monkeypatch):
+    import json
+    from app.extensions import db
+    from app.models import Reservation
+    from app.services import documents_salles as docs
+    from app.salles import locations
+    monkeypatch.setattr(locations, "bloquants", lambda r: [])
+    monkeypatch.setattr(docs, "ecrire", lambda document, dossier, nom, pdf=True: (_ecrire_docx(document, dossier, nom), None))
+    rid = _reservation(app)
+    admin_client.post(f"/salles/reservation/{rid}/document/facture")
+    with app.app_context():
+        r = db.session.get(Reservation, rid)
+        numero = r.facture_numero
+        assert numero and r.facture_snapshot_json
+        assert json.loads(r.facture_snapshot_json)["total"] == 120.0
+        # Prix modifié après émission : refusé, et la facture ne change pas.
+        r.montant_calcule = 60.0
+        db.session.commit()
+    admin_client.post(f"/salles/reservation/{rid}/reglements", data={"montant_manuel": "60", "motif_montant_manuel": "remise"})
+    with app.app_context():
+        r = db.session.get(Reservation, rid)
+        assert r.montant_manuel is None and r.montant_du == 120.0
+        texte = _texte_docx(docs.facture(r, numero, ""))
+        assert "120.00 €" in texte and "60.00" not in texte
+    # Annulation : un avoir numéroté, et la facture se réimprime « annulée ».
+    admin_client.post(f"/salles/reservation/{rid}/statut", data={"statut": "annulee", "motif": "désistement"})
+    with app.app_context():
+        r = db.session.get(Reservation, rid)
+        assert r.avoir_numero and r.avoir_numero.startswith("AV-")
+        assert r.montant_du == 0.0
+        assert "ANNULÉE" in _texte_docx(docs.facture(r, numero, ""))
+        assert "-120.00 €" in _texte_docx(docs.avoir(r)) and numero in _texte_docx(docs.avoir(r))
+    # Réactivation refusée : l'avoir reste au registre.
+    admin_client.post(f"/salles/reservation/{rid}/statut", data={"statut": "confirmee"})
+    with app.app_context():
+        assert db.session.get(Reservation, rid).statut == "annulee"
+
+
+def _ecrire_docx(document, dossier, nom):
+    import os
+    chemin = os.path.join(dossier, nom + ".docx")
+    document.save(chemin)
+    return chemin
+
+
+def test_annulation_d_un_don_en_especes_sans_reecriture(app, bareme, admin_client):
+    from app.extensions import db
+    from app.models import Don
+    with app.app_context():
+        d = Don(numero=f"T-{uuid.uuid4().hex[:6]}", annee=ANNEE, donateur_nom="Donateur", montant=50,
+                date_don=date(ANNEE, 9, 1), forme_don="numeraire", mode_versement="especes")
+        db.session.add(d)
+        db.session.commit()
+        did = d.id
+    admin_client.post("/caisse/depot", data={"montant_especes": "50", "jeton": uuid.uuid4().hex})
+    from app.services.caisse import etat_caisse
+    with app.app_context():
+        assert etat_caisse()["theorique_especes"] == 0.0
+    admin_client.post(f"/dons/{did}/annuler", data={"motif": ""})
+    with app.app_context():
+        assert db.session.get(Don, did).est_annule is False
+    admin_client.post(f"/dons/{did}/annuler", data={"motif": "chèque rendu au donateur"})
+    with app.app_context():
+        e = etat_caisse()
+        # L'encaissement d'origine et le dépôt restent ; la correction est datée du jour.
+        assert e["encaissements_especes"] == 50.0 and e["depots_especes"] == 50.0
+        assert e["theorique_especes"] == -50.0
+        assert db.session.get(Don, did).annulation_mouvement_id is not None
+
+
+def test_numeros_jamais_reattribues_apres_restauration(app, bareme):
+    from app.extensions import db
+    from app.models import FinancialSequence
+    from app.services.financial_sequence import next_number
+    espace = f"test:{uuid.uuid4().hex[:6]}"
+    with app.app_context():
+        assert next_number(espace, []) == 1
+        assert next_number(espace, []) == 2
+        db.session.commit()
+        # Restauration d'une sauvegarde antérieure : le compteur en base recule.
+        FinancialSequence.query.filter_by(namespace=espace).delete()
+        db.session.commit()
+        assert next_number(espace, []) == 3

@@ -598,6 +598,12 @@ def reservation_statut(reservation_id: int):
             return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
 
     ancien = reservation.statut
+    if reservation.avoir_numero and vers != "annulee":
+        flash("Cette réservation a été annulée par un avoir : créez une nouvelle réservation "
+              "plutôt que de la réactiver (la facture et l'avoir restent au registre).", "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+    if vers == "annulee" and reservation.facture_numero and not reservation.avoir_numero:
+        _emettre_avoir(reservation, _texte("motif") or "Annulation de la mise à disposition")
     reservation.statut = vers
     if vers != "option":
         reservation.option_expire_le = None
@@ -628,7 +634,10 @@ def reservation_reglements(reservation_id: int):
     # Prix imposé à la main : possible, mais jamais muet.
     montant_manuel = _decimal("montant_manuel")
     motif = _texte("motif_montant_manuel") or None
-    if montant_manuel is not None and not motif:
+    if reservation.facture_numero and (montant_manuel != reservation.montant_manuel):
+        flash("La facture est émise : son montant ne change plus. Annulez la réservation "
+              "(un avoir est émis) puis refaites-en une au bon prix.", "danger")
+    elif montant_manuel is not None and not motif:
         flash("Un prix saisi à la main doit être motivé : la raison de l'écart sera imprimée.", "danger")
     else:
         reservation.montant_manuel = montant_manuel
@@ -723,6 +732,7 @@ DOCUMENTS = {
     "etat_lieux_sortie": ("État des lieux de sortie", False),
     "facture": ("Facture", True),
     "attestation": ("Attestation d'occupation", False),
+    "avoir": ("Avoir", False),
 }
 
 
@@ -738,6 +748,37 @@ def _nom_structure() -> str:
         return organisation or ""
     except Exception:  # noqa: BLE001 - un contrat ne doit pas tomber pour ça
         return ""
+
+
+def _emettre_avoir(reservation: Reservation, motif: str) -> None:
+    """Avoir numéroté qui annule une facture émise, figé comme elle."""
+    import json
+
+    from app.services import documents_salles as docs
+    from app.services.financial_sequence import next_number
+    _figer_facture(reservation)
+    jour = date.today()
+    prefixe = f"AV-{jour.year}-"
+    existants = [r[0] for r in db.session.query(Reservation.avoir_numero)
+                 .filter(Reservation.avoir_numero.like(prefixe + "%")).all()]
+    numero = f"{prefixe}{next_number(f'avoir:{jour.year}', existants):04d}"
+    reservation.avoir_numero = numero
+    reservation.avoir_emis_le = jour
+    reservation.avoir_snapshot_json = json.dumps(docs.instantane_avoir(reservation, numero, jour, motif[:255]),
+                                                 ensure_ascii=False)
+    journaliser("salles.avoir", cible=reservation.reference,
+                details={"avoir": numero, "facture": reservation.facture_numero, "motif": motif[:255]})
+
+
+def _figer_facture(reservation: Reservation, *, reconstitue: bool = False) -> None:
+    import json
+
+    from app.services import documents_salles as docs
+    if reservation.facture_snapshot_json or not reservation.facture_numero:
+        return
+    reservation.facture_snapshot_json = json.dumps(docs.instantane_facture(
+        reservation, reservation.facture_numero, reservation.facture_emise_le or date.today(),
+        _nom_structure(), reconstitue=reconstitue), ensure_ascii=False)
 
 
 def _numero_facture(jour: date) -> str:
@@ -780,6 +821,10 @@ def reservation_document(reservation_id: int, genre: str):
     reservation = Reservation.query.filter_by(id=reservation_id).with_for_update().first_or_404()
     libelle, exige_confirmation = DOCUMENTS[genre]
 
+    # Réimprimer une facture ou un avoir déjà émis ne dépend plus des contrôles
+    # de confirmation : le document est figé.
+    if genre == "facture" and reservation.facture_numero:
+        exige_confirmation = False
     if exige_confirmation:
         empechements = bloquants(reservation)
         if empechements:
@@ -806,7 +851,7 @@ def reservation_document(reservation_id: int, genre: str):
     elif genre == "attestation":
         document = docs.attestation(reservation, structure)
         suffixe = "attestation"
-    else:  # facture
+    elif genre == "facture":
         if reservation.gratuite:
             flash("Une mise à disposition gratuite ne se facture pas.", "warning")
             return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
@@ -816,8 +861,18 @@ def reservation_document(reservation_id: int, genre: str):
                 return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
             reservation.facture_numero = _numero_facture(aujourdhui)
             reservation.facture_emise_le = aujourdhui
+            _figer_facture(reservation)
+        else:
+            # Facture émise avant le figeage : l'instantané est reconstitué une
+            # fois, avec une mention, puis ne bouge plus.
+            _figer_facture(reservation, reconstitue=True)
         document = docs.facture(reservation, reservation.facture_numero, structure)
         suffixe = "facture"
+    elif genre == "avoir":
+        if not reservation.avoir_numero:
+            abort(404)
+        document = docs.avoir(reservation)
+        suffixe = "avoir"
 
     db.session.commit()
     journaliser("salles.document", cible=reservation.reference, details={"genre": genre})

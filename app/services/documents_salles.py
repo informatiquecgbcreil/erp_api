@@ -384,56 +384,156 @@ def etat_des_lieux(reservation: Reservation, sortie: bool = False) -> Document:
     return doc
 
 
-def facture(reservation: Reservation, numero: str, nom_structure: str = "") -> Document:
-    """Facture d'une mise à disposition payante."""
-    doc = _document()
-    site = reservation.espace.site if reservation.espace else None
+def instantane_facture(reservation: Reservation, numero: str, emise_le: date,
+                       nom_structure: str = "", *, reconstitue: bool = False) -> dict:
+    """Tout ce qu'imprime une facture, FIGÉ au moment de son émission.
 
-    _titre(doc, "Facture", f"N° {numero} — {date.today().strftime('%d/%m/%Y')}")
+    Une facture émise est immuable (CGI annexe II art. 242 nonies A, code de
+    commerce L441-9) : la réimprimer doit redonner exactement le même
+    document, même si le prix, les prestations ou le preneur changent
+    ensuite. On n'imprime donc jamais depuis les données du moment, mais
+    depuis cet instantané, enregistré avec le numéro.
+    """
+    site = reservation.espace.site if reservation.espace else None
+    bailleur = site.identite_bailleur(nom_structure) if site else {}
+    preneur = reservation.preneur
+    return {
+        "format": 1,
+        "numero": numero,
+        "emise_le": emise_le.isoformat(),
+        "reconstitue": reconstitue,
+        "emetteur": {
+            "nom": bailleur.get("nom") or "—",
+            "adresse": ", ".join(filter(None, [
+                bailleur.get("adresse"),
+                " ".join(filter(None, [bailleur.get("code_postal"), bailleur.get("ville")])),
+            ])),
+            "siret": bailleur.get("siret"),
+        },
+        "destinataire": {
+            "nom": preneur.nom if preneur else "—",
+            "adresse": preneur.coordonnees if preneur else None,
+            "siret": preneur.siret if preneur else None,
+        },
+        "objet": {
+            "reference": reservation.reference,
+            "local": reservation.espace.chemin if reservation.espace else "—",
+            "usage": reservation.titre,
+        },
+        "lignes": [[l.get("libelle", ""), l.get("detail", ""), round(float(l.get("montant", 0) or 0), 2)]
+                   for l in reservation.detail],
+        "total": reservation.montant_du,
+        "deja_regle": reservation.montant_regle,
+        "mention_tva": site.mention_tva_affichee if site else "",
+        "caution": reservation.caution_montant,
+    }
+
+
+def rendre_facture(instantane: dict, *, annulation: dict | None = None) -> Document:
+    """Imprime une facture depuis son instantané (jamais depuis la réservation)."""
+    doc = _document()
+    emise_le = date.fromisoformat(instantane["emise_le"])
+    _titre(doc, "Facture", f"N° {instantane['numero']} — {emise_le.strftime('%d/%m/%Y')}")
+    if instantane.get("reconstitue"):
+        _paragraphe(doc, (
+            "Duplicata reconstitué d'après les données disponibles lors de sa première réimpression : "
+            "cette facture a été émise avant l'archivage automatique des factures."
+        ), taille=9, italique=True)
+    if annulation:
+        _paragraphe(doc, (
+            f"FACTURE ANNULÉE par l'avoir n° {annulation['numero']} du "
+            f"{date.fromisoformat(annulation['emis_le']).strftime('%d/%m/%Y')}."
+        ), taille=11)
     doc.add_paragraph()
 
-    bailleur = site.identite_bailleur(nom_structure) if site else {}
     _section(doc, "Émetteur")
-    _ligne(doc, "Structure", bailleur.get("nom") or "—", gras=True)
-    _ligne(doc, "Adresse", ", ".join(filter(None, [
-        bailleur.get("adresse"),
-        " ".join(filter(None, [bailleur.get("code_postal"), bailleur.get("ville")])),
-    ])))
-    _ligne(doc, "SIRET", bailleur.get("siret"))
+    _ligne(doc, "Structure", instantane["emetteur"]["nom"], gras=True)
+    _ligne(doc, "Adresse", instantane["emetteur"]["adresse"])
+    _ligne(doc, "SIRET", instantane["emetteur"]["siret"])
 
     _section(doc, "Destinataire")
-    preneur = reservation.preneur
-    _ligne(doc, "Bénéficiaire", preneur.nom if preneur else "—", gras=True)
-    if preneur:
-        _ligne(doc, "Adresse", preneur.coordonnees)
-        _ligne(doc, "SIRET", preneur.siret)
+    _ligne(doc, "Bénéficiaire", instantane["destinataire"]["nom"], gras=True)
+    if instantane["destinataire"].get("adresse") or instantane["destinataire"].get("siret"):
+        _ligne(doc, "Adresse", instantane["destinataire"].get("adresse"))
+        _ligne(doc, "SIRET", instantane["destinataire"].get("siret"))
 
     _section(doc, "Objet")
-    _ligne(doc, "Référence de la mise à disposition", reservation.reference)
-    _ligne(doc, "Local", reservation.espace.chemin if reservation.espace else "—")
-    _ligne(doc, "Usage", reservation.titre)
+    _ligne(doc, "Référence de la mise à disposition", instantane["objet"]["reference"])
+    _ligne(doc, "Local", instantane["objet"]["local"])
+    _ligne(doc, "Usage", instantane["objet"]["usage"])
 
     _section(doc, "Détail")
-    lignes = [
-        [l.get("libelle", ""), l.get("detail", ""), f"{l.get('montant', 0):.2f} €"]
-        for l in reservation.detail
-    ]
+    lignes = [[libelle, detail, f"{montant:.2f} €"] for libelle, detail, montant in instantane["lignes"]]
     if lignes:
         _tableau(doc, ["Désignation", "Détail", "Montant"], lignes, largeurs=[5.0, 8.5, 2.5])
 
     doc.add_paragraph()
-    _ligne(doc, "TOTAL À RÉGLER", f"{reservation.montant_du:.2f} €", gras=True)
-    if reservation.montant_regle > 0.009:
-        _ligne(doc, "Déjà réglé", f"{reservation.montant_regle:.2f} €")
-        _ligne(doc, "RESTE À RÉGLER", f"{reservation.reste_du:.2f} €", gras=True)
-    if site:
-        _paragraphe(doc, site.mention_tva_affichee, taille=9.5, italique=True)
-    if reservation.caution_montant:
+    total = float(instantane["total"])
+    deja = float(instantane.get("deja_regle") or 0)
+    _ligne(doc, "TOTAL À RÉGLER", f"{total:.2f} €", gras=True)
+    if deja > 0.009:
+        _ligne(doc, "Déjà réglé", f"{deja:.2f} €")
+        _ligne(doc, "RESTE À RÉGLER", f"{max(0.0, total - deja):.2f} €", gras=True)
+    if instantane.get("mention_tva"):
+        _paragraphe(doc, instantane["mention_tva"], taille=9.5, italique=True)
+    if instantane.get("caution"):
         _paragraphe(doc, (
-            f"Un dépôt de garantie de {reservation.caution_montant:.2f} € est demandé "
+            f"Un dépôt de garantie de {float(instantane['caution']):.2f} € est demandé "
             "séparément ; il n'est pas encaissé au titre de la présente facture et sera "
             "restitué après état des lieux de sortie."
         ), taille=9.5, italique=True)
+    return doc
+
+
+def facture(reservation: Reservation, numero: str, nom_structure: str = "") -> Document:
+    """Facture d'une mise à disposition payante : l'instantané enregistré si la
+    facture est émise, sinon celui du jour (aperçu)."""
+    import json
+    if reservation.facture_snapshot_json and reservation.facture_numero == numero:
+        instantane = json.loads(reservation.facture_snapshot_json)
+    else:
+        instantane = instantane_facture(reservation, numero, reservation.facture_emise_le or date.today(),
+                                        nom_structure)
+    annulation = json.loads(reservation.avoir_snapshot_json) if reservation.avoir_snapshot_json else None
+    return rendre_facture(instantane, annulation=annulation)
+
+
+def instantane_avoir(reservation: Reservation, numero: str, emis_le: date, motif: str) -> dict:
+    """L'avoir qui annule une facture émise : numéroté, daté, lié à la facture."""
+    import json
+    facture_figee = json.loads(reservation.facture_snapshot_json)
+    return {
+        "format": 1,
+        "numero": numero,
+        "emis_le": emis_le.isoformat(),
+        "facture": facture_figee["numero"],
+        "facture_emise_le": facture_figee["emise_le"],
+        "emetteur": facture_figee["emetteur"],
+        "destinataire": facture_figee["destinataire"],
+        "objet": facture_figee["objet"],
+        "montant": -float(facture_figee["total"]),
+        "motif": motif,
+    }
+
+
+def avoir(reservation: Reservation) -> Document:
+    import json
+    a = json.loads(reservation.avoir_snapshot_json)
+    doc = _document()
+    _titre(doc, "Avoir", f"N° {a['numero']} — {date.fromisoformat(a['emis_le']).strftime('%d/%m/%Y')}")
+    doc.add_paragraph()
+    _section(doc, "Émetteur")
+    _ligne(doc, "Structure", a["emetteur"]["nom"], gras=True)
+    _ligne(doc, "Adresse", a["emetteur"]["adresse"])
+    _ligne(doc, "SIRET", a["emetteur"]["siret"])
+    _section(doc, "Destinataire")
+    _ligne(doc, "Bénéficiaire", a["destinataire"]["nom"], gras=True)
+    _section(doc, "Objet")
+    _ligne(doc, "Annule la facture", f"N° {a['facture']} du {date.fromisoformat(a['facture_emise_le']).strftime('%d/%m/%Y')}")
+    _ligne(doc, "Référence de la mise à disposition", a["objet"]["reference"])
+    _ligne(doc, "Motif", a["motif"])
+    doc.add_paragraph()
+    _ligne(doc, "MONTANT DE L'AVOIR", f"{a['montant']:.2f} €", gras=True)
     return doc
 
 

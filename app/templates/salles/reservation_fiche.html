@@ -168,6 +168,10 @@
         {% elif r.facture_numero %}
         <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='facture') }}">
           🧾 Facture{% if r.facture_numero %} ({{ r.facture_numero }}){% endif %}</a>
+        {% if r.avoir_numero %}
+        <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='avoir') }}">
+          ↩ Avoir ({{ r.avoir_numero }})</a>
+        {% endif %}
         {% endif %}
       {% endif %}
       <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='attestation') }}">
@@ -343,6 +347,10 @@
                   style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="statut" value="{{ code }}">
+              {% if code == 'annulee' and r.facture_numero and not r.avoir_numero %}
+                <input class="in" name="motif" required minlength="3" maxlength="255"
+                       placeholder="Motif de l'avoir (facture {{ r.facture_numero }})">
+              {% endif %}
               <button class="btn {% if code == 'confirmee' %}ok{% elif code == 'annulee' %}warn{% endif %}"
                       type="submit">{{ statuts_labels[code] }}</button>
             </form>

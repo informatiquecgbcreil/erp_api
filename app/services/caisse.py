@@ -66,7 +66,10 @@ def encaissements(canal: str) -> float:
         db.session.query(db.func.sum(Don.montant)).filter(
             Don.mode_versement == canal,
             Don.forme_don == "numeraire",
-            Don.est_annule.is_(False),
+            # Un don annulé AVEC correction de caisse reste compté : la
+            # correction datée du jour l'équilibre, l'historique ne bouge pas.
+            # (Les annulations antérieures, sans correction, restent exclues.)
+            db.or_(Don.est_annule.is_(False), Don.annulation_mouvement_id.isnot(None)),
             _fini(Don.montant),
         )
     )
@@ -104,7 +107,8 @@ def etat_caisse() -> dict:
     fond = fond_de_caisse()
 
     theorique_especes = round(fond + enc_especes - depots_especes + ajust_especes, 2)
-    cheques_en_attente = round(enc_cheques - depots_cheques, 2)
+    ajust_cheques = _mouvements_somme("ajustement", "cheque")
+    cheques_en_attente = round(enc_cheques - depots_cheques + ajust_cheques, 2)
 
     dernier_comptage = (
         CaisseMouvement.query

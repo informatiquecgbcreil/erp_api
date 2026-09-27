@@ -268,65 +268,19 @@ def dashboard():
             return redirect(url_for("statsimpact.dashboard", **args_redirect))
 
         if action == "delete_participant":
+            # Ancienne suppression rapide retirée (audit, mineur caisse) : elle
+            # effaçait fiche et présences sans trace ni protection des
+            # encaissements. La suppression définitive passe par la fiche
+            # (droits, secteur créateur, confirmation par le nom, journal).
             try:
                 participant_id = int(request.form.get("participant_id", "0"))
             except Exception:
                 participant_id = 0
-
-            allowed_ids = {p["id"] for p in participants.get("participants", [])}
-            if not participant_id or participant_id not in allowed_ids:
-                abort(403)
-
-            participant = db.session.get(Participant, participant_id)
-            if not participant:
-                abort(404)
-
-            # Sécurité secteur: un responsable_secteur ne peut purger un participant
-            # que si ce participant n'a des présences que dans SON secteur (ou aucune).
-            user_secteur = (getattr(current_user, "secteur_assigne", None) or "").strip()
-            if not can("participants:view_all"):
-                sectors = (
-                    PresenceActivite.query.join(SessionActivite, PresenceActivite.session_id == SessionActivite.id)
-                    .with_entities(SessionActivite.secteur)
-                    .filter(PresenceActivite.participant_id == participant_id)
-                    .distinct()
-                    .all()
-                )
-                sectors = {s[0] for s in sectors if s and s[0]}
-                # s'il n'a jamais émargé: OK (secteurs = vide)
-                if sectors and sectors != {user_secteur}:
-                    flash(
-                        "Suppression refusée : ce participant a des émargements dans d'autres secteurs.",
-                        "danger",
-                    )
-                    args_redirect = _query_args_preserve_lists(request.args)
-                    args_redirect["tab"] = "participants"
-                    return redirect(url_for("statsimpact.dashboard", **args_redirect))
-
-            try:
-                from app.extensions import db
-
-                # Supprime d'abord les signatures des présences
-                presences = PresenceActivite.query.filter_by(participant_id=participant_id).all()
-                for pr in presences:
-                    if pr.signature_path:
-                        try:
-                            if os.path.exists(pr.signature_path):
-                                os.remove(pr.signature_path)
-                        except Exception:
-                            pass
-                    db.session.delete(pr)
-
-                db.session.delete(participant)
-                db.session.commit()
-                flash("Participant supprimé définitivement.", "success")
-            except Exception:
-                db.session.rollback()
-                flash("Impossible de supprimer ce participant.", "danger")
-
-            args_redirect = _query_args_preserve_lists(request.args)
-            args_redirect["tab"] = "participants"
-            return redirect(url_for("statsimpact.dashboard", **args_redirect))
+            if not participant_id:
+                abort(400)
+            flash("La suppression définitive se fait depuis la fiche du participant "
+                  "(confirmation par le nom de famille).", "warning")
+            return redirect(url_for("participants.edit_participant", participant_id=participant_id))
 
     # Refresh computed stats after any potential mutation
     participants = compute_participants_stats(flt)
