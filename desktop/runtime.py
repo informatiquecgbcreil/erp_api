@@ -169,6 +169,10 @@ def web(c):
     server = create_server(app, host="127.0.0.1", port=int(c["web_port"]), threads=12,
                            clear_untrusted_proxy_headers=True,
                            trusted_proxy="127.0.0.1" if c["network"] else None,
+                           # Deux relais au plus : Caddy, et tailscaled derrière le
+                           # port kiosque (Funnel). L'adresse retenue reste celle
+                           # que Caddy ou tailscaled ont écrite, jamais le visiteur.
+                           trusted_proxy_count=2 if c["network"] else None,
                            trusted_proxy_headers={"x-forwarded-proto", "x-forwarded-for", "x-forwarded-host"} if c["network"] else set())
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -227,7 +231,11 @@ def write_caddy(c, root):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         "{\n admin off\n auto_https disable_redirects\n skip_install_trust\n persist_config off\n"
-        f" storage file_system {storage}\n}}\n"
+        f" storage file_system {storage}\n"
+        # Tunnel Funnel : tailscaled (boucle locale) transmet l'adresse du
+        # visiteur ; Caddy la garde au lieu de la remplacer par 127.0.0.1, et
+        # les compteurs anti-abus du kiosque distinguent les visiteurs.
+        f" servers :{kiosk_port} {{\n  trusted_proxies static 127.0.0.1/32 ::1/128\n }}\n}}\n"
         f"{', '.join(sites)} {{\n tls internal\n"
         f" reverse_proxy 127.0.0.1:{web_port}\n}}\n"
         f":{kiosk_port} {{\n"

@@ -1947,6 +1947,12 @@ class AtelierCapaciteMois(db.Model):
 
 
 ORIGINE_KIOSQUE = "kiosque"
+ORIGINE_PERSONNEL = "personnel"
+#: Présence ancienne dont l'origine ne peut pas être établie (fichier de
+#: signature purgé, pointage sans signature antérieur au suivi de l'origine).
+#: Traitée comme une présence de kiosque tant que l'équipe ne l'a pas validée.
+ORIGINE_INDETERMINEE = "indeterminee"
+ORIGINES_A_VALIDER = (ORIGINE_KIOSQUE, ORIGINE_INDETERMINEE)
 
 
 class PresenceActivite(db.Model):
@@ -1977,11 +1983,16 @@ class PresenceActivite(db.Model):
     # posée — le lien ne fonctionne qu'une fois.
     signature_token = db.Column(db.String(64), nullable=True, unique=True, index=True)
 
-    # Qui a créé la présence : NULL = le personnel (connecté, tracé) ;
-    # « kiosque » = la personne elle-même sur la page publique. Une présence
-    # de kiosque ouvre la LECTURE de la fiche au secteur de la séance, jamais
-    # la modification, tant que le personnel ne l'a pas validée.
-    origine = db.Column(db.String(20), nullable=True)
+    # Qui a créé la présence : « personnel » (compte connecté, tracé),
+    # « kiosque » (la personne elle-même, page publique) ou « indeterminee »
+    # (ancienne présence dont l'origine n'est plus établissable). Seule une
+    # présence du personnel (ou validée par lui) ouvre la MODIFICATION de la
+    # fiche au secteur de la séance ; les autres n'ouvrent que la lecture.
+    # L'origine est indépendante du fichier de signature (purgeable).
+    origine = db.Column(db.String(20), nullable=True, default="personnel", server_default="personnel")
+    # Qui a validé une présence de kiosque ou d'origine indéterminée, et quand.
+    validee_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    validee_le = db.Column(db.DateTime, nullable=True)
 
     created_at = db.Column(db.DateTime, default=utcnow)
 

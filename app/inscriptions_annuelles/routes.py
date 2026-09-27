@@ -27,9 +27,7 @@ from app.models import (
     TYPES_INSCRIPTION_ANNUELLE_LABELS,
     InscriptionAnnuelle,
     Participant,
-    PresenceActivite,
     Quartier,
-    SessionActivite,
 )
 from app.rbac import can, require_perm
 from app.secteurs import get_secteur_labels
@@ -114,20 +112,17 @@ def _accessible(inscription: InscriptionAnnuelle) -> bool:
 
 
 def _participant_accessible(participant: Participant) -> bool:
-    """Même périmètre concret que l'annuaire : création ou présence du secteur."""
+    """Inscrire une personne, c'est agir sur sa fiche : fiche créée par le
+    secteur, ou présence posée ou validée par l'équipe. Une présence posée au
+    kiosque et pas encore validée ouvre la lecture, pas l'inscription (règle
+    métier : présence kiosque = lecture ; validation/inscription = modification)."""
     if _portee_globale():
         return True
+    from app.services.access_scope import participant_filter
     secteur = _secteur_requis()
-    if (participant.created_secteur or "") == secteur:
-        return True
-    presence = (
-        db.session.query(PresenceActivite.id)
-        .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
-        .filter(PresenceActivite.participant_id == participant.id)
-        .filter(SessionActivite.secteur == secteur)
-        .first()
-    )
-    return presence is not None
+    return db.session.query(Participant.id).filter(
+        Participant.id == participant.id, participant_filter(secteur, valide=True)
+    ).first() is not None
 
 
 def _refuser_participant_hors_perimetre(participant: Participant | None) -> None:

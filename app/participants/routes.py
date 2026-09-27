@@ -501,15 +501,11 @@ def list_participants():
         participants_q = participants_q.filter(Participant.date_naissance.isnot(None))
 
     if q:
-        like = f"%{q.lower()}%"
-        participants_q = participants_q.filter(
-            db.or_(
-                db.func.lower(Participant.nom).like(like),
-                db.func.lower(Participant.prenom).like(like),
-                db.func.lower(db.func.coalesce(Participant.email, "")).like(like),
-                db.func.lower(db.func.coalesce(Participant.telephone, "")).like(like),
-            )
-        )
+        # Même filtre que le kiosque : accents, apostrophes, « nom prénom »
+        # dans n'importe quel ordre (audit 5.6).
+        from app.services.recherche_texte import filtre_mots
+        participants_q = filtre_mots(participants_q, q, [Participant.nom, Participant.prenom,
+                                                         Participant.email, Participant.telephone])
 
     items = participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc()).all()
 
@@ -733,15 +729,9 @@ def search_participants():
     if not q or len(q) < 2:
         return {"items": []}
 
-    like = f"%{q.lower()}%"
-    participants_q = Participant.query.filter(
-        db.or_(
-            db.func.lower(Participant.nom).like(like),
-            db.func.lower(Participant.prenom).like(like),
-            db.func.lower(db.func.coalesce(Participant.email, "")).like(like),
-            db.func.lower(db.func.coalesce(Participant.telephone, "")).like(like),
-        )
-    )
+    from app.services.recherche_texte import filtre_mots
+    participants_q = filtre_mots(Participant.query, q, [Participant.nom, Participant.prenom,
+                                                        Participant.email, Participant.telephone])
 
     items = (
         participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc())
@@ -2103,6 +2093,31 @@ def _colonnes_uniques_avec(table, colonne):
     return jeux
 
 
+def _reporter_signatures(keep_id, merge_ids):
+    """Avant de supprimer une présence en double (même séance), on garde ce
+    qu'elle a de plus fort (audit 5.4) : sa signature si la présence conservée
+    n'en a pas, et la validation du personnel si elle en porte une. Sinon la
+    seule signature d'une personne pouvait disparaître à la fusion."""
+    from app.models import ORIGINE_PERSONNEL
+    conservees = {pr.session_id: pr for pr in PresenceActivite.query.filter_by(participant_id=keep_id).all()}
+    if not conservees:
+        return
+    for doublon in PresenceActivite.query.filter(PresenceActivite.participant_id.in_(merge_ids)).all():
+        gardee = conservees.get(doublon.session_id)
+        if gardee is None:
+            continue
+        if not gardee.signature_path and doublon.signature_path:
+            gardee.signature_path = doublon.signature_path
+            doublon.signature_path = None  # le fichier n'est pas effacé : il change de présence
+        if doublon.origine == ORIGINE_PERSONNEL and gardee.origine != ORIGINE_PERSONNEL:
+            gardee.origine = ORIGINE_PERSONNEL
+            gardee.validee_par_user_id = doublon.validee_par_user_id
+            gardee.validee_le = doublon.validee_le
+        if gardee.presence_type == "absent_excuse" and doublon.presence_type in ("present", "retard"):
+            gardee.presence_type = doublon.presence_type
+    db.session.flush()
+
+
 def _transferer_liens(keep_id, merge_ids):
     """Rattacher au participant conservé tout ce qui pointait vers les doublons.
 
@@ -2111,6 +2126,7 @@ def _transferer_liens(keep_id, merge_ids):
     participant conservé qui fait foi. Tout le reste est déplacé, jamais perdu.
     """
     deplaces, ecartes = {}, {}
+    _reporter_signatures(keep_id, merge_ids)
     for table, colonne in _colonnes_vers_participant():
         for autres in _colonnes_uniques_avec(table, colonne):
             deja = {tuple(ligne) for ligne in db.session.execute(
@@ -2172,6 +2188,9 @@ def merge_participants():
         flash(f"La fusion a échoué, rien n'a été modifié : {e}", "danger")
         return redirect(retour)
 
+    from app.services.audit import journaliser
+    journaliser("participant.merge", cible=f"participant #{keep_id}",
+                details={"absorbes": merge_ids, "deplaces": deplaces, "doublons_ecartes": ecartes})
     detail = ", ".join(f"{nombre} {nom}" for nom, nombre in sorted(deplaces.items())) or "aucun lien"
     doublons = ("" if not ecartes else " Doublons de lignes écartés : "
                 + ", ".join(f"{nombre} {nom}" for nom, nombre in sorted(ecartes.items())) + ".")

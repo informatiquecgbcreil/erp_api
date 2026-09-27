@@ -79,7 +79,7 @@ def test_export_sessions_csat_format(app, admin_client):
         with app.test_request_context():
             url = url_for("activite.export_csat_sessions", atelier_id=atid)
 
-    r = admin_client.get(url)
+    r = admin_client.post(url)
     assert r.status_code == 200
     assert "spreadsheetml" in r.headers.get("Content-Type", "")
 
@@ -114,7 +114,7 @@ def test_export_sessions_csat_ne_reexporte_pas_deux_fois(app, admin_client):
             url = url_for("activite.export_csat_sessions", atelier_id=atid)
 
     # Premier export : la séance est incluse.
-    r1 = admin_client.get(url)
+    r1 = admin_client.post(url)
     assert r1.status_code == 200
     assert "spreadsheetml" in r1.headers.get("Content-Type", "")
 
@@ -122,7 +122,7 @@ def test_export_sessions_csat_ne_reexporte_pas_deux_fois(app, admin_client):
         assert db.session.get(SessionActivite, sid).exported_csat_at is not None
 
     # Deuxième export : rien de nouveau -> redirection avec message, pas de fichier.
-    r2 = admin_client.get(url, follow_redirects=True)
+    r2 = admin_client.post(url, follow_redirects=True)
     assert r2.status_code == 200
     assert "Aucune nouvelle séance" in r2.get_data(as_text=True)
 
@@ -146,8 +146,8 @@ def test_export_sessions_csat_tout_force_reexport(app, admin_client):
             url = url_for("activite.export_csat_sessions", atelier_id=atid)
             url_tout = url_for("activite.export_csat_sessions", atelier_id=atid, tout=1)
 
-    admin_client.get(url)  # marque la séance comme exportée
-    r = admin_client.get(url_tout)
+    admin_client.post(url)  # marque la séance comme exportée
+    r = admin_client.post(url_tout)
     assert r.status_code == 200
     wb = load_workbook(BytesIO(r.data))
     assert len(list(wb["Sessions"].iter_rows(min_row=2, values_only=True))) == 1
@@ -171,7 +171,7 @@ def test_nouvelle_seance_apparait_apres_export_precedent(app, admin_client):
         with app.test_request_context():
             url = url_for("activite.export_csat_sessions", atelier_id=atid)
 
-    admin_client.get(url)  # s1 exportée
+    admin_client.post(url)  # s1 exportée
 
     with app.app_context():
         s2 = SessionActivite(atelier_id=atid, secteur="Numérique", session_type="COLLECTIF",
@@ -179,7 +179,7 @@ def test_nouvelle_seance_apparait_apres_export_precedent(app, admin_client):
         db.session.add(s2)
         db.session.commit()
 
-    r = admin_client.get(url)
+    r = admin_client.post(url)
     assert r.status_code == 200
     wb = load_workbook(BytesIO(r.data))
     rows = list(wb["Sessions"].iter_rows(min_row=2, values_only=True))

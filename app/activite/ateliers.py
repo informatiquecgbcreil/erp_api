@@ -346,7 +346,7 @@ def _parse_hhmm(value: str | None) -> dt_time | None:
         return None
 
 
-@bp.route("/atelier/<int:atelier_id>/export-csat-sessions.xlsx")
+@bp.route("/atelier/<int:atelier_id>/export-csat-sessions.xlsx", methods=["POST"])
 @login_required
 def export_csat_sessions(atelier_id: int):
     """Export des séances d'un atelier au format d'import « Sessions » du
@@ -370,7 +370,7 @@ def export_csat_sessions(atelier_id: int):
     if not _can_access_activity_secteur(atelier.secteur):
         return _deny_activity_access()
 
-    tout = request.args.get("tout") == "1"
+    tout = request.values.get("tout") == "1"
 
     sessions_q = SessionActivite.query.filter_by(atelier_id=atelier.id, is_deleted=False)
     if not tout:

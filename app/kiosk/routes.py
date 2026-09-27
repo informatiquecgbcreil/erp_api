@@ -67,8 +67,8 @@ from app.utils.montants import nombre_fini
 # Recherche : 120 requêtes par adresse et par minute (une personne qui
 # tape son nom en déclenche une dizaine ; un aspirateur, des milliers).
 _ECHECS_PIN = Limiteur(maximum=10, fenetre_secondes=600)
-# Plafond commun à tous les appareils : un attaquant qui change d'adresse
-# (IPv6 temporaires) ne multiplie pas ses essais sur un code à 4 chiffres.
+# Plafond commun à tous les visiteurs arrivés par Internet : un attaquant qui
+# change d'adresse (IPv6 temporaires) ne multiplie pas ses essais.
 _ECHECS_PIN_TOTAL = Limiteur(maximum=60, fenetre_secondes=600)
 _RECHERCHES = Limiteur(maximum=120, fenetre_secondes=60)
 # Inscriptions : 30 fiches en 10 minutes par appareil et par séance, de quoi
@@ -81,6 +81,9 @@ _CREATIONS = Limiteur(maximum=30, fenetre_secondes=600)
 _ECHECS_PIN_PARTAGE = Limiteur(maximum=50, fenetre_secondes=600)
 _POINTAGES = Limiteur(maximum=60, fenetre_secondes=60)
 _AVIS = Limiteur(maximum=30, fenetre_secondes=600)
+# Réponses au questionnaire d'une séance : deux par personne émargée, au
+# moins vingt (groupe venu sans émarger, fête de quartier).
+_AVIS_PLANCHER = 20
 
 
 _BOUCLE_LOCALE = {"127.0.0.1", "::1", ""}
@@ -91,16 +94,18 @@ def _adresse_client() -> str:
 
     Par Tailscale Funnel, la requête arrive de tailscaled sur la boucle locale :
     toutes les adresses se confondraient. tailscaled réécrit lui-même
-    X-Forwarded-For (le visiteur ne peut pas y glisser une valeur) ; on retient
-    la dernière adresse de la chaîne. Quand un proxy intermédiaire l'a remplacée
-    par la boucle locale (Caddy de la distribution Windows), ou sans elle :
-    compteur commun « funnel:? », au plafond élargi.
+    X-Forwarded-For (le visiteur ne peut pas y glisser une valeur), et le Caddy
+    de la distribution Windows, qui fait confiance à la boucle locale, ajoute
+    derrière l'adresse de tailscaled (« visiteur, 127.0.0.1 »). On retient donc
+    la dernière adresse de la chaîne qui n'est pas la boucle locale. Sans
+    elle (proxy qui l'a effacée) : compteur commun « funnel:? », au plafond
+    élargi.
     """
     adresse = request.remote_addr or "?"
     if "Tailscale-Funnel-Request" in request.headers and adresse in _BOUCLE_LOCALE:
         chaine = [x.strip() for x in (request.headers.get("X-Forwarded-For") or "").split(",") if x.strip()]
-        dernier = chaine[-1] if chaine else ""
-        return "funnel:" + ("?" if dernier in _BOUCLE_LOCALE else dernier)
+        externes = [x for x in chaine if x not in _BOUCLE_LOCALE]
+        return "funnel:" + (externes[-1] if externes else "?")
     return adresse
 
 
@@ -164,26 +169,10 @@ def _est_offert(s, participant_id) -> bool:
 
 
 def _filtre_nom(query, texte):
-    """Chaque mot tapé doit apparaître dans le nom ou le prénom, sans tenir
-    compte des accents ni des majuscules (« celine mich » -> « Céline Michut »)."""
-    from app.services.recherche_texte import NOM_FONCTION_SQL, sans_accent, unaccent_disponible
-    dialecte = (db.engine.dialect.name or "").lower()
-    sans_accents = dialecte == "sqlite" or (dialecte == "postgresql" and unaccent_disponible(db.engine))
-
-    def colonne(col):
-        if dialecte == "sqlite":
-            return getattr(db.func, NOM_FONCTION_SQL)(db.func.coalesce(col, ""))
-        if sans_accents:
-            return db.func.lower(db.func.unaccent(db.func.coalesce(col, "")))
-        return db.func.lower(db.func.coalesce(col, ""))
-
-    for mot in texte.split()[:4]:
-        mot = (sans_accent(mot) if sans_accents else mot.lower()).replace("%", "").replace("_", "").replace("\\", "")
-        if not mot:
-            continue
-        motif = f"%{mot}%"
-        query = query.filter(db.or_(colonne(Participant.nom).like(motif), colonne(Participant.prenom).like(motif)))
-    return query
+    """Chaque mot tapé doit apparaître dans le nom ou le prénom (voir
+    ``recherche_texte.filtre_mots`` : accents, apostrophes, ligatures)."""
+    from app.services.recherche_texte import filtre_mots
+    return filtre_mots(query, texte, [Participant.nom, Participant.prenom])
 
 
 def _get_open_session_by_pin(pin: str):
@@ -291,20 +280,35 @@ def _open_sessions_today() -> list[dict]:
     return entries
 
 
+@bp.errorhandler(429)
+def _trop_de_demandes(_erreur):
+    """Frein anti-automate atteint : message en français, pas la page
+    anglaise par défaut (audit, mineur kiosque)."""
+    token = (request.view_args or {}).get("token")
+    retour = url_for("kiosk.kiosk_session", token=token) if token else url_for("kiosk.kiosk_home")
+    return render_template("kiosk/limite.html", retour=retour), 429
+
+
 @bp.route("/", methods=["GET", "POST"])
 @csrf.exempt
 def kiosk_home():
     """Page publique: saisie PIN + liste des sessions ouvertes."""
     if request.method == "POST":
         cle = _adresse_client()
-        if _compteur_pin(cle).depasse(cle):
+        public = _via_facade_publique()
+        # Plafond commun aux visiteurs venus d'Internet : changer d'adresse
+        # (IPv6 temporaires) ne multiplie pas les essais. Les tablettes du
+        # réseau local n'y sont jamais soumises : une attaque depuis Internet
+        # ne bloque pas l'accueil (audit, mineur sécurité).
+        if _compteur_pin(cle).depasse(cle) or (public and _ECHECS_PIN_TOTAL.depasse("*")):
             flash("Trop de codes erronés. Patientez quelques minutes ou demandez à l'animateur.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         pin = (request.form.get("pin") or "").strip()
         s = _get_open_session_by_pin(pin)
         if not s:
             _compteur_pin(cle).noter(cle)
-            _ECHECS_PIN_TOTAL.noter("*")
+            if public:
+                _ECHECS_PIN_TOTAL.noter("*")
             flash("Code invalide ou session fermée.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         return redirect(url_for("kiosk.kiosk_session", token=s.kiosk_token))
@@ -616,6 +620,19 @@ def kiosk_feedback(token: str):
             abort(403)
         if not _AVIS.autoriser(f"{s.id}:{_adresse_client()}"):
             abort(429)
+        # Avis comptés dans les bilans : une personne nommée répond une fois
+        # par questionnaire et par séance, et le total des réponses d'une
+        # séance reste à la mesure du groupe (audit, mineur kiosque : le
+        # questionnaire se remplissait en boucle sans participant).
+        deja = QuestionnaireResponseGroup.query.filter_by(
+            questionnaire_id=selected_questionnaire.id, session_id=s.id)
+        if participant_id is not None and deja.filter_by(participant_id=participant_id).first():
+            flash("Ton avis sur ce questionnaire est déjà enregistré. Merci !", "info")
+            return redirect(url_for("kiosk.kiosk_feedback", token=token, questionnaire_id=selected_questionnaire.id))
+        if deja.count() >= max(_AVIS_PLANCHER, 2 * len(presences)):
+            flash("Le nombre de réponses prévu pour cette séance est atteint. "
+                  "Demande à l'animateur si tu veux encore donner ton avis.", "warning")
+            return redirect(url_for("kiosk.kiosk_feedback", token=token, questionnaire_id=selected_questionnaire.id))
 
         group = QuestionnaireResponseGroup(
             questionnaire_id=selected_questionnaire.id,

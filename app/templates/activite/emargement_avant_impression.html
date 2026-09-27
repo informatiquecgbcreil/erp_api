@@ -78,12 +78,14 @@
       </div>
 
       <div>
-        <a class="btn warn" href="{{ url_for('activite.generate_collectif', session_id=session.id, confirme=1,
-                                             conso_period_mode=conso_args.period_mode,
-                                             conso_period_start=conso_args.period_start,
-                                             conso_period_end=conso_args.period_end) }}">
-          Générer quand même, avec les cases vides
-        </a>
+        <form method="post" action="{{ url_for('activite.generate_collectif', session_id=session.id) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="confirme" value="1">
+          <input type="hidden" name="conso_period_mode" value="{{ conso_args.period_mode }}">
+          <input type="hidden" name="conso_period_start" value="{{ conso_args.period_start }}">
+          <input type="hidden" name="conso_period_end" value="{{ conso_args.period_end }}">
+          <button class="btn warn" type="submit">Générer quand même, avec les cases vides</button>
+        </form>
         <div class="muted" style="font-size:.86rem; margin-top:4px;">
           Les signatures seront recueillies sur le papier, à la main.
         </div>

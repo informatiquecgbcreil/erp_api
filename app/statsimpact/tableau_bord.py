@@ -229,6 +229,12 @@ def dashboard():
             participant = db.session.get(Participant, participant_id)
             if not participant:
                 abort(404)
+            # Même règle que la fiche : figurer dans les statistiques (une
+            # présence posée au kiosque suffit) ouvre la lecture, pas la
+            # modification (revue des droits, actions indirectes).
+            from app.participants.routes import _can_edit_participant
+            if not _can_edit_participant(participant):
+                abort(403)
 
             participant.nom = (request.form.get("nom") or participant.nom or "").strip() or participant.nom
             participant.prenom = (request.form.get("prenom") or participant.prenom or "").strip() or participant.prenom
@@ -255,7 +261,6 @@ def dashboard():
             participant.quartier_id = normalize_quartier_for_ville(participant.ville, quartier_id)
 
             try:
-                from app.extensions import db
 
                 db.session.commit()
                 flash("Participant mis à jour.", "success")

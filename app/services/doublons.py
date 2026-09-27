@@ -27,32 +27,35 @@ _ACCENTS = {
 }
 
 
-def _like_prefixes(nom: str) -> list[str]:
-    """Motifs LIKE couvrant les variantes accentuées et de casse des 2
-    premières lettres, pour ne pas rater un homonyme à cause d'un accent.
+_LIGATURES = str.maketrans({"œ": "oe", "Œ": "oe", "æ": "ae", "Æ": "ae", "ß": "ss"})
 
-    La précision reste assurée en aval par ``_proches`` (comparaison sur les
-    formes normalisées) : ici on cherche juste à ne pas perdre de candidat."""
-    norm = normaliser_nom(nom)
-    if not norm:
-        brut = (nom or "").strip()
-        return [f"{brut[:2]}%"] if brut else ["%"]
-    premiers = _ACCENTS.get(norm[0], norm[0])
-    seconde = norm[1] if len(norm) > 1 else ""
-    motifs: set[str] = set()
-    for lettre in premiers:
-        for variante in {lettre, lettre.upper()}:
-            motifs.add(f"{variante}{seconde}%")
-            if seconde:
-                motifs.add(f"{variante}{seconde.upper()}%")
-    motifs.add(f"{(nom or '').strip()[:2]}%")
-    return sorted(m for m in motifs if m)
+#: Particules en tête de nom : « De La Fontaine » se compare aussi à
+#: « Fontaine », « Da Silva » à « Silva » (audit 5.9).
+PARTICULES = {"de", "la", "le", "les", "du", "des", "da", "das", "do", "dos",
+              "di", "del", "della", "van", "von", "der", "den", "ten", "d", "l"}
 
 
 def normaliser_nom(texte: str) -> str:
-    """Minuscules, sans accents ni caractères non alphabétiques."""
-    texte = unicodedata.normalize("NFKD", (texte or "")).encode("ascii", "ignore").decode("ascii")
+    """Minuscules, sans accents, ligatures développées, sans caractère non
+    alphabétique : « N'Diaye » -> « ndiaye », « Lecœur » -> « lecoeur »."""
+    texte = unicodedata.normalize("NFKD", (texte or "").translate(_LIGATURES)).encode("ascii", "ignore").decode("ascii")
     return "".join(c for c in texte.lower() if c.isalpha())
+
+
+def _mots(texte: str) -> list[str]:
+    brut = unicodedata.normalize("NFKD", (texte or "").translate(_LIGATURES)).encode("ascii", "ignore").decode("ascii")
+    for separateur in "'\u2019-.,`":
+        brut = brut.replace(separateur, " ")
+    return [normaliser_nom(m) for m in brut.split() if normaliser_nom(m)]
+
+
+def coeur_nom(texte: str) -> str:
+    """Le nom sans ses particules de tête (« De La Fontaine » -> « fontaine »).
+    Une particule seule, ou suivie d'une lettre (« N'Diaye »), est gardée."""
+    mots = _mots(texte)
+    while len(mots) > 1 and mots[0] in PARTICULES and len(mots[1]) > 1:
+        mots = mots[1:]
+    return "".join(mots)
 
 
 def squelette_nom(texte: str) -> str:
@@ -98,28 +101,84 @@ def _proches(a: str, b: str) -> bool:
     return min(len(a), len(b)) >= 5 and _une_faute(a, b)
 
 
+def _formes(texte: str) -> set[str]:
+    return {f for f in (normaliser_nom(texte), coeur_nom(texte)) if f}
+
+
+def _champ_identique(formes_a: set[str], formes_b: set[str]) -> bool:
+    return bool(formes_a & formes_b)
+
+
+def _champ_proche(formes_a: set[str], formes_b: set[str]) -> bool:
+    return any(_proches(a, b) for a in formes_a for b in formes_b)
+
+
+def _ressemble(n: set[str], p: set[str], cn: set[str], cp: set[str]) -> bool:
+    """Nom ET prénom proches, dont l'un strictement identique."""
+    return ((_champ_identique(cn, n) or _champ_identique(cp, p))
+            and _champ_proche(cn, n) and _champ_proche(cp, p))
+
+
+def _prefiltre(nom: str, prenom: str):
+    """Présélection SQL large (la précision vient de ``_ressemble``) :
+    - initiales du nom et du prénom, au début d'un mot (particules) et dans
+      les deux sens (nom et prénom inversés) ;
+    - ou l'un des deux champs identique, l'autre partageant quelques lettres
+      au-delà des deux premières (faute sur l'initiale)."""
+    from app.services.recherche_texte import _normaliseur, normaliser_saisie
+    colonne, sans_accents = _normaliseur()
+    col_nom, col_prenom = colonne(Participant.nom), colonne(Participant.prenom)
+
+    def initiales(lettre):
+        variantes = _ACCENTS.get(lettre, lettre) if not sans_accents else lettre
+        return {v for v in variantes}
+
+    def commence_mot(col, lettre):
+        motifs = []
+        for v in initiales(lettre):
+            motifs += [col.like(f"{v}%"), col.like(f"% {v}%"), col.like(f"%-{v}%")]
+        return db.or_(*motifs)
+
+    n0, p0 = coeur_nom(nom)[:1], normaliser_nom(prenom)[:1]
+    conditions = [
+        db.and_(commence_mot(col_nom, n0), commence_mot(col_prenom, p0)),
+        db.and_(commence_mot(col_nom, p0), commence_mot(col_prenom, n0)),
+    ]
+    saisie_nom, saisie_prenom = normaliser_saisie(nom.strip(), sans_accents), normaliser_saisie(prenom.strip(), sans_accents)
+    milieu_nom, milieu_prenom = coeur_nom(nom)[2:5], normaliser_nom(prenom)[2:5]
+    if len(milieu_nom) >= 2:
+        conditions.append(db.and_(col_prenom == saisie_prenom, col_nom.like(f"%{milieu_nom}%")))
+    if len(milieu_prenom) >= 2:
+        conditions.append(db.and_(col_nom == saisie_nom, col_prenom.like(f"%{milieu_prenom}%")))
+    return db.or_(*conditions)
+
+
 def candidats_doublons(nom: str, prenom: str, *, exclure_id: int | None = None) -> list[Participant]:
     """Personnes proches d'un nom/prénom saisi (anti-doublons).
 
-    Deux champs sont « proches » si, après normalisation (casse/accents) :
-    identiques, mêmes squelettes (lettres doublées réduites), ou l'un préfixe
-    de l'autre (>= 3 lettres). Match global si le nom ET le prénom sont
-    proches, avec au moins l'un des deux strictement identique.
+    Deux champs sont « proches » si, après normalisation (casse, accents,
+    apostrophes, ligatures, particules de tête) : identiques, mêmes
+    squelettes (lettres doublées réduites), l'un préfixe de l'autre
+    (>= 3 lettres), ou une faute de frappe sur un nom d'au moins 5 lettres.
+    Match global si le nom ET le prénom sont proches, avec au moins l'un des
+    deux strictement identique, dans un sens ou l'autre (nom et prénom
+    inversés). Les fiches les plus récentes passent en premier.
     """
-    n, p = normaliser_nom(nom), normaliser_nom(prenom)
+    n, p = _formes(nom), _formes(prenom)
     if not n or not p:
         return []
 
-    prefixes = _like_prefixes(nom)
-    prefiltre = db.or_(*[Participant.nom.like(motif) for motif in prefixes])
     candidats: list[Participant] = []
-    for cand in Participant.query.filter(prefiltre).limit(400).all():
+    requete = (Participant.query.filter(_prefiltre(nom, prenom))
+               .filter(~Participant.nom.like("ANONYME%"))
+               .order_by(Participant.id.desc()).limit(400))
+    for cand in requete.all():
         if exclure_id is not None and cand.id == exclure_id:
             continue
-        cn, cp = normaliser_nom(cand.nom), normaliser_nom(cand.prenom)
+        cn, cp = _formes(cand.nom), _formes(cand.prenom)
         if not cn or not cp:
             continue
-        if (cn == n or cp == p) and _proches(cn, n) and _proches(cp, p):
+        if _ressemble(n, p, cn, cp) or _ressemble(n, p, cp, cn):
             candidats.append(cand)
         if len(candidats) >= 5:
             break

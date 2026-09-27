@@ -282,6 +282,23 @@ def emargement(session_id: int):
                 flash("Nom et prénom obligatoires.", "danger")
                 return _redirect_emargement_with_period(session_id)
 
+            # Même contrôle de doublons qu'à l'accueil et au kiosque (audit,
+            # mineur métier) : on propose les fiches proches avant de créer ;
+            # « Créer quand même » passe outre.
+            if (request.form.get("force_creation") or "") != "1":
+                from flask import session as browser_session
+                from app.services.doublons import candidats_doublons
+                candidats = candidats_doublons(nom, prenom)
+                if candidats:
+                    browser_session["emargement_doublons"] = {
+                        "sid": s.id, "ids": [c.id for c in candidats],
+                        "saisie": {k: (request.form.get(k) or "") for k in (
+                            "nom", "prenom", "ville", "adresse", "email", "telephone", "genre",
+                            "date_naissance", "type_public", "quartier_id")},
+                    }
+                    flash("Des fiches proches existent déjà : vérifie avant de créer un doublon.", "warning")
+                    return _redirect_emargement_with_period(session_id)
+
             dn = None
             if date_naissance:
                 try:
@@ -324,19 +341,33 @@ def emargement(session_id: int):
             flash("Présence retirée.", "success")
             return _redirect_emargement_with_period(session_id)
 
-        if action == "valider_presence":
-            presence_id = request.form.get("presence_id", type=int)
-            pr = PresenceActivite.query.filter_by(id=presence_id, session_id=session_id).first() if presence_id else None
-            if not pr:
-                flash("Présence introuvable pour cette séance.", "danger")
-                return _redirect_emargement_with_period(session_id)
-            if pr.origine is not None:
-                pr.origine = None
-                db.session.commit()
-                from app.services.audit import journaliser
-                journaliser("presence.valider", cible=f"session #{session_id} · participant #{pr.participant_id}")
-            flash("Présence validée.", "success")
-            return _redirect_emargement_with_period(session_id, highlight=pr.participant_id)
+        if action in {"valider_presence", "valider_toutes"}:
+            from app.models import ORIGINE_PERSONNEL, ORIGINES_A_VALIDER
+            from app.services.audit import journaliser
+            from app.utils.dates import utcnow
+            if action == "valider_presence":
+                presence_id = request.form.get("presence_id", type=int)
+                cibles = PresenceActivite.query.filter_by(id=presence_id, session_id=session_id).all() if presence_id else []
+                if not cibles:
+                    flash("Présence introuvable pour cette séance.", "danger")
+                    return _redirect_emargement_with_period(session_id)
+            else:
+                cibles = (PresenceActivite.query.filter_by(session_id=session_id)
+                          .filter(PresenceActivite.origine.in_(ORIGINES_A_VALIDER)).all())
+            validees = []
+            for pr in cibles:
+                if pr.origine in ORIGINES_A_VALIDER:
+                    validees.append((pr.participant_id, pr.origine))
+                    pr.origine = ORIGINE_PERSONNEL
+                    pr.validee_par_user_id = current_user.id
+                    pr.validee_le = utcnow()
+            db.session.commit()
+            for participant_id, origine in validees:
+                # Valider ouvre la modification de la fiche au secteur : tracé.
+                journaliser("presence.valider", cible=f"session #{session_id} · participant #{participant_id}",
+                            details={"origine": origine})
+            flash(f"{len(validees)} présence(s) validée(s).", "success")
+            return _redirect_emargement_with_period(session_id)
 
         if action == "update_presence_type":
             presence_id = request.form.get("presence_id", type=int)
@@ -388,8 +419,15 @@ def emargement(session_id: int):
             try:
                 pr = PresenceActivite.query.filter_by(session_id=session_id, participant_id=participant.id).first()
                 if pr:
-                    # Re-pointée par le personnel : une présence de kiosque devient validée.
-                    pr.origine = None
+                    # Re-pointée par le personnel : une présence de kiosque ou
+                    # d'origine indéterminée devient validée (et tracée).
+                    from app.models import ORIGINE_PERSONNEL, ORIGINES_A_VALIDER
+                    if pr.origine in ORIGINES_A_VALIDER:
+                        from app.utils.dates import utcnow
+                        pr.validee_par_user_id = current_user.id
+                        pr.validee_le = utcnow()
+                        hors_secteur = True  # la validation ouvre l'accès : journalisée
+                    pr.origine = ORIGINE_PERSONNEL
                     pr.motif = motif
                     pr.motif_autre = motif_autre
                     pr.presence_type = presence_type
@@ -612,8 +650,15 @@ def emargement(session_id: int):
         [pr.participant_id for pr in presences]
         + [i.participant_id for i in inscrits_a_pointer],
     )
+    from flask import session as browser_session
+    doublons = browser_session.pop("emargement_doublons", None)
+    if not doublons or doublons.get("sid") != s.id:
+        doublons = None
+    else:
+        doublons["candidats"] = Participant.query.filter(Participant.id.in_(doublons.get("ids") or [])).all()
     return render_template(
         "activite/emargement.html",
+        doublons=doublons,
         secteur=secteur,
         atelier=atelier,
         session=s,
