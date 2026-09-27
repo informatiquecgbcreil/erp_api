@@ -521,7 +521,20 @@ def restaurer_lot(base: str) -> dict:
     if upload_cfg:
         _restaurer_uploads(uploads_file, Path(upload_cfg))
 
-    return {"base": base, "securite": securite.get("base")}
+    # Une sauvegarde antérieure à une anonymisation ou à une suppression ne
+    # fait pas revenir la personne en silence (mineur RGPD de l'audit).
+    from app.extensions import db
+    db.session.remove()
+    reanonymises, erreur_rgpd = [], None
+    try:
+        from app.services.registre_effacements import reappliquer
+        reanonymises = reappliquer()
+    except Exception as exc:  # noqa: BLE001 — la restauration elle-même a réussi
+        db.session.rollback()
+        erreur_rgpd = str(exc)
+        current_app.logger.exception("Restauration : anonymisations à réappliquer à la main")
+    return {"base": base, "securite": securite.get("base"),
+            "reanonymises": reanonymises, "erreur_rgpd": erreur_rgpd}
 
 
 # --------------------------------------------------------------------------

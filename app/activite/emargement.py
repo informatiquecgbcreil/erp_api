@@ -334,7 +334,7 @@ def emargement(session_id: int):
             if not pr:
                 flash("Présence introuvable pour cette séance.", "danger")
                 return _redirect_emargement_with_period(session_id)
-            cible = (f"{pr.participant.nom} {pr.participant.prenom}" if pr.participant else str(pr.participant_id))
+            cible = f"participant #{pr.participant_id}"
             db.session.delete(pr)
             db.session.commit()
             journaliser("presence.delete", cible=f"session #{session_id} · {cible}")

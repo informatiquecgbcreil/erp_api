@@ -17,7 +17,13 @@
         <p><strong>Ce qui compte comme « activité »</strong> (la date la plus récente est retenue) :
         une présence à une séance, la création ou la modification de la fiche,
         une orientation, une réponse à un questionnaire, une note ou pièce du
-        passeport pédagogique, une évaluation de compétence.
+        passeport pédagogique, une évaluation (compétences, échelle de Hart,
+        objectifs), une inscription à un atelier ou à une séance, un passage au
+        portail, un défi, un positionnement ou une certification, une cotisation
+        ou un règlement, une inscription annuelle (y compris comme membre du
+        bulletin d'un proche). Une personne inscrite à un atelier en cours ou à
+        une séance à venir n'est jamais anonymisée. La purge avance par lots
+        (300 fiches au plus par passage), hors des pages que vous consultez.
         Enregistrer la fiche d'une personne suffit donc à la « réactiver ».</p>
         <p><strong>Ce que l'anonymisation efface</strong> : nom, prénom (remplacés par
         « ANONYME P<em>n°</em> »), adresse, ville, e-mail, téléphone, données du
@@ -66,6 +72,35 @@
       </label>
       <button class="btn ok" type="submit">Enregistrer les réglages</button>
     </form>
+  </div>
+  {% endif %}
+
+  {% if can('participants:anonymize') %}
+  <div class="card">
+    <h2>Autres durées de conservation</h2>
+    <p class="muted">Appliquées chaque jour avec la purge automatique (si elle est activée), ou tout de suite
+      avec le bouton ci-dessous. <strong>0 = conserver sans limite.</strong> Les montants, dates et numéros
+      des pièces de caisse et des reçus restent toujours.</p>
+    <form method="post" action="{{ url_for('main.purge_rgpd_conservation') }}" class="inline-actions" style="flex-wrap:wrap; gap:12px; align-items:flex-end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for nom, regle in regles_conservation.items() %}
+        <div class="field-stack" style="max-width:260px;">
+          <label>{{ regle[3] }} ({{ regle[2] }})</label>
+          <input class="in" type="number" name="{{ nom }}" min="0" max="{{ regle[1] }}" value="{{ conservation[nom] }}" required>
+        </div>
+      {% endfor %}
+      <button class="btn ok" type="submit">Enregistrer les durées</button>
+    </form>
+    <form method="post" action="{{ url_for('main.purge_rgpd_conservation_appliquer') }}" style="margin-top:10px;"
+          onsubmit="return confirm('Appliquer maintenant les durées de conservation ? Les données concernées seront anonymisées ou effacées, sans retour possible.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn warn" type="submit">Appliquer maintenant</button>
+    </form>
+    {% if fichiers_a_controler %}
+      <p class="muted" style="margin-top:10px;">⚠️ {{ fichiers_a_controler }} fichier(s) n'ont pas pu être effacés
+        (chemin hors des dossiers de l'application ou fichier indisponible) : ils sont listés dans la table
+        <code>pending_file_deletion</code> pour contrôle manuel et retentés chaque jour.</p>
+    {% endif %}
   </div>
   {% endif %}
 

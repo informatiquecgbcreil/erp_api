@@ -247,11 +247,136 @@ def construire_export_rgpd(participant: Participant) -> Workbook:
                          ("Portail apprenant", m.PortailAttempt), ("Défis", m.DefiTransition)]:
         columns = [c.name for c in model.__table__.columns if c.name != "participant_id"]
         rows = model.query.filter_by(participant_id=participant.id).all()
-        _ecrire_feuille(wb, title, columns, [[getattr(row, name) for name in columns] for row in rows])
+        _ecrire_feuille(wb, title, columns, [[_lisible(row, name) for name in columns] for row in rows])
     payments = m.Paiement.query.join(m.Cotisation).filter(m.Cotisation.participant_id == participant.id).all()
     columns = [c.name for c in m.Paiement.__table__.columns]
-    _ecrire_feuille(wb, "Règlements", columns, [[getattr(row, name) for name in columns] for row in payments])
+    _ecrire_feuille(wb, "Règlements", columns, [[_lisible(row, name) for name in columns] for row in payments])
+
+    # --- Audit 3.7 : ce qui manquait ---
+    _feuilles_complementaires(wb, participant)
     return wb
+
+
+def _feuilles_complementaires(wb: Workbook, participant: Participant) -> None:
+    from app import models as m
+    from app.extensions import db
+
+    # Réponses aux questionnaires, question par question.
+    lignes = []
+    for groupe in QuestionnaireResponseGroup.query.filter_by(participant_id=participant.id).all():
+        questionnaire = db.session.get(m.Questionnaire, groupe.questionnaire_id)
+        for reponse in m.QuestionResponse.query.filter_by(response_group_id=groupe.id).all():
+            question = db.session.get(m.Question, reponse.question_id)
+            valeur = reponse.value_text if reponse.value_text is not None else (
+                reponse.value_number if reponse.value_number is not None else reponse.value_json)
+            lignes.append([groupe.created_at, getattr(questionnaire, "nom", ""),
+                           getattr(question, "label", ""), valeur])
+    _ecrire_feuille(wb, "Réponses questionnaires", ["Date", "Questionnaire", "Question", "Réponse"], lignes)
+
+    # Foyer et ses cotisations (sans l'identité des autres membres).
+    foyer = db.session.get(m.Foyer, participant.foyer_id) if participant.foyer_id else None
+    lignes = []
+    if foyer is not None:
+        lignes.append(["Foyer", foyer.nom, "", ""])
+        for cotisation in m.Cotisation.query.filter_by(foyer_id=foyer.id).all():
+            lignes.append([f"Cotisation du foyer {cotisation.annee_scolaire}", cotisation.type_cotisation,
+                           cotisation.montant_du, cotisation.date_reference])
+    _ecrire_feuille(wb, "Foyer", ["Rubrique", "Libellé", "Montant", "Date"], lignes)
+
+    # Présence sur le bulletin d'inscription d'un proche.
+    lignes = []
+    for membre in m.InscriptionAnnuelleMembre.query.filter_by(participant_id=participant.id).all():
+        bulletin = db.session.get(m.InscriptionAnnuelle, membre.inscription_id)
+        if bulletin is not None and bulletin.participant_id == participant.id:
+            continue
+        lignes.append([getattr(bulletin, "libelle_annee", ""), f"bulletin n° {membre.inscription_id}",
+                       membre.nom, membre.prenom, membre.date_naissance, membre.lien_filiation])
+    _ecrire_feuille(wb, "Bulletin d'un proche",
+                    ["Année", "Bulletin", "Nom inscrit", "Prénom inscrit", "Date de naissance", "Lien"], lignes)
+
+    # Sommes reçues de la personne.
+    lignes = [[e.date_encaissement, e.montant, m.MODES_PAIEMENT_LABELS.get(e.mode, e.mode), e.libelle,
+               "contre-passation" if e.origine_id else ""]
+              for e in m.Encaissement.query.filter_by(participant_id=participant.id).all()]
+    _ecrire_feuille(wb, "Encaissements", ["Date", "Montant", "Mode", "Libellé", "Nature"], lignes)
+
+    # Destinataires des orientations.
+    lignes = [[o.date_orientation, o.demande, o.partenaire.nom if o.partenaire else ""]
+              for o in OrientationAccesDroit.query.filter_by(participant_id=participant.id).all()]
+    _ecrire_feuille(wb, "Orientations - destinataires", ["Date", "Demande", "Partenaire destinataire"], lignes)
+
+    # Matériel consommé lors des présences.
+    lignes = [[c.created_at, c.materiel_nom_snapshot, c.quantite, c.duree_minutes_snapshot, c.kwh_snapshot]
+              for c in m.PresenceMaterielConsommation.query.filter_by(participant_id=participant.id).all()]
+    _ecrire_feuille(wb, "Matériel utilisé", ["Date", "Matériel", "Quantité", "Durée (min)", "kWh"], lignes)
+
+
+def _lisible(row, nom):
+    """Valeur d'une colonne ; pour une clé vers un référentiel, son libellé
+    (« Carte de séjour » et non « titre_sejour_type_id = 1 »)."""
+    valeur = getattr(row, nom, None)
+    colonne = row.__table__.columns.get(nom)
+    if valeur is None or colonne is None or not colonne.foreign_keys:
+        return valeur
+    from app.extensions import db
+    from sqlalchemy import select
+    cle = next(iter(colonne.foreign_keys))
+    table = cle.column.table
+    libelles = [c for c in ("libelle", "label", "nom", "titre", "code") if c in table.c]
+    if not libelles or table.name in {"participant", "user"}:
+        return valeur
+    try:
+        trouve = db.session.execute(select(table.c[libelles[0]]).where(cle.column == valeur)).scalar()
+    except Exception:  # noqa: BLE001
+        return valeur
+    return f"{trouve} (n° {valeur})" if trouve else valeur
+
+
+def fichiers_de_la_personne(participant: Participant) -> list[tuple[str, str]]:
+    """(nom dans l'archive, chemin sur le disque) des fichiers qui concernent
+    la personne : pièces du passeport et signatures. Seuls les fichiers
+    présents dans les dossiers de l'application sont repris."""
+    from pathlib import Path
+    from flask import current_app
+    racines = [Path(current_app.instance_path).resolve(), Path(current_app.config["APP_UPLOAD_DIR"]).resolve()]
+
+    def autorise(chemin):
+        try:
+            cible = Path(chemin).resolve()
+        except (OSError, ValueError):
+            return False
+        return cible.is_file() and any(cible.is_relative_to(r) for r in racines)
+
+    fichiers = []
+    for piece in PasseportPieceJointe.query.filter_by(participant_id=participant.id).all():
+        if piece.file_path and autorise(piece.file_path):
+            nom = Path(piece.original_name or piece.file_path).name
+            fichiers.append((f"pieces-jointes/{piece.id}-{nom}", piece.file_path))
+    for presence in PresenceActivite.query.filter_by(participant_id=participant.id).all():
+        if presence.signature_path and autorise(presence.signature_path):
+            fichiers.append((f"signatures/presence-{presence.id}{Path(presence.signature_path).suffix}",
+                             presence.signature_path))
+    return fichiers
+
+
+def construire_archive_rgpd(participant: Participant):
+    """ZIP : le classeur complet et les fichiers eux-mêmes (audit 3.7)."""
+    import zipfile
+    from io import BytesIO
+    classeur = BytesIO()
+    construire_export_rgpd(participant).save(classeur)
+    sortie = BytesIO()
+    with zipfile.ZipFile(sortie, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("donnees.xlsx", classeur.getvalue())
+        fichiers = fichiers_de_la_personne(participant)
+        for nom, chemin in fichiers:
+            archive.write(chemin, nom)
+        archive.writestr("LISEZMOI.txt", (
+            "Copie des données personnelles (RGPD, article 15).\n"
+            "donnees.xlsx : toutes les informations enregistrées, une feuille par rubrique.\n"
+            f"{len(fichiers)} fichier(s) joint(s) : pièces du passeport et signatures d'émargement.\n"))
+    sortie.seek(0)
+    return sortie
 
 
 def _resume_objet(obj) -> str:

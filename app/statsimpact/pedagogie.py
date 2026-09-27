@@ -282,10 +282,22 @@ def stats_pedagogie_bilan(participant_id: int):
     if not _can_view():
         abort(403)
     participant = db.get_or_404(Participant, participant_id)
+    # Bilan nominatif : même périmètre de lecture que la fiche.
+    from app.services.access_scope import participant_allowed
+    if not participant_allowed(participant):
+        abort(403)
     rows = _build_bilan_rows(participant)
-    pdf_path = generate_participant_bilan_pdf(current_app, participant, rows)
-    if pdf_path and os.path.exists(pdf_path):
-        return send_file(pdf_path, as_attachment=True)
+    # Généré dans un dossier temporaire puis envoyé depuis la mémoire : rien
+    # de nominatif ne reste sur le disque (audit 3.1).
+    import io
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="bilan_") as dossier:
+        pdf_path = generate_participant_bilan_pdf(current_app, participant, rows, folder=dossier)
+        if pdf_path and os.path.exists(pdf_path):
+            with open(pdf_path, "rb") as fichier:
+                contenu = io.BytesIO(fichier.read())
+            return send_file(contenu, as_attachment=True, mimetype="application/pdf",
+                             download_name=f"bilan_{participant.id}.pdf")
     flash("Impossible de générer le PDF.", "warning")
     return redirect(url_for("statsimpact.stats_pedagogie", participant_id=participant_id))
 

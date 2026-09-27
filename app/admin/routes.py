@@ -842,6 +842,13 @@ def sauvegarde_restaurer():
             "a été créée juste avant. Reconnectez-vous si nécessaire.",
             "success",
         )
+        if res.get("reanonymises"):
+            flash(f"{len(res['reanonymises'])} fiche(s) anonymisée(s) ou supprimée(s) après cette sauvegarde "
+                  "étaient revenues avec leur identité : elles ont été anonymisées de nouveau "
+                  "(voir le journal d'audit).", "warning")
+        if res.get("erreur_rgpd"):
+            flash("Attention : les anonymisations postérieures à cette sauvegarde n'ont pas pu être "
+                  f"réappliquées ({res['erreur_rgpd']}). Vérifiez Contrôle → Purge RGPD.", "danger")
     except Exception as exc:  # noqa: BLE001
         current_app.logger.exception("Échec de la restauration")
         flash(f"La restauration a échoué : {exc}", "danger")

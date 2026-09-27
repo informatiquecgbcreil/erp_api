@@ -480,6 +480,8 @@ def create_app():
     # le coût des autres requêtes soit nul.
     # ------------------------------------------------------------------
     _purge_marqueur = {"jour": None}
+    from app.services.maintenance import enregistrer_commande
+    enregistrer_commande(app)
 
     @app.before_request
     def _purge_rgpd_quotidienne():
@@ -491,16 +493,15 @@ def create_app():
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
-        from app.services.purge_rgpd import purge_auto_active, purge_quotidienne_si_necessaire
-
-        if not purge_auto_active():
-            return None
+        # Audit 3.5 : la requête ne fait que LANCER la maintenance du jour
+        # (fil séparé) ; la purge elle-même ne tourne que si elle est activée.
         from app.utils.dates import utcnow
         aujourd_hui = utcnow().date()
         if _purge_marqueur["jour"] == aujourd_hui:
             return None
         _purge_marqueur["jour"] = aujourd_hui
-        purge_quotidienne_si_necessaire()
+        from app.services.maintenance import lancer
+        lancer(app)
         return None
 
     # ------------------------------------------------------------------

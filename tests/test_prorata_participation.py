@@ -187,6 +187,10 @@ def annee_type(app):
                 db.session.delete(a)
         p = db.session.get(Participant, contexte["participant_id"])
         if p is not None:
+            # ON DELETE SET NULL que PostgreSQL applique et SQLite non : sans
+            # lui, l'identifiant recyclé hérite des encaissements orphelins.
+            from app.models import Encaissement
+            Encaissement.query.filter_by(participant_id=p.id).update({"participant_id": None})
             db.session.delete(p)
         db.session.commit()
 
@@ -977,6 +981,10 @@ def cette_annee(app):
                 db.session.delete(a)
         p = db.session.get(Participant, contexte["participant_id"])
         if p is not None:
+            # ON DELETE SET NULL que PostgreSQL applique et SQLite non : sans
+            # lui, l'identifiant recyclé hérite des encaissements orphelins.
+            from app.models import Encaissement
+            Encaissement.query.filter_by(participant_id=p.id).update({"participant_id": None})
             db.session.delete(p)
         db.session.commit()
 
@@ -1249,6 +1257,10 @@ def a_cheval(app):
                 db.session.delete(a)
         p = db.session.get(Participant, contexte["participant_id"])
         if p is not None:
+            # ON DELETE SET NULL que PostgreSQL applique et SQLite non : sans
+            # lui, l'identifiant recyclé hérite des encaissements orphelins.
+            from app.models import Encaissement
+            Encaissement.query.filter_by(participant_id=p.id).update({"participant_id": None})
             db.session.delete(p)
         db.session.commit()
 

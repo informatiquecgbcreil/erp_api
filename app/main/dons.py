@@ -114,7 +114,7 @@ def don_create():
     db.session.add(don)
     db.session.commit()
     journaliser("don.create", cible=f"don#{don.id}",
-                details={"numero": don.numero, "montant": don.montant, "donateur": don.donateur_nom})
+                details={"numero": don.numero, "montant": don.montant})
     flash(f"Don enregistré — reçu n° {don.numero}.", "success")
     return redirect(url_for("main.don_recu", don_id=don.id))
 

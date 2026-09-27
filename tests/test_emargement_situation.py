@@ -130,6 +130,9 @@ def seance(app):
         for cle in ("inscrite_id", "attente_id", "libre_id", "a_pointer_id"):
             p = db.session.get(Participant, contexte[cle])
             if p is not None:
+                # ON DELETE SET NULL que SQLite n'applique pas (identifiants recyclés).
+                from app.models import Encaissement
+                Encaissement.query.filter_by(participant_id=p.id).update({"participant_id": None})
                 db.session.delete(p)
         db.session.commit()
 

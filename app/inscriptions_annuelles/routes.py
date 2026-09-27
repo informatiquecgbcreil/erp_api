@@ -528,7 +528,8 @@ def nouvelle():
             return render_template("inscriptions_annuelles/form.html", **contexte)
 
         db.session.commit()
-        journaliser("inscription_annuelle.create", cible=f"{inscription.nom_complet} ({inscription.libelle_annee})")
+        journaliser("inscription_annuelle.create", cible=f"inscription annuelle #{inscription.id} ({inscription.libelle_annee})",
+                    participant_id=inscription.participant_id)
         flash(f"Inscription de {inscription.nom_complet} enregistrée.", "ok")
 
         if participant is not None:
@@ -687,9 +688,11 @@ def supprimer(inscription_id: int):
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
     annee, nom = inscription.annee_scolaire, inscription.nom_complet
+    ident, pid = inscription.id, inscription.participant_id
     db.session.delete(inscription)
     db.session.commit()
-    journaliser("inscription_annuelle.delete", cible=f"{nom} ({libelle_annee_scolaire(annee)})")
+    journaliser("inscription_annuelle.delete", cible=f"inscription annuelle #{ident} ({libelle_annee_scolaire(annee)})",
+                participant_id=pid)
     flash(f"Inscription de {nom} supprimée.", "ok")
     return redirect(url_for("inscriptions_annuelles.index", annee=annee))
 
@@ -723,7 +726,7 @@ def creer_fiche(inscription_id: int):
         flash(str(exc), "err")
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
-    journaliser("inscription_annuelle.participant", cible=f"{participant.nom} {participant.prenom}")
+    journaliser("inscription_annuelle.participant", cible=f"inscription annuelle #{inscription.id} · participant #{participant.id}")
     flash(
         f"Fiche participant créée pour {inscription.nom_complet} — en attente de première participation.",
         "ok",

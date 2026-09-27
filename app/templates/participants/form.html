@@ -186,6 +186,7 @@
         <div class="field-stack">
           <label>Droit d'accès (RGPD)</label>
           <a class="btn" href="{{ url_for('participants.export_rgpd', participant_id=item.id) }}">Exporter toutes les données de la personne</a>
+          <a class="btn" href="{{ url_for('participants.export_rgpd_archive', participant_id=item.id) }}" title="Le tableur et les fichiers eux-mêmes (pièces du passeport, signatures), dans une archive ZIP">Archive complète (ZIP, avec les fichiers)</a>
           <div class="field-help">À remettre à la personne si elle demande une copie de ses données (obligation légale, délai d'un mois).</div>
         </div>
         {% endif %}

@@ -1202,7 +1202,7 @@ def new_participant():
         sync_legacy_insertion_fields(p, actor_id=getattr(current_user, "id", None))
         db.session.commit()
         from app.services.audit import journaliser
-        journaliser("participant.create", cible=f"{p.nom} {p.prenom}")
+        journaliser("participant.create", cible=f"participant #{p.id}")
         flash("Le participant a bien été créé.", "ok")
         return redirect(url_for("participants.edit_participant", participant_id=p.id))
 
@@ -1284,7 +1284,7 @@ def edit_participant(participant_id: int):
         sync_legacy_insertion_fields(p, actor_id=getattr(current_user, "id", None))
         db.session.commit()
         from app.services.audit import journaliser
-        journaliser("participant.edit", cible=f"{p.nom} {p.prenom}")
+        journaliser("participant.edit", cible=f"participant #{p.id}")
         flash("Le participant a bien été mis à jour.", "ok")
         return redirect(url_for("participants.edit_participant", participant_id=p.id))
 
@@ -1370,6 +1370,22 @@ def export_rgpd(participant_id: int):
         download_name=f"droit-acces-{nom or 'participant'}-{p.id}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+@bp.route("/<int:participant_id>/export-rgpd.zip")
+@login_required
+def export_rgpd_archive(participant_id: int):
+    """Droit d'accès complet : classeur et fichiers (audit 3.7). Mêmes droits
+    et même trace que l'export tableur."""
+    p = db.get_or_404(Participant, participant_id)
+    if not _peut_exporter_rgpd(p):
+        abort(403)
+    from app.services.audit import journaliser
+    from app.services.rgpd_export import construire_archive_rgpd
+    sortie = construire_archive_rgpd(p)
+    journaliser("export.rgpd", cible=f"participant #{p.id}", details={"format": "zip"})
+    return send_file(sortie, as_attachment=True, download_name=f"droit-acces-{p.id}.zip",
+                     mimetype="application/zip")
 
 
 @bp.route("/<int:participant_id>/anonymize", methods=["POST"])
@@ -1510,7 +1526,7 @@ def definir_date_naissance(participant_id: int):
         return _retour_annuaire()
     db.session.commit()
     from app.services.audit import journaliser
-    journaliser("participant.edit", cible=f"{p.nom} {p.prenom} (date de naissance)")
+    journaliser("participant.edit", cible=f"participant #{p.id} (date de naissance)")
     flash(f"Date de naissance enregistrée pour {p.prenom} {p.nom}.", "ok")
     return _retour_annuaire()
 
@@ -1568,8 +1584,8 @@ def actions_groupees():
             return _retour_annuaire()
         journaliser(
             "participant.merge",
-            cible=f"{keep.nom} {keep.prenom} (#{keep.id})",
-            details={"fiche_absorbee": etiquette_victime, "liens_deplaces": deplaces,
+            cible=f"participant #{keep.id}",
+            details={"fiche_absorbee": victime.id, "liens_deplaces": deplaces,
                      "doublons_ecartes": ecartes, "origine": "sélection annuaire"},
         )
         flash(

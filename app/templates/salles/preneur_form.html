@@ -121,5 +121,14 @@
       </div>
     </div>
   </form>
+  {% if preneur and not preneur.nom.startswith('Locataire anonymisé') %}
+  <form method="post" action="{{ url_for('salles.preneur_anonymiser', preneur_id=preneur.id) }}" class="card"
+        onsubmit="return confirm('Effacer les coordonnées de ce locataire ? Les factures déjà émises restent inchangées. Action définitive.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="muted" style="margin:0 0 8px;">RGPD : quand un locataire ne loue plus, ses coordonnées peuvent être effacées.
+      Refusé tant qu'une réservation est en cours ou qu'un solde reste dû.</p>
+    <button class="btn danger" type="submit">Anonymiser ce locataire</button>
+  </form>
+  {% endif %}
 </div>
 {% endblock %}

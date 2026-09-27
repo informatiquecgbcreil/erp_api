@@ -109,6 +109,8 @@ def assurer_code_portail(participant) -> bool:
     """
     if getattr(participant, "portail_code", None):
         return True
+    if (getattr(participant, "nom", "") or "").startswith("ANONYME"):
+        return False
     if not portail_configure():
         return False
     try:
@@ -181,11 +183,15 @@ def synchroniser_attempts() -> dict:
             participant_id = int(external_id)
         except (TypeError, ValueError):
             participant_id = None
-        if participant_id is not None and db.session.get(Participant, participant_id) is None:
+        fiche = db.session.get(Participant, participant_id) if participant_id is not None else None
+        anonymisee = fiche is not None and (fiche.nom or "").startswith("ANONYME")
+        if fiche is None or anonymisee:
             participant_id = None  # externalId inconnu chez nous : on garde la trace sans rattacher
 
         champs = dict(
-            external_id=str(external_id),
+            # Fiche anonymisée : la tentative reste comptée, mais ni le lien ni
+            # l'identifiant externe ne sont recréés (mineur RGPD de l'audit).
+            external_id=None if anonymisee else str(external_id),
             participant_id=participant_id,
             activity=a.get("activity"),
             activity_type=a.get("activityType"),

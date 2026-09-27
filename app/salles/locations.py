@@ -360,6 +360,32 @@ def preneurs():
     )
 
 
+@bp.route("/preneur/<int:preneur_id>/anonymiser", methods=["POST"])
+@login_required
+@require_perm("locations:edit")
+def preneur_anonymiser(preneur_id: int):
+    """Locataire qui ne loue plus (audit 3.8) : coordonnées effacées. Refusé
+    tant qu'une réservation est en cours ou qu'un solde reste dû. Les
+    factures et avoirs déjà émis sont des copies figées : ils restent
+    intacts, comme la loi l'exige pour les pièces comptables."""
+    preneur = Preneur.query.get_or_404(preneur_id)
+    reservations = Reservation.query.filter_by(preneur_id=preneur.id).all()
+    en_cours = [r for r in reservations if r.statut in ("option", "confirmee")]
+    dues = [r for r in reservations if r.statut != "annulee" and (r.montant_du or 0) - (r.montant_regle or 0) > 0.005]
+    if en_cours or dues:
+        flash("Anonymisation impossible : ce locataire a encore une réservation en cours ou un solde dû.", "danger")
+        return redirect(url_for("salles.preneur_form", preneur_id=preneur.id))
+    preneur.nom = f"Locataire anonymisé #{preneur.id}"
+    for champ in ("contact_nom", "representant", "email", "telephone", "adresse", "code_postal", "ville",
+                  "siret", "assurance_reference", "notes", "assurance_rc_fin"):
+        setattr(preneur, champ, None)
+    preneur.actif = False
+    db.session.commit()
+    journaliser("salles.preneur_anonymise", cible=f"preneur #{preneur.id}")
+    flash("Locataire anonymisé. Les factures déjà émises restent inchangées.", "success")
+    return redirect(url_for("salles.preneurs"))
+
+
 @bp.route("/preneur/nouveau", methods=["GET", "POST"])
 @bp.route("/preneur/<int:preneur_id>/modifier", methods=["GET", "POST"])
 @login_required
@@ -393,7 +419,7 @@ def preneur_form(preneur_id: int | None = None):
             preneur.notes = _texte("notes") or None
             preneur.actif = _case("actif")
             db.session.commit()
-            journaliser("salles.preneur", cible=preneur.nom)
+            journaliser("salles.preneur", cible=f"preneur #{preneur.id}")
             flash(f"Preneur « {preneur.nom} » enregistré.", "success")
             return redirect(url_for("salles.preneurs"))
 
@@ -545,7 +571,7 @@ def reservation_nouvelle():
             flash(f"⚠️ {alerte}", "warning")
 
         journaliser("salles.reservation", cible=reservation.reference,
-                    details={"preneur": preneur.nom, "dates": len(dates)})
+                    details={"preneur": preneur.id, "dates": len(dates)})
         flash(
             f"Réservation {reservation.reference} créée : {len(dates)} date(s), "
             f"{reservation.montant_du:.2f} €.",

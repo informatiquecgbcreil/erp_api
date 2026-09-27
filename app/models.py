@@ -18,6 +18,12 @@ class PendingFileDeletion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     file_path = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    #: Chemin hors des dossiers métier ou fichier resté indisponible : la ligne
+    #: est mise de côté pour contrôle manuel au lieu de bloquer la file
+    #: (audit 3.6). Une nouvelle tentative a lieu chaque jour.
+    tentatives = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    bloque_le = db.Column(db.DateTime, nullable=True, index=True)
+    motif = db.Column(db.String(60), nullable=True)
 
 
 class User(db.Model):
@@ -200,6 +206,13 @@ class InstanceSettings(db.Model):
     # délai d'inactivité avant anonymisation automatique, et activation.
     purge_rgpd_annees = db.Column(db.Integer, nullable=True)
     purge_rgpd_auto = db.Column(db.Boolean, nullable=True)
+    # Durées de conservation hors participants (audit 3.2, 3.8). NULL = valeur
+    # par défaut du service de conservation ; 0 = conserver sans limite.
+    conservation_journal_jours = db.Column(db.Integer, nullable=True)
+    conservation_bulletins_annees = db.Column(db.Integer, nullable=True)
+    conservation_donateurs_annees = db.Column(db.Integer, nullable=True)
+    conservation_comptes_annees = db.Column(db.Integer, nullable=True)
+    conservation_imports_annees = db.Column(db.Integer, nullable=True)
 
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
@@ -2546,6 +2559,10 @@ class AuditLog(db.Model):
     action = db.Column(db.String(60), nullable=False, index=True)
     cible = db.Column(db.String(255), nullable=True)
     details = db.Column(db.Text, nullable=True)
+    #: Fiche concernée, sans clé étrangère (la trace survit à la suppression).
+    #: Sert à retrouver EXACTEMENT les lignes d'une personne à l'anonymisation,
+    #: au lieu de chercher son nom dans le texte (audit 3.2).
+    participant_id = db.Column(db.Integer, nullable=True, index=True)
 
 
 # ---------- TÂCHES PLANIFIÉES INTERNES ----------

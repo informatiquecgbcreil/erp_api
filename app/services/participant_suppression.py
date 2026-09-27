@@ -110,6 +110,17 @@ def supprimer_definitivement(participant: Participant) -> dict:
     """
     pid = participant.id
     resume = analyser(participant)
+    # Audit 3.3 : l'anonymisation passe d'abord. Elle efface ce que la
+    # suppression ne touchait pas : nom du foyer, lignes nominatives des
+    # répartitions arrêtées, ligne de membre sur le bulletin d'un proche,
+    # commentaires libres des règlements, copies de signatures, journal.
+    from app.services.purge_rgpd import anonymiser_participant
+    anonymiser_participant(participant)
+    from app.models import InscriptionAnnuelleMembre
+    db.session.query(InscriptionAnnuelleMembre).filter_by(participant_id=pid).update(
+        {"participant_id": None}, synchronize_session=False)
+    from app.services.registre_effacements import noter
+    noter("supprimes", participant)
     from app.ateliers.historical_privacy import redact_sources
     redact_sources(pid, delete_links=True)
     db.session.flush()
