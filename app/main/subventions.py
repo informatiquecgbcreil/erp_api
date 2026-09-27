@@ -30,6 +30,7 @@ from app.services.audit import journaliser
 from app.main.common import bp, can_see_secteur
 from app.utils.delete_guard import commit_delete
 from app.utils.montants import nombre_fini
+from app.services.presences_comptees import seance_tenue, venue_reelle
 
 # Horizon (en jours) au-delà duquel une échéance n'est plus signalée comme « proche ».
 ECHEANCE_HORIZON_JOURS = 30
@@ -592,6 +593,7 @@ def subvention_justificatif(subvention_id):
             .filter(
                 SessionActivite.atelier_id.in_(atelier_ids),
                 SessionActivite.is_deleted.is_(False),
+                seance_tenue(), venue_reelle(),
                 eff >= d1, eff <= d2,
             )
             .distinct()
@@ -1289,7 +1291,7 @@ def subvention_feuille_temps(subvention_id):
     if seances:
         rows = (
             db.session.query(PresenceActivite.session_id, db.func.count(PresenceActivite.id))
-            .filter(PresenceActivite.session_id.in_([s.id for s in seances]))
+            .filter(PresenceActivite.session_id.in_([s.id for s in seances]), venue_reelle())
             .group_by(PresenceActivite.session_id)
             .all()
         )

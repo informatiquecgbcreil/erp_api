@@ -26,6 +26,7 @@ from app.models import (
     atelier_transition_objectif,
     atelier_transition_thematique,
 )
+from app.services.presences_comptees import seance_tenue, venue_reelle
 
 
 def seed_thematiques() -> None:
@@ -106,7 +107,7 @@ def _stats_ateliers(atelier_ids: list[int], debut: date, fin: date) -> dict:
         .filter(
             SessionActivite.atelier_id.in_(atelier_ids),
             SessionActivite.is_deleted.is_(False),
-            func.lower(func.coalesce(SessionActivite.statut, "")) != "annulee",
+            seance_tenue(),
             eff >= debut,
             eff <= fin,
         )
@@ -121,11 +122,13 @@ def _stats_ateliers(atelier_ids: list[int], debut: date, fin: date) -> dict:
         participations = (
             db.session.query(func.count(PresenceActivite.id))
             .filter(PresenceActivite.session_id.in_(session_ids))
+            .filter(venue_reelle())
             .scalar() or 0
         )
         uniques = (
             db.session.query(func.count(func.distinct(PresenceActivite.participant_id)))
             .filter(PresenceActivite.session_id.in_(session_ids))
+            .filter(venue_reelle())
             .scalar() or 0
         )
     return {

@@ -65,6 +65,7 @@ from app.statsimpact.common import (
     _magatomatique_filename,
     _safe_sheet_title,
 )
+from app.services.presences_comptees import est_seance_tenue, venue_reelle
 from app.statsimpact.pedagogie import (
     _query_presence_export,
 )
@@ -606,7 +607,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
 
         # 1) KPIs par atelier
         sessions_planned = len(sessions)
-        sessions_real = sum(1 for s in sessions if (s.statut or "").lower() != "annulee")
+        sessions_real = sum(1 for s in sessions if est_seance_tenue(s))
         dates = [d for d in [(s.rdv_date or s.date_session) for s in sessions] if d]
         duration_days = (max(dates) - min(dates)).days if dates else None
 
@@ -621,7 +622,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
             planned_hours += h
             cap = s.capacite if s.capacite is not None else (getattr(at, "capacite_defaut", 0) or 0)
             planned_capacity += int(cap or 0)
-            if (s.statut or "").lower() != "annulee":
+            if est_seance_tenue(s):
                 real_hours += h
                 real_capacity += int(cap or 0)
 
@@ -633,7 +634,10 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
 
         session_ids = [s.id for s in sessions]
 
-        pres_rows = db.session.query(PresenceActivite.participant_id, PresenceActivite.session_id)             .filter(PresenceActivite.session_id.in_(session_ids)).all()
+        # Venues réelles de séances tenues (règle commune des bilans).
+        tenues = [s.id for s in sessions if est_seance_tenue(s)]
+        pres_rows = (db.session.query(PresenceActivite.participant_id, PresenceActivite.session_id)
+                     .filter(PresenceActivite.session_id.in_(tenues), venue_reelle()).all()) if tenues else []
 
         presences_total = len(pres_rows)
         pid_set = sorted({int(pid) for (pid, _sid) in pres_rows if pid is not None})

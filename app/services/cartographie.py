@@ -15,6 +15,7 @@ from sqlalchemy import func
 
 from app.extensions import db
 from app.models import Participant, PresenceActivite, Quartier, SessionActivite
+from app.services.presences_comptees import venue_reelle
 
 
 def _date_session_expr():
@@ -44,6 +45,7 @@ def _ids_presents(date_from, date_to):
     q = (
         db.session.query(PresenceActivite.participant_id)
         .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
+        .filter(venue_reelle())
     )
     if date_from:
         q = q.filter(sd >= date_from)

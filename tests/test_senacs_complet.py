@@ -17,9 +17,9 @@ def test_evenementiel_annee(app):
         db.session.add(at)
         db.session.flush()
         fete = SessionActivite(atelier_id=at.id, secteur="Numérique", session_type="COLLECTIF",
-                               date_session=dt.date(2047, 6, 21), est_evenement=True)
+                               date_session=dt.date(1991, 6, 21), est_evenement=True)
         normale = SessionActivite(atelier_id=at.id, secteur="Numérique", session_type="COLLECTIF",
-                                  date_session=dt.date(2047, 6, 22))
+                                  date_session=dt.date(1991, 6, 22))
         db.session.add_all([fete, normale])
         db.session.flush()
         for i in range(3):
@@ -29,7 +29,7 @@ def test_evenementiel_annee(app):
             db.session.add(PresenceActivite(session_id=fete.id, participant_id=p.id))
         db.session.commit()
 
-        ev = evenementiel_annee(2047)
+        ev = evenementiel_annee(1991)
         assert ev["nb_evenements"] == 1          # la séance normale ne compte pas
         assert ev["participations"] == 3
         assert ev["participants_uniques"] == 3

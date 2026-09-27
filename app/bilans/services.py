@@ -10,6 +10,7 @@ from app.models import Depense, FactureAchat, FactureLigne, LigneBudget, Subvent
 from datetime import date
 from sqlalchemy import extract
 from app.models import SessionActivite
+from app.services.presences_comptees import seance_tenue, venue_reelle
 
 
 @dataclass
@@ -736,7 +737,7 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
     # sessions réalisées (non supprimées)
     q_sessions = db.session.query(func.count(SessionActivite.id)).filter(
         SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.statut == "realisee", seance_tenue(),
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,
     )
@@ -747,8 +748,8 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
     q_pres = db.session.query(func.count(PresenceActivite.id)).join(
         SessionActivite, PresenceActivite.session_id == SessionActivite.id
     ).filter(
-        SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.is_deleted.is_(False), venue_reelle(),
+        SessionActivite.statut == "realisee", seance_tenue(),
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,
     )
@@ -759,8 +760,8 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
     q_pu = db.session.query(func.count(func.distinct(PresenceActivite.participant_id))).join(
         SessionActivite, PresenceActivite.session_id == SessionActivite.id
     ).filter(
-        SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.is_deleted.is_(False), venue_reelle(),
+        SessionActivite.statut == "realisee", seance_tenue(),
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,
     )
@@ -771,8 +772,8 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
     q_returning = db.session.query(PresenceActivite.participant_id).join(
         SessionActivite, PresenceActivite.session_id == SessionActivite.id
     ).filter(
-        SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.is_deleted.is_(False), venue_reelle(),
+        SessionActivite.statut == "realisee", seance_tenue(),
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,
     )
@@ -797,7 +798,7 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
 
     q_coll_sessions = q_coll_sessions.filter(
         SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.statut == "realisee", seance_tenue(),
         SessionActivite.session_type == "COLLECTIF",
         SessionActivite.date_session >= start,
         SessionActivite.date_session < end,
@@ -813,7 +814,7 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
     if coll_session_ids:
         pres_rows = (
             db.session.query(PresenceActivite.session_id, func.count(PresenceActivite.id))
-            .filter(PresenceActivite.session_id.in_(coll_session_ids))
+            .filter(PresenceActivite.session_id.in_(coll_session_ids), venue_reelle())
             .group_by(PresenceActivite.session_id)
             .all()
         )
@@ -839,7 +840,7 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
     # rdv individuel : nb + minutes
     q_rdv = db.session.query(func.count(SessionActivite.id)).filter(
         SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.statut == "realisee", seance_tenue(),
         SessionActivite.session_type != "COLLECTIF",
         SessionActivite.rdv_date >= start,
         SessionActivite.rdv_date < end,
@@ -849,7 +850,7 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
 
     q_rdv_min = db.session.query(func.sum(SessionActivite.duree_minutes)).filter(
         SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.statut == "realisee", seance_tenue(),
         SessionActivite.session_type != "COLLECTIF",
         SessionActivite.rdv_date >= start,
         SessionActivite.rdv_date < end,
@@ -864,7 +865,7 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
         SessionActivite, Evaluation.session_id == SessionActivite.id
     ).filter(
         SessionActivite.is_deleted.is_(False),
-        SessionActivite.statut == "realisee",
+        SessionActivite.statut == "realisee", seance_tenue(),
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
         func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,
     )
@@ -928,21 +929,21 @@ def _compute_bilans_lourds_core(year: int, scope: BilansScope) -> dict:
         q_a = db.session.query(func.count(AtelierActivite.id)).filter(AtelierActivite.is_deleted.is_(False), AtelierActivite.secteur == sec)
         q_s = db.session.query(func.count(SessionActivite.id)).filter(
             SessionActivite.is_deleted.is_(False),
-            SessionActivite.statut == "realisee",
+            SessionActivite.statut == "realisee", seance_tenue(),
             SessionActivite.secteur == sec,
             func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
             func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,
         )
         q_p = db.session.query(func.count(PresenceActivite.id)).join(SessionActivite, PresenceActivite.session_id == SessionActivite.id).filter(
-            SessionActivite.is_deleted.is_(False),
-            SessionActivite.statut == "realisee",
+            SessionActivite.is_deleted.is_(False), venue_reelle(),
+            SessionActivite.statut == "realisee", seance_tenue(),
             SessionActivite.secteur == sec,
             func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
             func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,
         )
         q_pu2 = db.session.query(func.count(func.distinct(PresenceActivite.participant_id))).join(SessionActivite, PresenceActivite.session_id == SessionActivite.id).filter(
-            SessionActivite.is_deleted.is_(False),
-            SessionActivite.statut == "realisee",
+            SessionActivite.is_deleted.is_(False), venue_reelle(),
+            SessionActivite.statut == "realisee", seance_tenue(),
             SessionActivite.secteur == sec,
             func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) >= start,
             func.coalesce(SessionActivite.date_session, SessionActivite.rdv_date) < end,

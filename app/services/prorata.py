@@ -67,10 +67,8 @@ from app.models import (
     PresenceActivite,
     SessionActivite,
 )
-
-#: Les statuts de présence qui valent « la personne est venue ».
-#: Une absence excusée n'en fait pas partie : elle atteste le contraire.
-VENUES_REELLES = ("present", "retard")
+# Statuts qui valent « la personne est venue » (règle commune aux bilans).
+from app.services.presences_comptees import VENUES_REELLES
 
 #: Étiquette des personnes dont aucune venue n'a été trouvée sur l'année.
 SANS_SECTEUR = "Sans secteur"

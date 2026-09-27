@@ -22,6 +22,7 @@ from datetime import date
 from sqlalchemy import extract, or_
 
 from app.extensions import db
+from app.services.presences_comptees import seance_tenue, venue_reelle
 from app.models import (
     Participant,
     Partenaire,
@@ -63,22 +64,31 @@ def annees_disponibles() -> list[int]:
     return annees or [date.today().year - 1]
 
 
-def _presences_annee(annee: int):
-    """Présences de l'année : date effective de la séance (rdv_date pour
-    l'individuel, date_session pour le collectif), et seulement à défaut de
-    toute date la date d'enregistrement de la présence."""
+def _venues_annee(annee: int, *colonnes):
+    """Requête des venues de l'année, sur les seules colonnes demandées.
+
+    Date effective de la séance (rdv_date pour l'individuel, date_session
+    pour le collectif), et seulement à défaut de toute date la date
+    d'enregistrement de la présence. Venues réelles de séances tenues : ni
+    absence excusée, ni séance annulée, ni séance encore à venir.
+
+    On ne charge JAMAIS les objets présence : sur une année réelle (100 000
+    présences) cela coûtait une requête par présence et 10 secondes.
+    """
     eff = _date_effective_session()
     return (
-        db.session.query(PresenceActivite, SessionActivite)
+        db.session.query(*colonnes)
+        .select_from(PresenceActivite)
         .join(SessionActivite, PresenceActivite.session_id == SessionActivite.id)
         .filter(SessionActivite.is_deleted.is_(False))
+        .filter(venue_reelle())
+        .filter(seance_tenue())
         .filter(
             or_(
                 extract("year", eff) == annee,
                 eff.is_(None) & (extract("year", PresenceActivite.created_at) == annee),
             )
         )
-        .all()
     )
 
 
@@ -104,7 +114,27 @@ QUARTIER_DISTINGUE = "Rouher"
 QPV_DE_REFERENCE = "Hauts de Creil"
 
 
-def _bucket_quartier(p: Participant) -> str:
+def villes_avec_qpv() -> set[str]:
+    """Villes (sans accents, en minuscules) qui ont au moins un quartier QPV.
+
+    Dans ces villes, un habitant sans quartier renseigné peut habiter le QPV :
+    le ranger « Hors QPV » sous-estimait la part QPV (une grande partie de
+    Creil est en QPV, et le quartier reste facultatif au kiosque).
+    """
+    from app.models import Quartier
+    from app.services.recherche_texte import sans_accent
+
+    villes = set()
+    for q in Quartier.query.all():
+        nom = sans_accent(q.nom) or ""
+        est_qpv = bool((q.qpv or "").strip()) or bool(q.is_qpv) or "qpv" in nom \
+            or sans_accent(QPV_DE_REFERENCE) in nom or sans_accent(QUARTIER_DISTINGUE) in nom
+        if est_qpv and (q.ville or "").strip():
+            villes.add((sans_accent(q.ville) or "").strip())
+    return villes
+
+
+def _bucket_quartier(p: Participant, villes_qpv: set[str] | None = None) -> str:
     """Ligne du tableau SENACS : Rouher / Hauts de Creil / autre QPV / hors QPV.
 
     Lit d'abord le CHAMP ``qpv`` du quartier. Avant qu'il existe, cette
@@ -120,7 +150,13 @@ def _bucket_quartier(p: Participant) -> str:
 
     quartier = p.quartier
     if quartier is None:
-        return NON_RENSEIGNE if not (p.ville or "").strip() else "Hors QPV"
+        ville = (sans_accent(p.ville) or "").strip()
+        if not ville:
+            return NON_RENSEIGNE
+        if villes_qpv is None:
+            villes_qpv = villes_avec_qpv()
+        # Ville qui compte un QPV : sans quartier, on ne sait pas.
+        return NON_RENSEIGNE if ville in villes_qpv else "Hors QPV"
 
     nom = sans_accent(quartier.nom) or ""
     qpv = (getattr(quartier, "qpv", None) or "").strip()
@@ -143,13 +179,16 @@ def _bucket_quartier(p: Participant) -> str:
 
 def publics_annee(annee: int) -> dict:
     """Indicateurs « publics » SENACS pour l'année (tableau 6.1)."""
-    presences = _presences_annee(annee)
+    from sqlalchemy.orm import joinedload
 
-    participations = len(presences)
-    participants: dict[int, Participant] = {}
-    for presence, _session in presences:
-        if presence.participant_id and presence.participant is not None:
-            participants[presence.participant_id] = presence.participant
+    participations = int(_venues_annee(annee, db.func.count(PresenceActivite.id)).scalar() or 0)
+    ids = _venues_annee(annee, PresenceActivite.participant_id).distinct().subquery()
+    participants: dict[int, Participant] = {
+        p.id: p
+        for p in Participant.query.options(joinedload(Participant.quartier))
+        .filter(Participant.id.in_(db.select(ids.c.participant_id)))
+        .all()
+    }
 
     from app.services.genre import libelle_participant, ordre_pluriels
 
@@ -166,11 +205,12 @@ def publics_annee(annee: int) -> dict:
     # tableau remis au financeur.
     genres = {libelle: 0 for libelle in ordre_pluriels()}
     quartiers: dict[str, int] = {}
+    villes_qpv = villes_avec_qpv()
     for p in participants.values():
         ages[_tranche_age(p.age_au(reference))] += 1
         mot = libelle_participant(p, reference, pluriel=True)
         genres[mot] = genres.get(mot, 0) + 1
-        bucket = _bucket_quartier(p)
+        bucket = _bucket_quartier(p, villes_qpv)
         quartiers[bucket] = quartiers.get(bucket, 0) + 1
 
     return {
@@ -200,12 +240,25 @@ def _duree_heures(session: SessionActivite) -> float | None:
 
 def tableau_actions(annee: int) -> list[dict]:
     """Tableau actions/séances par atelier (tableau 6.2)."""
-    presences = _presences_annee(annee)
+    from app.models import AtelierActivite
+
+    venues = _venues_annee(annee, SessionActivite.id, PresenceActivite.participant_id).all()
+    session_ids = {sid for sid, _pid in venues}
+    sessions = {}
+    if session_ids:
+        colonnes = (SessionActivite.id, SessionActivite.atelier_id, SessionActivite.duree_minutes,
+                    SessionActivite.heure_debut, SessionActivite.heure_fin,
+                    SessionActivite.rdv_debut, SessionActivite.rdv_fin)
+        sessions = {row.id: row for row in db.session.query(*colonnes)
+                    .filter(SessionActivite.id.in_(session_ids)).all()}
+    ateliers = {a.id: a for a in AtelierActivite.query.filter(
+        AtelierActivite.id.in_({s.atelier_id for s in sessions.values()})).all()} if sessions else {}
 
     par_atelier: dict[int, dict] = {}
     sessions_vues: set[int] = set()
-    for presence, session in presences:
-        atelier = session.atelier
+    for session_id, participant_id in venues:
+        session = sessions.get(session_id)
+        atelier = ateliers.get(session.atelier_id) if session is not None else None
         if atelier is None:
             continue
         ligne = par_atelier.setdefault(
@@ -221,10 +274,10 @@ def tableau_actions(annee: int) -> list[dict]:
             },
         )
         ligne["participations"] += 1
-        if presence.participant_id:
-            ligne["participants_uniques"].add(presence.participant_id)
-        if session.id not in sessions_vues:
-            sessions_vues.add(session.id)
+        if participant_id:
+            ligne["participants_uniques"].add(participant_id)
+        if session_id not in sessions_vues:
+            sessions_vues.add(session_id)
             ligne["seances"] += 1
             heures = _duree_heures(session)
             if heures is None:
@@ -384,6 +437,8 @@ def construire_export_senacs(annee: int):
         [
             ["Ce fichier pré-remplit les tableaux de consolidation SENACS à partir des données de l'application."],
             ["Les participants uniques sont dédoublonnés entre secteurs : une personne inscrite dans plusieurs ateliers compte une seule fois."],
+            ["Seules les venues réelles comptent : les absences excusées, les séances annulées et les séances encore à venir sont exclues."],
+            ["Quartier : un habitant d'une ville qui compte un QPV, sans quartier renseigné, est classé « Non renseigné » (et non « Hors QPV »)."],
             ["Bénévolat : onglet alimenté par la page Ressources -> Bénévolat (heures saisies, valorisation au taux configuré)."],
             ["Emplois : onglet alimenté par les postes déclarés sur la page Bilan SENACS (fonction, contrat, ETP)."],
             ["Finances : produits par financeur et charges réalisées issus des subventions de l'exercice ; à rapprocher de la comptabilité officielle."],
@@ -500,6 +555,7 @@ def evenementiel_annee(annee: int) -> dict:
     sessions = (SessionActivite.query
                 .filter(SessionActivite.is_deleted.is_(False))
                 .filter(SessionActivite.est_evenement.is_(True))
+                .filter(seance_tenue())
                 .filter(eff >= date(annee, 1, 1), eff <= date(annee, 12, 31))
                 .all())
     ids = [s.id for s in sessions]
@@ -507,9 +563,9 @@ def evenementiel_annee(annee: int) -> dict:
     uniques = 0
     if ids:
         participations = (db.session.query(db.func.count(PresenceActivite.id))
-                          .filter(PresenceActivite.session_id.in_(ids)).scalar() or 0)
+                          .filter(PresenceActivite.session_id.in_(ids), venue_reelle()).scalar() or 0)
         uniques = (db.session.query(db.func.count(db.distinct(PresenceActivite.participant_id)))
-                   .filter(PresenceActivite.session_id.in_(ids)).scalar() or 0)
+                   .filter(PresenceActivite.session_id.in_(ids), venue_reelle()).scalar() or 0)
     return {
         "nb_evenements": len(sessions),
         "participations": int(participations),
