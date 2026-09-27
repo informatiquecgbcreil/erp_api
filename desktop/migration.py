@@ -127,7 +127,11 @@ def fingerprints(connection):
     quote = connection.dialect.identifier_preparer.quote
     for name in sorted(inspect(connection).get_table_names()):
         total, count = 0, 0
-        for row in connection.execution_options(stream_results=True).execute(text("SELECT * FROM " + quote(name))).mappings():
+        # Option posée sur la requête, pas sur la connexion : en SQLAlchemy 2,
+        # connection.execution_options() modifie la connexion de l'appelant,
+        # et les SHOW suivants partaient alors en curseur serveur (refusé).
+        requete = text("SELECT * FROM " + quote(name)).execution_options(stream_results=True)
+        for row in connection.execute(requete).mappings():
             raw = json.dumps(dict(row), sort_keys=True, ensure_ascii=False, default=str).encode()
             total = (total + int.from_bytes(hashlib.sha256(raw).digest())) % (1 << 256)
             count += 1
@@ -169,7 +173,7 @@ def _relocate(raw, roots):
 
 
 def chemin_reseau(raw) -> bool:
-    """Chemin UNC ou d'espace de noms Windows : \\serveur\partage, //serveur,
+    r"""Chemin UNC ou d'espace de noms Windows : \\serveur\partage, //serveur,
     \\?\… Y accéder ouvrirait une connexion réseau avec les identifiants de
     l'administrateur qui lance la reprise (audit 4.2)."""
     texte = str(raw or "").strip()
