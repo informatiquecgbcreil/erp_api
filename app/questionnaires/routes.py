@@ -29,6 +29,7 @@ from app.rbac import require_perm, can
 from app.services.access_scope import require_sector, effective_sector, sector_filter
 
 from . import bp
+from app.utils.montants import nombre_fini
 
 
 @bp.before_request
@@ -380,10 +381,7 @@ def respond(session_id: int):
             value = request.form.getlist(key) if question.kind == "multi" else request.form.get(key)
             response = QuestionResponse(response_group_id=group.id, question_id=question.id)
             if question.kind == "scale":
-                try:
-                    response.value_number = float(value) if value not in (None, "") else None
-                except Exception:
-                    response.value_number = None
+                response.value_number = nombre_fini(value)
             elif question.kind == "yesno":
                 response.value_text = value or None
             elif question.kind == "multi":

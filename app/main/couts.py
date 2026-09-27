@@ -6,6 +6,7 @@ présences) sur des ateliers et une période choisis, calcule les coûts
 unitaires : par participant, par présence, par heure, par séance.
 """
 from datetime import date
+from decimal import Decimal
 from io import BytesIO
 
 from flask import render_template, request, Response
@@ -16,6 +17,7 @@ from app.extensions import db
 from app.models import AtelierActivite, SessionActivite, PresenceActivite, Subvention
 
 from app.main.common import bp
+from app.utils.montants import parse_montant
 
 
 def _parse_hhmm_minutes(value) -> int | None:
@@ -115,10 +117,7 @@ def _contexte_requete():
             montant = float(subvention.montant_attribue or 0) or float(subvention.montant_demande or 0)
             base_label = f"Subvention « {subvention.nom} » ({'attribué' if subvention.montant_attribue else 'demandé'})"
     if not montant:
-        try:
-            montant = round(float(str(request.args.get("montant") or "0").replace(",", ".").replace(" ", "")), 2)
-        except Exception:
-            montant = 0.0
+        montant = parse_montant(request.args.get("montant"), 0.0, maxi=Decimal("100000000"))
         if montant:
             base_label = "Montant saisi"
 

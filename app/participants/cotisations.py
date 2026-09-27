@@ -27,6 +27,7 @@ from app.services.cotisations import (
 )
 
 from app.participants.routes import bp, _can_edit_participant, _can_read_participant, _can_see_participant
+from app.utils.montants import parse_montant
 
 
 def _repartition_ou_rien(participant: Participant, annee: int):
@@ -170,10 +171,7 @@ def cotisation_versement(participant_id: int, cotisation_id: int):
     participant = _get_participant_autorise(participant_id, edition=True)
     cotisation = _get_cotisation_liee(participant, cotisation_id)
 
-    try:
-        montant = round(float(str(request.form.get("montant") or "0").replace(",", ".")), 2)
-    except Exception:
-        montant = 0.0
+    montant = parse_montant(request.form.get("montant"), 0.0)
     if montant <= 0:
         flash("Le montant du règlement doit être supérieur à 0 €.", "danger")
         return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
@@ -203,9 +201,8 @@ def cotisation_montant_update(participant_id: int, cotisation_id: int):
     """Ajuste le montant dû au cas par cas (tarif réduit négocié…)."""
     participant = _get_participant_autorise(participant_id, edition=True)
     cotisation = _get_cotisation_liee(participant, cotisation_id)
-    try:
-        montant = round(float(str(request.form.get("montant_du") or "0").replace(",", ".")), 2)
-    except Exception:
+    montant = parse_montant(request.form.get("montant_du") or "0", negatif=True)
+    if montant is None:
         flash("Montant invalide.", "danger")
         return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
     if montant < 0:

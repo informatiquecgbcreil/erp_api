@@ -64,6 +64,7 @@ from app.services.inscriptions_annuelles import (
 )
 
 from . import bp
+from app.utils.montants import parse_montant
 
 
 # ---------------------------------------------------------------------------
@@ -166,13 +167,7 @@ def _date_form(nom: str, defaut: date | None = None) -> date | None:
 
 
 def _montant_form(nom: str) -> float | None:
-    brut = (request.form.get(nom) or "").strip().replace(",", ".")
-    if not brut:
-        return None
-    try:
-        return round(float(brut), 2)
-    except ValueError:
-        return None
+    return parse_montant(request.form.get(nom), negatif=True)
 
 
 def _texte(nom: str, maxi: int | None = None) -> str | None:

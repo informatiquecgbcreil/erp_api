@@ -138,6 +138,20 @@ def create_app():
     migrate.init_app(app, db, directory=os.path.join(os.path.dirname(app.root_path), "migrations"))
     login_manager.init_app(app)
     csrf.init_app(app)
+
+    # Aucune valeur NaN/infinie ne doit atteindre la base (caisse, dons…) :
+    # un « nan » saisi rendait la caisse définitivement incalculable.
+    from app.utils.montants import NombreNonFini, installer_garde_nombres
+    installer_garde_nombres()
+
+    @app.errorhandler(NombreNonFini)
+    def _nombre_non_fini(error):
+        db.session.rollback()
+        app.logger.warning("Saisie refusée : %s", error)
+        from flask import flash
+        flash("Un montant ou un nombre saisi n'est pas valide : rien n'a été enregistré.", "danger")
+        retour = request.referrer if request.referrer and request.referrer.startswith(request.host_url) else "/"
+        return redirect(retour), 303
     login_manager.login_view = "auth.login"
 
     # ------------------------------------------------------------------

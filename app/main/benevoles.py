@@ -19,6 +19,7 @@ from app.services.audit import journaliser
 from app.services.access_scope import effective_sector
 
 from app.main.common import bp
+from app.utils.montants import nombre_fini
 
 
 def _annee_demandee() -> int:
@@ -62,10 +63,7 @@ def benevolat_taux_update():
     """Règle le taux horaire de valorisation (réservé direction/finance)."""
     from app.services.instance_settings import get_or_create_instance_settings
 
-    try:
-        taux = round(float(str(request.form.get("taux") or "0").replace(",", ".")), 2)
-    except Exception:
-        taux = 0.0
+    taux = nombre_fini(request.form.get("taux"), 0.0, decimales=2)
     if not (0 < taux <= 100):
         flash("Le taux horaire doit être compris entre 0 et 100 €.", "danger")
         return redirect(url_for("main.benevolat"))
@@ -95,10 +93,7 @@ def benevolat_heures_create():
         return redirect(url_for("main.benevolat"))
     require_participant(participant)
 
-    try:
-        heures = round(float(str(request.form.get("heures") or "0").replace(",", ".")), 2)
-    except Exception:
-        heures = 0.0
+    heures = nombre_fini(request.form.get("heures"), 0.0, decimales=2)
     if heures <= 0:
         flash("Le nombre d'heures doit être supérieur à 0.", "danger")
         return redirect(url_for("main.benevolat"))

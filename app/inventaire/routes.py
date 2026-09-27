@@ -11,6 +11,7 @@ from app.extensions import db
 from app.models import Subvention, LigneBudget, Depense, FactureAchat, FactureLigne
 from app.rbac import require_perm
 from app.services.storage import ensure_upload_subdir, media_relpath, send_media_file
+from app.utils.montants import nombre_fini
 
 
 bp = Blueprint("inventaire", __name__, url_prefix="/factures")
@@ -271,8 +272,8 @@ def facture_detail(facture_id):
                 return redirect(url_for("inventaire.facture_detail", facture_id=f.id))
 
             quantite = int(request.form.get("quantite") or 1)
-            prix_unitaire = float(request.form.get("prix_unitaire") or 0)
-            montant_ligne = float(request.form.get("montant_ligne") or 0)
+            prix_unitaire = nombre_fini(request.form.get("prix_unitaire"), 0.0)
+            montant_ligne = nombre_fini(request.form.get("montant_ligne"), 0.0)
 
             # si montant non fourni, calcule
             if montant_ligne <= 0:

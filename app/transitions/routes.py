@@ -35,6 +35,7 @@ from app.services.transitions import (
 
 from . import bp
 from app.services.access_scope import effective_sector, require_participant, require_sector, participant_filter
+from app.utils.montants import nombre_fini
 
 
 def _annee_demandee() -> int:
@@ -282,10 +283,7 @@ def mesure_creer():
 
     atelier = db.session.get(AtelierActivite, request.form.get("atelier_id", type=int) or 0)
     libelle = (request.form.get("libelle") or "").strip()
-    try:
-        valeur = round(float(str(request.form.get("valeur") or "").replace(",", ".")), 2)
-    except (TypeError, ValueError):
-        valeur = None
+    valeur = nombre_fini(request.form.get("valeur"), decimales=2)
 
     if atelier is None or atelier.is_deleted or not _atelier_est_accessible(atelier):
         flash("Choisissez un atelier transitions valide pour la mesure.", "danger")

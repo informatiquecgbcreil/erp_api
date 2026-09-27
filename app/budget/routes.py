@@ -79,6 +79,8 @@ def parse_money(raw_value, default: float = 0.0) -> float:
         value = Decimal(cleaned)
     except (InvalidOperation, ValueError):
         return float(default)
+    if not value.is_finite():
+        return float(default)
 
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 

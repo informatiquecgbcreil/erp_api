@@ -22,6 +22,7 @@ from app.services.referentiels import (
 from app.services.villes import normaliser as normaliser_ville
 
 from . import bp
+from app.utils.montants import nombre_fini
 
 
 def _load_quartiers():
@@ -111,11 +112,12 @@ def edit(quartier_id: int):
         lat_raw = (request.form.get("latitude") or "").strip().replace(",", ".")
         lon_raw = (request.form.get("longitude") or "").strip().replace(",", ".")
         if lat_raw and lon_raw:
-            try:
-                quartier.latitude = float(lat_raw)
-                quartier.longitude = float(lon_raw)
+            lat, lon = nombre_fini(lat_raw), nombre_fini(lon_raw)
+            if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+                quartier.latitude = lat
+                quartier.longitude = lon
                 quartier.geo_manuel = True
-            except ValueError:
+            else:
                 flash("Coordonnées ignorées (format invalide).", "warning")
         elif not lat_raw and not lon_raw and request.form.get("effacer_position") == "1":
             quartier.latitude = None

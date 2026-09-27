@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.extensions import db
 from app.models import Participant, PresenceActivite, ProjetAtelier, ProjetIndicateur, SessionActivite
+from app.utils.montants import nombre_fini
 
 
 INDICATOR_METRICS = {
@@ -211,11 +212,8 @@ def parse_float_optional(value):
     raw = str(value or "").strip()
     if not raw:
         return None
-    raw = raw.replace("\u00a0", "").replace(" ", "").replace("€", "").replace("â‚¬", "").replace(",", ".")
-    try:
-        return round(float(raw), 2)
-    except Exception:
-        return None
+    raw = raw.replace("â‚¬", "")
+    return nombre_fini(raw, decimales=2)
 
 
 def indicator_unique_code(prefix: str) -> str:

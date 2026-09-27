@@ -37,6 +37,7 @@ from app.models import BilanLourdNarratif
 from app.services.storage import ensure_upload_subdir, media_relpath
 from app.services.consumption import aggregate_sessions_consumption, aggregate_individual_consumption
 from app.models import SessionActivite
+from app.utils.montants import nombre_fini
 
 
 bp = Blueprint("bilans", __name__, url_prefix="")
@@ -683,10 +684,7 @@ def bilan_senacs_emploi_create():
     type_contrat = (request.form.get("type_contrat") or "cdi").strip()
     if type_contrat not in SENACS_TYPES_CONTRAT_DICT:
         type_contrat = "autre"
-    try:
-        etp = round(float(str(request.form.get("etp") or "1").replace(",", ".")), 2)
-    except Exception:
-        etp = 1.0
+    etp = nombre_fini(request.form.get("etp") or "1", 1.0, decimales=2)
     etp = min(max(etp, 0.0), 2.0)
 
     db.session.add(SenacsEmploi(

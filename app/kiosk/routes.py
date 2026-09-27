@@ -58,6 +58,7 @@ from app.services.doublons import (  # noqa: E402
     normaliser_nom as _normaliser_nom,
     squelette_nom as _squelette_nom,
 )
+from app.utils.montants import nombre_fini
 
 
 # Freins anti-automates des pages publiques (voir app/utils/limiteur.py).
@@ -574,10 +575,7 @@ def kiosk_feedback(token: str):
             value = request.form.getlist(key) if question.kind == "multi" else request.form.get(key)
             response = QuestionResponse(response_group_id=group.id, question_id=question.id)
             if question.kind == "scale":
-                try:
-                    response.value_number = float(value) if value not in (None, "") else None
-                except Exception:
-                    response.value_number = None
+                response.value_number = nombre_fini(value)
             elif question.kind == "yesno":
                 response.value_text = value or None
             elif question.kind == "multi":

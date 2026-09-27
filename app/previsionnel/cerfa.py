@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from io import BytesIO
+from app.utils.montants import nombre_fini
 
 
 # --- Structure canonique (dérivée du modèle CAF-FADO fourni) -----------------
@@ -176,10 +177,9 @@ def parse_amount(value) -> float:
     raw = str(value if value is not None else "").replace(" ", "").replace(" ", "").replace(",", ".")
     if not raw:
         return 0.0
-    try:
-        return round(float(raw), 2)
-    except Exception:
-        pass
+    valeur = nombre_fini(raw, decimales=2)
+    if valeur is not None:
+        return valeur
     if all(c in "0123456789.+" for c in raw):
         total = 0.0
         ok = False
