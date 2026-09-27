@@ -619,9 +619,9 @@ def reservation_reglements(reservation_id: int):
     reservation.caution_montant = _decimal("caution_montant")
     reservation.caution_encaissee = _case("caution_encaissee")
     reservation.caution_restituee_le = _date("caution_restituee_le")
+    # Montant d'acompte DEMANDÉ ; l'argent reçu s'enregistre en encaissements
+    # (route « encaissement » ci-dessous), jamais par une simple date.
     reservation.acompte_montant = _decimal("acompte_montant")
-    reservation.acompte_regle_le = _date("acompte_regle_le")
-    reservation.solde_regle_le = _date("solde_regle_le")
     reservation.cles_remises_le = _date("cles_remises_le")
     reservation.cles_rendues_le = _date("cles_rendues_le")
 
@@ -640,11 +640,68 @@ def reservation_reglements(reservation_id: int):
     return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
 
 
+@bp.route("/reservation/<int:reservation_id>/encaissement", methods=["POST"])
+@login_required
+@require_perm("locations:edit")
+def reservation_encaisser(reservation_id: int):
+    """Enregistre un règlement de location : il entre aussitôt en caisse
+    (espèces, chèques) et dans le montant réglé de la réservation."""
+    from app.services.encaissements import EncaissementErreur, enregistrer, verrouiller
+    reservation = Reservation.query.get_or_404(reservation_id)
+    try:
+        verrouiller("reservation", reservation.id)
+        encaissement = enregistrer(
+            request.form.get("montant"), (request.form.get("mode") or "").strip(),
+            date_encaissement=_date("date_encaissement") or date.today(),
+            reservation=reservation, libelle=f"Location {reservation.reference}",
+            commentaire=_texte("commentaire") or None,
+            user_id=getattr(current_user, "id", None), jeton=request.form.get("jeton"),
+        )
+        db.session.commit()
+    except EncaissementErreur as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+    journaliser("salles.reservation_encaissement", cible=reservation.reference,
+                details={"encaissement": encaissement.id, "montant": encaissement.montant, "mode": encaissement.mode})
+    flash(f"Règlement de {encaissement.montant:.2f} € enregistré.", "success")
+    return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+
+
+@bp.route("/reservation/<int:reservation_id>/encaissement/<int:encaissement_id>/contrepasser", methods=["POST"])
+@login_required
+@require_perm("locations:edit")
+def reservation_contrepasser(reservation_id: int, encaissement_id: int):
+    from app.models import Encaissement
+    from app.services.encaissements import EncaissementErreur, contre_passer
+    reservation = Reservation.query.get_or_404(reservation_id)
+    encaissement = db.session.get(Encaissement, encaissement_id)
+    if encaissement is None or encaissement.reservation_id != reservation.id:
+        abort(404)
+    motif = _texte("motif") or ""
+    try:
+        inverse = contre_passer(encaissement, motif, user_id=getattr(current_user, "id", None),
+                                jeton=request.form.get("jeton"))
+        db.session.commit()
+    except EncaissementErreur as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+    journaliser("encaissement.contre_passation", cible=f"encaissement #{encaissement.id}",
+                details={"reservation": reservation.reference, "contre_passation": inverse.id, "motif": motif})
+    flash("Règlement contre-passé.", "success")
+    return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+
+
 @bp.route("/reservation/<int:reservation_id>/supprimer", methods=["POST"])
 @login_required
 @require_perm("locations:edit")
 def reservation_supprimer(reservation_id: int):
     reservation = Reservation.query.get_or_404(reservation_id)
+    if reservation.encaissements:
+        flash("Des règlements ont été reçus pour cette réservation : elle ne peut pas être supprimée. "
+              "Annulez-la (et contre-passez les règlements si besoin).", "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
     if reservation.facture_numero:
         flash("Cette réservation est facturée : conservez-la au registre et utilisez l'annulation.", "danger")
         return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))

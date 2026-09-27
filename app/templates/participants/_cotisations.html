@@ -62,6 +62,17 @@
             <div class="cotis-versements">
               {% for v in c.paiements %}
                 <div class="cotis-versement-row"><span>{{ v.date_paiement.strftime('%d/%m/%Y') }} · {{ v.mode_label }}{% if v.commentaire %} · {{ v.commentaire }}{% endif %}</span><strong>{{ "%.2f"|format(v.montant) }} €</strong></div>
+                {% if can('caisse:edit') and v.montant > 0 and v.encaissement and not v.encaissement.est_contre_passe %}
+                  <details class="cotis-contrepasser"><summary class="mini-link">↩ Corriger ce versement</summary>
+                    <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement_contrepasser', participant_id=participant.id, cotisation_id=c.id, paiement_id=v.id) }}"
+                          onsubmit="return confirm('Enregistrer une écriture inverse de ce versement ? Le versement d\'origine reste au livre de caisse.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
+                      <div><label>Motif (obligatoire)</label><input type="text" name="motif" size="22" required minlength="3" maxlength="255" placeholder="300 € au lieu de 30 €…"></div>
+                      <button class="btn" type="submit">Contre-passer</button>
+                    </form>
+                  </details>
+                {% endif %}
               {% endfor %}
             </div>
           {% endif %}
@@ -71,6 +82,7 @@
           {% if can_edit_cotisations %}
             <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement', participant_id=participant.id, cotisation_id=c.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
               <div><label>Montant réglé</label><input type="text" name="montant" size="6" placeholder="0,00" required></div>
               <div><label>Date</label><input type="date" name="date_paiement"></div>
               <div><label>Mode</label>
@@ -96,7 +108,7 @@
                   <button class="btn" type="submit">Valider</button>
                 </form>
               </details>
-              {% if c.montant_regle == 0 %}
+              {% if not c.paiements %}
                 <form method="post" action="{{ url_for('participants.cotisation_supprimer', participant_id=participant.id, cotisation_id=c.id) }}" onsubmit="return confirm('Supprimer cette cotisation (créée par erreur) ?');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-danger-outline" type="submit">Supprimer</button>
@@ -143,6 +155,17 @@
             <div class="cotis-versements">
               {% for v in c.paiements %}
                 <div class="cotis-versement-row"><span>{{ v.date_paiement.strftime('%d/%m/%Y') }} · {{ v.mode_label }}{% if v.commentaire %} · {{ v.commentaire }}{% endif %}</span><strong>{{ "%.2f"|format(v.montant) }} €</strong></div>
+                {% if can('caisse:edit') and v.montant > 0 and v.encaissement and not v.encaissement.est_contre_passe %}
+                  <details class="cotis-contrepasser"><summary class="mini-link">↩ Corriger ce versement</summary>
+                    <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement_contrepasser', participant_id=participant.id, cotisation_id=c.id, paiement_id=v.id) }}"
+                          onsubmit="return confirm('Enregistrer une écriture inverse de ce versement ? Le versement d\'origine reste au livre de caisse.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
+                      <div><label>Motif (obligatoire)</label><input type="text" name="motif" size="22" required minlength="3" maxlength="255" placeholder="300 € au lieu de 30 €…"></div>
+                      <button class="btn" type="submit">Contre-passer</button>
+                    </form>
+                  </details>
+                {% endif %}
               {% endfor %}
             </div>
           {% endif %}
@@ -185,6 +208,7 @@
           {% if can_edit_cotisations %}
             <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement', participant_id=participant.id, cotisation_id=c.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
               <div><label>Montant réglé</label><input type="text" name="montant" size="6" placeholder="0,00" required></div>
               <div><label>Date</label><input type="date" name="date_paiement"></div>
               <div><label>Mode</label>
@@ -210,7 +234,7 @@
                   <button class="btn" type="submit">Valider</button>
                 </form>
               </details>
-              {% if c.montant_regle == 0 %}
+              {% if not c.paiements %}
                 <form method="post" action="{{ url_for('participants.cotisation_supprimer', participant_id=participant.id, cotisation_id=c.id) }}" onsubmit="return confirm('Supprimer cette cotisation (créée par erreur) ?');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-danger-outline" type="submit">Supprimer</button>

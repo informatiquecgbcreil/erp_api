@@ -6,7 +6,7 @@ dépôt » accompagne l'opération de bout en bout.
 """
 from datetime import date, datetime
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.extensions import db
@@ -14,12 +14,23 @@ from app.main.common import bp
 from app.models import CaisseMouvement
 from app.rbac import can, require_perm
 from app.services.audit import journaliser
-from app.services.caisse import enregistrer_comptage, etat_caisse, journal, verrouiller_caisse
+from app.services.caisse import ajuster, enregistrer_comptage, etat_caisse, journal, verrouiller_caisse
 from app.utils.montants import parse_montant
 
 
 def _montant_form(champ: str) -> float | None:
     return parse_montant(request.form.get(champ), negatif=True)
+
+
+def _jeton() -> str | None:
+    jeton = (request.form.get("jeton") or "").strip()
+    return jeton[:64] if len(jeton) >= 16 else None
+
+
+def _deja_traite() -> bool:
+    """Formulaire déjà enregistré (double clic, renvoi après coupure)."""
+    jeton = _jeton()
+    return bool(jeton and CaisseMouvement.query.filter_by(jeton=jeton).first())
 
 
 def _date_form(champ: str) -> date:
@@ -51,7 +62,11 @@ def caisse_fond():
         flash("Montant du fond de caisse invalide.", "danger")
         return redirect(url_for("main.caisse"))
     verrouiller_caisse()
+    if _deja_traite():
+        flash("Ce fond de caisse a déjà été enregistré.", "info")
+        return redirect(url_for("main.caisse"))
     db.session.add(CaisseMouvement(
+        jeton=_jeton(),
         type_mouvement="fond", canal="especes", montant=montant,
         date_mouvement=date.today(),
         commentaire=(request.form.get("commentaire") or "").strip() or None,
@@ -71,8 +86,11 @@ def caisse_comptage():
     if montant is None or montant < 0:
         flash("Montant compté invalide.", "danger")
         return redirect(url_for("main.caisse"))
+    if _deja_traite():
+        flash("Ce comptage a déjà été enregistré.", "info")
+        return redirect(url_for("main.caisse"))
     comptage = enregistrer_comptage(
-        montant,
+        montant, jeton=_jeton(),
         commentaire=(request.form.get("commentaire") or "").strip() or None,
         user_id=getattr(current_user, "id", None),
     )
@@ -94,6 +112,9 @@ def caisse_comptage():
 def caisse_depot():
     """Enregistre un dépôt en banque (espèces et/ou chèques)."""
     verrouiller_caisse()
+    if _deja_traite():
+        flash("Ce dépôt a déjà été enregistré.", "info")
+        return redirect(url_for("main.caisse"))
     etat = etat_caisse()
     especes = _montant_form("montant_especes") or 0.0
     cheques = _montant_form("montant_cheques") or 0.0
@@ -131,13 +152,14 @@ def caisse_depot():
     ts = utcnow()
     ids = []
     if especes > 0:
-        m = CaisseMouvement(type_mouvement="depot", canal="especes", montant=especes,
+        m = CaisseMouvement(type_mouvement="depot", canal="especes", montant=especes, jeton=_jeton(),
                             date_mouvement=jour, commentaire=commentaire, created_at=ts,
                             created_by_user_id=getattr(current_user, "id", None))
         db.session.add(m)
         ids.append(m)
     if cheques > 0:
         m = CaisseMouvement(type_mouvement="depot", canal="cheque", montant=cheques,
+                            jeton=(None if especes > 0 else _jeton()),
                             nb_cheques=nb_cheques, date_mouvement=jour, commentaire=commentaire, created_at=ts,
                             created_by_user_id=getattr(current_user, "id", None))
         db.session.add(m)
@@ -170,3 +192,101 @@ def caisse_bordereau(mouvement_id: int):
         lignes = [m]
     total = round(sum(x.montant for x in lignes), 2)
     return render_template("caisse_bordereau.html", lignes=lignes, depot=m, total=total)
+
+
+@bp.post("/caisse/ajustement")
+@login_required
+@require_perm("caisse:edit")
+def caisse_ajustement():
+    """Ajustement manuel du théorique d'espèces, motif obligatoire (audit 2.2)."""
+    montant = _montant_form("montant")
+    motif = (request.form.get("motif") or "").strip()
+    if montant is None:
+        flash("Montant invalide.", "danger")
+        return redirect(url_for("main.caisse"))
+    if _deja_traite():
+        flash("Cet ajustement a déjà été enregistré.", "info")
+        return redirect(url_for("main.caisse"))
+    try:
+        mouvement = ajuster(montant, motif, user_id=getattr(current_user, "id", None))
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("main.caisse"))
+    if _jeton():
+        mouvement.jeton = _jeton()
+        db.session.commit()
+    journaliser("caisse.ajustement", cible=f"{montant:+.2f} €", details={"motif": motif})
+    flash(f"Ajustement de {montant:+.2f} € enregistré.", "success")
+    return redirect(url_for("main.caisse"))
+
+
+@bp.route("/caisse/a-qualifier", methods=["GET", "POST"])
+@login_required
+@require_perm("caisse:view")
+def caisse_a_qualifier():
+    """Sommes reprises d'une ancienne version sans mode de règlement sûr.
+
+    Pour chacune, une personne habilitée indique le ou les modes réels et si
+    l'argent doit entrer dans le théorique de caisse (non encore compté) ou
+    s'il a déjà été absorbé par un comptage. Rien n'est tranché d'office.
+    """
+    from app.models import Encaissement, MODES_PAIEMENT, MODES_PAIEMENT_LABELS
+    from app.services.encaissements import EncaissementErreur, a_qualifier, qualifier
+    if request.method == "POST":
+        if not can("caisse:edit"):
+            abort(403)
+        encaissement = db.session.get(Encaissement, request.form.get("encaissement_id", type=int) or 0)
+        if encaissement is None:
+            abort(404)
+        parts = []
+        for i in range(3):
+            mode = (request.form.get(f"mode_{i}") or "").strip()
+            montant = (request.form.get(f"montant_{i}") or "").strip()
+            if mode and montant:
+                parts.append((mode, montant))
+        choix = request.form.get("caisse")
+        if choix not in {"dans", "hors"}:
+            flash("Indiquez si cette somme doit entrer dans le théorique de caisse ou a déjà été comptée.", "danger")
+            return redirect(url_for("main.caisse_a_qualifier"))
+        try:
+            resultat = qualifier(encaissement, parts, dans_caisse=(choix == "dans"),
+                                 user_id=getattr(current_user, "id", None))
+            db.session.commit()
+        except EncaissementErreur as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(url_for("main.caisse_a_qualifier"))
+        journaliser("encaissement.qualification", cible=f"encaissement #{encaissement.id}",
+                    details={"parts": [[e.mode, e.montant] for e in resultat], "dans_caisse": choix == "dans"})
+        flash("Somme qualifiée.", "success")
+        return redirect(url_for("main.caisse_a_qualifier"))
+    return render_template(
+        "caisse_a_qualifier.html",
+        encaissements=a_qualifier(),
+        modes=MODES_PAIEMENT, modes_labels=MODES_PAIEMENT_LABELS,
+        peut_editer=can("caisse:edit"),
+    )
+
+
+@bp.route("/controle/anomalies-montants", methods=["GET", "POST"])
+@login_required
+@require_perm("caisse:view")
+def anomalies_montants():
+    """Montants non finis hérités (NaN, infini) : liste et correction motivée."""
+    from app.services import anomalies_montants as anomalies
+    if request.method == "POST":
+        if not can("caisse:edit"):
+            abort(403)
+        try:
+            anomalies.corriger(
+                (request.form.get("table") or "").strip(), (request.form.get("colonne") or "").strip(),
+                request.form.get("ligne_id", type=int) or 0, request.form.get("montant"),
+                request.form.get("motif"), user_id=getattr(current_user, "id", None),
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        else:
+            flash("Montant corrigé. L'ancienne valeur est conservée au journal d'audit.", "success")
+        return redirect(url_for("main.anomalies_montants"))
+    return render_template("anomalies_montants.html", anomalies=anomalies.lister(), peut_editer=can("caisse:edit"))

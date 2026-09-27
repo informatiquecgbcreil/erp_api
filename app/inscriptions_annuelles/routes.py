@@ -681,6 +681,16 @@ def supprimer(inscription_id: int):
         )
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
+    from app.models import Encaissement
+    if Encaissement.query.filter_by(inscription_annuelle_id=inscription.id).first():
+        flash(
+            "De l'argent a été reçu sur ce bulletin : il ne peut pas être supprimé (la caisse "
+            "perdrait la trace de l'encaissement). Annule plutôt l'inscription, et le règlement "
+            "par contre-passation si besoin.",
+            "err",
+        )
+        return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
+
     annee, nom = inscription.annee_scolaire, inscription.nom_complet
     db.session.delete(inscription)
     db.session.commit()
@@ -768,12 +778,16 @@ def reglement(inscription_id: int):
     action = (request.form.get("action") or "encaisser").strip()
 
     if action == "annuler":
+        motif = _texte("motif", 255) or ""
         try:
-            annuler_reglement(inscription)
+            nombre = annuler_reglement(inscription, motif, user_id=getattr(current_user, "id", None),
+                                       jeton=request.form.get("jeton"))
         except InscriptionAnnuelleErreur as exc:
             flash(str(exc), "err")
             return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
-        flash("Règlement remis à zéro sur le bulletin.", "ok")
+        journaliser("encaissement.contre_passation", cible=f"inscription annuelle #{inscription.id}",
+                    details={"nombre": nombre, "motif": motif})
+        flash(f"{nombre} règlement(s) annulé(s) par contre-passation. La caisse en tient compte.", "ok")
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
     mode = (request.form.get("mode") or "").strip()
@@ -793,6 +807,7 @@ def reglement(inscription_id: int):
             date_paiement=_date_form("date_reglement", date.today()),
             commentaire=_texte("reglement_commentaire", 255),
             user_id=getattr(current_user, "id", None),
+            jeton=request.form.get("jeton"),
         )
     except InscriptionAnnuelleErreur as exc:
         flash(str(exc), "err")

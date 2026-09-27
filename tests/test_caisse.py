@@ -28,10 +28,11 @@ def _login_role(app, email, role_code, secteur=None):
 def _vider_caisse(app):
     """Repart d'une caisse vierge (les tests partagent la base de session)."""
     from app.extensions import db
-    from app.models import CaisseMouvement, Don, Paiement
+    from app.models import CaisseMouvement, Don, Encaissement, Paiement
     with app.app_context():
         CaisseMouvement.query.delete()
         Paiement.query.delete()
+        Encaissement.query.delete()
         Don.query.delete()
         db.session.commit()
 

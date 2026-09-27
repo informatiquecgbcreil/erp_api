@@ -56,7 +56,6 @@ from app.services.cotisations import (
     cout_inscription,
     libelle_annee_scolaire,
     regrouper_en_foyer,
-    repartir_versement,
     tarif_en_vigueur,
 )
 
@@ -826,12 +825,16 @@ def cotisations_du_bulletin(inscription: InscriptionAnnuelle) -> list[Cotisation
 def etat_reglement(inscription: InscriptionAnnuelle) -> dict:
     """Où en est ce bulletin : rien / partiel / complet, avec les montants.
 
-    Deux sources selon l'avancement, jamais les deux à la fois :
+    L'argent reçu est toujours écrit en ENCAISSEMENTS (voir
+    ``app.services.encaissements``), dès l'accueil. Le calcul lit :
     - **les cotisations** dès qu'elles existent (le module Adhésions fait
       foi : un versement saisi depuis une fiche participant compte ici) ;
-    - **le bulletin lui-même** avant la transformation, quand l'accueil a
-      encaissé sans qu'aucune fiche n'existe encore.
+    - **les encaissements du bulletin** avant la création de la fiche.
+    ``trop_percu`` : ce qui a été reçu sur le bulletin et n'a pu être affecté
+    à aucune cotisation (somme en attente ou payée en trop) — jamais perdu.
     """
+    from app.services.encaissements import encaissements_du_bulletin, trop_percu
+    encaissements = encaissements_du_bulletin(inscription) if inscription.id else []
     cotisations = cotisations_du_bulletin(inscription)
     if cotisations:
         du = round(sum(float(c.montant_du or 0) for c in cotisations), 2)
@@ -839,8 +842,9 @@ def etat_reglement(inscription: InscriptionAnnuelle) -> dict:
         source = "cotisations"
     else:
         du = calculer_cout(inscription)["total"]
-        regle = round(float(inscription.reglement_montant or 0), 2)
+        regle = round(sum(float(e.montant) for e in encaissements), 2)
         source = "bulletin"
+    surplus = trop_percu(encaissements) if cotisations else round(max(0.0, regle - du), 2)
 
     reste = round(max(0.0, du - regle), 2)
     if du <= 0.009 and regle <= 0.009:
@@ -859,8 +863,11 @@ def etat_reglement(inscription: InscriptionAnnuelle) -> dict:
         "du": du,
         "regle": regle,
         "reste": reste,
+        "trop_percu": surplus,
         "source": source,
         "cotisations": cotisations,
+        "encaissements": encaissements,
+        "a_qualifier": any(e.a_qualifier for e in encaissements),
     }
 
 
@@ -876,8 +883,7 @@ def resynchroniser_reglement(inscription: InscriptionAnnuelle) -> dict:
     etat = etat_reglement(inscription)
     inscription.reglement_statut = etat["statut"]
     inscription.reglement_du = etat["du"]
-    if etat["source"] == "cotisations":
-        inscription.reglement_montant = etat["regle"]
+    inscription.reglement_montant = etat["regle"]
     inscription.reglement_confirme = etat["statut"] == "complet"
     return etat
 
@@ -1029,17 +1035,12 @@ def generer_cotisations(
     if corrigees:
         avertissements.append("Montant(s) rattrapé(s) depuis le barème : " + " ; ".join(corrigees) + ".")
 
-    # --- Report d'un encaissement fait avant la transformation ------------
-    deja_verse = round(float(inscription.reglement_montant or 0), 2)
-    if deja_verse > 0 and not any(c.paiements for c in cotisations_du_bulletin(inscription)):
-        repartir_versement(
-            cotisations_du_bulletin(inscription),
-            deja_verse,
-            date_paiement=inscription.reglement_date or a_la_date,
-            mode=inscription.reglement_mode or "especes",
-            commentaire=f"Inscription annuelle {inscription.libelle_annee}",
-            user_id=user_id,
-        )
+    # --- Rattachement de l'argent reçu avant la fiche ----------------------
+    # Chaque encaissement du bulletin garde son mode et sa date ; seul le
+    # reste non encore ventilé est affecté : rejouer ne double rien, et un
+    # versement déjà saisi depuis la fiche n'empêche plus le report.
+    from app.services.encaissements import ventiler_bulletin
+    ventiler_bulletin(inscription, user_id=user_id)
 
     resynchroniser_reglement(inscription)
     db.session.commit()
@@ -1054,49 +1055,50 @@ def encaisser(
     date_paiement: date | None = None,
     commentaire: str | None = None,
     user_id: int | None = None,
+    jeton: str | None = None,
 ) -> tuple[float, str]:
     """Enregistre une somme reçue à l'accueil — totale ou partielle.
 
-    Quand les cotisations existent, la somme se ventile dessus (adhésion
-    d'abord, puis les participations) : le règlement remonte dans les
-    impayés, la caisse et les bilans sans double saisie. Sinon elle
-    s'accumule sur le bulletin en attendant la fiche participant, et sera
-    reportée telle quelle à la génération des cotisations.
+    La somme devient IMMÉDIATEMENT un encaissement (la caisse la voit tout
+    de suite), rattaché au bulletin. Quand les cotisations existent, elle se
+    ventile dessus (adhésion d'abord, puis les participations) ; sinon elle
+    attend la fiche participant et sera ventilée à la génération des
+    cotisations, avec son mode et sa date. Un surplus reste un trop-perçu
+    visible sur le bulletin.
 
-    Retourne (montant réellement encaissé, message).
+    Retourne (montant encaissé, message).
     """
-    montant = round(float(montant or 0), 2)
-    if montant <= 0:
-        raise InscriptionAnnuelleErreur("Le montant encaissé doit être supérieur à 0 €.")
-
-    mode = (mode or "especes").strip() or "especes"
-    date_paiement = date_paiement or date.today()
-    inscription.reglement_mode = mode
-    inscription.reglement_date = date_paiement
+    from app.services.encaissements import EncaissementErreur, enregistrer, ventiler_bulletin
+    try:
+        encaissement = enregistrer(
+            montant, (mode or "especes"),
+            date_encaissement=date_paiement or date.today(),
+            inscription=inscription,
+            libelle=f"Inscription annuelle {inscription.libelle_annee}",
+            commentaire=commentaire,
+            user_id=user_id,
+            jeton=jeton,
+        )
+    except EncaissementErreur as exc:
+        raise InscriptionAnnuelleErreur(str(exc)) from None
+    inscription.reglement_mode = encaissement.mode
+    inscription.reglement_date = encaissement.date_encaissement
     if commentaire:
         inscription.reglement_commentaire = commentaire[:255]
 
-    cotisations = cotisations_du_bulletin(inscription)
-    if cotisations:
-        versements = repartir_versement(
-            cotisations, montant,
-            date_paiement=date_paiement, mode=mode,
-            commentaire=commentaire or f"Inscription annuelle {inscription.libelle_annee}",
-            user_id=user_id,
-        )
-        encaisse = round(sum(float(v.montant) for v in versements), 2)
+    versements = ventiler_bulletin(inscription, user_id=user_id)
+    encaisse = encaissement.montant
+    if cotisations_du_bulletin(inscription):
         message = f"{encaisse:.2f} € encaissés et ventilés sur {len(versements)} cotisation(s)."
-        if encaisse < montant:
+        if encaissement.reste_a_ventiler > 0.009:
             message += (
-                f" {montant - encaisse:.2f} € n'ont pas été affectés : il ne restait plus rien à devoir. "
-                "Vérifie le montant saisi."
+                f" {encaissement.reste_a_ventiler:.2f} € dépassent ce qui reste dû : ils sont conservés "
+                "comme trop-perçu sur le bulletin (à rendre ou à affecter). Vérifie le montant saisi."
             )
     else:
-        inscription.reglement_montant = round(float(inscription.reglement_montant or 0) + montant, 2)
-        encaisse = montant
         message = (
-            f"{montant:.2f} € enregistrés sur le bulletin. "
-            "Ils seront reportés dans le module Adhésions à la création de la fiche participant."
+            f"{encaisse:.2f} € encaissés ({encaissement.mode_label.lower()}), visibles en caisse dès maintenant. "
+            "Ils seront affectés aux cotisations à la création de la fiche participant."
         )
 
     etat = resynchroniser_reglement(inscription)
@@ -1108,23 +1110,30 @@ def encaisser(
     return encaisse, message
 
 
-def annuler_reglement(inscription: InscriptionAnnuelle) -> None:
-    """Repasse le bulletin en « rien réglé ».
+def annuler_reglement(inscription: InscriptionAnnuelle, motif: str = "", *, user_id: int | None = None,
+                      jeton: str | None = None) -> int:
+    """Annule l'argent reçu sur ce bulletin, par CONTRE-PASSATION motivée.
 
-    Ne touche PAS aux versements déjà enregistrés dans le module Adhésions :
-    un mouvement de caisse s'annule là où il est journalisé, pas d'ici. Ce
-    bouton ne sert donc qu'aux encaissements notés sur le bulletin avant
-    qu'une fiche participant existe."""
-    if cotisations_du_bulletin(inscription):
-        raise InscriptionAnnuelleErreur(
-            "Les règlements de cette inscription sont enregistrés dans le module "
-            "Adhésions & participation : annule le versement depuis la fiche "
-            "participant, pour que la caisse et les bilans restent justes."
-        )
-    inscription.reglement_montant = None
-    inscription.reglement_date = None
+    Chaque encaissement du bulletin encore actif reçoit une écriture inverse
+    (ventilations comprises) : le livre de caisse garde l'original et la
+    correction, avec l'auteur et le motif. Rien n'est effacé.
+    Retourne le nombre d'encaissements contre-passés.
+    """
+    from app.services.encaissements import EncaissementErreur, contre_passer, encaissements_du_bulletin
+    actifs = [e for e in encaissements_du_bulletin(inscription)
+              if e.origine_id is None and e.montant > 0 and not e.est_contre_passe]
+    if not actifs:
+        raise InscriptionAnnuelleErreur("Aucun règlement à annuler sur ce bulletin.")
+    try:
+        for i, encaissement in enumerate(actifs):
+            contre_passer(encaissement, motif, user_id=user_id,
+                          jeton=(f"{jeton}-{i}" if jeton else None))
+    except EncaissementErreur as exc:
+        db.session.rollback()
+        raise InscriptionAnnuelleErreur(str(exc)) from None
     resynchroniser_reglement(inscription)
     db.session.commit()
+    return len(actifs)
 
 # ---------------------------------------------------------------------------
 # Première participation : bascule automatique du statut d'attente

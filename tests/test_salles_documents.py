@@ -243,9 +243,14 @@ def test_la_facture_isole_la_caution_du_montant_a_regler(app, bail):
 
 def test_la_facture_deduit_lacompte(app, bail):
     with app.app_context():
-        r = _reservation(bail, acompte_montant=10.0, acompte_regle_le=date(2026, 9, 1))
+        # Évolution voulue (audit 2.4) : l'argent reçu est un encaissement
+        # (montant, mode, date), plus une simple date d'acompte.
+        r = _reservation(bail, acompte_montant=10.0)
+        from app.services.encaissements import enregistrer
+        enregistrer(10, "cheque", date_encaissement=date(2026, 9, 1), reservation=r)
+        db.session.commit()
         texte = _texte(docs.facture(r, "FAC-2026-0003", ""))
-        assert "Acompte reçu" in texte
+        assert "Déjà réglé" in texte
         assert "RESTE À RÉGLER" in texte
 
 
@@ -399,11 +404,17 @@ def test_une_gratuite_nest_jamais_impayee(app, bail):
 
 def test_un_solde_regle_solde_limpaye(app, bail):
     with app.app_context():
-        r = _reservation(bail, solde_regle_le=date.today())
+        r = _reservation(bail)
         appliquer_dates(r, [date.today() - timedelta(days=10)], "09:00", "13:00")
         db.session.flush()
         recalculer(r)
         db.session.commit()
+        assert r.impayee is True
+        # Solde enregistré comme un vrai règlement (audit 2.4).
+        from app.services.encaissements import enregistrer
+        enregistrer(r.montant_du, "virement", reservation=r)
+        db.session.commit()
+        db.session.refresh(r)
         assert r.reste_du == 0.0
         assert r.impayee is False
 

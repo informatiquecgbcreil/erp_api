@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block title %}Anomalies de montants{% endblock %}
+{% block body %}
+<div class="page">
+  <p><a href="{{ url_for('main.caisse') }}">← Caisse</a></p>
+  <h1>Montants invalides hérités</h1>
+  <p class="muted">Une ancienne version acceptait des montants « NaN » (pas un nombre) ou infinis. Ils rendaient la caisse
+    incalculable et pouvaient marquer une cotisation « soldée ». Ils sont désormais exclus des calculs, mais
+    <strong>rien n'est remplacé d'office</strong> : indiquez le montant réellement constaté (0 si aucune somme n'a existé)
+    et le motif. L'ancienne valeur reste au journal d'audit.</p>
+  {% if not anomalies %}
+    <p><strong>Aucun montant invalide.</strong></p>
+  {% else %}
+  <table class="table">
+    <thead><tr><th>Élément</th><th>N°</th><th>Valeur enregistrée</th>{% if peut_editer %}<th>Correction</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for a in anomalies %}
+      <tr>
+        <td>{{ a.libelle }}</td><td>{{ a.ligne_id }}</td><td><code>{{ a.valeur }}</code></td>
+        {% if peut_editer %}<td>
+          <form method="post" class="inline" style="gap:6px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="table" value="{{ a.table }}"><input type="hidden" name="colonne" value="{{ a.colonne }}">
+            <input type="hidden" name="ligne_id" value="{{ a.ligne_id }}">
+            <input class="in" name="montant" size="8" required placeholder="montant réel">
+            <input class="in" name="motif" required minlength="3" maxlength="255" placeholder="motif">
+            <button class="btn" type="submit">Corriger</button>
+          </form>
+        </td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

@@ -2996,6 +2996,9 @@ MODES_PAIEMENT_LABELS = {
     "carte": "Carte bancaire",
     "virement": "Virement",
     "autre": "Autre",
+    # Jamais proposé à la saisie : mode d'un encaissement ancien que
+    # l'application ne peut pas reconstituer (voir Encaissement.a_qualifier).
+    "inconnu": "Mode à préciser",
 }
 
 
@@ -3105,9 +3108,99 @@ class Paiement(db.Model):
 
     cotisation = db.relationship("Cotisation", back_populates="paiements")
 
+    # L'encaissement dont ce versement est une part (ventilation). Montant,
+    # mode et date sont recopiés depuis lui : ce sont eux que lisent les
+    # impayés, la répartition et les bilans, sans jointure.
+    encaissement_id = db.Column(db.Integer, db.ForeignKey("encaissement.id", ondelete="SET NULL"),
+                                nullable=True, index=True)
+    encaissement = db.relationship("Encaissement", back_populates="ventilations")
+
     @property
     def mode_label(self):
         return MODES_PAIEMENT_LABELS.get(self.mode, self.mode)
+
+
+class Encaissement(db.Model):
+    """Une somme réellement reçue (ou rendue), écrite AU MOMENT où elle l'est.
+
+    C'est la pièce du livre de caisse : elle existe dès l'encaissement, même
+    si aucune fiche ni cotisation n'existe encore (bulletin d'inscription),
+    et ne disparaît jamais. Sa ventilation sur les cotisations (``Paiement``)
+    peut venir plus tard ; ce qui n'est pas ventilé reste visible comme
+    trop-perçu ou somme en attente de rattachement.
+
+    Une erreur se corrige par une CONTRE-PASSATION : un encaissement négatif
+    lié à l'original (``origine_id``), avec motif et auteur. On ne modifie ni
+    ne supprime jamais un encaissement enregistré.
+    """
+    __tablename__ = "encaissement"
+
+    id = db.Column(db.Integer, primary_key=True)
+    montant = db.Column(db.Float, nullable=False)
+    mode = db.Column(db.String(20), nullable=False, default="especes")
+    date_encaissement = db.Column(db.Date, nullable=False, index=True)
+
+    # Ce que l'argent règle (au plus un objet principal).
+    inscription_annuelle_id = db.Column(db.Integer, db.ForeignKey("inscription_annuelle.id", ondelete="SET NULL"),
+                                        nullable=True, index=True)
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id", ondelete="SET NULL"),
+                               nullable=True, index=True)
+    foyer_id = db.Column(db.Integer, db.ForeignKey("foyer.id", ondelete="SET NULL"), nullable=True, index=True)
+    reservation_id = db.Column(db.Integer, db.ForeignKey("reservation.id", ondelete="SET NULL"),
+                               nullable=True, index=True)
+    libelle = db.Column(db.String(160), nullable=True)
+    commentaire = db.Column(db.String(255), nullable=True)
+
+    # Contre-passation : l'encaissement corrigé, et pourquoi.
+    origine_id = db.Column(db.Integer, db.ForeignKey("encaissement.id"),
+                           nullable=True, index=True)
+    motif = db.Column(db.String(255), nullable=True)
+
+    # Données anciennes : montant ou mode reconstitués sans certitude.
+    a_qualifier = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    note_qualification = db.Column(db.String(255), nullable=True)
+    # Hors du théorique de caisse : ancienne somme déjà absorbée par un
+    # comptage, ou pas encore qualifiée.
+    hors_caisse = db.Column(db.Boolean, nullable=False, default=False)
+    # Clé d'idempotence d'une reprise de données anciennes (« paiement:12 »).
+    source_ancienne = db.Column(db.String(60), nullable=True, unique=True)
+    # Jeton du formulaire : un double clic ou un renvoi après coupure ne
+    # crée pas deux encaissements.
+    jeton = db.Column(db.String(64), nullable=True, unique=True)
+
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    ventilations = db.relationship("Paiement", back_populates="encaissement", order_by="Paiement.id")
+    origine = db.relationship("Encaissement", remote_side=[id], backref="contre_passations")
+    inscription_annuelle = db.relationship("InscriptionAnnuelle")
+    participant = db.relationship("Participant")
+    reservation = db.relationship("Reservation", backref=db.backref(
+        "encaissements", order_by="Encaissement.id", lazy="selectin"))
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id])
+
+    @property
+    def mode_label(self):
+        return MODES_PAIEMENT_LABELS.get(self.mode, self.mode)
+
+    @property
+    def montant_ventile(self) -> float:
+        return round(sum(float(v.montant or 0) for v in self.ventilations), 2)
+
+    @property
+    def reste_a_ventiler(self) -> float:
+        """Part non rattachée à une cotisation (trop-perçu ou attente)."""
+        if self.origine_id or self.montant <= 0:
+            return 0.0
+        return round(max(0.0, float(self.montant) - self.montant_ventile - self.montant_contre_passe), 2)
+
+    @property
+    def montant_contre_passe(self) -> float:
+        return round(-sum(float(c.montant or 0) for c in self.contre_passations), 2)
+
+    @property
+    def est_contre_passe(self) -> bool:
+        return self.origine_id is None and self.montant > 0 and self.montant_contre_passe >= self.montant - 0.009
 
 
 # ---------- CAISSE (espèces & chèques) ----------
@@ -3142,6 +3235,8 @@ class CaisseMouvement(db.Model):
     montant = db.Column(db.Float, nullable=False, default=0.0)
     ecart = db.Column(db.Float, nullable=True)          # comptage uniquement
     nb_cheques = db.Column(db.Integer, nullable=True)   # dépôt de chèques
+    # Jeton du formulaire : un double envoi ne crée pas deux mouvements.
+    jeton = db.Column(db.String(64), nullable=True, unique=True)
     date_mouvement = db.Column(db.Date, nullable=False, index=True)
     commentaire = db.Column(db.String(255), nullable=True)
 
@@ -4757,12 +4852,12 @@ class Reservation(db.Model):
 
     @property
     def montant_regle(self) -> float:
-        total = 0.0
-        if self.acompte_regle_le and self.acompte_montant:
-            total += float(self.acompte_montant)
-        if self.solde_regle_le:
-            total = self.montant_du
-        return round(total, 2)
+        """Somme des encaissements de la location (contre-passations déduites).
+
+        Les anciennes dates « acompte réglé le / solde réglé le » ont été
+        reprises en encaissements à qualifier : elles ne comptent plus seules.
+        """
+        return round(sum(float(e.montant or 0) for e in self.encaissements), 2)
 
     @property
     def reste_du(self) -> float:

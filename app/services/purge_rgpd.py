@@ -279,6 +279,17 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
                 row.demande = "Donnée effacée"
             elif isinstance(row, m.DefiTransition):
                 row.titre = "Défi anonymisé"
+    # Montants, modes et dates restent (pièces de caisse) ; le texte libre,
+    # qui porte souvent un nom (« chèque DUPONT »), part.
+    ids_bulletins = [b.id for b in bulletins]
+    conditions = [m.Encaissement.participant_id == p.id]
+    if ids_bulletins:
+        conditions.append(m.Encaissement.inscription_annuelle_id.in_(ids_bulletins))
+    for row in m.Encaissement.query.filter(db.or_(*conditions)).all():
+        row.commentaire = None
+    for row in (m.Paiement.query.join(m.Cotisation, m.Cotisation.id == m.Paiement.cotisation_id)
+                .filter(m.Cotisation.participant_id == p.id).all()):
+        row.commentaire = None
     for row in m.RepartitionArreteeLigne.query.filter_by(participant_id=p.id).all():
         row.participant_nom = f"ANONYME P{p.id}"
     for row in m.PasseportNote.query.filter_by(participant_id=p.id).all():

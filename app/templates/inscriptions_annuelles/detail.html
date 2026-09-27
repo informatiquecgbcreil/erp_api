@@ -301,6 +301,7 @@
           <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" class="ia-mini-form" style="margin-top:12px;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="encaisser">
+            <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
             <label><span>Montant encaissé (€)</span>
               <input class="in" type="text" inputmode="decimal" name="montant"
                      value="{{ "%.2f"|format(etat.reste) }}"
@@ -337,12 +338,35 @@
           <p style="margin-top:10px;"><strong>Tout est réglé.</strong></p>
         {% endif %}
 
-        {% if etat.source == 'bulletin' and etat.regle > 0 %}
+        {% if etat.encaissements %}
+          <h3 style="font-size:.95rem; margin:14px 0 6px;">Sommes reçues sur ce bulletin</h3>
+          <table class="table" style="font-size:.85rem;">
+            <thead><tr><th>Date</th><th>Mode</th><th style="text-align:right;">Montant</th><th style="text-align:right;">Non affecté</th><th></th></tr></thead>
+            <tbody>
+            {% for e in etat.encaissements %}
+              <tr>
+                <td>{{ e.date_encaissement.strftime('%d/%m/%Y') }}</td>
+                <td>{{ e.mode_label }}{% if e.a_qualifier %} <span class="ia-tag ton-warn" title="{{ e.note_qualification or '' }}">à qualifier</span>{% endif %}</td>
+                <td style="text-align:right;">{{ "%.2f"|format(e.montant) }} €</td>
+                <td style="text-align:right;">{% if e.reste_a_ventiler > 0 %}{{ "%.2f"|format(e.reste_a_ventiler) }} €{% endif %}</td>
+                <td class="muted">{% if e.origine_id %}Contre-passation : {{ e.motif }}{% elif e.est_contre_passe %}contre-passé{% endif %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% if etat.trop_percu > 0 and etat.source == 'cotisations' %}
+            <p style="color:#8a1f1f; margin:4px 0;"><strong>Trop-perçu : {{ "%.2f"|format(etat.trop_percu) }} €</strong> —
+              somme reçue au-delà de ce qui est dû. À rendre (contre-passation motivée) ou à conserver en attente d'affectation.</p>
+          {% endif %}
           <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" style="margin-top:10px;"
-                onsubmit="return confirm('Remettre le règlement de ce bulletin à zéro ?');">
+                onsubmit="return confirm('Annuler les sommes reçues sur ce bulletin ? Une écriture inverse sera enregistrée pour chacune, avec votre motif.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="annuler">
-            <button class="btn" type="submit">↩ Remettre à zéro</button>
+            <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
+            <label><span>Motif de l'annulation (obligatoire)</span>
+              <input class="in" type="text" name="motif" maxlength="255" required minlength="3" placeholder="montant saisi par erreur, remboursement…">
+            </label>
+            <button class="btn" type="submit">↩ Annuler ces règlements (contre-passation)</button>
           </form>
         {% endif %}
 

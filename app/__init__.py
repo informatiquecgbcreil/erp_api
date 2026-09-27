@@ -143,6 +143,16 @@ def create_app():
     # un « nan » saisi rendait la caisse définitivement incalculable.
     from app.utils.montants import NombreNonFini, installer_garde_nombres
     installer_garde_nombres()
+    # Tout versement a son encaissement : la caisse ne peut rien ignorer.
+    from app.services.encaissements import installer_invariant_versements
+    installer_invariant_versements()
+
+    @app.context_processor
+    def _jeton_formulaire():
+        # Jeton à usage unique des formulaires d'argent : un double clic ou un
+        # renvoi après coupure n'enregistre pas deux fois la même somme.
+        import uuid as _uuid
+        return {"nouveau_jeton": lambda: _uuid.uuid4().hex}
 
     # Exports Excel : une chaîne « =… » saisie (kiosque, fiche) reste du texte.
     from app.utils.xlsx_safe import installer_garde_formules

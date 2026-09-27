@@ -423,9 +423,8 @@ def facture(reservation: Reservation, numero: str, nom_structure: str = "") -> D
 
     doc.add_paragraph()
     _ligne(doc, "TOTAL À RÉGLER", f"{reservation.montant_du:.2f} €", gras=True)
-    if reservation.acompte_regle_le and reservation.acompte_montant:
-        _ligne(doc, f"Acompte reçu le {reservation.acompte_regle_le.strftime('%d/%m/%Y')}",
-               f"{reservation.acompte_montant:.2f} €")
+    if reservation.montant_regle > 0.009:
+        _ligne(doc, "Déjà réglé", f"{reservation.montant_regle:.2f} €")
         _ligne(doc, "RESTE À RÉGLER", f"{reservation.reste_du:.2f} €", gras=True)
     if site:
         _paragraphe(doc, site.mention_tva_affichee, taille=9.5, italique=True)
