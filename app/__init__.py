@@ -850,7 +850,12 @@ def create_app():
             ensure_schema()
 
         insp = inspect(db.engine)
-        if insp.has_table("user") and insp.has_table("role") and insp.has_table("permission"):
+        # Pendant une reprise, les colonnes manquantes d'une base ancienne ne
+        # sont complétées qu'APRÈS les migrations : lire les comptes ici
+        # échouerait (colonne « role » absente…). La reprise lance elle-même
+        # ces initialisations une fois le schéma complété (audit 4.1).
+        amorcage = os.environ.get("MCS_SKIP_BOOTSTRAP") != "1"
+        if amorcage and insp.has_table("user") and insp.has_table("role") and insp.has_table("permission"):
             bootstrap_rbac()
 
             from app.secteurs import bootstrap_secteurs_from_config

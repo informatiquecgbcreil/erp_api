@@ -62,12 +62,15 @@ static class Program {
             if (mode == "--configure") {
                 if (File.Exists(ConfigFile)) {
                     var existing = ReadConfiguration();
-                    if (MessageBox.Show("Une installation existe déjà dans " + Root + ".\n\nReprendre cette installation avec sa base et ses comptes actuels ?", "Installation existante", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) return 1;
+                    if (MessageBox.Show("Une installation existe déjà dans " + Root + ".\n\nReprendre cette installation avec sa base et ses comptes actuels ?", "Installation existante", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) {
+                        MessageBox.Show("Rien n'a été modifié.\n\nPour repartir d'une installation vierge, lancez « MonCentreSocial.exe --reset » en administrateur : l'installation actuelle sera mise de côté (renommée, rien n'est effacé), puis l'assistant s'ouvrira.", "Mon Centre Social", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return 1;
+                    }
                     FinishInstallation(existing); return 0;
                 }
                 using (var choice = new InstallationChoice()) {
                     if (choice.ShowDialog() != DialogResult.OK) return 1;
-                    using (var wizard = new SetupWizard(choice.Source, choice.Connection, choice.LegacyService))
+                    using (var wizard = new SetupWizard(choice.Source, choice.SourceDb, choice.LegacyService))
                         return wizard.ShowDialog() == DialogResult.OK ? 0 : 1;
                 }
             }
@@ -93,6 +96,17 @@ static class Program {
                 }
             }
             if (mode == "--stop") { StopService(); return 0; }
+            if (mode == "--reset") {
+                // Repartir de zéro sans rien détruire : l'installation actuelle est
+                // renommée (données, base, dossier confidentiel compris).
+                if (!Directory.Exists(Root)) return 0;
+                if (MessageBox.Show("L'installation actuelle (" + Root + ") va être arrêtée et mise de côté dans un dossier daté. Rien n'est effacé ; l'assistant s'ouvrira ensuite pour une nouvelle installation.\n\nContinuer ?", "Repartir de zéro", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return 1;
+                StopService();
+                var archive = Root + "-archive-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                GuardPath(Root); Directory.Move(Root, archive);
+                MessageBox.Show("Installation précédente conservée dans :\n" + archive, "Mon Centre Social", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                var p = Process.Start(new ProcessStartInfo(Exe, "--configure") { UseShellExecute = true }); p.WaitForExit(); return p.ExitCode;
+            }
             if (mode == "--uninstall") {
                 StopService();
                 if (ServiceExists()) Run(SystemExe("sc.exe"), "delete " + ServiceName, false);
@@ -198,7 +212,7 @@ static class Program {
     internal static void SaveConfiguration(Dictionary<string, object> c) {
         WriteConfiguration(c, ConfigFile, false);
         var service = new Dictionary<string,object>(c);
-        service.Remove("migration_uri");
+        service.Remove("migration_uri"); service.Remove("migration_source_db");
         if (File.Exists(Path.Combine(Root,"runtime","provisioned"))) service.Remove("db_admin_password");
         WriteConfiguration(service, ServiceConfigFile, true);
     }
@@ -337,6 +351,13 @@ static class Program {
         }
         if (c.ContainsKey("migration_source") && !string.IsNullOrEmpty(Convert.ToString(c["migration_source"]))
             && (!c.ContainsKey("migration_done") || !Convert.ToBoolean(c["migration_done"]))) RunMigration(c);
+        if (activating && !CopyStillCurrent(c)) {
+            // Copie périmée (ancienne application relancée, saisie tardive) :
+            // elle n'est jamais ouverte ; une nouvelle copie la remplace.
+            c["migration_done"] = false; c.Remove("migration_pending_activation"); SaveConfiguration(c);
+            RunMigration(c);
+            if (!CopyStillCurrent(c)) throw new Exception("La base source change encore pendant la reprise : une application écrit toujours dedans. Arrêtez-la puis relancez l'assistant.");
+        }
         // Reprise après une interruption entre l'enregistrement et la création du dossier.
         EnsureNetworkSettings(c);
         SaveConfiguration(c);
@@ -386,33 +407,73 @@ static class Program {
             Thread.Sleep(1000);
         }
         if (activating) {
-            var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+            var oldName = OldServiceName(c);
             if (oldName.Length > 0) { Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled"); c["migration_old_disabled"] = true; }
             c.Remove("migration_pending_activation");
+            // Copies de tentatives abandonnées : identifiées précisément, supprimées.
+            try { RunPython("--cleanup-attempts", c, 600000); } catch (Exception) { }
         }
-        c.Remove("migration_uri"); SaveConfiguration(c);
+        c.Remove("migration_uri"); c.Remove("migration_source_db"); SaveConfiguration(c);
         File.Delete(Path.Combine(Root,"private","activation.pending"));
         } catch {
             if (activating) {
                 // Aucun retour automatique une fois le centre ouvert aux utilisateurs.
-                // Ici, l'activation n'est pas terminée : on ferme la cible avant de
-                // reprendre l'ancienne instance et on exigera une nouvelle copie.
+                // Ici, l'activation n'est pas terminée : on ferme la cible et on
+                // rend la main à l'ancienne application. La copie est GARDÉE : la
+                // prochaine tentative ne refait que l'activation, après avoir
+                // vérifié que la source n'a pas changé entre-temps (sinon, nouvelle
+                // copie). Un échec de copie ou de migration a déjà été traité par
+                // RunMigration.
                 StopService();
-                c["migration_done"] = false; c.Remove("migration_pending_activation");
                 c["migration_uri"] = sourceUri;
-                var completion = Path.Combine(Root,"runtime","reprise","complete.json");
-                if (File.Exists(completion)) File.Delete(completion);
+                if (c.ContainsKey("migration_done") && Convert.ToBoolean(c["migration_done"])) c["migration_pending_activation"] = true;
                 SaveConfiguration(c);
-                var oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
-                if (oldName.Length > 0 && c.ContainsKey("migration_old_disabled") && Convert.ToBoolean(c["migration_old_disabled"])) {
-                    Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= " + (c.ContainsKey("migration_old_start") && Convert.ToInt32(c["migration_old_start"]) == 2 ? "auto" : "demand"));
-                    c.Remove("migration_old_disabled"); SaveConfiguration(c);
-                }
-                if (oldName.Length > 0 && c.ContainsKey("migration_restart_old") && Convert.ToBoolean(c["migration_restart_old"]))
-                    using (var old = new ServiceController(oldName)) { if (old.Status == ServiceControllerStatus.Stopped) old.Start(); }
+                RestoreOldApplication(c);
             }
             throw;
         }
+    }
+    /// Lance une étape Python élevée (configuration complète par l'entrée
+    /// standard, jamais en argument). Rend le code de sortie.
+    internal static int RunPython(string mode, Dictionary<string, object> c, int timeoutMs) {
+        var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " " + mode) {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
+            RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Install
+        };
+        using (var process = Process.Start(info)) {
+            process.OutputDataReceived += delegate {}; process.ErrorDataReceived += delegate {};
+            process.BeginOutputReadLine(); process.BeginErrorReadLine();
+            byte[] payload = Utf8.GetBytes(Json.Serialize(c));
+            process.StandardInput.BaseStream.Write(payload,0,payload.Length); process.StandardInput.Close();
+            if (!process.WaitForExit(timeoutMs)) { process.Kill(); throw new Exception("Une étape de la reprise a dépassé son délai. L'ancien dossier et sa base sont conservés."); }
+            return process.ExitCode;
+        }
+    }
+    internal static string MigrationErrorMessage(string fallback) {
+        var errorFile = Path.Combine(Root,"private","migration-error.txt");
+        return File.Exists(errorFile) ? File.ReadAllText(errorFile,Utf8) : fallback;
+    }
+    internal static string OldServiceName(Dictionary<string, object> c) {
+        string oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
+        if (oldName == ServiceName || (oldName.Length > 0 && !Regex.IsMatch(oldName, "^[A-Za-z0-9_. -]{1,150}$")))
+            throw new Exception("Nom d'ancien service invalide.");
+        return oldName;
+    }
+    /// Retour arrière AVANT l'ouverture de la nouvelle application : l'ancien
+    /// service retrouve son mode de démarrage initial et redémarre s'il
+    /// tournait ; la base source redevient modifiable.
+    internal static void RestoreOldApplication(Dictionary<string, object> c) {
+        string oldName = OldServiceName(c);
+        try { if (c.ContainsKey("migration_source") && RunPython("--release-source", c, 120000) != 0) c["migration_source_non_liberee"] = true; } catch (Exception) { c["migration_source_non_liberee"] = true; }
+        if (oldName.Length == 0) { SaveConfiguration(c); return; }
+        if (c.ContainsKey("migration_old_disabled") && Convert.ToBoolean(c["migration_old_disabled"])) {
+            int start = c.ContainsKey("migration_old_start") ? Convert.ToInt32(c["migration_old_start"]) : 3;
+            Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= " + (start == 2 ? "auto" : start == 4 ? "disabled" : "demand"));
+            c.Remove("migration_old_disabled");
+        }
+        SaveConfiguration(c);
+        if (c.ContainsKey("migration_restart_old") && Convert.ToBoolean(c["migration_restart_old"]))
+            using (var old = new ServiceController(oldName)) { if (old.Status == ServiceControllerStatus.Stopped) old.Start(); }
     }
     internal static void PrepareMigrationCluster(Dictionary<string, object> c) {
         // Appelé après arrêt du service, uniquement pour une reprise non activée.
@@ -443,17 +504,21 @@ static class Program {
         SecureDirectory(data,true,true);
     }
     internal static void RunMigration(Dictionary<string, object> c) {
-        string oldName = c.ContainsKey("migration_service") ? Convert.ToString(c["migration_service"]) : "";
-        if (oldName == ServiceName || (oldName.Length > 0 && !Regex.IsMatch(oldName, "^[A-Za-z0-9_. -]{1,150}$")))
-            throw new Exception("Nom d'ancien service invalide.");
-        bool wasRunning = false;
+        string oldName = OldServiceName(c);
         try {
             PrepareMigrationCluster(c);
             if (oldName.Length > 0) using (var old = new ServiceController(oldName)) {
-                wasRunning = old.Status == ServiceControllerStatus.Running;
-                c["migration_restart_old"] = wasRunning;
-                c["migration_old_start"] = Microsoft.Win32.Registry.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\" + oldName,"Start",3);
+                // État initial conservé AVANT toute action, pour un retour arrière exact.
+                if (!c.ContainsKey("migration_old_start")) {
+                    c["migration_restart_old"] = old.Status == ServiceControllerStatus.Running;
+                    c["migration_old_start"] = Microsoft.Win32.Registry.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\" + oldName,"Start",3);
+                    SaveConfiguration(c);
+                }
                 if (old.Status != ServiceControllerStatus.Stopped) { old.Stop(); old.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100)); }
+                // Désactivé DÈS l'arrêt : un redémarrage de Windows entre la copie
+                // et l'ouverture ne doit pas relancer l'ancienne application (audit C4).
+                Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled");
+                c["migration_old_disabled"] = true;
             }
             // Le compte de service initialise et possède le cluster. Le
             // processus élevé n'effectue que la copie SQL et des documents.
@@ -465,21 +530,9 @@ static class Program {
                 if (i>=240) throw new Exception("La base de destination n'est pas prête. Voir les journaux du service.");
                 Thread.Sleep(500);
             }
-            var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " --migrate") {
-                UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
-                RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Install
-            };
-            using (var process = Process.Start(info)) {
-                process.OutputDataReceived += delegate {}; process.ErrorDataReceived += delegate {};
-                process.BeginOutputReadLine(); process.BeginErrorReadLine();
-                byte[] payload = Utf8.GetBytes(Json.Serialize(c));
-                process.StandardInput.BaseStream.Write(payload,0,payload.Length); process.StandardInput.Close();
-                if (!process.WaitForExit(3600000)) { process.Kill(); throw new Exception("La reprise a dépassé son délai. L'ancien dossier et sa base sont conservés."); }
-                if (process.ExitCode != 0) {
-                    var errorFile = Path.Combine(Root,"private","migration-error.txt");
-                    throw new Exception(File.Exists(errorFile) ? File.ReadAllText(errorFile,Utf8) : "Reprise interrompue : source conservée, nouvelle application non démarrée.");
-                }
-            }
+            foreach (var name in new[] { "migration-error.txt", "migration-error-etape.txt" }) { var f = Path.Combine(Root,"private",name); if (File.Exists(f)) File.Delete(f); }
+            if (RunPython("--migrate", c, 3600000) != 0)
+                throw new Exception(MigrationErrorMessage("Reprise interrompue : source conservée, nouvelle application non démarrée."));
             var resultPath = Path.Combine(Root,"private","migration-result.json");
             var result = Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(resultPath,Utf8));
             c["db_name"] = result["db_name"]; c["application_settings"] = result["settings"];
@@ -493,11 +546,27 @@ static class Program {
             File.Delete(Path.Combine(Root,"runtime","reprise","complete.json"));
         } catch {
             StopService();
-            if (wasRunning && oldName.Length > 0) using (var old = new ServiceController(oldName)) {
-                if (old.Status == ServiceControllerStatus.Stopped) old.Start();
-            }
+            RestoreOldApplication(c);
             throw;
         } finally { StopService(); }
+    }
+    /// Avant d'ouvrir la copie : l'ancienne application ne doit pas avoir
+    /// redémarré, et la source ne doit pas avoir changé depuis la copie.
+    /// Rend faux si la copie est périmée (à refaire), vrai si elle est sûre.
+    internal static bool CopyStillCurrent(Dictionary<string, object> c) {
+        string oldName = OldServiceName(c);
+        if (oldName.Length > 0) using (var old = new ServiceController(oldName)) {
+            if (old.Status != ServiceControllerStatus.Stopped) {
+                old.Stop(); old.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(100));
+                Run(SystemExe("sc.exe"), "config " + Quote(oldName) + " start= disabled");
+                return false;
+            }
+        }
+        foreach (var name in new[] { "migration-error.txt", "migration-error-etape.txt" }) { var f = Path.Combine(Root,"private",name); if (File.Exists(f)) File.Delete(f); }
+        int code = RunPython("--verify-source", c, 3600000);
+        if (code == 3) return false;
+        if (code != 0) throw new Exception(MigrationErrorMessage("Impossible de vérifier que la copie est à jour."));
+        return true;
     }
     internal static void WriteReport(Dictionary<string, object> c) {
         c["access_url"] = AccessUrl(c);
@@ -635,35 +704,52 @@ sealed class Tray : ApplicationContext {
 sealed class InstallationChoice : Form {
     readonly RadioButton fresh = new RadioButton { Text = "Nouvelle installation", Checked = true };
     readonly RadioButton existing = new RadioButton { Text = "Reprendre une ancienne installation de cet ERP" };
-    readonly TextBox folder = new TextBox(); readonly TextBox connection = new TextBox(); readonly TextBox service = new TextBox();
+    readonly TextBox folder = new TextBox(); readonly TextBox service = new TextBox();
+    // Connexion en champs séparés : un mot de passe contenant @ : / % n'est
+    // jamais mal découpé (audit 4.3).
+    readonly TextBox dbHost = new TextBox(); readonly TextBox dbPort = new TextBox { Text = "5432" };
+    readonly TextBox dbName = new TextBox(); readonly TextBox dbUser = new TextBox(); readonly TextBox dbPassword = new TextBox();
     readonly CheckBox maintenance = new CheckBox { Text = "Les saisies et tâches de modification seront suspendues pendant la reprise." };
     internal string Source { get { return existing.Checked ? folder.Text.Trim() : ""; } }
-    internal string Connection { get { return existing.Checked ? connection.Text.Trim() : ""; } }
+    internal Dictionary<string, object> SourceDb {
+        get {
+            if (!existing.Checked || dbName.Text.Trim().Length == 0) return null;
+            return new Dictionary<string, object> { {"host", dbHost.Text.Trim()}, {"port", dbPort.Text.Trim()}, {"database", dbName.Text.Trim()}, {"user", dbUser.Text.Trim()}, {"password", dbPassword.Text} };
+        }
+    }
     internal string LegacyService { get { return existing.Checked ? service.Text.Trim() : ""; } }
+    void Label(string text, int x, int y) { Controls.Add(new Label { Text = text, Location = new Point(x,y), AutoSize = true }); }
     internal InstallationChoice() {
-        Text = "Mon Centre Social — Votre installation"; ClientSize = new Size(720,445);
+        Text = "Mon Centre Social — Votre installation"; ClientSize = new Size(720,560);
         Font = new Font("Segoe UI",10); StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
         fresh.SetBounds(24,15,660,30); existing.SetBounds(24,50,660,30); Controls.Add(fresh); Controls.Add(existing);
-        Controls.Add(new Label { Text = "Dossier de l'ancienne application (contenant son fichier .env)", Location = new Point(24,96), AutoSize = true });
+        Label("Dossier de l'ancienne application (contenant son fichier .env)", 24, 96);
         folder.SetBounds(24,122,570,28); Controls.Add(folder);
         var browse = new Button { Text = "Parcourir…", Location = new Point(600,121), Size = new Size(100,30) };
         browse.Click += delegate { using (var dialog = new FolderBrowserDialog()) { if (dialog.ShowDialog() == DialogResult.OK) { folder.Text = dialog.SelectedPath; existing.Checked = true; } } }; Controls.Add(browse);
-        Controls.Add(new Label { Text = "Connexion PostgreSQL (facultative si elle figure déjà dans .env)", Location = new Point(24,166), AutoSize = true });
-        connection.SetBounds(24,192,676,28); connection.UseSystemPasswordChar = true; Controls.Add(connection);
-        Controls.Add(new Label { Text = "Nom de l'ancien service Windows (vide si vous l'avez déjà arrêté)", Location = new Point(24,234), AutoSize = true });
-        service.SetBounds(24,260,676,28); Controls.Add(service);
-        maintenance.SetBounds(24,301,676,30); Controls.Add(maintenance);
-        Controls.Add(new Label { Text = "L'ancien service sera arrêté puis désactivé après réussite. La base source reste conservée.\nEn cas d'échec, le service précédemment actif est relancé. PostgreSQL 10 à 18 pris en charge.", Location = new Point(24,340), Size = new Size(676,50) });
-        var next = new Button { Text = "Continuer", Location = new Point(570,400), Size = new Size(130,30) };
+        Label("Connexion PostgreSQL de l'ancienne base (facultative si elle figure déjà dans .env)", 24, 166);
+        Label("Serveur", 24, 192); dbHost.SetBounds(24,214,260,28); Controls.Add(dbHost);
+        Label("Port", 296, 192); dbPort.SetBounds(296,214,80,28); Controls.Add(dbPort);
+        Label("Nom de la base", 388, 192); dbName.SetBounds(388,214,312,28); Controls.Add(dbName);
+        Label("Utilisateur", 24, 250); dbUser.SetBounds(24,272,330,28); Controls.Add(dbUser);
+        Label("Mot de passe", 370, 250); dbPassword.SetBounds(370,272,330,28); dbPassword.UseSystemPasswordChar = true; Controls.Add(dbPassword);
+        Label("Nom de l'ancien service Windows (vide si vous l'avez déjà arrêté et désactivé)", 24, 314);
+        service.SetBounds(24,340,676,28); Controls.Add(service);
+        maintenance.SetBounds(24,381,676,30); Controls.Add(maintenance);
+        Controls.Add(new Label { Text = "L'ancien service est arrêté puis désactivé dès le début de la reprise ; la base source passe en lecture seule. En cas d'échec avant l'ouverture, l'ancien service retrouve son état initial et la base redevient modifiable. PostgreSQL 10 à 18 pris en charge.", Location = new Point(24,418), Size = new Size(676,80) });
+        var next = new Button { Text = "Continuer", Location = new Point(570,510), Size = new Size(130,30) };
         next.Click += delegate {
             if (existing.Checked && (!Directory.Exists(Source) || !maintenance.Checked)) { MessageBox.Show("Sélectionnez le dossier source et confirmez l'interruption des saisies."); return; }
+            int port;
+            if (existing.Checked && dbName.Text.Trim().Length > 0 && (!int.TryParse(dbPort.Text.Trim(), out port) || port < 1 || port > 65535)) { MessageBox.Show("Indiquez un port PostgreSQL valide (5432 par défaut)."); return; }
             DialogResult = DialogResult.OK; Close();
         }; Controls.Add(next); AcceptButton = next;
     }
 }
 
 sealed class SetupWizard : Form {
-    readonly string migrationSource, migrationUri, migrationService;
+    readonly string migrationSource, migrationService;
+    readonly Dictionary<string, object> migrationDb;
     readonly Panel content = new Panel(); readonly Label heading = new Label(); readonly Label stepLabel = new Label();
     readonly Button next = new Button(); readonly Button back = new Button(); readonly Label status = new Label();
     readonly TextBox organization = new TextBox(); readonly TextBox adminName = new TextBox(); readonly TextBox email = new TextBox(); readonly TextBox password = new TextBox(); readonly TextBox confirm = new TextBox();
@@ -675,8 +761,8 @@ sealed class SetupWizard : Form {
     static readonly string[] profilEssentiel = { "presences", "statistiques" };
     static readonly string[] profilAnimation = { "presences", "statistiques", "adhesions", "ressources", "partenaires", "accompagnement", "questionnaires" };
     int step; bool busy;
-    internal SetupWizard(string source = "", string sourceUri = "", string oldService = "") {
-        migrationSource = source; migrationUri = sourceUri; migrationService = oldService;
+    internal SetupWizard(string source = "", Dictionary<string, object> sourceDb = null, string oldService = "") {
+        migrationSource = source; migrationDb = sourceDb; migrationService = oldService;
         Text = "Mon Centre Social — Installation"; Icon = Program.Logo; ClientSize = new Size(780, 650); AutoScaleMode = AutoScaleMode.Dpi; Font = new Font("Segoe UI", 10); BackColor = Color.White; StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
         var banner = new Panel { Dock = DockStyle.Top, Height = 102, BackColor = Color.FromArgb(19,91,99) };
         banner.Controls.Add(new PictureBox { Image = Image.FromFile(Path.Combine(Program.Install,"mon-centre-social.png")), SizeMode = PictureBoxSizeMode.Zoom, Location = new Point(28,22), Size = new Size(58,58) });
@@ -776,7 +862,7 @@ sealed class SetupWizard : Form {
             var selected = new List<string>(); for (int i=0;i<keys.Length;i++) if (modules.GetItemChecked(i)) selected.Add(keys[i]);
             if (!selected.Contains("presences")) selected.Insert(0, "presences"); // socle toujours actif
             var c = new Dictionary<string,object> { {"organization",organization.Text.Trim()}, {"admin_name",adminName.Text.Trim()}, {"admin_email",email.Text.Trim().ToLowerInvariant()}, {"admin_password",password.Text}, {"modules",selected.ToArray()}, {"network",network.Checked}, {"hostname",hostname.Text.Trim().ToLowerInvariant()}, {"smtp_host",smtpHost.Text.Trim()}, {"smtp_port",string.IsNullOrWhiteSpace(smtpHost.Text) ? 587 : int.Parse(smtpPort.Text)}, {"smtp_user",smtpUser.Text.Trim()}, {"smtp_password",smtpPassword.Text}, {"smtp_sender",smtpSender.Text.Trim()} };
-            if (migrationSource.Length > 0) { c["migration_source"] = migrationSource; c["migration_uri"] = migrationUri; c["migration_service"] = migrationService; }
+            if (migrationSource.Length > 0) { c["migration_source"] = migrationSource; c["migration_uri"] = ""; if (migrationDb != null) c["migration_source_db"] = migrationDb; c["migration_service"] = migrationService; }
             busy = true; next.Enabled = false; back.Enabled = false; UseWaitCursor = true;
             await Task.Run(delegate { Program.InstallConfiguration(c, message => BeginInvoke(new Action(delegate { status.Text = message; }))); });
             busy = false; UseWaitCursor = false;

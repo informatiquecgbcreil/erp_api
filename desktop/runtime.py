@@ -195,7 +195,8 @@ def spawn(mode, c, log):
     process = subprocess.Popen([sys.executable, "-B", str(Path(__file__).resolve()), mode],
                                stdin=subprocess.PIPE, stdout=log, stderr=log,
                                creationflags=CREATE_NO_WINDOW)
-    child_config = {k: v for k, v in c.items() if k not in {"db_admin_password", "migration_uri"}}
+    child_config = {k: v for k, v in c.items()
+                    if k not in {"db_admin_password", "migration_uri", "migration_source_db"}}
     process.stdin.write(json.dumps(child_config).encode("utf-8"))
     process.stdin.close()
     return process
@@ -315,10 +316,53 @@ def supervise(c):
                           "-w", "-t", "30", "-m", "fast", "stop"], timeout=45)
 
 
+def _identifiant_installation(c) -> str:
+    """Identifiant stable et non secret de CETTE installation."""
+    import hashlib
+    return hashlib.sha256(("mcs-installation:" + c["secret_key"]).encode()).hexdigest()[:16]
+
+
+def _marque_tentative(c) -> str:
+    return f"mcs-reprise {_identifiant_installation(c)} "
+
+
+def _connexion_admin(c):
+    import psycopg
+    return psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
+                           password=c["db_admin_password"], dbname="postgres", autocommit=True)
+
+
+def bases_de_tentative(conn, c) -> list[str]:
+    """Bases créées par une tentative de reprise DE CETTE installation,
+    reconnues à leur commentaire (jamais au seul préfixe du nom)."""
+    lignes = conn.execute(
+        "SELECT d.datname FROM pg_database d JOIN pg_shdescription s ON s.objoid = d.oid "
+        "AND s.classoid = 'pg_database'::regclass WHERE s.description LIKE %s",
+        (_marque_tentative(c) + "%",)).fetchall()
+    return sorted(nom for (nom,) in lignes)
+
+
+def nettoyer_tentatives(conn, c, garder: set[str]) -> list[str]:
+    """Supprime les copies abandonnées : bases de tentative de cette
+    installation, sauf celles à garder, et seulement si personne n'y est
+    connecté (aucun DROP forcé). Rend les noms supprimés (audit 6.4)."""
+    from psycopg import sql
+    supprimees = []
+    for nom in bases_de_tentative(conn, c):
+        if nom in garder:
+            continue
+        occupee = conn.execute("SELECT 1 FROM pg_stat_activity WHERE datname = %s", (nom,)).fetchone()
+        if occupee:
+            continue
+        conn.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(nom)))
+        supprimees.append(nom)
+    return supprimees
+
+
 def migrate_installation(c):
     """Prépare une base distincte sur le service PostgreSQL, web encore fermé."""
+    import time
     import uuid
-    import psycopg
     from psycopg import sql
     from desktop.migration import migrate
     root = configure_environment(c)
@@ -326,27 +370,62 @@ def migrate_installation(c):
     if completed.exists():
         report = json.loads(completed.read_text(encoding="utf-8"))
     else:
-        c["db_name"] = "mcs_reprise_" + uuid.uuid4().hex[:16]
-        with psycopg.connect(host="127.0.0.1", port=c["db_port"], user="postgres",
-                             password=c["db_admin_password"], dbname="postgres", autocommit=True) as conn:
+        with _connexion_admin(c) as conn:
+            # Une nouvelle tentative remplace les copies précédentes (données
+            # personnelles hors sauvegardes et hors purge) : elles sont
+            # supprimées, pas accumulées.
+            nettoyer_tentatives(conn, c, garder=set())
+            c["db_name"] = "mcs_reprise_" + uuid.uuid4().hex[:16]
             conn.execute(sql.SQL("CREATE DATABASE {} OWNER mcs").format(sql.Identifier(c["db_name"])))
             conn.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(c["db_name"])))
+            conn.execute(sql.SQL("COMMENT ON DATABASE {} IS {}").format(
+                sql.Identifier(c["db_name"]), sql.Literal(_marque_tentative(c) + time.strftime("%Y-%m-%d %H:%M:%S"))))
         configure_environment(c)
         report = migrate(c, sys.modules[__name__])
     (root / "private/migration-result.json").write_text(json.dumps(report), encoding="utf-8")
 
 
+def verifier_source(c):
+    """Activation : refuse une copie périmée (source modifiée depuis)."""
+    configure_environment(c)
+    from desktop.migration import verifier_source as verifier
+    verifier(c)
+
+
+def liberer_source(c):
+    """Retour arrière : la base source redevient modifiable."""
+    configure_environment(c)
+    from desktop.migration import liberer_source as liberer, read_source
+    liberer(read_source(c["migration_source"], c.get("migration_uri", ""), c.get("migration_source_db"))["url"])
+
+
+def nettoyer_apres_activation(c):
+    """Après la bascule : supprime les copies de tentatives abandonnées."""
+    configure_environment(c)
+    with _connexion_admin(c) as conn:
+        return nettoyer_tentatives(conn, c, garder={c.get("db_name", "")})
+
+
+MODES = {
+    "--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation,
+    "--prepare-proxy": lambda c: write_caddy(c, Path(c["data_root"])),
+    "--verify-source": verifier_source, "--release-source": liberer_source,
+    "--cleanup-attempts": nettoyer_apres_activation,
+}
+
 if __name__ == "__main__":
     config = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     try:
-        {"--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation, "--prepare-proxy": lambda c: write_caddy(c, Path(c["data_root"]))}[sys.argv[1]](config)
+        MODES[sys.argv[1]](config)
     except Exception as exc:
         # Le fichier de log est protégé par les ACL, mais ne conserve pas les secrets.
-        if sys.argv[1] == "--migrate":
+        if sys.argv[1] in {"--migrate", "--verify-source", "--release-source"}:
             from desktop.migration import MigrationError
             message = str(exc) if isinstance(exc, MigrationError) else "La reprise a échoué. Vérifiez les connexions, les dossiers et l'espace disponible."
+            etape = getattr(exc, "etape", "copie") if isinstance(exc, MigrationError) else "copie"
             (Path(config["data_root"]) / "private/migration-error.txt").write_text(message, encoding="utf-8")
-            raise SystemExit(1)
+            (Path(config["data_root"]) / "private/migration-error-etape.txt").write_text(etape, encoding="utf-8")
+            raise SystemExit(3 if etape == "perimee" else 1)
         import traceback
         error = traceback.format_exc()
         def secrets(values):

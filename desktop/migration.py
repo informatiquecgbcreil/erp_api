@@ -20,7 +20,7 @@ SETTINGS = {
     "MAIL_USE_TLS", "MAIL_TIMEOUT_SECONDS", "GOOGLE_OAUTH_CLIENT_ID",
     "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_BASE",
     "BACKUP_OFFSITE_DIRS", "BACKUP_RETENTION_LOTS", "KIOSK_PUBLIC_HOST",
-    "KIOSK_PUBLIC_BASE_URL", "ERP_LAN_HOSTS", "ORGANIZATION_NAME", "MCS_MODULES",
+    "ERP_LAN_HOSTS", "ORGANIZATION_NAME", "MCS_MODULES",
     "PROGRAMME_FTP_HOST", "PROGRAMME_FTP_PORT", "PROGRAMME_FTP_USER",
     "PROGRAMME_FTP_PASSWORD", "PROGRAMME_FTP_DIR", "PROGRAMME_FTP_FILENAME",
     "PROGRAMME_PUBLIC_URL", "PORTAIL_BASE_URL", "PORTAIL_TOKEN",
@@ -35,10 +35,31 @@ SETTINGS = {
 
 
 class MigrationError(RuntimeError):
-    pass
+    """Reprise refusée ou interrompue ; ``etape`` distingue copie, migration
+    et activation pour ne pas tout recommencer inutilement."""
+
+    def __init__(self, message, etape="copie"):
+        super().__init__(message)
+        self.etape = etape
 
 
-def read_source(folder, uri_override=""):
+def _url_champs(champs):
+    """Connexion saisie champ par champ : aucun caractère du mot de passe
+    (@ : / % …) ne peut être pris pour un séparateur (audit 4.3)."""
+    from sqlalchemy.engine import URL
+    base = (champs.get("database") or "").strip()
+    if not base:
+        return None
+    try:
+        port = int(champs.get("port") or 5432)
+    except (TypeError, ValueError):
+        raise MigrationError("Port PostgreSQL invalide.") from None
+    return URL.create("postgresql+psycopg", username=(champs.get("user") or "").strip() or None,
+                      password=champs.get("password") or None, host=(champs.get("host") or "").strip() or None,
+                      port=port, database=base)
+
+
+def read_source(folder, uri_override="", champs=None):
     root = Path(folder).resolve(strict=True)
     values = {}
     envfile = root / ".env"
@@ -49,16 +70,25 @@ def read_source(folder, uri_override=""):
                 continue
             key, value = line.split("=", 1)
             values[key.strip()] = value.strip().strip('"').strip("'")
-    raw = uri_override or values.get("SQLALCHEMY_DATABASE_URI") or values.get("DATABASE_URL")
-    if not raw:
-        raise MigrationError("Connexion PostgreSQL absente : renseignez-la dans l'assistant.")
-    try:
-        url = make_url(raw.replace("postgres://", "postgresql://", 1))
-        if url.get_backend_name() != "postgresql" or not url.database:
-            raise ValueError()
-        url = url.set(drivername="postgresql+psycopg")
-    except Exception:
-        raise MigrationError("La reprise automatique attend une connexion PostgreSQL valide.") from None
+    url = _url_champs(champs or {})
+    if url is None:
+        raw = uri_override or values.get("SQLALCHEMY_DATABASE_URI") or values.get("DATABASE_URL")
+        if not raw:
+            raise MigrationError("Connexion PostgreSQL absente : renseignez-la dans l'assistant.")
+        try:
+            url = make_url(raw.replace("postgres://", "postgresql://", 1))
+            if url.get_backend_name() != "postgresql" or not url.database:
+                raise ValueError()
+            url = url.set(drivername="postgresql+psycopg")
+        except Exception:
+            raise MigrationError("La reprise automatique attend une connexion PostgreSQL valide.") from None
+        hote = url.host or ""
+        if any(c in hote for c in "@/ ") or (url.password and "@" in (url.database or "")):
+            # Mot de passe contenant « @ » non encodé : l'adresse se lit de
+            # travers. Rien n'est affiché (le fragment serait un secret).
+            raise MigrationError("La connexion inscrite dans le fichier .env est mal formée (un caractère spécial du "
+                                 "mot de passe n'est sans doute pas encodé). Saisissez-la dans les champs séparés de "
+                                 "l'assistant.")
 
     def directory(key, default):
         path = Path(values.get(key) or default)
@@ -138,12 +168,30 @@ def _relocate(raw, roots):
     return None
 
 
+def chemin_reseau(raw) -> bool:
+    """Chemin UNC ou d'espace de noms Windows : \\serveur\partage, //serveur,
+    \\?\… Y accéder ouvrirait une connexion réseau avec les identifiants de
+    l'administrateur qui lance la reprise (audit 4.2)."""
+    texte = str(raw or "").strip()
+    return texte.startswith(("\\\\", "//", "\\??\\")) or texte.startswith("\\\\?\\")
+
+
 def _copiable(path):
     try:
         return (path.suffix.casefold() in EXTERNAL_SUFFIXES and path.is_file()
                 and path.stat().st_size <= EXTERNAL_MAX_BYTES)
     except OSError:
         return False
+
+
+def _autorise(path, autorises):
+    """Le chemin RÉSOLU (liens symboliques, jonctions et redirections suivis)
+    reste-t-il sous un emplacement autorisé ?"""
+    try:
+        reel = Path(os.path.realpath(path))
+    except (OSError, ValueError):
+        return False
+    return any(reel == racine or reel.is_relative_to(racine) for racine in autorises)
 
 
 def plan_documents(connection, source):
@@ -160,7 +208,11 @@ def plan_documents(connection, source):
     from app.services.instance_archive import PATH_COLUMNS
     from sqlalchemy import MetaData, Table, select
     roots = {k: Path(v).resolve() for k, v in source["roots"].items()}
-    plan = {"relocated": {}, "external": {}, "missing": {}}
+    # Seuls l'ancien dossier de l'application, ses dossiers de documents et
+    # les dossiers désignés par l'opérateur peuvent être lus (audit 4.2).
+    autorises = [Path(os.path.realpath(source["root"]))] + [Path(os.path.realpath(r)) for r in roots.values()]
+    autorises += [Path(os.path.realpath(d)) for d in source.get("dossiers_autorises", []) if d]
+    plan = {"relocated": {}, "external": {}, "missing": {}, "refuses": {}}
     inspector = inspect(connection)
     for name in inspector.get_table_names():
         if name == "pending_file_deletion":
@@ -170,9 +222,12 @@ def plan_documents(connection, source):
             continue
         table = Table(name, MetaData(), autoload_with=connection)
         for column in sorted(columns):
-            missing = 0
+            missing = refuses = 0
             for raw in connection.execute(select(table.c[column]).distinct()).scalars():
                 if not raw or (column.startswith("modele_docx_") and raw.startswith("builtin:")):
+                    continue
+                if chemin_reseau(raw):
+                    refuses += 1  # jamais d'accès réseau, pas même un test d'existence
                     continue
                 path = Path(raw)
                 try:
@@ -184,14 +239,18 @@ def plan_documents(connection, source):
                 if inside and path.is_file():
                     continue
                 found = _relocate(raw, roots)
-                if found:
+                if found and _autorise(found[1], autorises):
                     plan["relocated"][raw] = found
+                elif not inside and not _autorise(path, autorises):
+                    refuses += 1  # hors des emplacements autorisés : ni lu, ni copié
                 elif not inside and _copiable(path):
-                    plan["external"][raw] = path
+                    plan["external"][raw] = Path(os.path.realpath(path))
                 else:
                     missing += 1
             if missing:
                 plan["missing"][f"{name}.{column}"] = missing
+            if refuses:
+                plan["refuses"][f"{name}.{column}"] = refuses
     return plan
 
 
@@ -286,19 +345,29 @@ def tool_arguments(executable, url, *arguments):
     return [str(executable), *map(str, arguments), "--dbname", public.render_as_string(hide_password=False)]
 
 
-def _diagnostic(stderr, url):
-    """Cause principale d'un échec, sans secret, pour orienter la DSI."""
+def _diagnostic(stderr, url, cote="source"):
+    """Cause principale d'un échec, sans secret, pour orienter la DSI.
+
+    ``cote`` : « source » (ancienne base) ou « destination » (base gérée) :
+    un refus de droits sur la destination n'est pas un problème de source.
+    """
     text_ = (stderr or b"").decode("utf-8", errors="replace")
     for secret in filter(None, [url.password]):
         text_ = text_.replace(secret, "[confidentiel]")
     lines = [line.strip() for line in text_.splitlines() if line.strip()]
     if not lines:
         return ""
+    base = "de la base source" if cote == "source" else "de la base de destination"
     hints = (
-        ("password authentication failed", "Mot de passe de la base source refusé."),
+        ("password authentication failed", f"Mot de passe {base} refusé."),
         ("server version mismatch", "Version de PostgreSQL source plus récente que les outils fournis."),
-        ("permission denied", "Droits insuffisants sur la base source (lecture de toutes les tables nécessaire)."),
-        ("could not connect", "Connexion à la base source impossible (serveur arrêté, port ou nom d'hôte)."),
+        ("has no equivalent in encoding", "Un caractère de la base source n'existe pas dans son encodage "
+                                          "(WIN1252 le plus souvent) : faites corriger la donnée dans l'ancienne "
+                                          "application, ou demandez une analyse."),
+        ("invalid byte sequence", "Octets invalides dans l'encodage de la base source (WIN1252 le plus souvent) : "
+                                  "une analyse de la donnée concernée est nécessaire."),
+        ("permission denied", f"Droits insuffisants sur les tables {base}."),
+        ("could not connect", f"Connexion {base} impossible (serveur arrêté, port ou nom d'hôte)."),
         ("does not exist", "Base, rôle ou extension introuvable."),
     )
     lowered = " ".join(lines).lower()
@@ -327,7 +396,7 @@ def _discard(work):
         pass  # Retenté au début de la tentative suivante.
 
 
-def pg_tool(executable, url, *arguments):
+def pg_tool(executable, url, *arguments, cote="source"):
     env = os.environ.copy()
     env.pop("PGOPTIONS", None)
     if url.password:
@@ -338,7 +407,8 @@ def pg_tool(executable, url, *arguments):
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             timeout=3600, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode:
-        raise MigrationError("Échec de " + Path(executable).stem + ". La source n'a pas été modifiée. " + _diagnostic(result.stderr, url))
+        raise MigrationError("Échec de " + Path(executable).stem + ". La source n'a pas été modifiée. "
+                             + _diagnostic(result.stderr, url, cote))
 
 
 def validate_postgres_versions(source, target):
@@ -349,9 +419,129 @@ def validate_postgres_versions(source, target):
         raise MigrationError(f"Copie PostgreSQL {source_major} vers {target_major} refusée : la destination doit être de même version majeure ou plus récente.")
 
 
+def _moteur_source(url, *, lecture_seule=True):
+    # Réglage de SESSION, prioritaire sur celui de la base : la connexion qui
+    # met au repos ou libère la source doit pouvoir écrire ce réglage même
+    # quand la base est déjà en lecture seule.
+    options = ("-c default_transaction_read_only=" + ("on " if lecture_seule else "off ")) + FLOAT_OPTIONS
+    return create_engine(url, hide_parameters=True, connect_args={"connect_timeout": 10, "options": options})
+
+
+def _autres_connexions(connection):
+    """Sessions clientes ouvertes sur la base source, hors la nôtre."""
+    return list(connection.execute(text(
+        "SELECT coalesce(nullif(application_name, ''), 'application sans nom'), count(*) FROM pg_stat_activity "
+        "WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend' "
+        "GROUP BY 1 ORDER BY 2 DESC")))
+
+
+def mettre_au_repos(url):
+    """Mise au repos EXPLICITE et RÉVERSIBLE de la base source (audit C4).
+
+    ``ALTER DATABASE … SET default_transaction_read_only = on`` : toute
+    NOUVELLE connexion (ancienne application relancée par Windows, tâche
+    planifiée, autre poste) ne peut plus écrire. Réversible par
+    ``liberer_source`` (échec, abandon) ; conservée après la bascule pour
+    qu'une ancienne application relancée par erreur ne puisse plus écrire.
+    Exige d'être propriétaire de la base ; sinon la reprise continue avec
+    le seul contrôle des connexions et celui de l'empreinte à l'activation.
+    Rend (mise_au_repos_obtenue, connexions_restantes).
+    """
+    moteur = _moteur_source(url, lecture_seule=False)
+    obtenue = False
+    try:
+        with moteur.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            nom = connection.execute(text("SELECT current_database()")).scalar_one()
+            quote = connection.dialect.identifier_preparer.quote
+            try:
+                connection.execute(text(f"ALTER DATABASE {quote(nom)} SET default_transaction_read_only = on"))
+                obtenue = True
+            except Exception:
+                obtenue = False
+            return obtenue, _autres_connexions(connection)
+    finally:
+        moteur.dispose()
+
+
+def liberer_source(url):
+    """Rend la base source à nouveau modifiable (retour arrière)."""
+    moteur = _moteur_source(url, lecture_seule=False)
+    try:
+        with moteur.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            nom = connection.execute(text("SELECT current_database()")).scalar_one()
+            quote = connection.dialect.identifier_preparer.quote
+            connection.execute(text(f"ALTER DATABASE {quote(nom)} RESET default_transaction_read_only"))
+    finally:
+        moteur.dispose()
+
+
+def _refuser_si_connexions(connexions, au_repos):
+    if not connexions:
+        return
+    total = sum(n for _, n in connexions)
+    noms = ", ".join(f"{nom} ({n})" for nom, n in connexions[:5])
+    repos = (" La base source a été mise en lecture seule pour les nouvelles connexions ; elle redevient "
+             "modifiable si vous abandonnez la reprise.") if au_repos else ""
+    raise MigrationError(f"{total} connexion(s) encore ouverte(s) sur la base source ({noms}). Arrêtez l'ancienne "
+                         "application sous toutes ses formes (service, tâche planifiée, console, autre poste) puis "
+                         "relancez l'assistant." + repos)
+
+
+def empreinte_fichier(root):
+    return Path(root) / "runtime" / "reprise" / "source-empreinte.json"
+
+
+def verifier_source(c):
+    """Avant d'ouvrir la copie : la source n'a-t-elle pas changé depuis ?
+
+    Compare les effectifs et empreintes de toutes les tables à ceux relevés
+    lors de la copie. Une différence (ancienne application relancée, saisie
+    tardive) rend la copie périmée : l'activation est refusée. Une source
+    injoignable ne permet pas de le vérifier : refus aussi.
+    """
+    chemin = empreinte_fichier(c["data_root"])
+    if not chemin.exists():
+        raise MigrationError("Empreinte de la copie introuvable : la reprise doit être recommencée.", "activation")
+    attendu = json.loads(chemin.read_text(encoding="utf-8"))
+    source = read_source(c["migration_source"], c.get("migration_uri", ""), c.get("migration_source_db"))
+    moteur = _moteur_source(source["url"])
+    try:
+        with moteur.connect() as connection:
+            actuel = fingerprints(connection)
+    except MigrationError:
+        raise
+    except Exception:
+        raise MigrationError("La base source est injoignable : impossible de vérifier que la copie est encore à "
+                             "jour. Redémarrez son serveur PostgreSQL puis relancez l'assistant.", "activation") from None
+    finally:
+        moteur.dispose()
+    if actuel != attendu:
+        raise MigrationError("La base source a été modifiée depuis la copie (ancienne application relancée ou saisie "
+                             "tardive) : la copie est périmée, la reprise va être recommencée.", "perimee")
+    return True
+
+
+def _journal_reprise(root, exc):
+    """Trace technique nettoyée (type, pile) pour la DSI, jamais de secret."""
+    import traceback
+    try:
+        chemin = Path(root) / "logs" / "migration.log"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        pile = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        import re
+        pile = re.sub(r"(postgresql(?:\+psycopg)?://[^:/@\s]*):[^@\s]*@", r"\1:[confidentiel]@", pile)
+        pile = re.sub(r"(?i)(password|pwd|secret)\s*[=:]\s*\S+", r"\1=[confidentiel]", pile)
+        with chemin.open("a", encoding="utf-8") as f:
+            import time
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + type(exc).__name__ + "\n" + pile + "\n")
+    except OSError:
+        pass
+
+
 def migrate(c, runtime):
     """Appel administrateur, ancien service arrêté, nouveau service non démarré."""
-    source = read_source(c["migration_source"], c.get("migration_uri", ""))
+    source = read_source(c["migration_source"], c.get("migration_uri", ""), c.get("migration_source_db"))
+    source["dossiers_autorises"] = c.get("migration_dossiers_autorises") or []
     root = Path(c["data_root"])
     target_url = make_url(os.environ["SQLALCHEMY_DATABASE_URI"])
     if (source["url"].host, source["url"].port or 5432, source["url"].database) == (target_url.host, target_url.port or 5432, target_url.database):
@@ -365,8 +555,9 @@ def migrate(c, runtime):
     if completed.exists():
         return json.loads(completed.read_text(encoding="utf-8"))
     target = create_engine(target_url, hide_parameters=True, connect_args={"options": FLOAT_OPTIONS})
-    src = create_engine(source["url"], hide_parameters=True,
-                        connect_args={"connect_timeout": 10, "options": "-c default_transaction_read_only=on " + FLOAT_OPTIONS})
+    src = _moteur_source(source["url"])
+    etape = "copie"
+    au_repos = False
     try:
         with target.connect() as connection:
             if inspect(connection).get_table_names():
@@ -376,6 +567,10 @@ def migrate(c, runtime):
         extension = ".exe" if os.name == "nt" else ""
         # Une tentative précédente ne doit rien laisser dans la copie de travail.
         clean_work(work)
+        # Plus personne ne doit écrire dans la source entre la copie et
+        # l'ouverture de la nouvelle application (audit C4).
+        au_repos, connexions = mettre_au_repos(source["url"])
+        _refuser_si_connexions(connexions, au_repos)
         with src.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
             with connection.begin():
                 version = int(connection.execute(text("SHOW server_version_num")).scalar_one())
@@ -384,6 +579,9 @@ def migrate(c, runtime):
                 validate_postgres_versions(version, target_version)
                 revisions = validate_revision(connection, runtime.APP)
                 documents = plan_documents(connection, source)
+                # Dernier contrôle, dans la transaction du cliché : une session
+                # ouverte juste avant la mise au repos pourrait encore écrire.
+                _refuser_si_connexions(_autres_connexions(connection), au_repos)
                 snapshot = connection.execute(text("SELECT pg_export_snapshot()")).scalar_one()
                 before = fingerprints(connection)
                 if not before["user"]["rows"]:
@@ -395,7 +593,7 @@ def migrate(c, runtime):
         staging = work / "files"
         stage_archive(work / "fichiers.zip", staging)
         pg_tool(pg / ("pg_restore" + extension), target_url, "--single-transaction", "--exit-on-error",
-                "--no-owner", "--no-privileges", work / "source.dump")
+                "--no-owner", "--no-privileges", work / "source.dump", cote="destination")
         with target.connect() as connection:
             if fingerprints(connection) != before:
                 raise MigrationError("Les données restaurées ne correspondent pas à la source. Bascule refusée.")
@@ -405,26 +603,41 @@ def migrate(c, runtime):
         with target.begin() as connection:
             remap_paths(connection, manifest["roots"], new_roots, source_directory=source["root"])
             apply_document_plan(connection, documents, source["roots"], new_roots)
-        # Config a été importée avec les chemins de la cible, jamais de la source.
-        from app import create_app
-        app = create_app()
+        # Empreinte de la source au moment du cliché : l'activation la
+        # recompare pour refuser une copie devenue périmée.
+        empreinte_fichier(root).write_text(json.dumps(before), encoding="utf-8")
+
+        etape = "migration"
+        # Migrations du schéma sur la CIBLE seulement ; lectures de démarrage
+        # différées jusqu'à ce que les colonnes manquantes soient complétées
+        # (dérives de schéma, audit 4.1).
+        os.environ["MCS_SKIP_BOOTSTRAP"] = "1"
+        try:
+            from app import create_app
+            app = create_app()
+        finally:
+            os.environ.pop("MCS_SKIP_BOOTSTRAP", None)
         from app.extensions import db
         from app.models import InstanceSettings
         with app.app_context():
             # Bases anciennes dont le schéma a dérivé de l'historique Alembic
             # (colonnes ajoutées à la main ou par l'ancien correctif de schéma).
             completed_columns = reconcile_columns(db.engine, db.metadata)
+            from app.rbac import bootstrap_rbac
+            from app.secteurs import bootstrap_secteurs_from_config
+            bootstrap_rbac()
+            bootstrap_secteurs_from_config()
             with db.engine.connect() as connection:
                 after_accounts = list(connection.execute(text('SELECT id, email, password_hash FROM "user" ORDER BY id')))
                 if accounts != after_accounts:
-                    raise MigrationError("Les comptes n'ont pas été conservés intégralement.")
+                    raise MigrationError("Les comptes n'ont pas été conservés intégralement.", "migration")
                 # Vérifie toutes les colonnes utilisées par le logiciel sans lire de données.
                 actual = inspect(connection)
                 for table in db.metadata.sorted_tables:
                     if not actual.has_table(table.name):
-                        raise MigrationError("Schéma incomplet après migration : table " + table.name)
+                        raise MigrationError("Schéma incomplet après migration : table " + table.name, "migration")
                     if {x.name for x in table.columns} - {x["name"] for x in actual.get_columns(table.name)}:
-                        raise MigrationError("Schéma incomplet après migration : colonnes de " + table.name)
+                        raise MigrationError("Schéma incomplet après migration : colonnes de " + table.name, "migration")
             settings = InstanceSettings.query.first()
             modules = json.loads(settings.enabled_modules_json) if settings and settings.enabled_modules_json else None
             organization = (settings.organization_name if settings else None) or source["settings"].get("ORGANIZATION_NAME") or "Structure reprise"
@@ -434,14 +647,18 @@ def migrate(c, runtime):
                 db.session.commit()
             db.session.remove()
             db.engine.dispose()
-        report = {"format": 1, "database": source["url"].database, "db_name": c["db_name"], "revisions_source": revisions,
+        report = {"format": 2, "database": source["url"].database, "db_name": c["db_name"], "revisions_source": revisions,
                   "tables": {k: v["rows"] for k, v in before.items()}, "files": len(manifest["files"]),
                   "accounts_preserved": True, "organization": organization,
                   "colonnes_completees": completed_columns,
+                  "source_mise_au_repos": au_repos,
                   "documents": {"copies_avec_les_dossiers": len(manifest["files"]),
                                 "retrouves_apres_deplacement": len(documents["relocated"]),
                                 "recopies_hors_dossiers": len(documents["external"]),
-                                "introuvables_dans_la_source": documents["missing"]}, "modules": modules, "settings": source["settings"]}
+                                "refuses_hors_emplacements_autorises": documents["refuses"],
+                                "introuvables_dans_la_source": documents["missing"]},
+                  "modules": modules, "settings": source["settings"],
+                  "reglages_importes": sorted(source["settings"])}
         # Ce fichier contient des paramètres privés, dans le dossier protégé runtime.
         temp = completed.with_suffix(".new")
         temp.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
@@ -451,17 +668,36 @@ def migrate(c, runtime):
         # rotation des sauvegardes et hors effacement RGPD.
         clean_work(work)
         return report
-    except MigrationError:
+    except MigrationError as exc:
+        _journal_reprise(root, exc)
         _discard(work)
+        if au_repos:
+            _liberer_sans_erreur(source["url"])
+        if exc.etape == "copie" and etape == "migration":
+            exc.etape = "migration"
         raise
     except Exception as exc:
+        _journal_reprise(root, exc)
         _discard(work)
+        if au_repos:
+            _liberer_sans_erreur(source["url"])
         from sqlalchemy.exc import OperationalError
         detail = ""
         if isinstance(exc, OperationalError):
             # Connexion refusée, mot de passe, base introuvable : message utile, sans secret.
             detail = " " + _diagnostic(str(getattr(exc, "orig", None) or exc).encode(), source["url"])
+        if etape == "migration":
+            raise MigrationError("La copie est faite, mais la mise à jour de son schéma a échoué (" + type(exc).__name__
+                                 + "). La source est intacte ; le détail technique est dans logs/migration.log.",
+                                 "migration") from None
         raise MigrationError("La reprise n'a pas abouti. La source est intacte ; vérifiez connexion, version, espace disque et droits sur les fichiers." + detail.rstrip()) from None
     finally:
         src.dispose()
         target.dispose()
+
+
+def _liberer_sans_erreur(url):
+    try:
+        liberer_source(url)
+    except Exception:
+        pass  # Signalé par l'assistant lors du retour arrière.

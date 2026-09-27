@@ -133,7 +133,10 @@ def test_reprise_documents_retrouves_recopies_ou_comptes(tmp_path):
     ailleurs = tmp_path / 'Partage'; ailleurs.mkdir()
     (ailleurs / 'feuille.docx').write_bytes(b'docx')
     (ailleurs / 'systeme.dll').write_bytes(b'x')
-    source = {'root': old, 'roots': {'instance': documents, 'uploads': old / 'uploads'}}
+    # Évolution voulue (audit 4.2) : un dossier hors de l'ancienne application
+    # n'est lu que s'il est désigné par l'opérateur.
+    source = {'root': old, 'roots': {'instance': documents, 'uploads': old / 'uploads'},
+              'dossiers_autorises': [str(ailleurs)]}
     engine = create_engine('sqlite://')
     with engine.begin() as conn:
         conn.execute(text('CREATE TABLE piece (id INTEGER PRIMARY KEY, file_path TEXT)'))
@@ -145,6 +148,8 @@ def test_reprise_documents_retrouves_recopies_ou_comptes(tmp_path):
                 'instance/absente.txt']                                   # perdu
         for i, value in enumerate(rows, 1):
             conn.execute(text('INSERT INTO piece VALUES (:i, :v)'), {'i': i, 'v': value})
+        sans_autorisation = plan_documents(conn, {**source, 'dossiers_autorises': []})
+        assert not sans_autorisation['external'] and sans_autorisation['refuses'] == {'piece.file_path': 2}
         plan = plan_documents(conn, source)
         assert len(plan['relocated']) == 1 and len(plan['external']) == 1
         assert plan['missing'] == {'piece.file_path': 3}
