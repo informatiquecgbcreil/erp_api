@@ -18,7 +18,7 @@ from datetime import date, datetime
 
 import pytest
 
-from test_reprise_reglements import (ANNEE, _bulletin, _cotisation, _encaissements_du_bulletin, _ligne,
+from test_reprise_reglements import (ANNEE, _bulletin, _cotisation, _ligne,
                                      _migration, _personne, _reprise_pr59_puis_correctif, _versement_ancien)
 
 LIBELLE = f"Inscription annuelle {ANNEE}-{ANNEE + 1}"
@@ -28,7 +28,9 @@ def _famille(app, *, reporte, modes=("especes",), montant=30.0):
     """Bulletin familial sans titulaire, un membre avec fiche ; ``reporte`` :
     montant déjà reporté (réparti sur ``modes``) sur sa cotisation."""
     from app.extensions import db
+    from app.models import Encaissement
     with app.app_context():
+        _DEPUIS[0] = db.session.query(db.func.max(Encaissement.id)).scalar() or 0
         membre = _personne(db)
         c = _cotisation(db, participant=membre)
         if reporte:
@@ -42,12 +44,19 @@ def _famille(app, *, reporte, modes=("especes",), montant=30.0):
         return b.id, membre.id
 
 
+#: Plus grand encaissement existant avant le scénario : la base de test est
+#: partagée et SQLite réattribue les numéros de fiches et de bulletins
+#: supprimés par d'autres tests ; on ne compte que ce que le scénario a créé.
+_DEPUIS = [0]
+
+
 def _compte_en_caisse(app, bid, membre_id):
     """Argent de ce bulletin réellement compté (hors sommes hors caisse),
     contre-passations comprises."""
     from app.models import Encaissement
     with app.app_context():
         lignes = Encaissement.query.filter(
+            Encaissement.id > _DEPUIS[0],
             (Encaissement.inscription_annuelle_id == bid) | (Encaissement.participant_id == membre_id)).all()
         return round(sum(e.montant for e in lignes if not e.hors_caisse), 2)
 
@@ -58,13 +67,13 @@ def _qualifier_tout_dans_la_caisse(app, admin_client, bid, membre_id):
     from app.models import Encaissement
     from app.services.encaissements import a_qualifier
     with app.app_context():
-        proposees = [(e.id, e.montant) for e in a_qualifier()
-                     if e.inscription_annuelle_id == bid or e.participant_id == membre_id]
+        proposees = [(e.id, e.montant) for e in a_qualifier() if e.id > _DEPUIS[0]
+                     and (e.inscription_annuelle_id == bid or e.participant_id == membre_id)]
     for eid, montant in proposees:
         admin_client.post("/caisse/a-qualifier", data={"encaissement_id": eid, "mode_0": "especes",
                                                        "montant_0": f"{montant:.2f}", "caisse": "dans"})
     with app.app_context():
-        restantes = [e.id for e in a_qualifier() if e.inscription_annuelle_id == bid]
+        restantes = [e.id for e in a_qualifier() if e.id > _DEPUIS[0] and e.inscription_annuelle_id == bid]
         assert restantes == [], "des sommes du bulletin restent à qualifier"
         return Encaissement.query.count()
 
@@ -149,7 +158,9 @@ def test_somme_historique_deja_qualifiee_presentee_pour_verification(app, admin_
     from app.extensions import db
     from app.services.encaissements import qualifier
     from app.services.reprise_reglements import classer_tout
+    from app.models import Encaissement
     with app.app_context():
+        _DEPUIS[0] = db.session.query(db.func.max(Encaissement.id)).scalar() or 0
         membre = _personne(db)
         c = _cotisation(db, participant=membre)
         _versement_ancien(db, c, 20.0, "especes", LIBELLE)
@@ -157,7 +168,7 @@ def test_somme_historique_deja_qualifiee_presentee_pour_verification(app, admin_
         db.session.commit()
         _migration("b5d8e3a1f264").reprendre_donnees(db.session.connection())
         db.session.commit()
-        [ancien] = _encaissements_du_bulletin(b.id)
+        ancien = Encaissement.query.filter_by(source_ancienne=f"bulletin:{b.id}").one()
         qualifier(ancien, [("especes", 30.0)], dans_caisse=True)
         db.session.commit()
         classer_tout(db.session.connection())
@@ -281,7 +292,7 @@ def test_reproduction_du_defaut_60_euros(app):
     with app.app_context():
         rr.constater_encaissement(_ligne(bid).id, "10", note="cahier")
         db.session.commit()
-        for e in [e for e in a_qualifier() if e.inscription_annuelle_id == bid]:
+        for e in [e for e in a_qualifier() if e.id > _DEPUIS[0] and e.inscription_annuelle_id == bid]:
             qualifier(e, [("especes", e.montant)], dans_caisse=True)
             db.session.commit()
     assert _compte_en_caisse(app, bid, membre) == 30.0
