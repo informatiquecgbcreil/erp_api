@@ -51,8 +51,10 @@ def test_activite_comptee_par_annee(app):
         at = AtelierActivite(nom=f"A{uuid.uuid4().hex[:5]}", secteur=sec, type_atelier="COLLECTIF")
         db.session.add(at)
         db.session.flush()
+        # Séance passée : depuis l'alignement sur SENACS (audit 5.3), une
+        # séance encore à venir n'est plus comptée comme activité réalisée.
         sess = SessionActivite(atelier_id=at.id, secteur=sec, session_type="COLLECTIF",
-                               date_session=dt.date(2052, 4, 4))
+                               date_session=dt.date(2019, 4, 4))
         db.session.add(sess)
         db.session.flush()
         for i in range(3):
@@ -62,11 +64,11 @@ def test_activite_comptee_par_annee(app):
             db.session.add(PresenceActivite(session_id=sess.id, participant_id=p.id))
         db.session.commit()
 
-        agr = _agrege_annee(2052, scope_secteur=None)
+        agr = _agrege_annee(2019, scope_secteur=None)
         assert agr[sec]["sessions"] == 1.0
         assert agr[sec]["presences"] == 3.0
         # l'année suivante ne compte pas cette séance
-        agr2 = _agrege_annee(2053, scope_secteur=None)
+        agr2 = _agrege_annee(2020, scope_secteur=None)
         assert sec not in agr2 or agr2[sec]["sessions"] == 0.0
 
 

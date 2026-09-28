@@ -143,9 +143,16 @@ def test_un_retard_doit_signer(app, seance):
 # ---------------------------------------------------------------------------
 # L'écran qui s'interpose
 # ---------------------------------------------------------------------------
+# Évolution volontaire : générer la feuille la VERROUILLE ; l'action passe
+# en POST (audit, « liens GET qui modifient »). Un GET est refusé (405).
+
+def test_generer_refuse_en_get(admin_client, seance):
+    r = admin_client.get(f"/activite/session/{seance['session_id']}/generate_collectif")
+    assert r.status_code == 405
+
 
 def test_generer_sarrete_et_demande(admin_client, seance):
-    r = admin_client.get(f"/activite/session/{seance['session_id']}/generate_collectif")
+    r = admin_client.post(f"/activite/session/{seance['session_id']}/generate_collectif")
     assert r.status_code == 200
     page = r.get_data(as_text=True)
     # On ne reçoit PAS un fichier : on reçoit une question.
@@ -173,14 +180,14 @@ def test_tout_signe_genere_directement(admin_client, app, seance):
     """Rien à signaler : on ne s'interpose pas, on rend le document."""
     _signer(app, seance["session_id"], seance["venue_id"])
     _signer(app, seance["session_id"], seance["absente_id"])
-    r = admin_client.get(f"/activite/session/{seance['session_id']}/generate_collectif")
+    r = admin_client.post(f"/activite/session/{seance['session_id']}/generate_collectif")
     assert _est_un_document(r) or r.status_code == 302
 
 
 def test_generer_quand_meme_passe(admin_client, seance):
     """La question a été posée et tranchée : on n'insiste pas."""
-    r = admin_client.get(
-        f"/activite/session/{seance['session_id']}/generate_collectif?confirme=1")
+    r = admin_client.post(
+        f"/activite/session/{seance['session_id']}/generate_collectif", data={"confirme": "1"})
     assert _est_un_document(r) or r.status_code == 302
 
 

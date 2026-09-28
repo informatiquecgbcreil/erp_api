@@ -65,6 +65,11 @@ class Config:
         "SESSION_COOKIE_SECURE",
         "1" if _public_url.startswith("https://") else "0",
     ) in {"1", "true", "True", "yes", "YES"}
+    # Sessions (mineur sécurité de l'audit) : déconnexion après inactivité et
+    # durée maximale, quel que soit le navigateur (un cookie « de session »
+    # peut survivre des semaines à la fermeture du navigateur).
+    SESSION_INACTIVITE_MINUTES = int(os.environ.get("SESSION_INACTIVITE_MINUTES", "120"))
+    SESSION_DUREE_MAX_HEURES = int(os.environ.get("SESSION_DUREE_MAX_HEURES", "12"))
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
 

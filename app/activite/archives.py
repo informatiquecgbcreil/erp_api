@@ -49,9 +49,12 @@ from app.activite.helpers import (
 # ------------------ Archives collectives ------------------
 
 
-@bp.route("/session/<int:session_id>/generate_collectif")
+@bp.route("/session/<int:session_id>/generate_collectif", methods=["POST"])
 @login_required
 def generate_collectif(session_id: int):
+    """Génère ET verrouille l'archive de la feuille : action en POST, jamais
+    par un simple lien qu'un aperçu ou un préchargement déclencherait (audit,
+    mineur sécurité « liens GET qui modifient »)."""
     require_perm("ateliers:edit")(lambda: None)()
     s = db.get_or_404(SessionActivite, session_id)
     atelier = db.get_or_404(AtelierActivite, s.atelier_id)
@@ -70,7 +73,7 @@ def generate_collectif(session_id: int):
     #
     # « confirme=1 » veut dire que la question a été posée et tranchée.
     manquantes = presences_sans_signature(s)
-    if manquantes and request.args.get("confirme") != "1":
+    if manquantes and request.values.get("confirme") != "1":
         return render_template(
             "activite/emargement_avant_impression.html",
             session=s,
@@ -143,7 +146,8 @@ def retirer_presences_non_signees(session_id: int):
     # On enchaîne sur la génération : c'est le geste que la personne venait
     # faire, la question de la signature est réglée.
     if (request.form.get("puis_generer") or "") == "1":
-        return redirect(url_for("activite.generate_collectif", session_id=session_id, confirme=1))
+        # 307 : le navigateur rejoue le même POST (jeton CSRF compris).
+        return redirect(url_for("activite.generate_collectif", session_id=session_id, confirme=1), code=307)
     return _redirect_emargement_with_period(session_id)
 
 
@@ -503,7 +507,7 @@ def email_individuel_archive(atelier_id: int, annee: int, mois: int):
     return redirect(url_for("activite.sessions", atelier_id=atelier_id))
 
 
-@bp.route("/atelier/<int:atelier_id>/individuel/<int:annee>/<int:mois>/finalize")
+@bp.route("/atelier/<int:atelier_id>/individuel/<int:annee>/<int:mois>/finalize", methods=["POST"])
 @login_required
 def finalize_individuel(atelier_id: int, annee: int, mois: int):
     require_perm("ateliers:edit")(lambda: None)()

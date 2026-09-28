@@ -116,6 +116,9 @@ def main():
     with source.connect() as connection:
         assert int(connection.execute(text("SHOW server_version_num")).scalar_one()) == 180001
         assert fingerprints(connection) == json.loads((root / "expected.json").read_text(encoding="utf-8"))
+        # Mise au repos conservée après la bascule : une ancienne application
+        # relancée par erreur ne peut plus écrire dans la source (audit C4).
+        assert connection.execute(text("SHOW default_transaction_read_only")).scalar_one() == "on"
     source.dispose()
     target = payload["target"]
     runtime.configure_environment(target)
@@ -144,7 +147,10 @@ def main():
     import ssl
     import urllib.parse
     import urllib.request
-    ca = Path(target["data_root"]) / "https/tls/pki/authorities/local/root.crt"
+    # Autorité contrainte d'une installation neuve (audit 6.7), sinon celle de Caddy.
+    ca = Path(target["data_root"]) / "https/autorite/racine.crt"
+    if not ca.exists():
+        ca = Path(target["data_root"]) / "https/tls/pki/authorities/local/root.crt"
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
                                         urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=str(ca))))
     with opener.open(target["url"] + "/", timeout=30) as response:
@@ -158,6 +164,7 @@ def main():
         assert response.status == 200 and "RECETTE" in response.read().decode("utf-8")
     print("MIGRATION_POSTGRESQL_18_1_IPV6_MOT_DE_PASSE_EXCLAMATION_OK")
     print("MIGRATION_BASE_ANCIENNE_COMPTES_DOCUMENTS_PARAMETRES_SOURCE_INTACTE_OK")
+    print("SOURCE_EN_LECTURE_SEULE_APRES_BASCULE_OK")
 
 
 if __name__ == "__main__":

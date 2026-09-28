@@ -168,6 +168,10 @@
         {% elif r.facture_numero %}
         <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='facture') }}">
           🧾 Facture{% if r.facture_numero %} ({{ r.facture_numero }}){% endif %}</a>
+        {% if r.avoir_numero %}
+        <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='avoir') }}">
+          ↩ Avoir ({{ r.avoir_numero }})</a>
+        {% endif %}
         {% endif %}
       {% endif %}
       <a class="btn" href="{{ url_for('salles.reservation_document', reservation_id=r.id, genre='attestation') }}">
@@ -242,20 +246,14 @@
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:150px;">
-            <label class="ui-label">Acompte (€)</label>
+            <label class="ui-label">Acompte demandé (€)</label>
             <input class="in" name="acompte_montant" inputmode="decimal" style="width:100%;"
                    value="{{ r.acompte_montant or '' }}">
           </div>
-          <div style="flex:1; min-width:165px;">
-            <label class="ui-label">Acompte réglé le</label>
-            <input class="in" type="date" name="acompte_regle_le" style="width:100%;"
-                   value="{{ r.acompte_regle_le.isoformat() if r.acompte_regle_le else '' }}">
-          </div>
-          <div style="flex:1; min-width:165px;">
-            <label class="ui-label">Solde réglé le</label>
-            <input class="in" type="date" name="solde_regle_le" style="width:100%;"
-                   value="{{ r.solde_regle_le.isoformat() if r.solde_regle_le else '' }}">
-          </div>
+          <p class="muted" style="flex:2; min-width:230px; margin:0; font-size:.82rem;">
+            L'argent reçu (acompte, solde) s'enregistre dans « Règlements reçus » ci-dessous :
+            il entre alors dans la caisse et dans le reste à régler.
+          </p>
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:165px;">
@@ -291,6 +289,56 @@
     </div>
 
     <div class="card no-print">
+      <h2 style="margin-top:0;">Règlements reçus</h2>
+      <p style="margin:0 0 8px;">Dû : <strong>{{ "%.2f"|format(r.montant_du) }} €</strong> ·
+        Réglé : <strong>{{ "%.2f"|format(r.montant_regle) }} €</strong> ·
+        Reste : <strong>{{ "%.2f"|format(r.reste_du) }} €</strong></p>
+      {% if r.encaissements %}
+        <table class="table" style="font-size:.88rem;">
+          <thead><tr><th>Date</th><th>Mode</th><th style="text-align:right;">Montant</th><th></th></tr></thead>
+          <tbody>
+          {% for e in r.encaissements %}
+            <tr>
+              <td>{{ e.date_encaissement.strftime('%d/%m/%Y') }}</td>
+              <td>{{ e.mode_label }}{% if e.a_qualifier %} <span class="muted" title="{{ e.note_qualification or '' }}">(ancien, à qualifier en caisse)</span>{% endif %}</td>
+              <td style="text-align:right;">{{ "%.2f"|format(e.montant) }} €</td>
+              <td>
+                {% if e.origine_id %}<span class="muted">Contre-passation : {{ e.motif }}</span>
+                {% elif e.est_contre_passe %}<span class="muted">contre-passé</span>
+                {% else %}
+                  <details><summary class="muted" style="cursor:pointer;">↩ Corriger</summary>
+                    <form method="post" action="{{ url_for('salles.reservation_contrepasser', reservation_id=r.id, encaissement_id=e.id) }}"
+                          class="inline" style="gap:6px;" onsubmit="return confirm('Enregistrer une écriture inverse de ce règlement ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
+                      <input class="in" name="motif" required minlength="3" maxlength="255" placeholder="Motif (obligatoire)">
+                      <button class="btn" type="submit">Contre-passer</button>
+                    </form>
+                  </details>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+      <form method="post" action="{{ url_for('salles.reservation_encaisser', reservation_id=r.id) }}" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
+        <div><label class="ui-label">Montant (€)</label><input class="in" name="montant" inputmode="decimal" required
+             value="{{ '%.2f'|format(r.reste_du) if r.reste_du > 0 else '' }}"></div>
+        <div><label class="ui-label">Mode</label>
+          <select class="in" name="mode">
+            <option value="virement">Virement</option><option value="cheque">Chèque</option>
+            <option value="especes">Espèces</option><option value="carte">Carte bancaire</option><option value="autre">Autre</option>
+          </select></div>
+        <div><label class="ui-label">Date</label><input class="in" type="date" name="date_encaissement" value="{{ aujourdhui.isoformat() }}"></div>
+        <div style="flex:1; min-width:160px;"><label class="ui-label">Note</label><input class="in" name="commentaire" maxlength="255" placeholder="n° de chèque, acompte…"></div>
+        <div><button class="btn ok" type="submit">💶 Enregistrer le règlement</button></div>
+      </form>
+    </div>
+
+    <div class="card no-print">
       <h2 style="margin-top:0;">Changer l'état</h2>
       <div class="inline" style="gap:8px; flex-wrap:wrap;">
         {% for code in statuts %}
@@ -299,6 +347,10 @@
                   style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="statut" value="{{ code }}">
+              {% if code == 'annulee' and r.facture_numero and not r.avoir_numero %}
+                <input class="in" name="motif" required minlength="3" maxlength="255"
+                       placeholder="Motif de l'avoir (facture {{ r.facture_numero }})">
+              {% endif %}
               <button class="btn {% if code == 'confirmee' %}ok{% elif code == 'annulee' %}warn{% endif %}"
                       type="submit">{{ statuts_labels[code] }}</button>
             </form>

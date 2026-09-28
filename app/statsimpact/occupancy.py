@@ -35,7 +35,11 @@ def compute_occupancy_stats(flt) -> Dict[str, Any]:
     q = _apply_common_filters(q, flt)
     q = q.filter(SessionActivite.session_type == "COLLECTIF")
 
-    sessions_rows: List[Tuple[SessionActivite, AtelierActivite]] = q.all()
+    # Séances tenues seulement, venues réelles seulement (audit 5.3) : une
+    # séance annulée ou une absence excusée ne remplit pas un atelier.
+    from app.services.presences_comptees import est_seance_tenue, venue_reelle
+    sessions_rows: List[Tuple[SessionActivite, AtelierActivite]] = [
+        (s, a) for s, a in q.all() if est_seance_tenue(s)]
     if not sessions_rows:
         return {
             "collective_sessions": 0,
@@ -51,6 +55,7 @@ def compute_occupancy_stats(flt) -> Dict[str, Any]:
     pres_rows = (
         db.session.query(PresenceActivite.session_id)
         .filter(PresenceActivite.session_id.in_(session_ids))
+        .filter(venue_reelle())
         .all()
     )
     pres_by_session = Counter([sid for (sid,) in pres_rows])

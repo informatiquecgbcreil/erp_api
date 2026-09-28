@@ -18,8 +18,13 @@ def test_montant_en_lettres():
     assert montant_en_lettres(100) == "cent euros"
     assert montant_en_lettres(200) == "deux cents euros"
     assert montant_en_lettres(1234.56) == "mille deux cent trente-quatre euros et cinquante-six centimes"
-    assert montant_en_lettres(1000000) == "un million euros"
+    assert montant_en_lettres(1000000) == "un million d'euros"
     assert montant_en_lettres(150.05) == "cent cinquante euros et cinq centimes"
+    # Accords signalés par l'audit : vingt et cent invariables devant « mille ».
+    assert montant_en_lettres(80000) == "quatre-vingt mille euros"
+    assert montant_en_lettres(200000) == "deux cent mille euros"
+    assert montant_en_lettres(2000000) == "deux millions d'euros"
+    assert montant_en_lettres(1000080) == "un million quatre-vingts euros"
 
 
 # ---------- Dons / registre ----------

@@ -360,6 +360,32 @@ def preneurs():
     )
 
 
+@bp.route("/preneur/<int:preneur_id>/anonymiser", methods=["POST"])
+@login_required
+@require_perm("locations:edit")
+def preneur_anonymiser(preneur_id: int):
+    """Locataire qui ne loue plus (audit 3.8) : coordonnées effacées. Refusé
+    tant qu'une réservation est en cours ou qu'un solde reste dû. Les
+    factures et avoirs déjà émis sont des copies figées : ils restent
+    intacts, comme la loi l'exige pour les pièces comptables."""
+    preneur = Preneur.query.get_or_404(preneur_id)
+    reservations = Reservation.query.filter_by(preneur_id=preneur.id).all()
+    en_cours = [r for r in reservations if r.statut in ("option", "confirmee")]
+    dues = [r for r in reservations if r.statut != "annulee" and (r.montant_du or 0) - (r.montant_regle or 0) > 0.005]
+    if en_cours or dues:
+        flash("Anonymisation impossible : ce locataire a encore une réservation en cours ou un solde dû.", "danger")
+        return redirect(url_for("salles.preneur_form", preneur_id=preneur.id))
+    preneur.nom = f"Locataire anonymisé #{preneur.id}"
+    for champ in ("contact_nom", "representant", "email", "telephone", "adresse", "code_postal", "ville",
+                  "siret", "assurance_reference", "notes", "assurance_rc_fin"):
+        setattr(preneur, champ, None)
+    preneur.actif = False
+    db.session.commit()
+    journaliser("salles.preneur_anonymise", cible=f"preneur #{preneur.id}")
+    flash("Locataire anonymisé. Les factures déjà émises restent inchangées.", "success")
+    return redirect(url_for("salles.preneurs"))
+
+
 @bp.route("/preneur/nouveau", methods=["GET", "POST"])
 @bp.route("/preneur/<int:preneur_id>/modifier", methods=["GET", "POST"])
 @login_required
@@ -393,7 +419,7 @@ def preneur_form(preneur_id: int | None = None):
             preneur.notes = _texte("notes") or None
             preneur.actif = _case("actif")
             db.session.commit()
-            journaliser("salles.preneur", cible=preneur.nom)
+            journaliser("salles.preneur", cible=f"preneur #{preneur.id}")
             flash(f"Preneur « {preneur.nom} » enregistré.", "success")
             return redirect(url_for("salles.preneurs"))
 
@@ -545,7 +571,7 @@ def reservation_nouvelle():
             flash(f"⚠️ {alerte}", "warning")
 
         journaliser("salles.reservation", cible=reservation.reference,
-                    details={"preneur": preneur.nom, "dates": len(dates)})
+                    details={"preneur": preneur.id, "dates": len(dates)})
         flash(
             f"Réservation {reservation.reference} créée : {len(dates)} date(s), "
             f"{reservation.montant_du:.2f} €.",
@@ -598,6 +624,12 @@ def reservation_statut(reservation_id: int):
             return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
 
     ancien = reservation.statut
+    if reservation.avoir_numero and vers != "annulee":
+        flash("Cette réservation a été annulée par un avoir : créez une nouvelle réservation "
+              "plutôt que de la réactiver (la facture et l'avoir restent au registre).", "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+    if vers == "annulee" and reservation.facture_numero and not reservation.avoir_numero:
+        _emettre_avoir(reservation, _texte("motif") or "Annulation de la mise à disposition")
     reservation.statut = vers
     if vers != "option":
         reservation.option_expire_le = None
@@ -619,16 +651,19 @@ def reservation_reglements(reservation_id: int):
     reservation.caution_montant = _decimal("caution_montant")
     reservation.caution_encaissee = _case("caution_encaissee")
     reservation.caution_restituee_le = _date("caution_restituee_le")
+    # Montant d'acompte DEMANDÉ ; l'argent reçu s'enregistre en encaissements
+    # (route « encaissement » ci-dessous), jamais par une simple date.
     reservation.acompte_montant = _decimal("acompte_montant")
-    reservation.acompte_regle_le = _date("acompte_regle_le")
-    reservation.solde_regle_le = _date("solde_regle_le")
     reservation.cles_remises_le = _date("cles_remises_le")
     reservation.cles_rendues_le = _date("cles_rendues_le")
 
     # Prix imposé à la main : possible, mais jamais muet.
     montant_manuel = _decimal("montant_manuel")
     motif = _texte("motif_montant_manuel") or None
-    if montant_manuel is not None and not motif:
+    if reservation.facture_numero and (montant_manuel != reservation.montant_manuel):
+        flash("La facture est émise : son montant ne change plus. Annulez la réservation "
+              "(un avoir est émis) puis refaites-en une au bon prix.", "danger")
+    elif montant_manuel is not None and not motif:
         flash("Un prix saisi à la main doit être motivé : la raison de l'écart sera imprimée.", "danger")
     else:
         reservation.montant_manuel = montant_manuel
@@ -640,11 +675,68 @@ def reservation_reglements(reservation_id: int):
     return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
 
 
+@bp.route("/reservation/<int:reservation_id>/encaissement", methods=["POST"])
+@login_required
+@require_perm("locations:edit")
+def reservation_encaisser(reservation_id: int):
+    """Enregistre un règlement de location : il entre aussitôt en caisse
+    (espèces, chèques) et dans le montant réglé de la réservation."""
+    from app.services.encaissements import EncaissementErreur, enregistrer, verrouiller
+    reservation = Reservation.query.get_or_404(reservation_id)
+    try:
+        verrouiller("reservation", reservation.id)
+        encaissement = enregistrer(
+            request.form.get("montant"), (request.form.get("mode") or "").strip(),
+            date_encaissement=_date("date_encaissement") or date.today(),
+            reservation=reservation, libelle=f"Location {reservation.reference}",
+            commentaire=_texte("commentaire") or None,
+            user_id=getattr(current_user, "id", None), jeton=request.form.get("jeton"),
+        )
+        db.session.commit()
+    except EncaissementErreur as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+    journaliser("salles.reservation_encaissement", cible=reservation.reference,
+                details={"encaissement": encaissement.id, "montant": encaissement.montant, "mode": encaissement.mode})
+    flash(f"Règlement de {encaissement.montant:.2f} € enregistré.", "success")
+    return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+
+
+@bp.route("/reservation/<int:reservation_id>/encaissement/<int:encaissement_id>/contrepasser", methods=["POST"])
+@login_required
+@require_perm("locations:edit")
+def reservation_contrepasser(reservation_id: int, encaissement_id: int):
+    from app.models import Encaissement
+    from app.services.encaissements import EncaissementErreur, contre_passer
+    reservation = Reservation.query.get_or_404(reservation_id)
+    encaissement = db.session.get(Encaissement, encaissement_id)
+    if encaissement is None or encaissement.reservation_id != reservation.id:
+        abort(404)
+    motif = _texte("motif") or ""
+    try:
+        inverse = contre_passer(encaissement, motif, user_id=getattr(current_user, "id", None),
+                                jeton=request.form.get("jeton"))
+        db.session.commit()
+    except EncaissementErreur as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+    journaliser("encaissement.contre_passation", cible=f"encaissement #{encaissement.id}",
+                details={"reservation": reservation.reference, "contre_passation": inverse.id, "motif": motif})
+    flash("Règlement contre-passé.", "success")
+    return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
+
+
 @bp.route("/reservation/<int:reservation_id>/supprimer", methods=["POST"])
 @login_required
 @require_perm("locations:edit")
 def reservation_supprimer(reservation_id: int):
     reservation = Reservation.query.get_or_404(reservation_id)
+    if reservation.encaissements:
+        flash("Des règlements ont été reçus pour cette réservation : elle ne peut pas être supprimée. "
+              "Annulez-la (et contre-passez les règlements si besoin).", "danger")
+        return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
     if reservation.facture_numero:
         flash("Cette réservation est facturée : conservez-la au registre et utilisez l'annulation.", "danger")
         return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
@@ -666,6 +758,7 @@ DOCUMENTS = {
     "etat_lieux_sortie": ("État des lieux de sortie", False),
     "facture": ("Facture", True),
     "attestation": ("Attestation d'occupation", False),
+    "avoir": ("Avoir", False),
 }
 
 
@@ -681,6 +774,37 @@ def _nom_structure() -> str:
         return organisation or ""
     except Exception:  # noqa: BLE001 - un contrat ne doit pas tomber pour ça
         return ""
+
+
+def _emettre_avoir(reservation: Reservation, motif: str) -> None:
+    """Avoir numéroté qui annule une facture émise, figé comme elle."""
+    import json
+
+    from app.services import documents_salles as docs
+    from app.services.financial_sequence import next_number
+    _figer_facture(reservation)
+    jour = date.today()
+    prefixe = f"AV-{jour.year}-"
+    existants = [r[0] for r in db.session.query(Reservation.avoir_numero)
+                 .filter(Reservation.avoir_numero.like(prefixe + "%")).all()]
+    numero = f"{prefixe}{next_number(f'avoir:{jour.year}', existants):04d}"
+    reservation.avoir_numero = numero
+    reservation.avoir_emis_le = jour
+    reservation.avoir_snapshot_json = json.dumps(docs.instantane_avoir(reservation, numero, jour, motif[:255]),
+                                                 ensure_ascii=False)
+    journaliser("salles.avoir", cible=reservation.reference,
+                details={"avoir": numero, "facture": reservation.facture_numero, "motif": motif[:255]})
+
+
+def _figer_facture(reservation: Reservation, *, reconstitue: bool = False) -> None:
+    import json
+
+    from app.services import documents_salles as docs
+    if reservation.facture_snapshot_json or not reservation.facture_numero:
+        return
+    reservation.facture_snapshot_json = json.dumps(docs.instantane_facture(
+        reservation, reservation.facture_numero, reservation.facture_emise_le or date.today(),
+        _nom_structure(), reconstitue=reconstitue), ensure_ascii=False)
 
 
 def _numero_facture(jour: date) -> str:
@@ -723,6 +847,10 @@ def reservation_document(reservation_id: int, genre: str):
     reservation = Reservation.query.filter_by(id=reservation_id).with_for_update().first_or_404()
     libelle, exige_confirmation = DOCUMENTS[genre]
 
+    # Réimprimer une facture ou un avoir déjà émis ne dépend plus des contrôles
+    # de confirmation : le document est figé.
+    if genre == "facture" and reservation.facture_numero:
+        exige_confirmation = False
     if exige_confirmation:
         empechements = bloquants(reservation)
         if empechements:
@@ -749,7 +877,7 @@ def reservation_document(reservation_id: int, genre: str):
     elif genre == "attestation":
         document = docs.attestation(reservation, structure)
         suffixe = "attestation"
-    else:  # facture
+    elif genre == "facture":
         if reservation.gratuite:
             flash("Une mise à disposition gratuite ne se facture pas.", "warning")
             return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
@@ -759,8 +887,18 @@ def reservation_document(reservation_id: int, genre: str):
                 return redirect(url_for("salles.reservation_fiche", reservation_id=reservation.id))
             reservation.facture_numero = _numero_facture(aujourdhui)
             reservation.facture_emise_le = aujourdhui
+            _figer_facture(reservation)
+        else:
+            # Facture émise avant le figeage : l'instantané est reconstitué une
+            # fois, avec une mention, puis ne bouge plus.
+            _figer_facture(reservation, reconstitue=True)
         document = docs.facture(reservation, reservation.facture_numero, structure)
         suffixe = "facture"
+    elif genre == "avoir":
+        if not reservation.avoir_numero:
+            abort(404)
+        document = docs.avoir(reservation)
+        suffixe = "avoir"
 
     db.session.commit()
     journaliser("salles.document", cible=reservation.reference, details={"genre": genre})

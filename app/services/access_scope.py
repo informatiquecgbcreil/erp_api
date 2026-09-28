@@ -4,7 +4,7 @@ from flask_login import current_user
 from sqlalchemy import exists, or_, false
 
 from app.rbac import can
-from app.models import ORIGINE_KIOSQUE, InscriptionActivite, Participant, PresenceActivite, SessionActivite
+from app.models import ORIGINE_PERSONNEL, InscriptionActivite, Participant, PresenceActivite, SessionActivite
 
 
 def own_sector():
@@ -21,8 +21,8 @@ def participant_filter(sector=None, *, valide=False):
 
     ``valide=False`` (lecture) : toute présence compte, y compris posée par la
     personne elle-même au kiosque.
-    ``valide=True`` (agir sur la fiche) : seule compte une présence posée par
-    le personnel, ou une présence de kiosque d'une personne inscrite à
+    ``valide=True`` (agir sur la fiche) : seule compte une présence posée ou
+    validée par le personnel, ou toute présence d'une personne inscrite à
     l'atelier. Une présence de kiosque (page publique, sans compte) ne peut
     pas ouvrir à un secteur le droit de modifier la fiche d'un autre.
     """
@@ -45,11 +45,10 @@ def participant_filter(sector=None, *, valide=False):
             InscriptionActivite.atelier_id == SessionActivite.atelier_id,
             InscriptionActivite.statut == "inscrit",
         )
-        conditions.append(or_(
-            PresenceActivite.origine.is_(None),
-            PresenceActivite.origine != ORIGINE_KIOSQUE,
-            inscrit,
-        ))
+        # Seule une présence du personnel (ou validée par lui) compte : ni le
+        # kiosque, ni une origine indéterminée (ancienne ligne dont la
+        # signature a été purgée).
+        conditions.append(or_(PresenceActivite.origine == ORIGINE_PERSONNEL, inscrit))
     return or_(Participant.created_secteur == sector, exists().where(*conditions))
 
 

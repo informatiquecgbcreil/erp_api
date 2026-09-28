@@ -4,7 +4,7 @@ from email.message import EmailMessage
 from socket import timeout as SocketTimeout
 from urllib.parse import urljoin
 
-from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash
+from flask import Blueprint, current_app, render_template, request, redirect, session, url_for, flash
 from flask_login import login_user, logout_user, login_required
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
@@ -18,6 +18,38 @@ PASSWORD_RESET_SALT = "password-reset"
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.utils.passwords import MIN_PASSWORD_LENGTH, PASSWORD_REQUIREMENT
 _UNKNOWN_PASSWORD_HASH = generate_password_hash("compte-absent-non-utilisable")
+# Mineur sécurité de l'audit : les anciens comptes gardaient un hachage
+# PBKDF2, plus rapide que le hachage actuel ; la durée de réponse disait si
+# un e-mail correspondait à un ancien compte. Chaque tentative vérifie donc
+# UN hachage de chaque sorte (le vrai et un leurre), et le hachage d'un
+# ancien compte est renouvelé à sa prochaine connexion réussie.
+_LEURRE_PBKDF2 = generate_password_hash("compte-absent-non-utilisable", method="pbkdf2:sha256")
+
+
+def _verifier_a_duree_constante(user, password: str) -> bool:
+    ancien = bool(user) and (user.password_hash or "").startswith("pbkdf2:")
+    if user is None:
+        check_password_hash(_LEURRE_PBKDF2, password)
+        check_password_hash(_UNKNOWN_PASSWORD_HASH, password)
+        return False
+    valide = user.check_password(password)
+    check_password_hash(_UNKNOWN_PASSWORD_HASH if ancien else _LEURRE_PBKDF2, password)
+    return valide
+
+
+_DEMANDES_REINIT_ADRESSE = None
+_DEMANDES_REINIT_EMAIL = None
+
+
+def _limiteurs_reinitialisation():
+    """Réinitialisation : 5 demandes par adresse et 3 par e-mail et par heure
+    (mineur sécurité : aucun plafond, envoi de courriels en rafale)."""
+    global _DEMANDES_REINIT_ADRESSE, _DEMANDES_REINIT_EMAIL
+    if _DEMANDES_REINIT_ADRESSE is None:
+        from app.utils.limiteur import Limiteur
+        _DEMANDES_REINIT_ADRESSE = Limiteur(maximum=5, fenetre_secondes=3600)
+        _DEMANDES_REINIT_EMAIL = Limiteur(maximum=3, fenetre_secondes=3600)
+    return _DEMANDES_REINIT_ADRESSE, _DEMANDES_REINIT_EMAIL
 
 
 def _reset_serializer() -> URLSafeTimedSerializer:
@@ -160,7 +192,9 @@ def login():
         password = request.form.get("password") or ""
         adresse_ip = request.remote_addr
 
-        minutes = minutes_avant_deverrouillage(email, adresse_ip)
+        from app.services.connexion_securite import minutes_avant_deverrouillage_adresse
+        minutes = max(minutes_avant_deverrouillage(email, adresse_ip),
+                      minutes_avant_deverrouillage_adresse(adresse_ip))
         if minutes > 0:
             flash(
                 "Trop de tentatives échouées. Par sécurité, la connexion est "
@@ -173,7 +207,7 @@ def login():
             return render_template("login.html")
 
         u = User.query.filter_by(email=email).first()
-        valid = u.check_password(password) if u else check_password_hash(_UNKNOWN_PASSWORD_HASH, password)
+        valid = _verifier_a_duree_constante(u, password)
         if not u or not valid:
             minutes = enregistrer_echec(email, adresse_ip)
             if minutes > 0:
@@ -190,7 +224,12 @@ def login():
             return render_template("login.html")
 
         enregistrer_succes(email, adresse_ip)
+        if (u.password_hash or "").startswith("pbkdf2:"):
+            u.set_password(password)  # hachage renouvelé au format actuel
+            db.session.commit()
         login_user(u)
+        from app.services.sessions_securite import ouvrir
+        ouvrir()
         return redirect(url_for("main.dashboard"))
 
     return render_template("login.html")
@@ -201,9 +240,13 @@ def password_reset_request():
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         user = User.query.filter_by(email=email).first()
+        par_adresse, par_email = _limiteurs_reinitialisation()
+        autorise = par_adresse.autoriser(request.remote_addr or "?") and par_email.autoriser(email)
+        if not autorise:
+            current_app.logger.warning("Réinitialisation : demandes trop nombreuses (adresse %s)", request.remote_addr)
 
         debug_link = None
-        if user:
+        if user and autorise:
             token = _build_password_reset_token(user)
             reset_link = _build_external_reset_link(token)
             sent = bool(reset_link) and _send_password_reset_email(user.email, reset_link)
@@ -250,5 +293,8 @@ def password_reset_token(token: str):
 @bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
+    from app.services.sessions_securite import fermer
+    fermer()
     logout_user()
+    session.clear()
     return redirect(url_for("auth.login"))

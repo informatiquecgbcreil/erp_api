@@ -65,6 +65,10 @@ def _activite_par_secteur(year, scope_secteur):
               .join(PresenceActivite, PresenceActivite.session_id == SessionActivite.id)
               .filter(SessionActivite.is_deleted.is_(False))
               .filter(eff >= d1, eff <= d2))
+    # Mêmes règles que SENACS et les bilans (audit 5.3).
+    from app.services.presences_comptees import seance_tenue, venue_reelle
+    sess_q = sess_q.filter(seance_tenue())
+    pres_q = pres_q.filter(seance_tenue(), venue_reelle())
     if scope_secteur:
         sess_q = sess_q.filter(SessionActivite.secteur == scope_secteur)
         pres_q = pres_q.filter(SessionActivite.secteur == scope_secteur)

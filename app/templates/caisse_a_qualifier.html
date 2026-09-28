@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block title %}Sommes à qualifier{% endblock %}
+{% block body %}
+<div class="page">
+  <p><a href="{{ url_for('main.caisse') }}">← Caisse</a></p>
+  <h1>Sommes anciennes à qualifier</h1>
+  <p class="muted">Ces sommes viennent d'une version précédente du logiciel, qui ne gardait pas toujours le mode
+    de règlement (argent noté sur un bulletin avant la fiche, dates d'acompte ou de solde d'une location).
+    L'application ne les invente pas : elle vous demande de trancher. Tant que ce n'est pas fait, elles
+    comptent dans ce que la personne a payé, mais <strong>pas</strong> dans le théorique de caisse.</p>
+  <ul class="muted">
+    <li><strong>Mode(s)</strong> : si la somme a été payée en plusieurs fois ou en plusieurs modes, découpez-la (jusqu'à 3 parts).</li>
+    <li><strong>« Entre dans la caisse »</strong> : l'argent n'a jamais été compté (il doit apparaître dans le théorique d'espèces ou les chèques à déposer).</li>
+    <li><strong>« Déjà compté »</strong> : un comptage de caisse l'a déjà absorbé (écart constaté à l'époque) ; il reste hors du théorique pour ne pas être compté deux fois.</li>
+  </ul>
+  {% if not encaissements %}
+    <p><strong>Aucune somme à qualifier.</strong></p>
+  {% endif %}
+  {% for e in encaissements %}
+    <div class="card" style="margin:12px 0; padding:12px 14px;">
+      <p style="margin:0 0 6px;"><strong>{{ "%.2f"|format(e.montant) }} €</strong> le {{ e.date_encaissement.strftime('%d/%m/%Y') }}
+        — {{ e.libelle or 'Encaissement' }}
+        {% if e.inscription_annuelle_id %} · <a href="{{ url_for('inscriptions_annuelles.detail', inscription_id=e.inscription_annuelle_id) }}">bulletin</a>{% endif %}
+        {% if e.reservation_id %} · <a href="{{ url_for('salles.reservation_fiche', reservation_id=e.reservation_id) }}">location</a>{% endif %}</p>
+      <p class="muted" style="margin:0 0 8px;">{{ e.note_qualification or '' }}</p>
+      {% if peut_editer %}
+      <form method="post" class="inline" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="encaissement_id" value="{{ e.id }}">
+        {% for i in range(3) %}
+          <div><label class="ui-label">Mode {{ i + 1 }}</label>
+            <select class="in" name="mode_{{ i }}"><option value="">—</option>
+              {% for m in modes %}<option value="{{ m }}">{{ modes_labels[m] }}</option>{% endfor %}
+            </select></div>
+          <div><label class="ui-label">Montant {{ i + 1 }}</label>
+            <input class="in" name="montant_{{ i }}" size="7" inputmode="decimal" {% if i == 0 %}value="{{ '%.2f'|format(e.montant) }}"{% endif %}></div>
+        {% endfor %}
+        <div>
+          <label><input type="radio" name="caisse" value="dans" required> Entre dans la caisse</label><br>
+          <label><input type="radio" name="caisse" value="hors"> Déjà compté</label>
+        </div>
+        <button class="btn primary" type="submit">Qualifier</button>
+      </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

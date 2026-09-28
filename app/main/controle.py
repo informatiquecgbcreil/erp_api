@@ -435,12 +435,18 @@ def purge_rgpd():
         purge_auto_active,
     )
 
+    from app.services.conservation import REGLES, reglages
+    from app.services.file_cleanup import en_attente_de_controle
+
     return render_template(
         "controle_purge_rgpd.html",
         en_attente=participants_inactifs(),
         annees=annees_inactivite(),
         derniere_purge=derniere_purge(),
         purge_auto=purge_auto_active(),
+        regles_conservation=REGLES,
+        conservation=reglages(),
+        fichiers_a_controler=en_attente_de_controle(),
     )
 
 
@@ -448,15 +454,62 @@ def purge_rgpd():
 @login_required
 @require_perm("participants:anonymize")
 def purge_rgpd_lancer():
-    from app.services.purge_rgpd import purger_participants_inactifs
+    from app.services.purge_rgpd import purger_par_lots
 
-    nombre = purger_participants_inactifs(
-        declenchement=f"manuel par {getattr(current_user, 'email', '?')}"
-    )
-    if nombre:
-        flash(f"{nombre} participant(s) inactif(s) anonymisé(s).", "success")
-    else:
+    rapport = purger_par_lots(declenchement=f"manuel par {getattr(current_user, 'email', '?')}")
+    if rapport["anonymises"]:
+        flash(f"{rapport['anonymises']} participant(s) inactif(s) anonymisé(s).", "success")
+    elif not rapport["echecs"]:
         flash("Aucun participant inactif à anonymiser.", "info")
+    if rapport["echecs"]:
+        flash(f"{len(rapport['echecs'])} fiche(s) n'ont pas pu être anonymisées (voir le journal "
+              f"de l'application) : n° {', '.join(map(str, rapport['echecs'][:10]))}.", "warning")
+    if rapport["restants"]:
+        flash(f"{rapport['restants']} fiche(s) restent en attente : traitées par lots, relancez ou "
+              "laissez la purge quotidienne continuer.", "info")
+    return redirect(url_for("main.purge_rgpd"))
+
+
+@bp.post("/controle/purge-rgpd/conservation")
+@login_required
+@require_perm("participants:anonymize")
+def purge_rgpd_conservation():
+    """Durées de conservation hors participants (audit 3.8). 0 = sans limite."""
+    from app.models import InstanceSettings
+    from app.services.audit import journaliser
+    from app.services.conservation import REGLES
+
+    reglages = InstanceSettings.query.first()
+    if reglages is None:
+        reglages = InstanceSettings()
+        db.session.add(reglages)
+    valeurs = {}
+    for nom, (_defaut, maximum, unite, libelle) in REGLES.items():
+        try:
+            valeur = int(request.form.get(nom) or 0)
+        except ValueError:
+            valeur = -1
+        if not 0 <= valeur <= maximum:
+            flash(f"{libelle} : valeur entre 0 et {maximum} {unite} attendue.", "danger")
+            return redirect(url_for("main.purge_rgpd"))
+        valeurs[nom] = valeur
+    for nom, valeur in valeurs.items():
+        setattr(reglages, nom, valeur)
+    db.session.commit()
+    journaliser("rgpd.conservation_reglages", details=valeurs)
+    flash("Durées de conservation enregistrées.", "success")
+    return redirect(url_for("main.purge_rgpd"))
+
+
+@bp.post("/controle/purge-rgpd/conservation/appliquer")
+@login_required
+@require_perm("participants:anonymize")
+def purge_rgpd_conservation_appliquer():
+    from app.services.conservation import appliquer
+
+    rapport = appliquer(f"manuel par {getattr(current_user, 'email', '?')}")
+    resume = ", ".join(f"{nom} : {valeur}" for nom, valeur in rapport.items())
+    flash(f"Durées de conservation appliquées ({resume}).", "success")
     return redirect(url_for("main.purge_rgpd"))
 
 

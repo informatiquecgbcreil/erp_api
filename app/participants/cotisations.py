@@ -180,17 +180,57 @@ def cotisation_versement(participant_id: int, cotisation_id: int):
     if mode not in MODES_PAIEMENT:
         mode = "especes"
 
-    from app.models import Paiement
-    db.session.add(Paiement(
-        cotisation_id=cotisation.id,
-        montant=montant,
-        date_paiement=_parse_date(request.form.get("date_paiement"), date.today()),
-        mode=mode,
-        commentaire=(request.form.get("commentaire") or "").strip() or None,
-        created_by_user_id=getattr(current_user, "id", None),
-    ))
-    db.session.commit()
+    from app.services.encaissements import EncaissementErreur, enregistrer, verrouiller, ventiler
+    try:
+        verrouiller("cotisation", cotisation.id)
+        encaissement = enregistrer(
+            montant, mode,
+            date_encaissement=_parse_date(request.form.get("date_paiement"), date.today()),
+            participant_id=cotisation.participant_id or participant.id,
+            foyer_id=cotisation.foyer_id,
+            libelle=f"{cotisation.type_label} {cotisation.libelle_annee}",
+            commentaire=(request.form.get("commentaire") or "").strip() or None,
+            user_id=getattr(current_user, "id", None),
+            jeton=request.form.get("jeton"),
+        )
+        # Tout le versement va sur la cotisation choisie (comportement voulu à
+        # l'accueil) : un éventuel surplus s'y voit comme payé en trop.
+        ventiler(encaissement, [cotisation], user_id=getattr(current_user, "id", None), plafonner=False)
+        db.session.commit()
+    except EncaissementErreur as exc:
+        db.session.rollback()
+        flash(str(exc), "warning" if "déjà été enregistré" in str(exc) else "danger")
+        return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
     flash(f"Règlement de {montant:.2f} € enregistré.", "success")
+    return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
+
+
+@bp.post("/<int:participant_id>/cotisation/<int:cotisation_id>/versement/<int:paiement_id>/contrepasser")
+@login_required
+@require_perm("caisse:edit")
+def cotisation_versement_contrepasser(participant_id: int, cotisation_id: int, paiement_id: int):
+    """Corrige un versement erroné (300 € au lieu de 30 €) par une écriture
+    inverse motivée : le versement d'origine reste au livre de caisse."""
+    participant = _get_participant_autorise(participant_id, edition=True)
+    cotisation = _get_cotisation_liee(participant, cotisation_id)
+    from app.models import Paiement
+    from app.services.audit import journaliser
+    from app.services.encaissements import EncaissementErreur, contre_passer
+    versement = db.session.get(Paiement, paiement_id)
+    if versement is None or versement.cotisation_id != cotisation.id or versement.encaissement is None:
+        abort(404)
+    motif = (request.form.get("motif") or "").strip()
+    try:
+        inverse = contre_passer(versement.encaissement, motif, user_id=getattr(current_user, "id", None),
+                                jeton=request.form.get("jeton"))
+        db.session.commit()
+    except EncaissementErreur as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
+    journaliser("encaissement.contre_passation", cible=f"encaissement #{versement.encaissement_id}",
+                details={"contre_passation": inverse.id, "montant": inverse.montant, "motif": motif})
+    flash(f"Versement de {-inverse.montant:.2f} € contre-passé. Enregistrez le bon montant si besoin.", "success")
     return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
 
 
@@ -208,6 +248,15 @@ def cotisation_montant_update(participant_id: int, cotisation_id: int):
     if montant < 0:
         flash("Le montant dû ne peut pas être négatif.", "danger")
         return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
+    if montant < cotisation.montant_regle - 0.009:
+        # Le trop-perçu disparaîtrait sans trace : on rend d'abord l'argent
+        # (contre-passation motivée), puis on ajuste le dû.
+        flash(
+            f"Le montant dû ne peut pas descendre sous ce qui est déjà payé ({cotisation.montant_regle:.2f} €). "
+            "Contre-passez d'abord le versement en trop.",
+            "danger",
+        )
+        return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
     cotisation.montant_du = montant
     db.session.commit()
     flash("Montant dû mis à jour.", "success")
@@ -221,7 +270,7 @@ def cotisation_supprimer(participant_id: int, cotisation_id: int):
     """Supprime une cotisation créée par erreur (aucun règlement enregistré)."""
     participant = _get_participant_autorise(participant_id, edition=True)
     cotisation = _get_cotisation_liee(participant, cotisation_id)
-    if cotisation.montant_regle > 0:
+    if cotisation.paiements:  # même contre-passés : leur trace doit rester
         flash("Impossible de supprimer une cotisation qui a déjà des règlements enregistrés.", "danger")
         return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
     db.session.delete(cotisation)

@@ -45,6 +45,14 @@ Source: "{#Payload}\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinst
 ; précédente ne doit rester mêlé aux nouveaux (les données sont ailleurs).
 Type: filesandordirs; Name: "{app}\postgresql"
 Type: filesandordirs; Name: "{app}\postgresql18"
+; Mineur Windows : l'application, Python et ses paquets étaient recopiés
+; par-dessus l'ancienne version (fichiers supprimés entre deux versions
+; laissés en place). Tout le programme est remplacé ; les données sont
+; dans ProgramData, jamais ici.
+Type: filesandordirs; Name: "{app}\application"
+Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\desktop"
+Type: filesandordirs; Name: "{app}\caddy"
 
 [Icons]
 Name: "{group}\Mon Centre Social"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--tray"
@@ -62,6 +70,9 @@ Filename: "{app}\MonCentreSocial.exe"; Parameters: "--tray"; Description: "Lance
 Filename: "{app}\MonCentreSocial.exe"; Parameters: "--uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "StopCentreSocial"
 
 [Code]
+var
+  UpgradeFailed: Boolean;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
@@ -91,7 +102,17 @@ begin
     end else begin
       // Mise à jour silencieuse : relance les services d'une installation déjà
       // configurée (sans effet sur un poste neuf). Échec consigné dans logs.
-      Exec(ExpandConstant('{app}\MonCentreSocial.exe'), '--upgrade', '', SW_HIDE, ewWaitUntilTerminated, Code);
+      // Audit 6.6 : le code retour était ignoré, l'installateur annonçait un
+      // succès même si le centre ne redémarrait pas.
+      if (not Exec(ExpandConstant('{app}\MonCentreSocial.exe'), '--upgrade', '', SW_HIDE, ewWaitUntilTerminated, Code)) or (Code <> 0) then
+        UpgradeFailed := True;
     end;
   end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  // Mise à jour silencieuse dont le redémarrage a échoué : code 8, détail
+  // dans logs\mise-a-jour-erreur.txt (les fichiers sont bien installés).
+  if UpgradeFailed then Result := 8 else Result := 0;
 end;

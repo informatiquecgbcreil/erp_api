@@ -629,8 +629,13 @@ def _direction_context() -> dict:
     start, end = date(year, 1, 1), date(year, 12, 31)
 
     session_date = db.func.coalesce(SessionActivite.rdv_date, SessionActivite.date_session)
-    sessions_q = SessionActivite.query.filter(SessionActivite.is_deleted.is_(False), session_date >= start, session_date <= end)
-    presences_q = PresenceActivite.query.join(SessionActivite).filter(SessionActivite.is_deleted.is_(False), session_date >= start, session_date <= end)
+    # Mêmes règles que SENACS et les bilans (audit 5.3) : séances tenues,
+    # venues réelles.
+    from app.services.presences_comptees import seance_tenue, venue_reelle
+    sessions_q = SessionActivite.query.filter(SessionActivite.is_deleted.is_(False), session_date >= start, session_date <= end,
+                                              seance_tenue())
+    presences_q = PresenceActivite.query.join(SessionActivite).filter(SessionActivite.is_deleted.is_(False), session_date >= start, session_date <= end,
+                                                                      seance_tenue(), venue_reelle())
     participants_q = Participant.query
     subventions_q = Subvention.query.filter(Subvention.est_archive.is_(False), Subvention.annee_exercice == year)
     depenses_q = Depense.query.filter(Depense.est_supprimee.is_(False))

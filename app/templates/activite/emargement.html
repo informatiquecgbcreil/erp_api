@@ -241,10 +241,13 @@
           </button>
         </form>
         {% if session.session_type == 'COLLECTIF' %}
-          <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=session.id) }}"
-             {% if nb_signature_manquante %}title="{{ nb_signature_manquante }} présence(s) ne sont pas signées : l'application te le redemandera avant d'imprimer"{% endif %}>
-            Générer la feuille PDF{% if nb_signature_manquante %} <span class="sig-etat sig-etat--manque">⚠ {{ nb_signature_manquante }}</span>{% endif %}
-          </a>
+          <form method="post" action="{{ url_for('activite.generate_collectif', session_id=session.id) }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn" type="submit"
+               {% if nb_signature_manquante %}title="{{ nb_signature_manquante }} présence(s) ne sont pas signées : l'application te le redemandera avant d'imprimer"{% endif %}>
+              Générer la feuille PDF{% if nb_signature_manquante %} <span class="sig-etat sig-etat--manque">⚠ {{ nb_signature_manquante }}</span>{% endif %}
+            </button>
+          </form>
         {% endif %}
         {# KIOSQUE PUBLIC #}
         {% if session.kiosk_open %}
@@ -833,6 +836,16 @@
         {% endif %}
       </div>
 
+      {% set a_valider = presences|selectattr('origine', 'in', ['kiosque', 'indeterminee'])|list %}
+      {% if a_valider %}
+        <form method="post" class="no-print" style="margin:6px 0 10px;"
+              onsubmit="return confirm('Valider les {{ a_valider|length }} présence(s) posée(s) au kiosque ou d\'origine inconnue ? Vous attestez que ces personnes étaient bien là ; cela ouvre la modification de leur fiche à votre secteur.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="valider_toutes">
+          <span class="muted">{{ a_valider|length }} présence(s) à valider (kiosque ou origine inconnue).</span>
+          <button class="btn" type="submit" style="font-size:.85rem;">✔ Tout valider</button>
+        </form>
+      {% endif %}
       <div class="tablewrap">
         <table class="emargement-consumption-table">
           <thead>
@@ -880,7 +893,7 @@
                         <option value="absent_excuse" {% if pr.presence_type == 'absent_excuse' %}selected{% endif %}>Absent excusé</option>
                       </select>
                     </form>
-                    {% if pr.origine == 'kiosque' %}
+                    {% if pr.origine in ('kiosque', 'indeterminee') %}
                     {# Posée par la personne au kiosque : n'ouvre pas la fiche à la
                        modification tant que l'équipe ne l'a pas validée. #}
                     <form method="post" style="margin:0;" title="Présence posée au kiosque : validez-la si la personne était bien là.">
@@ -890,7 +903,7 @@
                       <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
                       <input type="hidden" name="action" value="valider_presence">
                       <input type="hidden" name="presence_id" value="{{ pr.id }}">
-                      <span class="muted" style="font-size:.8rem;">📱 Kiosque</span>
+                      <span class="muted" style="font-size:.8rem;">{% if pr.origine == 'kiosque' %}📱 Kiosque{% else %}❔ Origine inconnue (ancienne){% endif %}</span>
                       <button class="btn" type="submit" style="font-size:.8rem; padding:2px 8px;">✔ Valider</button>
                     </form>
                     {% endif %}
@@ -1042,9 +1055,30 @@
       </div>
     {% endif %}
 
-    <div class="card">
+    <div class="card" id="creer-participant">
       <h2 style="margin-top:0;">Créer un participant</h2>
+      {% if doublons %}
+        <div class="alert alert-warning">
+          <strong>Fiches proches de « {{ doublons.saisie.prenom }} {{ doublons.saisie.nom }} » :</strong>
+          <ul style="margin:6px 0;">
+            {% for c in doublons.candidats %}
+              <li>
+                {{ c.nom }} {{ c.prenom }}{% if c.date_naissance %} · né(e) le {{ c.date_naissance.strftime('%d/%m/%Y') }}{% endif %}{% if c.ville %} · {{ c.ville }}{% endif %}
+                <form method="post" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="emarger">
+                  <input type="hidden" name="participant_id" value="{{ c.id }}">
+                  <button class="btn ok" type="submit">C'est cette personne : la pointer</button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+          Personne d'autre ? Le formulaire ci-dessous est prérempli : « Créer quand même ».
+        </div>
+      {% endif %}
+      {% set saisie = doublons.saisie if doublons else {} %}
       <form method="post">
+        {% if doublons %}<input type="hidden" name="force_creation" value="1">{% endif %}
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
       <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
@@ -1053,11 +1087,11 @@
         <div class="emargement-form-grid">
           <div>
             <label>Nom</label>
-            <input class="in" name="nom" required>
+            <input class="in" name="nom" required value="{{ saisie.nom or '' }}">
           </div>
           <div>
             <label>Prénom</label>
-            <input class="in" name="prenom" required>
+            <input class="in" name="prenom" required value="{{ saisie.prenom or '' }}">
           </div>
           <div>
             <label>Ville</label>
@@ -1068,46 +1102,44 @@
             <datalist id="villes-saisies">
               {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
             </datalist>
-            <input class="in" name="ville" list="villes-saisies" placeholder="Creil" data-ville-input>
+            <input class="in" name="ville" list="villes-saisies" placeholder="Creil" data-ville-input value="{{ saisie.ville or '' }}">
           </div>
           <div>
             <label>Quartier</label>
             <select class="in" name="quartier_id" data-quartier-select>
               <option value="">—</option>
               {% for q in quartiers %}
-                <option value="{{ q.id }}" data-ville="{{ q.ville }}">{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
+                <option value="{{ q.id }}" data-ville="{{ q.ville }}"{% if saisie.quartier_id == q.id|string %} selected{% endif %}>{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
               {% endfor %}
             </select>
           </div>
           <div>
             <label>Type de public (H/S/B/A/P)</label>
             <select class="in" name="type_public">
-              <option value="H" selected>H</option>
-              <option value="S">S</option>
-              <option value="B">B</option>
-              <option value="A">A</option>
-              <option value="P">P</option>
+              {% for code in ['H', 'S', 'B', 'A', 'P'] %}
+                <option value="{{ code }}"{% if (saisie.type_public or 'H') == code %} selected{% endif %}>{{ code }}</option>
+              {% endfor %}
             </select>
           </div>
           <div>
             <label>Email (optionnel)</label>
-            <input class="in" type="email" name="email" placeholder="prenom.nom@example.com">
+            <input class="in" type="email" name="email" placeholder="prenom.nom@example.com" value="{{ saisie.email or '' }}">
           </div>
           <div>
             <label>Téléphone (optionnel)</label>
-            <input class="in" type="tel" name="telephone" placeholder="06 12 34 56 78">
+            <input class="in" type="tel" name="telephone" placeholder="06 12 34 56 78" value="{{ saisie.telephone or '' }}">
           </div>
           <div>
             <label>Date de naissance</label>
-            <input class="in" type="date" name="date_naissance" placeholder="YYYY-MM-DD">
+            <input class="in" type="date" name="date_naissance" placeholder="YYYY-MM-DD" value="{{ saisie.date_naissance or '' }}">
           </div>
           <div>
             <label>Genre</label>
-            {{ genre.champ(none) }}
+            {{ genre.champ(saisie.genre or none) }}
           </div>
         </div>
         <div class="spacer"></div>
-        <button class="btn" type="submit">Créer le participant</button>
+        <button class="btn" type="submit">{% if doublons %}Créer quand même{% else %}Créer le participant{% endif %}</button>
         <div class="muted">Le participant pourra ensuite être complété ou corrigé depuis la gestion des participants.</div>
       </form>
     </div>

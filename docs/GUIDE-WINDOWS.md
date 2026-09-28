@@ -130,18 +130,34 @@ local. `public\url.txt`, l'icône et le rapport donnent l'adresse par IP (par
 exemple `https://192.168.1.200:8443`) : elle ne dépend pas du DNS. Sur un
 serveur qui porte aussi un VPN ou Tailscale, le nom peut renvoyer plusieurs
 adresses, dont certaines injoignables depuis un poste ; l'accès par le nom
-devient alors lent ou aléatoire. Réserver l'adresse du serveur dans le DHCP ;
-si elle change, « Redémarrer » depuis l'icône régénère le certificat.
+devient alors lent ou aléatoire. Réserver l'adresse du serveur dans le DHCP.
+
+L'assistant **affiche l'adresse IP retenue et permet de la corriger** : c'est
+celle de la carte reliée à la box ou au routeur (passerelle par défaut), hors
+cartes virtuelles (TAP/OpenVPN, Wintun, WireGuard, Tailscale, Hyper-V,
+vEthernet…) et hors 100.64.0.0/10. Une adresse retenue est conservée tant
+qu'elle existe sur le serveur ; si elle disparaît, la détection est refaite au
+prochain « Redémarrer ». Le champ **Autres adresses de ce serveur (VPN,
+Tailscale)** ajoute ces adresses (ou noms) au certificat, aux hôtes acceptés
+par l'application et au pare-feu (plage Tailscale 100.64.0.0/10, /24 de chaque
+adresse VPN) : les collègues passant par le VPN gardent l'accès.
+
+Les ports sont choisis libres sur **toutes** les adresses de la machine (un
+programme qui écoute seulement sur l'adresse du VPN est vu). Si un programme
+installé plus tard prend un port de l'application, « Redémarrer » ou
+« Configurer » en choisit un autre (le port PostgreSQL, inscrit dans la base,
+n'est jamais changé : un message l'indique).
 
 ## Utilisation quotidienne
 
 L'icône maison et habitants apparaît dans la zone de notification, parfois sous
 la flèche des icônes masquées. Son menu offre **Ouvrir la page d'administration**,
-**Redémarrer** et **Fermer**. Redémarrer/fermer le service demande les droits
+**Redémarrer**, **Arrêter le service pour tout le monde…** (avec confirmation)
+et **Fermer l'icône**. Fermer l'icône ne touche plus au service : l'application
+continue pour toute l'équipe. Redémarrer/arrêter le service demande les droits
 administrateur Windows, car cela affecte tous les postes. Tant qu'une reprise
 n'est pas terminée, **Redémarrer** ne fait rien et renvoie vers « Configurer Mon
-Centre Social » : l'icône n'arrête jamais l'ancien service en production. Fermer arrête le
-service jusqu'à son redémarrage ou au prochain démarrage de Windows.
+Centre Social » : l'icône n'arrête jamais l'ancien service en production.
 
 Le service fonctionne en arrière-plan avant toute ouverture de session. Les
 personnes se connectent dans leur navigateur avec un compte propre. La direction
@@ -193,11 +209,23 @@ la structure pour une reprise après sinistre.
 Le mode ordinateur écoute seulement sur `127.0.0.1`. Le mode réseau ajoute HTTPS
 sur le nom de la machine et un port disponible à partir de 8443. Le pare-feu
 autorise seulement le sous-réseau local sur les profils Privé/Domaine pour
-l'administration HTTPS. PostgreSQL reste sur `127.0.0.1`, port choisi à partir
+l'administration HTTPS ; si des adresses VPN/Tailscale sont déclarées, leurs
+plages s'ajoutent et la règle vaut pour tous les profils (les cartes VPN sont
+souvent classées « Public »), la liste d'adresses restant limitée à ces plages. PostgreSQL reste sur `127.0.0.1`, port choisi à partir
 de 55432 ; il n'est jamais publié.
 
 L'installation crée une autorité de certification propre au centre et fait
-confiance à son certificat sur le serveur. La DSI déploie
+confiance à son certificat sur le serveur. Sur une **installation neuve**, cette
+autorité est **contrainte** (extension NameConstraints critique) : elle ne peut
+signer que pour le nom du serveur, les autres noms déclarés, les adresses
+privées (10/8, 172.16/12, 192.168/16, 100.64/10, 127/8) et les adresses
+supplémentaires déclarées. Même volée, elle ne permet pas d'usurper un site de
+l'Internet sur les postes qui lui font confiance. Une installation existante
+garde son autorité (déjà déployée sur les postes) ; pour passer à une autorité
+contrainte, repartir d'une installation neuve (`--reset` puis reprise) et
+redéployer le nouveau certificat. En attendant, ne déployer
+`Certificat-du-centre.cer` que sur les postes qui utilisent l'administration.
+Changer ensuite le nom du serveur demande une nouvelle autorité. La DSI déploie
 `C:\ProgramData\MonCentreSocial\public\Certificat-du-centre.cer` dans les
 **Autorités de certification racines de confiance** des postes (GPO possible).
 Seul ce certificat public est à diffuser ; jamais le dossier `https\tls`.
@@ -221,7 +249,7 @@ pour régénérer le lien.
 Ce port HTTP ne publie que `/kiosk`, les feuilles de style, les logos et
 `/healthz`. Les routes d'administration renvoient 403 et PostgreSQL reste
 inaccessible. Le pare-feu limite le port au sous-réseau local, sur les profils
-Windows **Privé et Domaine**. Le profil Public n'est pas autorisé. Ne pas
+Windows **Privé et Domaine** (et aux plages VPN/Tailscale déclarées, voir plus haut). Ne pas
 transférer ce port sur la box, ne pas l'utiliser depuis un
 Wi-Fi invité isolé et ne pas considérer ce lien comme un accès Internet. Pour
 une activité hors de la structure, utiliser le tunnel HTTPS décrit dans
@@ -240,10 +268,29 @@ l'adresse HTTPS et le certificat déployé par la DSI.
 
 ## Sauvegarder, restaurer, mettre à jour
 
-Le service effectue une sauvegarde au démarrage puis chaque jour, avec 30 lots
-conservés dans `backups`. L'écran Administration > Sauvegardes permet de créer,
-contrôler et restaurer les lots, et de configurer des copies hors machine. Une
+Le service fait **une sauvegarde par jour** (pas de nouveau lot à chaque
+redémarrage s'il en existe déjà un du jour), avec 30 lots conservés dans
+`backups`. Chaque lot est **vérifié** (base, archive, empreintes), puis
+**recopié vers les dossiers hors serveur** indiqués dans Administration >
+Sauvegardes. Le bouton « Enregistrer et tester l'écriture » écrit un fichier
+d'essai avec le compte du service (`NT SERVICE\MonCentreSocial`) : un partage
+réseau que seul l'administrateur peut écrire est signalé tout de suite. Pour un
+partage, accorder l'écriture au compte ordinateur du serveur (`DOMAINE\SERVEUR$`)
+ou utiliser un disque externe. L'état de la dernière sauvegarde quotidienne
+(lot vérifié, copies réussies ou non) s'affiche en haut de l'écran. Une
 sauvegarde située sur le même disque ne couvre pas la perte de ce disque.
+
+Le délai de la sauvegarde est proportionné au volume (15 min + 1 min par
+100 Mo, 8 h au plus) ; au-delà, la sauvegarde et son `pg_dump` sont arrêtés et
+le lot partiel est **refusé à la restauration** (dump sans marqueur de fin,
+archive illisible ou empreintes absentes : jamais restauré).
+
+**Tester la restauration** : `MonCentreSocial.exe --restore-test` en
+administrateur rejoue réellement le dernier lot dans une base PostgreSQL
+jetable, vérifie les tables et les documents, puis supprime cette base. Rien
+n'est modifié dans l'application en service. Le rapport est dans
+`private\essai-restauration.json`. À faire après chaque mise à jour et au moins
+une fois par trimestre.
 Chaque lot comprend la base, les uploads, les fichiers métier d'`instance` et
 des empreintes de contrôle. Les anciens lots restent lisibles mais ne peuvent
 pas restituer les fichiers d'`instance` qu'ils n'avaient jamais sauvegardés.
@@ -252,8 +299,13 @@ modifications. La base et les fichiers n'ont pas de transaction commune ;
 conserver le lot de sécurité préalable et fermer les saisies pendant l'opération.
 
 Avant une mise à jour, réaliser une sauvegarde et sa copie externe. Relancer
-l'installateur arrête le service puis remplace les programmes, conserve les
-données, la configuration et les comptes, et applique les migrations de schéma.
+l'installateur arrête le service puis **remplace entièrement** les programmes
+(application, Python, Caddy : aucun ancien fichier ne reste mêlé aux nouveaux),
+conserve les données, la configuration et les comptes, et applique les
+migrations de schéma. Une migration longue n'est plus coupée : tant qu'elle
+avance, le service et l'installateur patientent. En mode silencieux
+(`/VERYSILENT`), l'installateur rend le code **8** si le centre n'a pas
+redémarré (détail dans `logs\mise-a-jour-erreur.txt`).
 La mise à jour ne réinitialise aucun mot de passe. Après un échec de migration,
 conserver les journaux et restaurer une sauvegarde dans une installation de la
 version correspondante ; ne pas forcer un retour à un ancien programme sur un
@@ -284,3 +336,22 @@ La version livrée n'est pas signée Authenticode : vérifier l'empreinte SHA-25
 fournie et l'origine du fichier. Un certificat de signature de l'éditeur sera
 nécessaire pour signer les prochaines distributions. La validation automatisée
 et ses limites figurent dans le rapport de recette accompagnant l'installateur.
+
+## Surveillance et journaux
+
+Le service vérifie toutes les 30 secondes que PostgreSQL tourne ; s'il s'est
+arrêté, le service s'arrête aussi et Windows le relance (au lieu d'erreurs 500
+sans fin). `service.log`, `runtime.log`, `proxy.log` et
+`postgresql-start.log` sont renouvelés au-delà de 5 Mo (un seul ancien journal
+`.previous.log` est gardé). HTTP/3 n'est plus annoncé par le proxy (le
+pare-feu n'ouvre que TCP).
+
+## Accès « hors les murs » repris d'une ancienne installation
+
+Si l'ancien `.env` contenait `KIOSK_PUBLIC_HOST` (tunnel Tailscale Funnel ou
+Cloudflare), le réglage est repris, mais le tunnel vise encore l'ancien port.
+La fin de l'assistant et le dossier confidentiel l'indiquent : redirigez le
+tunnel vers `http://127.0.0.1:<port kiosque>` (avec Tailscale :
+`tailscale funnel --bg http://127.0.0.1:<port kiosque>`, après avoir arrêté
+l'ancien). `Direction-DSI\Reprise.json` liste les noms des réglages repris
+(`reglages_importes`), jamais leurs valeurs.

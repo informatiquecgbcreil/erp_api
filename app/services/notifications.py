@@ -106,7 +106,7 @@ def _lignes_sauvegarde(seuil_jours: int | None, today: date) -> list[str]:
     if not etat["configure"]:
         lignes.append(
             "Aucune copie hors serveur des sauvegardes : elles sont sur la machine "
-            "qu'elles protègent. Renseignez BACKUP_OFFSITE_DIRS dans le fichier .env."
+            "qu'elles protègent. Indiquez une destination dans Administration > Sauvegardes."
         )
         return lignes
     for dest in etat["destinations"]:

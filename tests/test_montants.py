@@ -42,10 +42,11 @@ def test_parse_montant_signe_et_bornes():
 
 def _vider(app):
     from app.extensions import db
-    from app.models import CaisseMouvement, Don, Paiement
+    from app.models import CaisseMouvement, Don, Encaissement, Paiement
     with app.app_context():
         CaisseMouvement.query.delete()
         Paiement.query.delete()
+        Encaissement.query.delete()
         Don.query.delete()
         db.session.commit()
 

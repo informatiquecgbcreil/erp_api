@@ -23,8 +23,17 @@ from sqlalchemy import func
 
 from app.extensions import db
 from app.models import (
+    AtelierActivite,
     BenevoleHeures,
     Cotisation,
+    DefiTransition,
+    Encaissement,
+    HartEvaluation,
+    InscriptionActivite,
+    ObjectifSuivi,
+    ParticipantInsertionCertification,
+    ParticipantInsertionPositionnement,
+    PortailAttempt,
     InscriptionAnnuelle,
     InscriptionAnnuelleMembre,
     Evaluation,
@@ -73,11 +82,19 @@ def annees_inactivite() -> int:
 
 
 def purge_auto_active() -> bool:
+    """La purge quotidienne automatique est-elle allumée ?
+
+    Réglage de la page Contrôle → Purge RGPD (prioritaire), sinon variable
+    d'environnement PURGE_INACTIFS_AUTO. DÉSACTIVÉE par défaut : une
+    anonymisation est irréversible, elle ne doit jamais démarrer seule sur
+    une installation neuve ou juste reprise. La direction l'allume, en
+    connaissance de cause, après avoir relu la liste des fiches en attente.
+    """
     reglages = _reglages_instance()
     valeur = getattr(reglages, "purge_rgpd_auto", None)
     if valeur is not None:
         return bool(valeur)
-    return os.environ.get("PURGE_INACTIFS_AUTO", "1") in {"1", "true", "True", "yes"}
+    return os.environ.get("PURGE_INACTIFS_AUTO", "0").strip() in {"1", "true", "True", "yes"}
 
 
 def _vers_datetime(valeur) -> datetime | None:
@@ -143,6 +160,42 @@ def derniere_activite_par_participant() -> dict[int, datetime]:
         # surtout pas l'anonymiser avant sa première venue.
         _max_par_participant(InscriptionAnnuelle.participant_id, InscriptionAnnuelle.updated_at),
         _max_par_participant(InscriptionAnnuelle.participant_id, InscriptionAnnuelle.date_inscription),
+        # Audit 3.4 : autres traces d'une personne encore en lien avec la
+        # structure. Une inscription à une séance à venir, une évaluation, un
+        # passage au portail, une place sur le bulletin d'un proche ou un
+        # règlement la gardent « active ».
+        _max_par_participant(InscriptionActivite.participant_id, InscriptionActivite.updated_at),
+        _max_par_participant(
+            InscriptionActivite.participant_id,
+            eff_session,
+            jointure=(SessionActivite, InscriptionActivite.session_id == SessionActivite.id),
+        ),
+        _max_par_participant(PortailAttempt.participant_id, PortailAttempt.created_at),
+        _max_par_participant(HartEvaluation.participant_id, HartEvaluation.date_evaluation),
+        _max_par_participant(ObjectifSuivi.participant_id, ObjectifSuivi.date_saisie),
+        _max_par_participant(DefiTransition.participant_id, DefiTransition.updated_at),
+        _max_par_participant(DefiTransition.participant_id, DefiTransition.date_realisation),
+        _max_par_participant(ParticipantInsertionPositionnement.participant_id,
+                             ParticipantInsertionPositionnement.updated_at),
+        _max_par_participant(ParticipantInsertionPositionnement.participant_id,
+                             ParticipantInsertionPositionnement.date_positionnement),
+        _max_par_participant(ParticipantInsertionCertification.participant_id,
+                             ParticipantInsertionCertification.updated_at),
+        _max_par_participant(ParticipantInsertionCertification.participant_id,
+                             ParticipantInsertionCertification.date_obtention),
+        _max_par_participant(
+            InscriptionAnnuelleMembre.participant_id,
+            InscriptionAnnuelle.updated_at,
+            jointure=(InscriptionAnnuelle, InscriptionAnnuelleMembre.inscription_id == InscriptionAnnuelle.id),
+            base=InscriptionAnnuelleMembre,
+        ),
+        _max_par_participant(
+            InscriptionAnnuelleMembre.participant_id,
+            InscriptionAnnuelle.date_inscription,
+            jointure=(InscriptionAnnuelle, InscriptionAnnuelleMembre.inscription_id == InscriptionAnnuelle.id),
+            base=InscriptionAnnuelleMembre,
+        ),
+        _max_par_participant(Encaissement.participant_id, Encaissement.date_encaissement),
     ]
     fusion: dict[int, datetime] = {}
     for source in sources:
@@ -152,18 +205,37 @@ def derniere_activite_par_participant() -> dict[int, datetime]:
     return fusion
 
 
+def engages_en_cours() -> set[int]:
+    """Personnes attendues : inscrites (ou en liste d'attente) à un atelier en
+    cours ou à une séance à venir. Jamais anonymisées, quelle que soit la
+    date de leurs autres traces (audit 3.4)."""
+    aujourd_hui = date.today()
+    eff_session = db.func.coalesce(SessionActivite.rdv_date, SessionActivite.date_session)
+    q = (db.session.query(InscriptionActivite.participant_id)
+         .join(AtelierActivite, AtelierActivite.id == InscriptionActivite.atelier_id)
+         .outerjoin(SessionActivite, SessionActivite.id == InscriptionActivite.session_id)
+         .filter(InscriptionActivite.statut.in_(("inscrit", "attente")),
+                 AtelierActivite.is_deleted.is_(False),
+                 db.or_(InscriptionActivite.session_id.is_(None), eff_session >= aujourd_hui)))
+    return {int(pid) for (pid,) in q.distinct().all() if pid}
+
+
 def participants_inactifs(annees: int | None = None) -> list[dict]:
     """Participants dont TOUTE activité date de plus de `annees` ans.
 
     Retourne [{"participant": Participant, "derniere_activite": datetime}],
-    du plus ancien au plus récent. Les fiches déjà anonymisées sont ignorées.
+    du plus ancien au plus récent. Les fiches déjà anonymisées et les
+    personnes engagées (``engages_en_cours``) sont ignorées.
     """
     annees = annees_inactivite() if annees is None else annees
     seuil = utcnow() - timedelta(days=annees * 365)
     activites = derniere_activite_par_participant()
+    engages = engages_en_cours()
 
     en_attente = []
     for p in Participant.query.filter(Participant.nom != NOM_ANONYME).all():
+        if p.id in engages:
+            continue
         candidates = [
             _vers_datetime(p.updated_at),
             _vers_datetime(p.created_at),
@@ -271,6 +343,17 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
                 row.demande = "Donnée effacée"
             elif isinstance(row, m.DefiTransition):
                 row.titre = "Défi anonymisé"
+    # Montants, modes et dates restent (pièces de caisse) ; le texte libre,
+    # qui porte souvent un nom (« chèque DUPONT »), part.
+    ids_bulletins = [b.id for b in bulletins]
+    conditions = [m.Encaissement.participant_id == p.id]
+    if ids_bulletins:
+        conditions.append(m.Encaissement.inscription_annuelle_id.in_(ids_bulletins))
+    for row in m.Encaissement.query.filter(db.or_(*conditions)).all():
+        row.commentaire = None
+    for row in (m.Paiement.query.join(m.Cotisation, m.Cotisation.id == m.Paiement.cotisation_id)
+                .filter(m.Cotisation.participant_id == p.id).all()):
+        row.commentaire = None
     for row in m.RepartitionArreteeLigne.query.filter_by(participant_id=p.id).all():
         row.participant_nom = f"ANONYME P{p.id}"
     for row in m.PasseportNote.query.filter_by(participant_id=p.id).all():
@@ -286,6 +369,40 @@ def anonymiser_participant(p: Participant, actor_id: int | None = None) -> None:
             # Les réponses numériques restent exploitables pour les bilans.
             response.value_text = None
             response.value_json = None
+    # Séances individuelles (rendez-vous) où la personne était seule : le
+    # bilan qualitatif parle d'elle (mineur RGPD de l'audit). Les séances
+    # collectives gardent leur bilan, qui décrit le groupe.
+    seances_ids = [pr.session_id for pr in m.PresenceActivite.query.filter_by(participant_id=p.id).all()]
+    if seances_ids:
+        seules = (db.session.query(m.PresenceActivite.session_id)
+                  .filter(m.PresenceActivite.session_id.in_(seances_ids))
+                  .group_by(m.PresenceActivite.session_id)
+                  .having(func.count(m.PresenceActivite.id) == 1))
+        for seance in m.SessionActivite.query.filter(
+                m.SessionActivite.id.in_(seules), m.SessionActivite.session_type != "COLLECTIF").all():
+            seance.bilan_qualitatif = None
+            seance.commentaire_pedagogique = None
+            seance.intention_seance_detail = None
+    effacer_copies_de_fichiers(p.id)
+    from app.services.audit import effacer_identite
+    effacer_identite(p.id)
+    from app.services.registre_effacements import noter
+    noter("anonymises", p)
+
+
+def effacer_copies_de_fichiers(participant_id: int) -> int:
+    """Copies figées des signatures (archives de feuilles d'émargement) et
+    bilans pédagogiques nominatifs conservés par les anciennes versions
+    (audit 3.1). La feuille archivée elle-même reste : c'est la pièce
+    justificative de la séance."""
+    from pathlib import Path
+    from app.services.file_cleanup import schedule
+    instance = Path(current_app.instance_path)
+    fichiers = (list(instance.glob(f"archives_emargements/**/signatures/sig_*_p{participant_id}__*"))
+                + list(instance.glob(f"archives_pedagogie/bilan_{participant_id}_*")))
+    for fichier in fichiers:
+        schedule(str(fichier))
+    return len(fichiers)
 
 
 def derniere_purge() -> datetime | None:
@@ -302,22 +419,51 @@ def _marquer_purge_executee() -> None:
     db.session.commit()
 
 
-def purger_participants_inactifs(annees: int | None = None, declenchement: str = "automatique") -> int:
-    """Anonymise les participants inactifs. Retourne le nombre traité."""
+#: Audit 3.5 : jamais tout d'un coup. Plafond par passage (le reste attend le
+#: passage suivant) et validation par lots, chaque fiche dans son propre point
+#: de sauvegarde : une fiche en erreur est journalisée et sautée, elle ne
+#: bloque plus toute la purge chaque jour.
+LIMITE_PAR_PASSAGE = 300
+TAILLE_LOT = 50
+
+
+def purger_par_lots(annees: int | None = None, declenchement: str = "automatique",
+                    limite: int = LIMITE_PAR_PASSAGE, lot: int = TAILLE_LOT) -> dict:
+    """Anonymise au plus ``limite`` fiches inactives. Rapport :
+    {"anonymises": n, "echecs": [ids], "restants": n}."""
+    from app.services.audit import enregistrer
     en_attente = participants_inactifs(annees)
-    for item in en_attente:
+    a_traiter, anonymises, echecs = en_attente[:limite], 0, []
+    for rang, item in enumerate(a_traiter, start=1):
         p = item["participant"]
-        anonymiser_participant(p)
-        current_app.logger.warning(
-            "Purge RGPD: participant #%s anonymisé (dernière activité: %s, déclenchement: %s)",
-            p.id,
-            item["derniere_activite"].date(),
-            declenchement,
-        )
-    if en_attente:
-        db.session.commit()
+        try:
+            with db.session.begin_nested():
+                anonymiser_participant(p)
+                enregistrer("participant.anonymize", cible=f"participant #{p.id}", participant_id=p.id,
+                            details={"declenchement": declenchement,
+                                     "derniere_activite": item["derniere_activite"].date().isoformat()})
+            anonymises += 1
+            current_app.logger.warning(
+                "Purge RGPD: participant #%s anonymisé (dernière activité: %s, déclenchement: %s)",
+                p.id, item["derniere_activite"].date(), declenchement)
+        except Exception:  # noqa: BLE001 — une fiche ne bloque pas les autres
+            current_app.logger.exception("Purge RGPD : participant #%s ignoré", p.id)
+            echecs.append(p.id)
+        if rang % lot == 0:
+            db.session.commit()
+    db.session.commit()
     _marquer_purge_executee()
-    return len(en_attente)
+    rapport = {"anonymises": anonymises, "echecs": echecs,
+               "restants": max(0, len(en_attente) - len(a_traiter))}
+    if anonymises or echecs:
+        current_app.logger.warning("Purge RGPD (%s) : %s anonymisée(s), %s en échec, %s restante(s).",
+                                   declenchement, anonymises, len(echecs), rapport["restants"])
+    return rapport
+
+
+def purger_participants_inactifs(annees: int | None = None, declenchement: str = "automatique") -> int:
+    """Compatibilité : nombre de fiches anonymisées lors de ce passage."""
+    return purger_par_lots(annees, declenchement)["anonymises"]
 
 
 def purge_quotidienne_si_necessaire() -> None:

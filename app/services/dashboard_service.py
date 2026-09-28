@@ -243,15 +243,22 @@ def build_dashboard_context(
     # à la corbeille ne compte plus (sinon le tableau de bord et les stats
     # affichent des totaux différents).
     pres_q = PresenceActivite.query.join(SessionActivite).filter(SessionActivite.is_deleted.is_(False))
+    # Mêmes règles que SENACS et les bilans (audit 5.3) : une absence excusée
+    # n'est pas une venue, une séance annulée ou à venir n'a pas eu lieu.
+    from app.services.presences_comptees import seance_tenue, venue_reelle
+    pres_q = pres_q.filter(venue_reelle(), seance_tenue())
+    sessions_tenues_q = sessions_q.filter(seance_tenue())
     if not _has_any("emargement:view", "stats:view", "statsimpact:view"):
         sessions_q = sessions_q.filter(False)
+        sessions_tenues_q = sessions_tenues_q.filter(False)
         pres_q = pres_q.filter(False)
     if not has_scope_all:
         sessions_q = sessions_q.filter(SessionActivite.secteur == user.secteur_assigne)
+        sessions_tenues_q = sessions_tenues_q.filter(SessionActivite.secteur == user.secteur_assigne)
         pres_q = pres_q.filter(SessionActivite.secteur == user.secteur_assigne)
 
     sessions_recent = (
-        sessions_q
+        sessions_tenues_q
         .filter(session_date_expr.isnot(None))
         .filter(session_date_expr >= since_date)
         .filter(session_date_expr <= until_date)
@@ -290,7 +297,7 @@ def build_dashboard_context(
         if mk in dep_by_month:
             dep_by_month[mk] += float(montant or 0)
 
-    sess_rows = sessions_q.with_entities(session_date_expr).all()
+    sess_rows = sessions_tenues_q.with_entities(session_date_expr).all()
     sess_by_month = {k: 0 for k in month_labels}
     for (session_date,) in sess_rows:
         if not session_date:

@@ -446,15 +446,31 @@ def test_encaissement_sur_bulletin_sans_bareme(admin_client, app, atelier):
         assert i.reglement_commentaire == "chèque n°42"
         assert i.cotisation_id is None
 
-    # Le règlement se dé-confirme (erreur de saisie à l'accueil).
+    # Erreur de saisie à l'accueil. Évolution voulue (audit C2) : l'argent
+    # reçu ne s'efface plus. Sans motif, l'annulation est refusée ; avec un
+    # motif, une écriture inverse est enregistrée et les deux restent au
+    # livre de caisse.
     admin_client.post(f"/inscriptions-annuelles/{inscription_id}/reglement", data={"action": "annuler"})
     with app.app_context():
         from app.extensions import db
-        from app.models import InscriptionAnnuelle
+        from app.models import Encaissement, InscriptionAnnuelle
+
+        assert db.session.get(InscriptionAnnuelle, inscription_id).reglement_confirme is True
+        assert Encaissement.query.filter_by(inscription_annuelle_id=inscription_id).count() == 1
+
+    admin_client.post(f"/inscriptions-annuelles/{inscription_id}/reglement",
+                      data={"action": "annuler", "motif": "montant saisi sur le mauvais bulletin"})
+    with app.app_context():
+        from app.extensions import db
+        from app.models import Encaissement, InscriptionAnnuelle
 
         i = db.session.get(InscriptionAnnuelle, inscription_id)
         assert i.reglement_confirme is False
-        assert i.reglement_date is None
+        assert i.reglement_montant == 0
+        ecritures = Encaissement.query.filter_by(inscription_annuelle_id=inscription_id).order_by(Encaissement.id).all()
+        assert [e.montant for e in ecritures] == [12.5, -12.5]
+        assert ecritures[1].origine_id == ecritures[0].id
+        assert ecritures[1].motif == "montant saisi sur le mauvais bulletin"
 
 
 def test_transformation_genere_adhesion_et_participation(admin_client, app, atelier, bareme):

@@ -44,6 +44,8 @@ def smoke(payload, root):
     process = None
     proxy = None
     log = (root / "smoke-supervisor.log").open("wb")
+    # Autorité contrainte (audit 6.7), créée par --prepare-proxy ; sinon Caddy.
+    constrained = root / "https/autorite/racine.crt"
     certificate = root / "https/tls/pki/authorities/local/root.crt"
 
     def stop_proxy():
@@ -61,7 +63,7 @@ def smoke(payload, root):
             raise RuntimeError("Le runtime s'est terminé en erreur.")
 
     def start():
-        nonlocal process, proxy
+        nonlocal process, proxy, certificate
         subprocess.run([str(payload / "python/python.exe"), "-B", str(payload / "desktop/runtime.py"), "--prepare-proxy"],
                        input=json.dumps(cfg).encode("utf-8"), stdout=log, stderr=log,
                        creationflags=subprocess.CREATE_NO_WINDOW, check=True, timeout=30)
@@ -82,6 +84,8 @@ def smoke(payload, root):
         for _ in range(120):
             if proxy.poll() is not None:
                 raise RuntimeError("Échec du proxy : consulter smoke-supervisor.log.")
+            if constrained.exists():
+                certificate = constrained
             if certificate.exists():
                 try:
                     with urllib.request.urlopen(cfg["url"] + "/healthz", timeout=2,

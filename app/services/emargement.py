@@ -88,7 +88,8 @@ def retirer_les_non_signees(session, *, journaliser_action=None) -> list[str]:
         )
         retires.append(nom)
         if journaliser_action is not None:
-            journaliser_action(nom)
+            # Le journal ne garde que l'identifiant (audit 3.2).
+            journaliser_action(f"participant #{presence.participant_id}")
         db.session.delete(presence)
     if retires:
         db.session.commit()

@@ -70,6 +70,19 @@ def _role_donne_admin(role) -> bool:
     return bool(role) and any(p.code == "admin:rbac" for p in (role.permissions or []))
 
 
+def _role_attribuable(role) -> bool:
+    """Mineur sécurité de l'audit : « admin:users » sans « admin:rbac »
+    pouvait créer un compte doté d'un rôle plus puissant que le sien (rôle
+    personnalisé de direction). Sans admin:rbac, on n'attribue qu'un rôle
+    dont chaque permission est déjà la sienne, et jamais admin:rbac."""
+    if role is None:
+        return False
+    if can("admin:rbac"):
+        return True
+    codes = {p.code for p in (role.permissions or [])}
+    return "admin:rbac" not in codes and all(current_user.has_perm(code) for code in codes)
+
+
 def _est_admin(u) -> bool:
     admin_ids = _role_ids_admin_rbac()
     return any(r.id in admin_ids for r in (getattr(u, "roles", None) or []))
@@ -118,13 +131,15 @@ def users():
             flash("Un utilisateur utilisant cette adresse e-mail existe déjà.", "danger")
             return redirect(url_for("admin.users"))
 
+        role = Role.query.filter_by(code=role_code).first()
+        if not _role_attribuable(role):
+            flash("Vous ne pouvez pas attribuer ce rôle : il donne des droits que votre compte n'a pas.", "danger")
+            return redirect(url_for("admin.users"))
+
         u = User(email=email, nom=nom or "Utilisateur")
         u.set_password(password)
         u.secteur_assigne = secteur
-
-        role = Role.query.filter_by(code=role_code).first()
-        if role:
-            u.roles.append(role)
+        u.roles.append(role)
 
         db.session.add(u)
         db.session.commit()
@@ -134,7 +149,7 @@ def users():
         return redirect(url_for("admin.users"))
 
     users = User.query.order_by(User.nom).all()
-    roles = Role.query.order_by(Role.code).all()
+    roles = [r for r in Role.query.order_by(Role.code).all() if _role_attribuable(r)]
     secteurs = get_secteur_labels(active_only=True)
 
     # Les comptes à portée globale n'ont pas besoin d'un secteur assigné.
@@ -662,6 +677,7 @@ def sauvegardes():
         seuil = int(current_app.config.get("BACKUP_ALERT_DAYS") or 2)
     except (TypeError, ValueError):
         seuil = 2
+    from app.services.sauvegarde import lire_etat_sauvegarde, reglage_hors_serveur
     return render_template(
         "admin_sauvegardes.html",
         lots=lister_lots(),
@@ -669,7 +685,41 @@ def sauvegardes():
         seuil_alerte=seuil,
         moteur=moteur,
         hors_serveur=etat_hors_serveur(),
+        reglage_hors_serveur=reglage_hors_serveur(),
+        etat_quotidien=lire_etat_sauvegarde(),
     )
+
+
+@bp.route("/sauvegardes/hors-serveur", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_hors_serveur():
+    """Destinations des copies hors serveur (audit 6.5), puis test d'écriture
+    sous le compte de l'application, celui de la sauvegarde quotidienne."""
+    from pathlib import Path
+    from app.models import InstanceSettings
+    from app.services.sauvegarde import tester_destination
+
+    lignes = [l.strip().strip('"') for l in (request.form.get("destinations") or "").replace(";", "\n").splitlines()]
+    lignes = [l for l in lignes if l]
+    reglages = InstanceSettings.query.first()
+    if reglages is None:
+        reglages = InstanceSettings()
+        db.session.add(reglages)
+    reglages.sauvegarde_hors_serveur = "\n".join(lignes) or None
+    db.session.commit()
+    journaliser("backup.offsite_reglage", details={"destinations": len(lignes)})
+    if not lignes:
+        flash("Copies hors serveur désactivées : les sauvegardes restent sur cette machine uniquement.", "warning")
+        return redirect(url_for("admin.sauvegardes"))
+    for resultat in (tester_destination(Path(l)) for l in lignes):
+        compte = f" (compte : {resultat['compte']})" if resultat.get("compte") else ""
+        if resultat["ok"]:
+            flash(f"✅ {resultat['destination']} : {resultat['detail']}{compte}.", "success")
+        else:
+            flash(f"❌ {resultat['destination']} : {resultat['detail']}{compte}. La sauvegarde quotidienne "
+                  "ne pourra pas y écrire : donnez les droits d'écriture à ce compte.", "danger")
+    return redirect(url_for("admin.sauvegardes"))
 
 
 @bp.route("/sauvegardes/creer", methods=["POST"])
@@ -703,7 +753,7 @@ def sauvegarde_creer():
     if not destinations_hors_serveur():
         flash(
             "⚠️ Aucune copie hors serveur configurée : cette sauvegarde est sur la "
-            "machine qu'elle protège. Renseignez BACKUP_OFFSITE_DIRS dans le fichier .env.",
+            "machine qu'elle protège. Indiquez une destination dans « Copies hors serveur » ci-dessous.",
             "warning",
         )
         return redirect(url_for("admin.sauvegardes"))
@@ -842,6 +892,13 @@ def sauvegarde_restaurer():
             "a été créée juste avant. Reconnectez-vous si nécessaire.",
             "success",
         )
+        if res.get("reanonymises"):
+            flash(f"{len(res['reanonymises'])} fiche(s) anonymisée(s) ou supprimée(s) après cette sauvegarde "
+                  "étaient revenues avec leur identité : elles ont été anonymisées de nouveau "
+                  "(voir le journal d'audit).", "warning")
+        if res.get("erreur_rgpd"):
+            flash("Attention : les anonymisations postérieures à cette sauvegarde n'ont pas pu être "
+                  f"réappliquées ({res['erreur_rgpd']}). Vérifiez Contrôle → Purge RGPD.", "danger")
     except Exception as exc:  # noqa: BLE001
         current_app.logger.exception("Échec de la restauration")
         flash(f"La restauration a échoué : {exc}", "danger")

@@ -110,6 +110,17 @@ def supprimer_definitivement(participant: Participant) -> dict:
     """
     pid = participant.id
     resume = analyser(participant)
+    # Audit 3.3 : l'anonymisation passe d'abord. Elle efface ce que la
+    # suppression ne touchait pas : nom du foyer, lignes nominatives des
+    # répartitions arrêtées, ligne de membre sur le bulletin d'un proche,
+    # commentaires libres des règlements, copies de signatures, journal.
+    from app.services.purge_rgpd import anonymiser_participant
+    anonymiser_participant(participant)
+    from app.models import InscriptionAnnuelleMembre
+    db.session.query(InscriptionAnnuelleMembre).filter_by(participant_id=pid).update(
+        {"participant_id": None}, synchronize_session=False)
+    from app.services.registre_effacements import noter
+    noter("supprimes", participant)
     from app.ateliers.historical_privacy import redact_sources
     redact_sources(pid, delete_links=True)
     db.session.flush()
@@ -138,6 +149,21 @@ def supprimer_definitivement(participant: Participant) -> dict:
     for cotisation in Cotisation.query.filter_by(participant_id=pid).all():
         if cotisation.paiements:
             cotisation.participant_id = None
+            for versement in cotisation.paiements:
+                versement.commentaire = None
+    # Les encaissements restent au livre de caisse, sans lien nominatif ni
+    # texte libre ; ceux d'un bulletin qui va disparaître perdent ce lien
+    # (SQLite n'applique pas le ON DELETE SET NULL).
+    from app.models import Encaissement
+    ids_bulletins = [b.id for b in InscriptionAnnuelle.query.filter_by(participant_id=pid).all()]
+    conditions = [Encaissement.participant_id == pid]
+    if ids_bulletins:
+        conditions.append(Encaissement.inscription_annuelle_id.in_(ids_bulletins))
+    for encaissement in Encaissement.query.filter(db.or_(*conditions)).all():
+        encaissement.participant_id = None
+        if encaissement.inscription_annuelle_id in ids_bulletins:
+            encaissement.inscription_annuelle_id = None
+        encaissement.commentaire = None
     db.session.flush()
     db.session.expire(participant, ["cotisations"])
 

@@ -368,9 +368,80 @@ def url_source_valide(url: str) -> bool:
     return morceaux.scheme in {"http", "https"} and bool(morceaux.hostname)
 
 
+#: En-têtes qui ne suivent jamais une redirection vers un autre site
+#: (mineur sécurité de l'audit : le jeton Aides-territoires partait vers
+#: l'hôte de destination d'une redirection).
+EN_TETES_SECRETS = {"authorization", "cookie", "x-api-key"}
+
+
+def hote_public(hote: str) -> bool:
+    """Le nom ne désigne-t-il que des adresses de l'Internet public ?
+
+    Mineur sécurité de l'audit : une source de veille (réglable dans
+    l'application) pouvait faire interroger par le serveur le réseau interne
+    (box, NAS, imprimantes, 127.0.0.1, 169.254.169.254…). Les adresses
+    privées, locales, réservées ou de lien local sont refusées ; la
+    vérification est refaite à chaque redirection. Limite connue : un nom
+    qui change d'adresse entre la vérification et la connexion (rebinding
+    DNS) n'est pas couvert."""
+    import ipaddress
+    import socket
+    try:
+        adresses = {info[4][0] for info in socket.getaddrinfo(hote, None)}
+    except (socket.gaierror, UnicodeError, OSError):
+        return False
+    if not adresses:
+        return False
+    for brute in adresses:
+        adresse = ipaddress.ip_address(brute.split("%", 1)[0])
+        if not adresse.is_global or adresse.is_multicast:
+            return False
+    return True
+
+
+def _url_autorisee(url: str) -> bool:
+    if not url_source_valide(url):
+        return False
+    try:
+        from flask import current_app as _app
+        if _app.config.get("VEILLE_AUTORISER_RESEAU_LOCAL"):
+            return True
+    except RuntimeError:
+        pass
+    return hote_public(urllib.parse.urlsplit(url).hostname or "")
+
+
+class _RedirectionSure(urllib.request.HTTPRedirectHandler):
+    """Redirection revérifiée (même contrôle que l'adresse de départ) ; les
+    en-têtes secrets ne suivent pas vers un autre hôte."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _url_autorisee(newurl):
+            raise urllib.error.HTTPError(newurl, code, "Redirection refusée : adresse interne ou non web.",
+                                         headers, fp)
+        nouvelle = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if nouvelle is not None and urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
+            for nom in list(nouvelle.headers):
+                if nom.lower() in EN_TETES_SECRETS:
+                    del nouvelle.headers[nom]
+            for nom in list(nouvelle.unredirected_hdrs):
+                if nom.lower() in EN_TETES_SECRETS:
+                    del nouvelle.unredirected_hdrs[nom]
+        return nouvelle
+
+
+def _ouvrir(requete, timeout, contexte=None):
+    gestionnaires = [_RedirectionSure()]
+    if contexte is not None:
+        gestionnaires.append(urllib.request.HTTPSHandler(context=contexte))
+    return urllib.request.build_opener(*gestionnaires).open(requete, timeout=timeout)
+
+
 def _telecharger(url: str, en_tetes: dict | None = None, timeout: int = DELAI_HTTP) -> bytes:
     if not url_source_valide(url):
         raise ValueError("Adresse refusée : seules les adresses http:// et https:// sont lues.")
+    if not _url_autorisee(url):
+        raise ValueError("Adresse refusée : elle désigne le réseau interne, pas un site de l'Internet.")
     entetes = {
         "User-Agent": USER_AGENT,
         "Accept-Language": "fr",
@@ -380,14 +451,14 @@ def _telecharger(url: str, en_tetes: dict | None = None, timeout: int = DELAI_HT
         entetes.update(en_tetes)
     requete = urllib.request.Request(url, headers=entetes)
     try:
-        with urllib.request.urlopen(requete, timeout=timeout) as reponse:
+        with _ouvrir(requete, timeout) as reponse:
             return reponse.read()
     except urllib.error.URLError as exc:
         # Magasin de certificats système incomplet : on retente avec certifi.
         if isinstance(getattr(exc, "reason", None), ssl.SSLCertVerificationError):
             contexte = _contexte_certifi()
             if contexte is not None:
-                with urllib.request.urlopen(requete, timeout=timeout, context=contexte) as reponse:
+                with _ouvrir(requete, timeout, contexte) as reponse:
                     return reponse.read()
         raise
 

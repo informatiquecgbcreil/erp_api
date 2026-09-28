@@ -27,9 +27,7 @@ from app.models import (
     TYPES_INSCRIPTION_ANNUELLE_LABELS,
     InscriptionAnnuelle,
     Participant,
-    PresenceActivite,
     Quartier,
-    SessionActivite,
 )
 from app.rbac import can, require_perm
 from app.secteurs import get_secteur_labels
@@ -114,20 +112,17 @@ def _accessible(inscription: InscriptionAnnuelle) -> bool:
 
 
 def _participant_accessible(participant: Participant) -> bool:
-    """Même périmètre concret que l'annuaire : création ou présence du secteur."""
+    """Inscrire une personne, c'est agir sur sa fiche : fiche créée par le
+    secteur, ou présence posée ou validée par l'équipe. Une présence posée au
+    kiosque et pas encore validée ouvre la lecture, pas l'inscription (règle
+    métier : présence kiosque = lecture ; validation/inscription = modification)."""
     if _portee_globale():
         return True
+    from app.services.access_scope import participant_filter
     secteur = _secteur_requis()
-    if (participant.created_secteur or "") == secteur:
-        return True
-    presence = (
-        db.session.query(PresenceActivite.id)
-        .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
-        .filter(PresenceActivite.participant_id == participant.id)
-        .filter(SessionActivite.secteur == secteur)
-        .first()
-    )
-    return presence is not None
+    return db.session.query(Participant.id).filter(
+        Participant.id == participant.id, participant_filter(secteur, valide=True)
+    ).first() is not None
 
 
 def _refuser_participant_hors_perimetre(participant: Participant | None) -> None:
@@ -533,7 +528,8 @@ def nouvelle():
             return render_template("inscriptions_annuelles/form.html", **contexte)
 
         db.session.commit()
-        journaliser("inscription_annuelle.create", cible=f"{inscription.nom_complet} ({inscription.libelle_annee})")
+        journaliser("inscription_annuelle.create", cible=f"inscription annuelle #{inscription.id} ({inscription.libelle_annee})",
+                    participant_id=inscription.participant_id)
         flash(f"Inscription de {inscription.nom_complet} enregistrée.", "ok")
 
         if participant is not None:
@@ -681,10 +677,22 @@ def supprimer(inscription_id: int):
         )
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
+    from app.models import Encaissement
+    if Encaissement.query.filter_by(inscription_annuelle_id=inscription.id).first():
+        flash(
+            "De l'argent a été reçu sur ce bulletin : il ne peut pas être supprimé (la caisse "
+            "perdrait la trace de l'encaissement). Annule plutôt l'inscription, et le règlement "
+            "par contre-passation si besoin.",
+            "err",
+        )
+        return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
+
     annee, nom = inscription.annee_scolaire, inscription.nom_complet
+    ident, pid = inscription.id, inscription.participant_id
     db.session.delete(inscription)
     db.session.commit()
-    journaliser("inscription_annuelle.delete", cible=f"{nom} ({libelle_annee_scolaire(annee)})")
+    journaliser("inscription_annuelle.delete", cible=f"inscription annuelle #{ident} ({libelle_annee_scolaire(annee)})",
+                participant_id=pid)
     flash(f"Inscription de {nom} supprimée.", "ok")
     return redirect(url_for("inscriptions_annuelles.index", annee=annee))
 
@@ -718,7 +726,7 @@ def creer_fiche(inscription_id: int):
         flash(str(exc), "err")
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
-    journaliser("inscription_annuelle.participant", cible=f"{participant.nom} {participant.prenom}")
+    journaliser("inscription_annuelle.participant", cible=f"inscription annuelle #{inscription.id} · participant #{participant.id}")
     flash(
         f"Fiche participant créée pour {inscription.nom_complet} — en attente de première participation.",
         "ok",
@@ -768,12 +776,16 @@ def reglement(inscription_id: int):
     action = (request.form.get("action") or "encaisser").strip()
 
     if action == "annuler":
+        motif = _texte("motif", 255) or ""
         try:
-            annuler_reglement(inscription)
+            nombre = annuler_reglement(inscription, motif, user_id=getattr(current_user, "id", None),
+                                       jeton=request.form.get("jeton"))
         except InscriptionAnnuelleErreur as exc:
             flash(str(exc), "err")
             return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
-        flash("Règlement remis à zéro sur le bulletin.", "ok")
+        journaliser("encaissement.contre_passation", cible=f"inscription annuelle #{inscription.id}",
+                    details={"nombre": nombre, "motif": motif})
+        flash(f"{nombre} règlement(s) annulé(s) par contre-passation. La caisse en tient compte.", "ok")
         return redirect(url_for("inscriptions_annuelles.detail", inscription_id=inscription.id))
 
     mode = (request.form.get("mode") or "").strip()
@@ -793,6 +805,7 @@ def reglement(inscription_id: int):
             date_paiement=_date_form("date_reglement", date.today()),
             commentaire=_texte("reglement_commentaire", 255),
             user_id=getattr(current_user, "id", None),
+            jeton=request.form.get("jeton"),
         )
     except InscriptionAnnuelleErreur as exc:
         flash(str(exc), "err")

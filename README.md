@@ -293,6 +293,11 @@ La configuration se fait principalement par variables d'environnement.
 | `ERP_HOST` | `127.0.0.1` ou `0.0.0.0` | Interface d'écoute. |
 | `ERP_PORT` | `8000` | Port HTTP. |
 | `ERP_THREADS` | `12` | Nombre de threads Waitress. |
+| `ERP_TRUSTED_PROXY` | `127.0.0.1` | Derrière nginx : adresse du proxy dont `X-Forwarded-For` fait foi (compteurs anti-abus du kiosque par appareil). Vide par défaut. |
+| `ERP_TRUSTED_PROXY_COUNT` | `1` | Nombre de proxys chaînés de confiance. |
+| `SESSION_INACTIVITE_MINUTES` | `120` | Déconnexion de l'équipe après inactivité. |
+| `SESSION_DUREE_MAX_HEURES` | `12` | Durée maximale d'une session, activité ou non. |
+| `LOGIN_MAX_ECHECS_ADRESSE` | `30` | Échecs de connexion tolérés par adresse, tous comptes confondus, sur la fenêtre de verrouillage. |
 
 ### Base de données
 

@@ -733,8 +733,11 @@ def finalize_individuel_mensuel_pdf(app, atelier, annee: int, mois: int) -> str 
 # Participant bilan
 # ---------------------------------------------------------------------
 
-def generate_participant_bilan_docx(app, participant, rows: list[dict]) -> str:
-    folder = os.path.join(app.instance_path, "archives_pedagogie")
+def generate_participant_bilan_docx(app, participant, rows: list[dict], folder: str | None = None) -> str:
+    """Bilan nominatif. ``folder`` : dossier temporaire de l'appelant ; le
+    document n'est plus conservé dans l'instance (audit 3.1 : il survivait à
+    l'anonymisation et partait dans chaque sauvegarde)."""
+    folder = folder or os.path.join(app.instance_path, "archives_pedagogie")
     os.makedirs(folder, exist_ok=True)
 
     fname = f"bilan_{participant.id}_{_safe_filename(participant.nom)}_{_safe_filename(participant.prenom)}.docx"
@@ -784,6 +787,6 @@ def generate_participant_bilan_docx(app, participant, rows: list[dict]) -> str:
     return out_docx
 
 
-def generate_participant_bilan_pdf(app, participant, rows: list[dict]) -> str | None:
-    docx_path = generate_participant_bilan_docx(app, participant, rows)
+def generate_participant_bilan_pdf(app, participant, rows: list[dict], folder: str | None = None) -> str | None:
+    docx_path = generate_participant_bilan_docx(app, participant, rows, folder=folder)
     return _try_docx_to_pdf(app, docx_path)

@@ -3,7 +3,10 @@ from pathlib import Path
 from flask import current_app, has_app_context
 from sqlalchemy import event
 from sqlalchemy.orm import Session
+from datetime import timedelta
+
 from app.extensions import db
+from app.utils.dates import utcnow
 
 
 def _allowed(path):
@@ -39,20 +42,61 @@ def schedule(path):
             "d'effacement (pending_file_deletion) pour contrôle manuel.")
 
 
-def drain():
+#: Une ligne bloquée (chemin hors stockage, fichier verrouillé) est retentée
+#: au plus une fois par jour ; elle ne fait plus obstacle aux suivantes.
+DELAI_NOUVEL_ESSAI = timedelta(days=1)
+TAILLE_PAGE = 500
+
+
+def drain(limite: int | None = None) -> dict:
+    """Parcourt la file par identifiant croissant (audit 3.6). Rapport :
+    {"effaces": n, "bloques": n}. Une seule ligne de résumé au journal."""
     from app.models import PendingFileDeletion
     table = PendingFileDeletion.__table__
+    maintenant = utcnow()
+    effaces = bloques = vus = 0
+    dernier = 0
     with db.engine.begin() as connection:
-        for row in connection.execute(table.select().limit(1000)).mappings():
-            if not _allowed(row["file_path"]):
-                current_app.logger.warning("Effacement de fichier #%s refusé : chemin hors stockage métier.", row["id"])
-                continue
-            try:
-                Path(row["file_path"]).unlink(missing_ok=True)
-            except OSError:
-                current_app.logger.warning("Effacement de fichier #%s différé : fichier indisponible.", row["id"])
-                continue
-            connection.execute(table.delete().where(table.c.id == row["id"]))
+        while True:
+            requete = (table.select()
+                       .where(table.c.id > dernier)
+                       .where(db.or_(table.c.bloque_le.is_(None), table.c.bloque_le < maintenant - DELAI_NOUVEL_ESSAI))
+                       .order_by(table.c.id).limit(TAILLE_PAGE))
+            lignes = list(connection.execute(requete).mappings())
+            if not lignes:
+                break
+            for row in lignes:
+                dernier = row["id"]
+                vus += 1
+                motif = None
+                if not _allowed(row["file_path"]):
+                    motif = "hors_stockage"
+                else:
+                    try:
+                        Path(row["file_path"]).unlink(missing_ok=True)
+                    except OSError:
+                        motif = "indisponible"
+                if motif is None:
+                    connection.execute(table.delete().where(table.c.id == row["id"]))
+                    effaces += 1
+                else:
+                    connection.execute(table.update().where(table.c.id == row["id"]).values(
+                        bloque_le=maintenant, motif=motif, tentatives=(row.get("tentatives") or 0) + 1))
+                    bloques += 1
+                if limite is not None and vus >= limite:
+                    break
+            if limite is not None and vus >= limite:
+                break
+    if bloques:
+        current_app.logger.warning(
+            "File d'effacement : %s fichier(s) effacé(s), %s mis de côté pour contrôle manuel "
+            "(table pending_file_deletion, colonne motif).", effaces, bloques)
+    return {"effaces": effaces, "bloques": bloques}
+
+
+def en_attente_de_controle() -> int:
+    from app.models import PendingFileDeletion
+    return PendingFileDeletion.query.filter(PendingFileDeletion.bloque_le.isnot(None)).count()
 
 
 @event.listens_for(Session, "after_commit")

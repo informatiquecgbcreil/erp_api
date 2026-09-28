@@ -501,15 +501,11 @@ def list_participants():
         participants_q = participants_q.filter(Participant.date_naissance.isnot(None))
 
     if q:
-        like = f"%{q.lower()}%"
-        participants_q = participants_q.filter(
-            db.or_(
-                db.func.lower(Participant.nom).like(like),
-                db.func.lower(Participant.prenom).like(like),
-                db.func.lower(db.func.coalesce(Participant.email, "")).like(like),
-                db.func.lower(db.func.coalesce(Participant.telephone, "")).like(like),
-            )
-        )
+        # Même filtre que le kiosque : accents, apostrophes, « nom prénom »
+        # dans n'importe quel ordre (audit 5.6).
+        from app.services.recherche_texte import filtre_mots
+        participants_q = filtre_mots(participants_q, q, [Participant.nom, Participant.prenom,
+                                                         Participant.email, Participant.telephone])
 
     items = participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc()).all()
 
@@ -733,15 +729,9 @@ def search_participants():
     if not q or len(q) < 2:
         return {"items": []}
 
-    like = f"%{q.lower()}%"
-    participants_q = Participant.query.filter(
-        db.or_(
-            db.func.lower(Participant.nom).like(like),
-            db.func.lower(Participant.prenom).like(like),
-            db.func.lower(db.func.coalesce(Participant.email, "")).like(like),
-            db.func.lower(db.func.coalesce(Participant.telephone, "")).like(like),
-        )
-    )
+    from app.services.recherche_texte import filtre_mots
+    participants_q = filtre_mots(Participant.query, q, [Participant.nom, Participant.prenom,
+                                                        Participant.email, Participant.telephone])
 
     items = (
         participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc())
@@ -1212,7 +1202,7 @@ def new_participant():
         sync_legacy_insertion_fields(p, actor_id=getattr(current_user, "id", None))
         db.session.commit()
         from app.services.audit import journaliser
-        journaliser("participant.create", cible=f"{p.nom} {p.prenom}")
+        journaliser("participant.create", cible=f"participant #{p.id}")
         flash("Le participant a bien été créé.", "ok")
         return redirect(url_for("participants.edit_participant", participant_id=p.id))
 
@@ -1294,7 +1284,7 @@ def edit_participant(participant_id: int):
         sync_legacy_insertion_fields(p, actor_id=getattr(current_user, "id", None))
         db.session.commit()
         from app.services.audit import journaliser
-        journaliser("participant.edit", cible=f"{p.nom} {p.prenom}")
+        journaliser("participant.edit", cible=f"participant #{p.id}")
         flash("Le participant a bien été mis à jour.", "ok")
         return redirect(url_for("participants.edit_participant", participant_id=p.id))
 
@@ -1380,6 +1370,22 @@ def export_rgpd(participant_id: int):
         download_name=f"droit-acces-{nom or 'participant'}-{p.id}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+@bp.route("/<int:participant_id>/export-rgpd.zip")
+@login_required
+def export_rgpd_archive(participant_id: int):
+    """Droit d'accès complet : classeur et fichiers (audit 3.7). Mêmes droits
+    et même trace que l'export tableur."""
+    p = db.get_or_404(Participant, participant_id)
+    if not _peut_exporter_rgpd(p):
+        abort(403)
+    from app.services.audit import journaliser
+    from app.services.rgpd_export import construire_archive_rgpd
+    sortie = construire_archive_rgpd(p)
+    journaliser("export.rgpd", cible=f"participant #{p.id}", details={"format": "zip"})
+    return send_file(sortie, as_attachment=True, download_name=f"droit-acces-{p.id}.zip",
+                     mimetype="application/zip")
 
 
 @bp.route("/<int:participant_id>/anonymize", methods=["POST"])
@@ -1520,7 +1526,7 @@ def definir_date_naissance(participant_id: int):
         return _retour_annuaire()
     db.session.commit()
     from app.services.audit import journaliser
-    journaliser("participant.edit", cible=f"{p.nom} {p.prenom} (date de naissance)")
+    journaliser("participant.edit", cible=f"participant #{p.id} (date de naissance)")
     flash(f"Date de naissance enregistrée pour {p.prenom} {p.nom}.", "ok")
     return _retour_annuaire()
 
@@ -1578,8 +1584,8 @@ def actions_groupees():
             return _retour_annuaire()
         journaliser(
             "participant.merge",
-            cible=f"{keep.nom} {keep.prenom} (#{keep.id})",
-            details={"fiche_absorbee": etiquette_victime, "liens_deplaces": deplaces,
+            cible=f"participant #{keep.id}",
+            details={"fiche_absorbee": victime.id, "liens_deplaces": deplaces,
                      "doublons_ecartes": ecartes, "origine": "sélection annuaire"},
         )
         flash(
@@ -2103,6 +2109,31 @@ def _colonnes_uniques_avec(table, colonne):
     return jeux
 
 
+def _reporter_signatures(keep_id, merge_ids):
+    """Avant de supprimer une présence en double (même séance), on garde ce
+    qu'elle a de plus fort (audit 5.4) : sa signature si la présence conservée
+    n'en a pas, et la validation du personnel si elle en porte une. Sinon la
+    seule signature d'une personne pouvait disparaître à la fusion."""
+    from app.models import ORIGINE_PERSONNEL
+    conservees = {pr.session_id: pr for pr in PresenceActivite.query.filter_by(participant_id=keep_id).all()}
+    if not conservees:
+        return
+    for doublon in PresenceActivite.query.filter(PresenceActivite.participant_id.in_(merge_ids)).all():
+        gardee = conservees.get(doublon.session_id)
+        if gardee is None:
+            continue
+        if not gardee.signature_path and doublon.signature_path:
+            gardee.signature_path = doublon.signature_path
+            doublon.signature_path = None  # le fichier n'est pas effacé : il change de présence
+        if doublon.origine == ORIGINE_PERSONNEL and gardee.origine != ORIGINE_PERSONNEL:
+            gardee.origine = ORIGINE_PERSONNEL
+            gardee.validee_par_user_id = doublon.validee_par_user_id
+            gardee.validee_le = doublon.validee_le
+        if gardee.presence_type == "absent_excuse" and doublon.presence_type in ("present", "retard"):
+            gardee.presence_type = doublon.presence_type
+    db.session.flush()
+
+
 def _transferer_liens(keep_id, merge_ids):
     """Rattacher au participant conservé tout ce qui pointait vers les doublons.
 
@@ -2111,6 +2142,7 @@ def _transferer_liens(keep_id, merge_ids):
     participant conservé qui fait foi. Tout le reste est déplacé, jamais perdu.
     """
     deplaces, ecartes = {}, {}
+    _reporter_signatures(keep_id, merge_ids)
     for table, colonne in _colonnes_vers_participant():
         for autres in _colonnes_uniques_avec(table, colonne):
             deja = {tuple(ligne) for ligne in db.session.execute(
@@ -2172,6 +2204,9 @@ def merge_participants():
         flash(f"La fusion a échoué, rien n'a été modifié : {e}", "danger")
         return redirect(retour)
 
+    from app.services.audit import journaliser
+    journaliser("participant.merge", cible=f"participant #{keep_id}",
+                details={"absorbes": merge_ids, "deplaces": deplaces, "doublons_ecartes": ecartes})
     detail = ", ".join(f"{nombre} {nom}" for nom, nombre in sorted(deplaces.items())) or "aucun lien"
     doublons = ("" if not ecartes else " Doublons de lignes écartés : "
                 + ", ".join(f"{nombre} {nom}" for nom, nombre in sorted(ecartes.items())) + ".")

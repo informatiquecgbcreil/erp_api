@@ -72,6 +72,9 @@ from app.services.presences_comptees import VENUES_REELLES
 
 #: Étiquette des personnes dont aucune venue n'a été trouvée sur l'année.
 SANS_SECTEUR = "Sans secteur"
+#: Participations payées dont la fiche a été supprimée : l'argent a été
+#: encaissé (il est en caisse), il doit donc rester dans les totaux.
+FICHES_SUPPRIMEES = "Fiches supprimées"
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +334,7 @@ def _composer(lignes, venues, table) -> dict:
     secteurs: dict[str, dict] = {}
     total_du = total_regle = 0.0
     nb_repli = 0
+    sans_fiche: list[dict] = []
 
     for cotisation, du, encaisse in lignes:
         if cotisation.participant_id:
@@ -339,6 +343,21 @@ def _composer(lignes, venues, table) -> dict:
             porteurs = membres_par_foyer.get(cotisation.foyer_id, [])
         porteurs = [t for t in porteurs if t is not None]
         if not porteurs:
+            # Fiche supprimée (ou foyer sans membre) : plus personne à qui
+            # imputer les venues, mais l'argent est bien entré. Il reste dans
+            # les totaux, sur une ligne à part, sinon la répartition
+            # affichait moins que la caisse (audit 2.5).
+            du_orphelin = round(float(du or 0), 2)
+            encaisse_orphelin = round(float(encaisse or 0), 2)
+            case = secteurs.setdefault(
+                FICHES_SUPPRIMEES, {"du": 0.0, "regle": 0.0, "venues": 0, "nb_personnes": 0}
+            )
+            case["du"] = round(case["du"] + du_orphelin, 2)
+            case["regle"] = round(case["regle"] + encaisse_orphelin, 2)
+            case["nb_personnes"] += 1
+            total_du = round(total_du + du_orphelin, 2)
+            total_regle = round(total_regle + encaisse_orphelin, 2)
+            sans_fiche.append({"cotisation": cotisation, "du": du_orphelin, "regle": encaisse_orphelin})
             continue
         principal = porteurs[0]
 
@@ -403,11 +422,13 @@ def _composer(lignes, venues, table) -> dict:
     return {
         "personnes": personnes,
         "secteurs": dict(sorted(secteurs.items(), key=lambda kv: (-kv[1]["regle"], kv[0]))),
+        "sans_fiche": sans_fiche,
         "totaux": {
             "du": total_du,
             "regle": total_regle,
             "nb_personnes": len(personnes),
             "nb_repli": nb_repli,
+            "nb_sans_fiche": len(sans_fiche),
             "venues": sum(case["venues"] for case in secteurs.values()),
         },
     }
@@ -621,6 +642,12 @@ def arreter(annee: int, date_arrete: date, *, libelle: str | None = None,
                 montant_regle=part["regle"],
                 repli=personne["repli"],
             ))
+    for ligne in vue.get("sans_fiche", []):
+        db.session.add(RepartitionArreteeLigne(
+            arrete_id=arrete.id, secteur=FICHES_SUPPRIMEES, participant_id=None,
+            participant_nom="Fiche supprimée", venues=0,
+            montant_du=ligne["du"], montant_regle=ligne["regle"], repli=True,
+        ))
 
     db.session.commit()
     return arrete, f"Répartition arrêtée au {date_arrete:%d/%m/%Y}."

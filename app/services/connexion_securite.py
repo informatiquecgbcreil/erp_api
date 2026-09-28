@@ -27,8 +27,30 @@ FENETRE_MINUTES = int(os.environ.get("LOGIN_FENETRE_MINUTES", "15"))
 RETENTION_JOURS = int(os.environ.get("LOGIN_JOURNAL_RETENTION_JOURS", "365"))
 
 
+def cle_journal(email: str) -> str:
+    """Ce que le journal retient du champ e-mail (mineur RGPD de l'audit).
+
+    L'adresse d'un compte existant est gardée telle quelle. Tout autre texte
+    (faute de frappe, ou mot de passe tapé par erreur dans le champ e-mail)
+    n'est jamais conservé en clair : seule une empreinte, qui suffit au
+    verrouillage des essais répétés, est enregistrée."""
+    from app.models import User
+    email = (email or "").strip()
+    try:
+        connu = User.query.filter(db.func.lower(User.email) == email.lower()).first() is not None
+    except SQLAlchemyError:
+        db.session.rollback()
+        connu = False
+    if connu:
+        return email
+    import hashlib
+    sel = str(current_app.config.get("SECRET_KEY") or "")
+    return "inconnu:" + hashlib.sha256((sel + "|" + email.lower()).encode("utf-8")).hexdigest()[:32]
+
+
 def _echecs_recents(email: str, adresse_ip: str | None = None) -> list[JournalConnexion]:
     """Échecs dans la fenêtre courante, postérieurs au dernier succès."""
+    email = cle_journal(email)
     depuis = utcnow() - timedelta(minutes=FENETRE_MINUTES)
     q = JournalConnexion.query.filter(
         JournalConnexion.email == email,
@@ -74,10 +96,34 @@ def minutes_avant_deverrouillage(email: str, adresse_ip: str | None = None) -> i
     return max(1, int(restant // 60) + 1)
 
 
+#: Plafond par adresse, tous comptes confondus (mineur sécurité de l'audit :
+#: une adresse pouvait essayer un mot de passe sur des centaines de comptes).
+MAX_ECHECS_ADRESSE = int(os.environ.get("LOGIN_MAX_ECHECS_ADRESSE", "30"))
+
+
+def minutes_avant_deverrouillage_adresse(adresse_ip: str | None) -> int:
+    """0 si l'adresse peut encore essayer, sinon minutes d'attente."""
+    if not adresse_ip:
+        return 0
+    try:
+        depuis = utcnow() - timedelta(minutes=FENETRE_MINUTES)
+        echecs = (JournalConnexion.query
+                  .filter(JournalConnexion.adresse_ip == adresse_ip, JournalConnexion.succes.is_(False),
+                          JournalConnexion.cree_le >= depuis)
+                  .order_by(JournalConnexion.cree_le.desc()).limit(MAX_ECHECS_ADRESSE).all())
+    except SQLAlchemyError:
+        db.session.rollback()
+        return 0
+    if len(echecs) < MAX_ECHECS_ADRESSE:
+        return 0
+    restant = (echecs[-1].cree_le + timedelta(minutes=FENETRE_MINUTES) - utcnow()).total_seconds()
+    return max(1, int(restant // 60) + 1) if restant > 0 else 0
+
+
 def enregistrer_echec(email: str, adresse_ip: str | None) -> int:
     """Enregistre un échec. Retourne les minutes de verrouillage (0 si non verrouillé)."""
     try:
-        db.session.add(JournalConnexion(email=email, adresse_ip=adresse_ip, succes=False))
+        db.session.add(JournalConnexion(email=cle_journal(email), adresse_ip=adresse_ip, succes=False))
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()

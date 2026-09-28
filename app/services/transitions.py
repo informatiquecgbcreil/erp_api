@@ -177,6 +177,23 @@ def _mesures_agregees_query(debut: date, fin: date):
     )
 
 
+def _defis_du_perimetre(secteur: str | None):
+    """Mineur sécurité de l'audit : les défis (souvent nominatifs) d'un
+    secteur étaient listés à tous. Pour un secteur : défis de personnes de
+    son périmètre, ou défis sans personne saisis par son équipe."""
+    requete = DefiTransition.query
+    if not secteur:
+        return requete
+    from sqlalchemy import and_, or_
+    from app.models import Participant, User
+    from app.services.access_scope import participant_filter
+    personnes = db.session.query(Participant.id).filter(participant_filter(secteur))
+    equipe = db.session.query(User.id).filter(User.secteur_assigne == secteur)
+    return requete.filter(or_(DefiTransition.participant_id.in_(personnes),
+                              and_(DefiTransition.participant_id.is_(None),
+                                   DefiTransition.created_by_user_id.in_(equipe))))
+
+
 def tableau_de_bord(annee: int, secteur: str | None = None) -> dict:
     """Toutes les données du tableau de bord transitions pour un exercice."""
     seed_thematiques()
@@ -191,7 +208,7 @@ def tableau_de_bord(annee: int, secteur: str | None = None) -> dict:
         ids = [a.id for a in ateliers if them in a.transition_thematiques]
         stats = _stats_ateliers(ids, debut, fin)
         conso = _conso_ateliers(ids, debut, fin)
-        defis_q = DefiTransition.query.filter(
+        defis_q = _defis_du_perimetre(secteur).filter(
             DefiTransition.thematique_id == them.id,
             DefiTransition.date_engagement >= debut,
             DefiTransition.date_engagement <= fin,
@@ -226,7 +243,7 @@ def tableau_de_bord(annee: int, secteur: str | None = None) -> dict:
 
     # --- Défis (liste de l'exercice) ----------------------------------------
     defis = (
-        DefiTransition.query
+        _defis_du_perimetre(secteur)
         .filter(DefiTransition.date_engagement >= debut,
                 DefiTransition.date_engagement <= fin)
         .order_by(DefiTransition.date_engagement.desc(), DefiTransition.id.desc())
@@ -234,7 +251,10 @@ def tableau_de_bord(annee: int, secteur: str | None = None) -> dict:
     )
 
     # --- Mesures manuelles, additionnées par (libellé, unité) ---------------
-    mesures_rows = _mesures_agregees_query(debut, fin).all()
+    mesures_q = _mesures_agregees_query(debut, fin)
+    if secteur:
+        mesures_q = mesures_q.filter(TransitionMesure.atelier_id.in_(atelier_ids_tous or [-1]))
+    mesures_rows = mesures_q.all()
     them_par_id = {t.id: t for t in TransitionThematique.query.all()}
     mesures = [
         {
@@ -250,6 +270,7 @@ def tableau_de_bord(annee: int, secteur: str | None = None) -> dict:
 
     mesures_detail = (
         TransitionMesure.query
+        .filter(TransitionMesure.atelier_id.in_(atelier_ids_tous or [-1]) if secteur else db.true())
         .filter(TransitionMesure.date_mesure >= debut,
                 TransitionMesure.date_mesure <= fin)
         .order_by(TransitionMesure.date_mesure.desc(), TransitionMesure.id.desc())

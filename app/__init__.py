@@ -143,6 +143,16 @@ def create_app():
     # un « nan » saisi rendait la caisse définitivement incalculable.
     from app.utils.montants import NombreNonFini, installer_garde_nombres
     installer_garde_nombres()
+    # Tout versement a son encaissement : la caisse ne peut rien ignorer.
+    from app.services.encaissements import installer_invariant_versements
+    installer_invariant_versements()
+
+    @app.context_processor
+    def _jeton_formulaire():
+        # Jeton à usage unique des formulaires d'argent : un double clic ou un
+        # renvoi après coupure n'enregistre pas deux fois la même somme.
+        import uuid as _uuid
+        return {"nouveau_jeton": lambda: _uuid.uuid4().hex}
 
     # Exports Excel : une chaîne « =… » saisie (kiosque, fiche) reste du texte.
     from app.utils.xlsx_safe import installer_garde_formules
@@ -396,6 +406,26 @@ def create_app():
     installer_recherche_texte()
 
     @app.before_request
+    def _controler_session_equipe():
+        """Fin de session après inactivité, durée maximale et session fermée
+        par une déconnexion (mineur sécurité de l'audit). Le kiosque, qui
+        n'utilise pas de compte, n'est pas concerné."""
+        from flask import flash as _flash, redirect as _redirect, session as _session
+        from flask_login import logout_user as _logout_user
+        endpoint = request.endpoint or ""
+        if (not current_user.is_authenticated or request.blueprint == "kiosk"
+                or endpoint.startswith("static") or endpoint in {"healthz", "auth.logout"}):
+            return None
+        from app.services.sessions_securite import motif_de_fin
+        motif = motif_de_fin()
+        if motif is None:
+            return None
+        _logout_user()
+        _session.clear()
+        _flash(motif, "warning")
+        return _redirect(url_for("auth.login"))
+
+    @app.before_request
     def _memoriser_contexte_de_travail():
         """Retient l'année et le secteur consultés, pour les proposer par
         défaut à l'écran suivant.
@@ -470,6 +500,8 @@ def create_app():
     # le coût des autres requêtes soit nul.
     # ------------------------------------------------------------------
     _purge_marqueur = {"jour": None}
+    from app.services.maintenance import enregistrer_commande
+    enregistrer_commande(app)
 
     @app.before_request
     def _purge_rgpd_quotidienne():
@@ -481,16 +513,15 @@ def create_app():
         if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
             return None
 
-        from app.services.purge_rgpd import purge_auto_active, purge_quotidienne_si_necessaire
-
-        if not purge_auto_active():
-            return None
+        # Audit 3.5 : la requête ne fait que LANCER la maintenance du jour
+        # (fil séparé) ; la purge elle-même ne tourne que si elle est activée.
         from app.utils.dates import utcnow
         aujourd_hui = utcnow().date()
         if _purge_marqueur["jour"] == aujourd_hui:
             return None
         _purge_marqueur["jour"] = aujourd_hui
-        purge_quotidienne_si_necessaire()
+        from app.services.maintenance import lancer
+        lancer(app)
         return None
 
     # ------------------------------------------------------------------
@@ -840,7 +871,12 @@ def create_app():
             ensure_schema()
 
         insp = inspect(db.engine)
-        if insp.has_table("user") and insp.has_table("role") and insp.has_table("permission"):
+        # Pendant une reprise, les colonnes manquantes d'une base ancienne ne
+        # sont complétées qu'APRÈS les migrations : lire les comptes ici
+        # échouerait (colonne « role » absente…). La reprise lance elle-même
+        # ces initialisations une fois le schéma complété (audit 4.1).
+        amorcage = os.environ.get("MCS_SKIP_BOOTSTRAP") != "1"
+        if amorcage and insp.has_table("user") and insp.has_table("role") and insp.has_table("permission"):
             bootstrap_rbac()
 
             from app.secteurs import bootstrap_secteurs_from_config

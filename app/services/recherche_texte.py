@@ -53,11 +53,17 @@ NOM_FONCTION_SQL = "sans_accent"
 _installee = False
 
 
+_LIGATURES = str.maketrans({"œ": "oe", "æ": "ae", "ß": "ss"})
+#: Apostrophes droite, typographique (claviers des tablettes) et accents graves.
+_APOSTROPHES = ("'", "\u2019", "\u2018", "\u02bc", "`")
+
+
 def sans_accent(valeur) -> str | None:
-    """Minuscules et sans diacritiques. « Étienne » -> « etienne »."""
+    """Minuscules, sans diacritiques, ligatures développées.
+    « Étienne » -> « etienne », « Lecœur » -> « lecoeur »."""
     if valeur is None:
         return None
-    texte = str(valeur).lower()
+    texte = str(valeur).lower().translate(_LIGATURES)
     return "".join(
         caractere
         for caractere in unicodedata.normalize("NFKD", texte)
@@ -176,3 +182,65 @@ def unaccent_disponible(moteur) -> bool:
 def oublier_le_sondage() -> None:
     """Vide le cache du sondage (bases de test, changement de moteur)."""
     _UNACCENT.clear()
+
+
+
+# ---------------------------------------------------------------------------
+# Recherche par nom : un seul filtre pour le kiosque et le personnel
+# ---------------------------------------------------------------------------
+
+def _sans_apostrophe(texte: str) -> str:
+    for apostrophe in _APOSTROPHES:
+        texte = texte.replace(apostrophe, "")
+    return texte
+
+
+def _normaliseur(moteur=None):
+    """(fonction colonne -> expression normalisée, les accents sont-ils
+    retirés côté base ?). Même traitement que ``sans_accent`` en Python :
+    minuscules, sans accents, « œ » développé, sans apostrophes."""
+    from app.extensions import db
+    moteur = moteur or db.engine
+    dialecte = (moteur.dialect.name or "").lower()
+    sans_accents = dialecte == "sqlite" or (dialecte == "postgresql" and unaccent_disponible(moteur))
+
+    def colonne(col):
+        valeur = db.func.coalesce(col, "")
+        if dialecte == "sqlite":
+            valeur = getattr(db.func, NOM_FONCTION_SQL)(valeur)
+        elif sans_accents:
+            valeur = db.func.lower(db.func.unaccent(db.func.replace(db.func.replace(valeur, "œ", "oe"), "Œ", "oe")))
+        else:
+            valeur = db.func.lower(valeur)
+        for apostrophe in _APOSTROPHES:
+            valeur = db.func.replace(valeur, apostrophe, "")
+        return valeur
+
+    return colonne, sans_accents
+
+
+def normaliser_saisie(mot: str, sans_accents: bool = True) -> str:
+    """Le mot tapé, ramené à la forme des colonnes normalisées."""
+    return _sans_apostrophe(sans_accent(mot) if sans_accents else mot.lower().translate(_LIGATURES))
+
+
+def filtre_mots(query, texte, colonnes, *, moteur=None, max_mots: int = 4):
+    """Chaque mot tapé doit apparaître dans l'une des colonnes, sans tenir
+    compte des accents, des majuscules, des apostrophes, des ligatures ni de
+    l'ordre des mots : « celine michut », « michut céline », « ndiaye » pour
+    « N'Diaye », « lecoeur » pour « Lecœur » (audit 5.6, mineur kiosque).
+
+    Utilisé à l'identique par le kiosque et par les recherches de l'équipe :
+    une personne que le kiosque retrouve, l'accueil la retrouve aussi.
+    """
+    from app.extensions import db
+    colonne, sans_accents = _normaliseur(moteur)
+    colonnes_normalisees = [colonne(c) for c in colonnes]
+    for mot in (texte or "").split()[:max_mots]:
+        mot = normaliser_saisie(mot, sans_accents)
+        mot = mot.replace("%", "").replace("_", "").replace("\\", "")
+        if not mot:
+            continue
+        motif = f"%{mot}%"
+        query = query.filter(db.or_(*[c.like(motif) for c in colonnes_normalisees]))
+    return query

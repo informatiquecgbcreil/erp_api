@@ -189,18 +189,13 @@ def participant_edit(participant_id: int):
     secteur = _user_secteur()
     p = db.get_or_404(Participant, participant_id)
 
-    if not _is_admin_global():
-        in_secteur = (
-            db.session.query(PresenceActivite.id)
-            .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
-            .filter(PresenceActivite.participant_id == p.id)
-            .filter(SessionActivite.secteur == secteur)
-            .first()
-            is not None
-        )
-        if not in_secteur:
-            flash("Accès refusé.", "danger")
-            return redirect(url_for("activite.participants"))
+    # Ancienne route : même règle que la fiche (audit C3, revue des droits).
+    # Une présence posée au kiosque et pas encore validée ouvre la lecture,
+    # jamais la modification.
+    from app.participants.routes import _can_edit_participant
+    if not _can_edit_participant(p):
+        flash("Accès refusé.", "danger")
+        return redirect(url_for("activite.participants"))
 
     if request.method == "POST":
         p.nom = (request.form.get("nom") or p.nom).strip()

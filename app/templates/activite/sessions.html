@@ -23,7 +23,10 @@
               <a class="btn" href="{{ url_for('activite.session_bulk_new', atelier_id=atelier.id) }}">📅 Créer en série</a>
             {% endif %}
           {% endif %}
-          <a class="btn" href="{{ url_for('activite.export_csat_sessions', atelier_id=atelier.id) }}" title="Fichier Excel compatible avec l'import « Sessions » du portail CSAT (Centres Sociaux Acteurs des Transitions). N'inclut que les séances jamais exportées.">⬇ Exporter pour CSAT{% if nb_a_exporter_csat is not none %} ({{ nb_a_exporter_csat }} nouvelle{{ 's' if nb_a_exporter_csat != 1 else '' }}){% endif %}</a>
+          <form method="post" action="{{ url_for('activite.export_csat_sessions', atelier_id=atelier.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn" type="submit" title="Fichier Excel compatible avec l'import « Sessions » du portail CSAT (Centres Sociaux Acteurs des Transitions). N'inclut que les séances jamais exportées.">⬇ Exporter pour CSAT{% if nb_a_exporter_csat is not none %} ({{ nb_a_exporter_csat }} nouvelle{{ 's' if nb_a_exporter_csat != 1 else '' }}){% endif %}</button>
+          </form>
           <a class="btn" href="{{ url_for('activite.index') }}">Retour ateliers</a>
         </div>
       </div>
@@ -63,7 +66,10 @@
       {% if not corbeille %}
         <p class="muted" style="font-size:13px;">
           L'export CSAT ne reprend que les séances jamais transmises.
-          <a href="{{ url_for('activite.export_csat_sessions', atelier_id=atelier.id, tout=1) }}">Tout réexporter quand même</a> (au cas où l'import précédent aurait échoué côté CSAT).
+          <form method="post" action="{{ url_for('activite.export_csat_sessions', atelier_id=atelier.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="tout" value="1">
+            <button class="btn btn-link" type="submit" style="padding:0;">Tout réexporter quand même</button>
+          </form> (au cas où l'import précédent aurait échoué côté CSAT).
         </p>
       {% endif %}
       <div class="tablewrap clean">
@@ -117,7 +123,7 @@
                       <a class="btn" href="{{ url_for('questionnaires.respond', session_id=s.id) }}">Questionnaire</a>
                     {% endif %}
                     {% if s.session_type=='COLLECTIF' %}
-                      <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=s.id) }}">Générer PDF</a>
+                      <form method="post" action="{{ url_for('activite.generate_collectif', session_id=s.id) }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn" type="submit">Générer PDF</button></form>
                     {% endif %}
                     <form method="post" action="{{ url_for('activite.session_delete', session_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Mettre cette séance en corbeille ? (restaurable)');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -176,7 +182,7 @@
                 <a class="btn" href="{{ url_for('questionnaires.respond', session_id=s.id) }}">Questionnaire</a>
               {% endif %}
               {% if s.session_type=='COLLECTIF' %}
-                <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=s.id) }}">Générer PDF</a>
+                <form method="post" action="{{ url_for('activite.generate_collectif', session_id=s.id) }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn" type="submit">Générer PDF</button></form>
               {% endif %}
               <form method="post" action="{{ url_for('activite.session_delete', session_id=s.id) }}" onsubmit="return confirm('Mettre cette séance en corbeille ? (restaurable)');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
