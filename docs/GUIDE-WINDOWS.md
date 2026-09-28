@@ -322,6 +322,17 @@ est refusée tant qu'un effacement récent n'a pas pu être recopié dans le
 registre (droits du dossier des données à vérifier). Détail :
 `docs/CONSOLIDATION-APRES-PR59.md`.
 
+**Restauration d'une sauvegarde plus ancienne que le programme** : le centre passe
+en maintenance, la base restaurée est mise au niveau de cette version, puis remise
+en service. En cas d'échec, l'état d'avant est remis automatiquement (« rien n'a
+changé »). Si la page « Maintenance en cours » reste affichée, un administrateur
+restaure depuis Administration → Sauvegardes la sauvegarde de sécurité indiquée.
+
+**Émission suspendue** : si le registre des numéros émis est endommagé ou a disparu
+(nouvelle machine, dossier des données perdu), aucun reçu, facture ni avoir n'est
+émis tant qu'un administrateur n'a pas rétabli, dans Contrôle → Registres, le
+dernier numéro de chaque série relevé sur les documents.
+
 Après sinistre : réinstaller, recréer le compte direction, restaurer les lots
 depuis l'administration puis reconfigurer le SMTP et les secrets depuis le
 coffre-fort. Si aucune copie récente n'a survécu, déclarer dans Contrôle →
