@@ -100,8 +100,13 @@ def versements_candidats(bind, annee: int, personnes: list[int], foyer_id) -> li
         "SELECT p.id, p.montant, p.mode, p.date_paiement, p.commentaire, p.cotisation_id, p.encaissement_id "
         "FROM paiement p JOIN cotisation c ON c.id = p.cotisation_id "
         "WHERE c.annee_scolaire = :a AND (" + " OR ".join(conditions) + ") ORDER BY p.id"), params).fetchall()
+    # Le commentaire libre n'est PAS recopié dans la preuve (il peut nommer
+    # la personne et doit disparaître avec une anonymisation) : seul compte
+    # le fait qu'il soit le libellé du report automatique.
+    libelle = f"Inscription annuelle {annee}-{annee + 1}"
     return [{"id": l[0], "montant": _cents(l[1]) if _fini(l[1]) else None, "mode": l[2],
-             "date": _jour(l[3]).isoformat() if _jour(l[3]) else None, "commentaire": l[4],
+             "date": _jour(l[3]).isoformat() if _jour(l[3]) else None,
+             "report_du_bulletin": (l[4] or "").strip() == libelle,
              "cotisation_id": l[5], "encaissement_id": l[6]} for l in lignes]
 
 
@@ -124,7 +129,7 @@ def classer(bind, bulletin: dict, *, autres_bulletins: list[dict] | None = None)
     libelle = f"Inscription annuelle {annee}-{annee + 1}"
     personnes = personnes_couvertes(bind, bid, bulletin.get("participant_id"))
     versements = versements_candidats(bind, annee, personnes, bulletin.get("foyer_id"))
-    signes = [v for v in versements if v["montant"] is not None and (v["commentaire"] or "").strip() == libelle]
+    signes = [v for v in versements if v["montant"] is not None and v["report_du_bulletin"]]
     prouve = _cents(sum(v["montant"] for v in signes))
     total = _cents(sum(v["montant"] for v in versements if v["montant"] is not None))
     encaissements = encaissements_du_bulletin(bind, bid)

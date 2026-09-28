@@ -31,10 +31,10 @@
       <p style="margin:0 0 6px;">{{ l.motif }}</p>
       {% if preuve.versements %}
         <table class="table" style="font-size:.9em;">
-          <thead><tr><th>Règlement enregistré</th><th>Montant</th><th>Mode</th><th>Date</th><th>Libellé</th></tr></thead>
+          <thead><tr><th>Règlement enregistré</th><th>Montant</th><th>Mode</th><th>Date</th><th>Origine</th></tr></thead>
           <tbody>{% for v in preuve.versements %}
             <tr><td>n° {{ v.id }}</td><td>{{ "%.2f"|format(v.montant or 0) }} €</td><td>{{ v.mode or '' }}</td>
-                <td>{{ v.date or '' }}</td><td>{{ v.commentaire or '' }}</td></tr>{% endfor %}
+                <td>{{ v.date or '' }}</td><td>{{ "Report automatique du bulletin" if v.report_du_bulletin else "Autre règlement" }}</td></tr>{% endfor %}
           </tbody>
         </table>
       {% else %}<p class="muted">Aucun règlement enregistré en face.</p>{% endif %}

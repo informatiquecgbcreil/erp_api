@@ -189,8 +189,10 @@ def _lire_sqlite(chemin: Path) -> list[dict]:
 
 def valeurs_de_la_sauvegarde(base: str) -> dict[int, dict]:
     """Règlements notés sur les bulletins dans un lot (lecture seule)."""
-    from app.services.sauvegarde import dossier_sauvegardes, verifier_lot
+    from app.services.sauvegarde import dossier_sauvegardes, lister_lots, verifier_lot
     dossier = dossier_sauvegardes()
+    if base not in {lot["base"] for lot in lister_lots()}:
+        raise EncaissementErreur("Sauvegarde introuvable : choisissez-en une dans la liste.")
     if not verifier_lot(base)["ok"]:
         raise EncaissementErreur("Cette sauvegarde n'est pas lisible en entier : choisissez-en une autre.")
     if (dossier / f"{base}.sql").exists():

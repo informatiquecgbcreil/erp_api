@@ -130,6 +130,9 @@ def test_a_30_especes_plus_cheque_distinct_ne_disparait_plus(app, admin_client):
         [versement] = ligne.preuve_detail["versements"]
         assert (versement["montant"], versement["mode"]) == (10.0, "cheque")
         assert ligne.preuve_detail["versements_du_report"] == []
+        # Le commentaire libre du règlement (qui peut nommer la personne) n'est
+        # pas recopié : il doit pouvoir disparaître avec une anonymisation.
+        assert "saisi sur la fiche" not in ligne.preuve
         lid = ligne.id
     caisse_avant = _caisse(app)
     page = admin_client.get("/caisse/rapprochement-bulletins").get_data(as_text=True)
@@ -516,6 +519,9 @@ def test_a_valeur_d_origine_retrouvee_dans_une_sauvegarde(app, admin_client, tmp
         db.session.commit()
         assert _ligne(b.id).classement == "reporte"               # 10 = total versé : rien de visible
         bid = b.id
+    r = admin_client.post("/caisse/rapprochement-bulletins", data={"action": "comparer", "base": "../" + lot},
+                          follow_redirects=True)
+    assert "Sauvegarde introuvable" in r.get_data(as_text=True)
     for _ in range(2):                                            # rejouable sans doublon
         r = admin_client.post("/caisse/rapprochement-bulletins", data={"action": "comparer", "base": lot},
                               follow_redirects=True)
