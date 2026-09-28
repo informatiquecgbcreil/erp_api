@@ -147,7 +147,10 @@ def main():
     import ssl
     import urllib.parse
     import urllib.request
-    ca = Path(target["data_root"]) / "https/tls/pki/authorities/local/root.crt"
+    # Autorité contrainte d'une installation neuve (audit 6.7), sinon celle de Caddy.
+    ca = Path(target["data_root"]) / "https/autorite/racine.crt"
+    if not ca.exists():
+        ca = Path(target["data_root"]) / "https/tls/pki/authorities/local/root.crt"
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
                                         urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=str(ca))))
     with opener.open(target["url"] + "/", timeout=30) as response:
