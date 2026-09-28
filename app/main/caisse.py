@@ -268,6 +268,59 @@ def caisse_a_qualifier():
     )
 
 
+@bp.route("/caisse/rapprochement-bulletins", methods=["GET", "POST"])
+@login_required
+@require_perm("caisse:view")
+def caisse_rapprochement_bulletins():
+    """Règlements notés sur d'anciens bulletins : ni prouvés reportés, ni
+    exclus. Une personne habilitée confirme le report ou constate un
+    encaissement distinct ; rien n'est ajouté d'office (défaut A)."""
+    from app.services import rapprochement_reglements as rr
+    from app.services.encaissements import EncaissementErreur
+    from app.services.sauvegarde import lister_lots
+    if request.method == "POST":
+        if not can("caisse:edit"):
+            abort(403)
+        action = request.form.get("action")
+        ligne_id = request.form.get("ligne_id", type=int) or 0
+        user_id = getattr(current_user, "id", None)
+        try:
+            if action == "confirmer":
+                ligne = rr.confirmer_report(ligne_id, user_id=user_id, note=request.form.get("note"))
+                message = "Report confirmé : rien n'a été ajouté."
+            elif action == "constater":
+                encaissement = rr.constater_encaissement(ligne_id, request.form.get("montant"), user_id=user_id,
+                                                         note=request.form.get("note"))
+                ligne = encaissement
+                message = (f"{encaissement.montant:.2f} € ajoutés aux sommes « à qualifier » : "
+                           "précisez-y le ou les modes et la prise en compte en caisse.")
+            elif action == "comparer":
+                base = (request.form.get("base") or "").strip()
+                compte = rr.comparer_avec_sauvegarde(base)
+                journaliser("rapprochement.comparaison_sauvegarde", cible=base[:200], details=compte)
+                flash(f"Sauvegarde « {base} » lue : {compte['lues']} bulletin(s) avec règlement ; "
+                      f"{compte['a_rapprocher']} nouveau(x) à rapprocher, {compte['reporte']} reporté(s), "
+                      f"{compte['suivi']} déjà suivi(s).", "success")
+                return redirect(url_for("main.caisse_rapprochement_bulletins"))
+            else:
+                abort(400)
+            db.session.commit()
+        except EncaissementErreur as exc:
+            db.session.rollback()
+            flash(str(exc), "info" if "déjà" in str(exc) else "danger")
+            return redirect(url_for("main.caisse_rapprochement_bulletins"))
+        journaliser("rapprochement.decision", cible=f"rapprochement #{ligne_id}",
+                    details={"action": action, "montant": request.form.get("montant"),
+                             "note": (request.form.get("note") or "")[:255]})
+        flash(message, "success")
+        return redirect(url_for("main.caisse_rapprochement_bulletins"))
+    return render_template(
+        "caisse_rapprochement_bulletins.html",
+        a_rapprocher=rr.a_rapprocher(), reportes=rr.reportes_deduits(), decides=rr.decides(),
+        resume=rr.resume(), lots=lister_lots(), peut_editer=can("caisse:edit"),
+    )
+
+
 @bp.route("/controle/anomalies-montants", methods=["GET", "POST"])
 @login_required
 @require_perm("caisse:view")

@@ -129,12 +129,26 @@ def etat_caisse() -> dict:
         "cheques_en_attente": cheques_en_attente,
         "dernier_comptage": dernier_comptage,
         # Sommes anciennes dont le mode ou la prise en compte reste à trancher.
+        # (Une somme annulée par contre-passation n'est plus à trancher.)
         "a_qualifier": _somme(db.session.query(db.func.sum(Encaissement.montant)).filter(
-            Encaissement.a_qualifier.is_(True), Encaissement.origine_id.is_(None), _fini(Encaissement.montant))),
+            Encaissement.a_qualifier.is_(True), Encaissement.origine_id.is_(None),
+            ~Encaissement.contre_passations.any(), _fini(Encaissement.montant))),
         "nb_a_qualifier": Encaissement.query.filter(
-            Encaissement.a_qualifier.is_(True), Encaissement.origine_id.is_(None)).count(),
+            Encaissement.a_qualifier.is_(True), Encaissement.origine_id.is_(None),
+            ~Encaissement.contre_passations.any()).count(),
+        "nb_a_rapprocher": _nb_a_rapprocher(),
         "nb_anomalies": nombre_anomalies(),
     }
+
+
+def _nb_a_rapprocher() -> int:
+    from app.models import RapprochementBulletin
+    try:
+        return RapprochementBulletin.query.filter(RapprochementBulletin.classement == "a_rapprocher",
+                                                  RapprochementBulletin.decision.is_(None)).count()
+    except Exception:  # noqa: BLE001 — table pas encore migrée
+        db.session.rollback()
+        return 0
 
 
 def enregistrer_comptage(montant_constate: float, *, commentaire: str | None = None,

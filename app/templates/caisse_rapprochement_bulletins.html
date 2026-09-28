@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+{% block title %}Rapprochement des bulletins{% endblock %}
+{% block body %}
+<div class="page">
+  <p><a href="{{ url_for('main.caisse') }}">← Caisse</a> · <a href="{{ url_for('main.caisse_a_qualifier') }}">Sommes à qualifier</a></p>
+  <h1>Rapprochement des règlements des anciens bulletins</h1>
+  <p class="muted">Avant la nouvelle caisse, l'argent reçu à l'accueil avant la création de la fiche était noté
+    sur le bulletin, puis recopié dans les règlements de la fiche. Pour certains bulletins, rien ne prouve que
+    cette recopie a eu lieu. L'application n'ajoute rien d'office : si la somme avait déjà été recopiée,
+    l'ajouter la compterait deux fois. Pour chaque bulletin ci-dessous, vérifiez (reçu, bordereau, cahier de
+    caisse, souvenir de l'accueil) puis choisissez :</p>
+  <ul class="muted">
+    <li><strong>« Déjà reporté »</strong> : la somme se retrouve dans les règlements listés. Rien n'est ajouté.
+      Si elle figurait aussi dans les sommes à qualifier, cette ligne en double est annulée (contre-passation motivée).</li>
+    <li><strong>« Somme distincte »</strong> : de l'argent a été reçu et n'apparaît nulle part. Indiquez le montant
+      manquant : il rejoint les <a href="{{ url_for('main.caisse_a_qualifier') }}">sommes à qualifier</a>,
+      où vous préciserez les modes (espèces, chèque…) et s'il doit entrer dans la caisse ou a déjà été compté.</li>
+  </ul>
+  <p>À rapprocher : <strong>{{ resume.a_rapprocher }}</strong> · reportés (déduits) : {{ resume.reporte }} ·
+     déjà suivis : {{ resume.suivi }} · décidés : {{ resume.decides }}</p>
+
+  <h2>À rapprocher</h2>
+  {% if not a_rapprocher %}<p><strong>Rien à rapprocher.</strong></p>{% endif %}
+  {% for l in a_rapprocher %}{% set preuve = l.preuve_detail %}
+    <div class="card" style="margin:12px 0; padding:12px 14px;">
+      <p style="margin:0 0 6px;"><strong>{{ "%.2f"|format(l.montant_origine) }} €</strong> notés sur le bulletin
+        {{ l.annee_scolaire }}-{{ l.annee_scolaire + 1 }}
+        {% if l.inscription_annuelle_id %}(<a href="{{ url_for('inscriptions_annuelles.detail', inscription_id=l.inscription_annuelle_id) }}">n° {{ l.inscription_annuelle_id }}</a>){% endif %}
+        — dernier mode saisi : {{ l.mode_origine_label }}{% if l.date_origine %}, le {{ l.date_origine.strftime('%d/%m/%Y') }}{% endif %}
+        {% if l.source == 'sauvegarde' %}<br><span class="muted">Valeur lue dans la sauvegarde « {{ l.source_detail }} ».</span>{% endif %}</p>
+      <p style="margin:0 0 6px;">{{ l.motif }}</p>
+      {% if preuve.versements %}
+        <table class="table" style="font-size:.9em;">
+          <thead><tr><th>Règlement enregistré</th><th>Montant</th><th>Mode</th><th>Date</th><th>Libellé</th></tr></thead>
+          <tbody>{% for v in preuve.versements %}
+            <tr><td>n° {{ v.id }}</td><td>{{ "%.2f"|format(v.montant or 0) }} €</td><td>{{ v.mode or '' }}</td>
+                <td>{{ v.date or '' }}</td><td>{{ v.commentaire or '' }}</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      {% else %}<p class="muted">Aucun règlement enregistré en face.</p>{% endif %}
+      {% if peut_editer %}
+      <form method="post" class="inline" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="ligne_id" value="{{ l.id }}">
+        <label>Note (sur quoi repose votre décision)<br><input name="note" maxlength="255" required></label>
+        <button class="btn" name="action" value="confirmer">Déjà reporté</button>
+        <label>Montant manquant<br><input name="montant" inputmode="decimal" value="{{ '%.2f'|format(l.montant_ecart or l.montant_origine) }}" size="8"></label>
+        <button class="btn btn-primary" name="action" value="constater">Somme distincte</button>
+      </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  <details style="margin:16px 0;">
+    <summary><strong>Reports déduits par l'application ({{ reportes|length }})</strong> — aucune action nécessaire, révisables</summary>
+    <p class="muted">Report prouvé par des règlements « Inscription annuelle » des cotisations du bulletin, ou montant
+      exactement égal au total réglé (valeur recopiée par l'ancienne version). Si vous savez qu'une somme distincte
+      manque, vous pouvez la constater ici.</p>
+    {% for l in reportes %}
+      <div class="card" style="margin:8px 0; padding:8px 12px;">
+        {{ "%.2f"|format(l.montant_origine) }} € — bulletin {% if l.inscription_annuelle_id %}n° {{ l.inscription_annuelle_id }}{% endif %}
+        ({{ l.annee_scolaire }}) — {{ l.motif }}
+        {% if peut_editer %}
+        <form method="post" class="inline" style="gap:6px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="ligne_id" value="{{ l.id }}">
+          <input name="note" maxlength="255" placeholder="Note" required>
+          <input name="montant" inputmode="decimal" size="8" placeholder="Montant">
+          <button class="btn" name="action" value="constater">Constater une somme distincte</button>
+        </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </details>
+
+  <details style="margin:16px 0;">
+    <summary><strong>Comparer avec une sauvegarde antérieure</strong></summary>
+    <p class="muted">Depuis la mise à jour de la caisse, la somme notée sur un bulletin est recalculée à l'ouverture
+      de la liste des inscriptions : sur une installation déjà mise à jour, la valeur d'origine a pu être remplacée.
+      Choisissez une sauvegarde faite <strong>avant</strong> cette mise à jour : elle est seulement lue (rien n'est
+      restauré), et les bulletins dont la somme d'origine diffère sont ajoutés ici avec le même classement.</p>
+    {% if peut_editer %}
+    <form method="post" class="inline" style="gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="comparer">
+      <select name="base">{% for lot in lots %}<option value="{{ lot.base }}">{{ lot.base }}</option>{% endfor %}</select>
+      <button class="btn">Lire cette sauvegarde</button>
+    </form>
+    {% endif %}
+  </details>
+
+  {% if decides %}
+  <h2>Décisions prises</h2>
+  <table class="table">
+    <thead><tr><th>Bulletin</th><th>Somme notée</th><th>Décision</th><th>Montant</th><th>Par</th><th>Le</th><th>Note</th></tr></thead>
+    <tbody>{% for l in decides %}
+      <tr><td>{{ l.inscription_annuelle_id or '—' }}</td><td>{{ "%.2f"|format(l.montant_origine) }} €</td>
+          <td>{{ "Déjà reporté" if l.decision == 'report_confirme' else "Somme distincte" }}</td>
+          <td>{{ "%.2f €"|format(l.decision_montant) if l.decision_montant else '' }}</td>
+          <td>{{ l.decide_par.email if l.decide_par else '' }}</td>
+          <td>{{ l.decide_le.strftime('%d/%m/%Y %H:%M') if l.decide_le else '' }}</td>
+          <td>{{ l.decision_note or '' }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

@@ -249,7 +249,8 @@ def contre_passer(encaissement: Encaissement, motif: str, *, user_id: int | None
 # ---------------------------------------------------------------------------
 
 def a_qualifier() -> list[Encaissement]:
-    return (Encaissement.query.filter(Encaissement.a_qualifier.is_(True), Encaissement.origine_id.is_(None))
+    return (Encaissement.query.filter(Encaissement.a_qualifier.is_(True), Encaissement.origine_id.is_(None),
+                                      ~Encaissement.contre_passations.any())
             .order_by(Encaissement.date_encaissement.asc(), Encaissement.id.asc()).all())
 
 
@@ -276,6 +277,15 @@ def qualifier(encaissement: Encaissement, parts: list[tuple[str, float]], *, dan
     if not propres or abs(sum(v for _, v in propres) - float(encaissement.montant)) > 0.009:
         raise EncaissementErreur(f"La somme des parts doit être exactement {encaissement.montant:.2f} €.")
     verrouiller("encaissement", encaissement.id)
+    # Double clic ou deux personnes en même temps : seule la première
+    # qualification passe. Mise à jour conditionnelle (valable sur SQLite
+    # comme sur PostgreSQL) : l'autre voit la somme déjà qualifiée.
+    table = Encaissement.__table__
+    reclame = db.session.execute(table.update().where(table.c.id == encaissement.id,
+                                                      table.c.a_qualifier.is_(True)).values(a_qualifier=False))
+    if reclame.rowcount != 1:
+        raise DejaEnregistre("Cette somme a déjà été qualifiée.")
+    db.session.refresh(encaissement)
 
     # Les cotisations touchées par l'ancienne ventilation, dans leur ordre.
     cotisations: list[Cotisation] = []

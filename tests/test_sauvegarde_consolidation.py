@@ -291,6 +291,10 @@ def test_retour_arriere_des_migrations_de_la_consolidation(fresh_app):
         tables = set(inspect(db.engine).get_table_names())
         assert "encaissement" not in tables and "session_revoquee" not in tables
         upgrade(revision="head")
+        from alembic.script import ScriptDirectory
+        from flask import current_app
+        tete = ScriptDirectory.from_config(current_app.extensions["migrate"].migrate.get_config()).get_current_head()
         with db.engine.connect() as c:
-            assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "b8d0f2a4c593"
-        assert "encaissement" in set(inspect(db.engine).get_table_names())
+            assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == tete
+        tables = set(inspect(db.engine).get_table_names())
+        assert {"encaissement", "effacement_rgpd", "rapprochement_bulletin"} <= tables
