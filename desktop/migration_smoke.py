@@ -93,6 +93,28 @@ def main():
                 insert("passeport_note", participant_id=pid, secteur="Familles", contenu="Suivi conservé", categorie="journal")
                 insert("passeport_piece_jointe", participant_id=pid, secteur="Familles", categorie="atelier",
                        file_path=str(document), original_name="preuve.txt")
+                # Défaut A : 30 € espèces notés sur le bulletin + un chèque
+                # distinct de 10 € sur la fiche (jamais une preuve de report),
+                # et un bulletin dont le report est prouvé (45 € « Inscription
+                # annuelle 2024-2025 ») qui ne doit pas être compté deux fois.
+                jour = datetime(2024, 9, 12).date()
+                cid = insert("cotisation", annee_scolaire=2024, type_cotisation="participation", participant_id=pid,
+                             montant_du=60.0, date_reference=jour, created_at=datetime.now(), updated_at=datetime.now())
+                insert("paiement", cotisation_id=cid, montant=10.0, mode="cheque", date_paiement=jour,
+                       commentaire="chèque saisi sur la fiche", created_at=datetime.now())
+                insert("inscription_annuelle", annee_scolaire=2024, nom="RECETTE", prenom="Migration",
+                       participant_id=pid, statut="validee", reglement_montant=30.0, reglement_mode="especes",
+                       reglement_date=jour, date_inscription=jour, created_at=datetime.now(), updated_at=datetime.now())
+                pid2 = insert("participant", nom="RECETTE", prenom="Reporte", created_secteur="Familles",
+                              type_public="H", droit_image_statut="non_renseigne", est_benevole=False,
+                              statut_inscription="actif", created_at=datetime.now(), updated_at=datetime.now())
+                cid2 = insert("cotisation", annee_scolaire=2024, type_cotisation="participation", participant_id=pid2,
+                              montant_du=60.0, date_reference=jour, created_at=datetime.now(), updated_at=datetime.now())
+                insert("paiement", cotisation_id=cid2, montant=45.0, mode="especes", date_paiement=jour,
+                       commentaire="Inscription annuelle 2024-2025", created_at=datetime.now())
+                insert("inscription_annuelle", annee_scolaire=2024, nom="RECETTE", prenom="Reporte",
+                       participant_id=pid2, statut="validee", reglement_montant=45.0, reglement_mode="especes",
+                       reglement_date=jour, date_inscription=jour, created_at=datetime.now(), updated_at=datetime.now())
             db.session.remove()
             db.engine.dispose()
         from sqlalchemy.engine import make_url
@@ -128,7 +150,14 @@ def main():
         assert 180000 <= int(connection.execute(text("SHOW server_version_num")).scalar_one()) < 190000
         account = connection.execute(text('SELECT password_hash FROM "user" WHERE email=:email'), {"email": c["admin_email"]}).scalar_one()
         assert check_password_hash(account, c["admin_password"])
-        assert connection.execute(text("SELECT nom FROM participant")).scalar_one() == "RECETTE"
+        assert set(connection.execute(text("SELECT prenom FROM participant WHERE nom = 'RECETTE'")).scalars()) == {"Migration", "Reporte"}
+        # Défaut A : la somme non prouvée attend un rapprochement, le report
+        # prouvé n'est pas compté deux fois, rien n'est ajouté d'office.
+        classes = dict(connection.execute(text(
+            "SELECT r.montant_origine, r.classement FROM rapprochement_bulletin r "
+            "JOIN inscription_annuelle i ON i.id = r.inscription_annuelle_id WHERE i.nom = 'RECETTE'")).all())
+        assert classes == {30.0: "a_rapprocher", 45.0: "reporte"}, classes
+        assert connection.execute(text("SELECT sum(montant) FROM encaissement")).scalar_one() == 55.0
         assert connection.execute(text("SELECT contenu FROM passeport_note")).scalar_one() == "Suivi conservé"
         path = Path(connection.execute(text("SELECT file_path FROM passeport_piece_jointe")).scalar_one())
         assert path.is_relative_to(Path(target["data_root"]) / "instance")
@@ -162,6 +191,9 @@ def main():
         assert response.status == 200 and "/dashboard" in response.url
     with opener.open(target["url"] + "/participants/", timeout=30) as response:
         assert response.status == 200 and "RECETTE" in response.read().decode("utf-8")
+    with opener.open(target["url"] + "/caisse/rapprochement-bulletins", timeout=30) as response:
+        assert response.status == 200 and "30.00 €" in response.read().decode("utf-8")
+    print("REGLEMENT_DE_BULLETIN_NON_PROUVE_A_RAPPROCHER_OK")
     print("MIGRATION_POSTGRESQL_18_1_IPV6_MOT_DE_PASSE_EXCLAMATION_OK")
     print("MIGRATION_BASE_ANCIENNE_COMPTES_DOCUMENTS_PARAMETRES_SOURCE_INTACTE_OK")
     print("SOURCE_EN_LECTURE_SEULE_APRES_BASCULE_OK")

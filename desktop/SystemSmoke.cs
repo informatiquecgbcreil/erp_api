@@ -60,6 +60,20 @@ static class SystemSmoke {
             Check(i < 600, "La sauvegarde quotidienne vérifiée n'a pas été produite");
             System.Threading.Thread.Sleep(1000);
         }
+        // Registres hors base : le service (son propre compte, pas celui de la
+        // recette) a pu poser les verrous dans runtime et joindre au lot une
+        // copie valide des registres.
+        var etatLot = Program.Json.Deserialize<Dictionary<string, object>>(File.ReadAllText(state, Program.Utf8));
+        bool copieRegistres = false;
+        foreach (var element in (System.Collections.IEnumerable)etatLot["controles"]) {
+            var controle = element as Dictionary<string, object>;
+            if (controle != null && (string)controle["nom"] == "Copie des registres" && controle["ok"] is bool && (bool)controle["ok"]) copieRegistres = true;
+        }
+        Check(copieRegistres, "La sauvegarde du service n'emporte pas de copie valide des registres");
+        Check(File.Exists(Path.Combine(Program.Root, "backups", (string)etatLot["base"] + "_registres.json")), "Copie des registres absente du lot");
+        foreach (var verrou in new[] { "numeros-emis.json.lock", "registre-effacements.json.lock" })
+            Check(File.Exists(Path.Combine(Program.Root, "runtime", verrou)), "Verrou de registre non créé par le service : " + verrou);
+        Console.WriteLine("REGISTRES_COPIES_DANS_LE_LOT_PAR_LE_SERVICE_OK");
         int code = Program.RunPython("--restore-test", Program.ReadConfiguration(), 1800000);
         var report = Path.Combine(Program.Root, "private", "essai-restauration.json");
         Check(code == 0 && File.Exists(report), "La restauration complète du dernier lot a échoué");

@@ -103,6 +103,31 @@ class _SessionKiosqueHttp(SecureCookieSessionInterface):
         return securise
 
 
+def _transactions_sqlite_fiables(engine) -> None:
+    """SQLite : un point de sauvegarde toujours DANS une transaction.
+
+    Le pilote ``sqlite3`` n'ouvre sa transaction qu'à la première écriture.
+    Un ``SAVEPOINT`` émis avant (``begin_nested`` en tête de transaction :
+    purge par lots, une fiche par point de sauvegarde) démarrait donc seul,
+    et son ``RELEASE`` VALIDAIT pour de bon : l'annulation de la transaction
+    extérieure ne défaisait plus rien. On ouvre la transaction juste avant le
+    point de sauvegarde quand elle ne l'est pas encore. Les lectures gardent
+    le comportement du pilote (pas de verrou tenu). Sans effet sur PostgreSQL.
+    """
+    if engine.dialect.name != "sqlite":
+        return
+    from sqlalchemy import event as _event
+
+    if not _event.contains(engine, "savepoint", _sqlite_savepoint_en_transaction):
+        _event.listen(engine, "savepoint", _sqlite_savepoint_en_transaction)
+
+
+def _sqlite_savepoint_en_transaction(connexion, _nom):
+    brute = connexion.connection.dbapi_connection
+    if not brute.in_transaction:
+        brute.execute("BEGIN")
+
+
 def create_app():
     app = Flask(__name__, instance_relative_config=True, instance_path=Config.INSTANCE_DIR)
     app.config.from_object(Config)
@@ -131,6 +156,8 @@ def create_app():
 
     # Extensions
     db.init_app(app)
+    with app.app_context():
+        _transactions_sqlite_fiables(db.engine)
     # Dossier des migrations en chemin ABSOLU : Flask-Migrate le cherche sinon
     # par rapport au dossier courant, qui n'est pas celui du code quand
     # l'application est lancée par une tâche planifiée ou un service
@@ -157,6 +184,20 @@ def create_app():
     # Exports Excel : une chaîne « =… » saisie (kiosque, fiche) reste du texte.
     from app.utils.xlsx_safe import installer_garde_formules
     installer_garde_formules()
+
+    from app.services.registre_externe import RegistreErreur
+
+    @app.errorhandler(RegistreErreur)
+    def _registre_indisponible(error):
+        # Un numéro de reçu ou de facture ne s'émet pas sans sa protection
+        # hors base : rien n'est enregistré, l'utilisateur sait quoi faire.
+        db.session.rollback()
+        app.logger.error("Registre hors base indisponible : %s", getattr(error, "detail", "") or error)
+        from flask import flash
+        flash(f"{error} Rien n'a été enregistré. Si le problème persiste, un administrateur "
+              "trouvera le détail dans Contrôle → Registres.", "danger")
+        retour = request.referrer if request.referrer and request.referrer.startswith(request.host_url) else "/"
+        return redirect(retour), 303
 
     @app.errorhandler(NombreNonFini)
     def _nombre_non_fini(error):
@@ -881,6 +922,15 @@ def create_app():
 
             from app.secteurs import bootstrap_secteurs_from_config
             bootstrap_secteurs_from_config()
+
+        # Registre des effacements RGPD : recopie hors base des effacements
+        # validés restés en attente (arrêt brutal), classement de l'ancien
+        # registre et réapplication après une restauration faite hors de
+        # l'application. Ne bloque jamais le démarrage ; Contrôle affiche ce
+        # qui reste à faire.
+        if amorcage and insp.has_table("effacement_rgpd") and insp.has_table("participant"):
+            from app.services.registre_effacements import synchroniser
+            synchroniser()
 
         # str(url) masque déjà le mot de passe (***), mais on évite stdout :
         # une trace de log propre plutôt qu'un print non maîtrisé.

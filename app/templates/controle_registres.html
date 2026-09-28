@@ -1,0 +1,109 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>Registres de l'installation</h1>
+    <p class="muted">
+      Deux registres sont tenus hors de la base de données, dans le dossier des données
+      de l'installation : ils empêchent qu'une restauration de sauvegarde fasse
+      réutiliser un numéro de reçu ou de facture déjà émis, ou fasse revenir une
+      personne dont les données ont été effacées.
+    </p>
+    {% if not tenu %}
+      <p class="alert alert-warning">Installation sans dossier de données (installation manuelle) :
+        ces registres ne sont pas tenus. La base reste la seule protection.</p>
+    {% endif %}
+    {% for e in erreurs %}<p class="alert alert-danger">{{ e }}</p>{% endfor %}
+    {% if mis_de_cote %}
+      <p class="alert alert-warning">Registre endommagé détecté et mis de côté (conservé pour examen) :
+        {{ mis_de_cote|join(", ") }}. Les valeurs ont été reconstituées depuis la copie précédente
+        et la base. Vérifiez ci-dessous les derniers numéros émis.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Numéros émis</h2>
+    <table class="table">
+      <thead><tr><th>Série</th><th>Plus grand numéro émis (registre)</th><th>Compteur de la base</th></tr></thead>
+      <tbody>
+      {% for espace in espaces %}
+        <tr><td>{{ espace }}</td>
+            <td>{{ (numeros or {}).get(espace, "—") }}</td>
+            <td>{{ compteurs.get(espace, "—") }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">Aucun numéro émis pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Transfert et sinistre</h2>
+    <p class="muted">Chaque sauvegarde emporte une copie des registres. À la restauration, cette copie est
+      <strong>fusionnée</strong> : elle complète les registres, sans jamais faire revenir un numéro ni annuler un
+      effacement. Pour passer à une nouvelle machine, exportez les registres ici, puis importez-les sur la
+      nouvelle installation (après y avoir restauré la dernière sauvegarde).</p>
+    <p><a class="btn" href="{{ url_for('main.controle_registres_export') }}">Exporter les registres</a></p>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('main.controle_registres_import') }}" class="inline" style="gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="fichier" accept=".json,application/json">
+      <button class="btn">Importer (fusion)</button>
+    </form>
+    <h3>Après la perte du serveur</h3>
+    <p class="muted">Si aucune copie récente n'a survécu, les numéros émis après la dernière sauvegarde ne sont
+      plus connus de l'application. Relevez sur les derniers reçus, factures et avoirs papier le plus grand
+      numéro de chaque série et déclarez-le : la numérotation repartira au-delà (jamais en dessous). Les
+      effacements RGPD faits après la dernière sauvegarde sont perdus eux aussi : rejouez les demandes
+      d'effacement reçues depuis cette date.</p>
+    <form method="post" action="{{ url_for('main.controle_registres_dernier_numero') }}" class="inline" style="gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <select name="serie"><option value="don">Reçus de dons</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>
+      <input name="annee" inputmode="numeric" size="5" placeholder="Année">
+      <input name="numero" inputmode="numeric" size="6" placeholder="Dernier n°">
+      <button class="btn">Déclarer</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Effacements RGPD</h2>
+    {% if effacements %}
+      <p>Effacements validés en attente de recopie dans le registre : <strong>{{ effacements.en_attente }}</strong>
+      {% if effacements.en_attente %}
+        <form method="post" action="{{ url_for('main.controle_registres_recopier') }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn">Recopier maintenant</button>
+        </form>
+        <br><span class="muted">Tant que la recopie n'est pas faite, toute restauration de sauvegarde est refusée.</span>
+      {% endif %}</p>
+    {% endif %}
+
+    <h3>Anciennes entrées à vérifier ({{ a_verifier|length }})</h3>
+    <p class="muted">Ces entrées viennent de l'ancien registre, qui notait un effacement avant qu'il soit
+      définitivement enregistré. La fiche est encore présente avec l'identité de la personne : soit
+      l'effacement avait été annulé, soit la fiche est revenue avec une sauvegarde. Rien n'est appliqué
+      sans votre décision. Vérifiez la fiche (demande d'effacement, journal), puis tranchez.</p>
+    <table class="table">
+      <thead><tr><th>Fiche</th><th>Nature</th><th>Créée le</th><th>Décision</th></tr></thead>
+      <tbody>
+      {% for e in a_verifier %}
+        <tr>
+          <td><a href="{{ safe_url_for('participants.edit_participant', participant_id=e.participant_id) }}">n° {{ e.participant_id }}</a></td>
+          <td>{{ e.nature }}</td>
+          <td>{{ e.participant_cree_le or "inconnue" }}</td>
+          <td>
+            <form method="post" action="{{ url_for('main.controle_registres_decider', entree_id=e.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-danger" name="decision" value="confirmer"
+                onclick="return confirm('Anonymiser définitivement cette fiche ?')">L'effacement était voulu : l'appliquer</button>
+              <button class="btn" name="decision" value="ecarter">Il avait été annulé : écarter</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">Aucune entrée à vérifier.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

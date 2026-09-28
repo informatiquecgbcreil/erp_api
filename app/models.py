@@ -26,6 +26,39 @@ class PendingFileDeletion(db.Model):
     motif = db.Column(db.String(60), nullable=True)
 
 
+class EffacementRgpd(db.Model):
+    """Effacement RGPD (anonymisation ou suppression) d'une fiche participant.
+
+    La ligne est écrite DANS la transaction de l'effacement : elle n'existe
+    que si l'effacement est validé (un rollback, même de point de sauvegarde,
+    l'emporte avec lui). Elle est ensuite recopiée dans le registre hors base
+    (``app.services.registre_effacements``), qui survit à une restauration ;
+    ``exporte_le`` vide = recopie encore à faire.
+
+    Aucune donnée d'identité : la personne est désignée par son numéro de
+    fiche ET la date de création exacte de la fiche (un numéro seul peut être
+    réattribué à une autre personne).
+    """
+    __tablename__ = "effacement_rgpd"
+    id = db.Column(db.Integer, primary_key=True)
+    #: Clé stable, partagée avec le registre hors base.
+    cle = db.Column(db.String(80), nullable=False, unique=True)
+    nature = db.Column(db.String(20), nullable=False)  # anonymisation | suppression
+    participant_id = db.Column(db.Integer, nullable=False, index=True)  # sans clé étrangère : la fiche peut disparaître
+    participant_cree_le = db.Column(db.DateTime, nullable=True)
+    #: « microseconde » (enregistré par cette version) ou « seconde » (ancien registre).
+    precision = db.Column(db.String(12), nullable=False, default="microseconde", server_default="microseconde")
+    #: confirme (effacement validé) | a_verifier (ancien registre non départagé) | ecarte
+    etat = db.Column(db.String(12), nullable=False, default="confirme", server_default="confirme", index=True)
+    #: application | ancien_registre | registre_externe
+    origine = db.Column(db.String(20), nullable=False, default="application", server_default="application")
+    cree_le = db.Column(db.DateTime, default=utcnow, nullable=False)
+    exporte_le = db.Column(db.DateTime, nullable=True, index=True)
+    decide_le = db.Column(db.DateTime, nullable=True)
+    decide_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    note = db.Column(db.String(255), nullable=True)
+
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(180), unique=True, nullable=False, index=True)
@@ -3261,6 +3294,66 @@ TYPES_MOUVEMENT_CAISSE_LABELS = {
     "comptage": "Comptage (arrêté de caisse)",
     "ajustement": "Ajustement",
 }
+
+
+class RapprochementBulletin(db.Model):
+    """Règlement noté sur un ancien bulletin, classé à la reprise (défaut A).
+
+    Valeurs d'origine figées (montant, dernier mode, date) : la colonne du
+    bulletin n'est plus qu'un miroir du total réglé et peut avoir été
+    réécrite depuis. ``classement`` : reporte (preuve dans ``preuve``),
+    suivi (déjà dans le registre des encaissements), a_rapprocher (une
+    personne tranche). ``decision`` : report_confirme (rien n'est ajouté) ou
+    encaissement_constate (``encaissement_id`` : somme ajoutée « à
+    qualifier », hors caisse, jamais en double).
+    """
+    __tablename__ = "rapprochement_bulletin"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cle = db.Column(db.String(80), nullable=False, unique=True)
+    inscription_annuelle_id = db.Column(db.Integer, db.ForeignKey("inscription_annuelle.id", ondelete="SET NULL"),
+                                        nullable=True, index=True)
+    annee_scolaire = db.Column(db.Integer, nullable=False)
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id", ondelete="SET NULL"), nullable=True)
+    foyer_id = db.Column(db.Integer, nullable=True)
+    montant_origine = db.Column(db.Float, nullable=False)
+    mode_origine = db.Column(db.String(20), nullable=True)
+    date_origine = db.Column(db.Date, nullable=True)
+    statut_bulletin = db.Column(db.String(30), nullable=True)
+    #: base (valeur lue en base à la migration) | sauvegarde (valeur lue dans un lot)
+    source = db.Column(db.String(20), nullable=False, default="base")
+    source_detail = db.Column(db.String(120), nullable=True)
+    classement = db.Column(db.String(20), nullable=False, index=True)
+    montant_prouve = db.Column(db.Float, nullable=False, default=0.0)
+    montant_ecart = db.Column(db.Float, nullable=False, default=0.0)
+    preuve = db.Column(db.Text, nullable=True)
+    motif = db.Column(db.String(255), nullable=True)
+    encaissement_ancien_id = db.Column(db.Integer, db.ForeignKey("encaissement.id", ondelete="SET NULL"), nullable=True)
+    version_classement = db.Column(db.Integer, nullable=False, default=1)
+    cree_le = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    decision = db.Column(db.String(30), nullable=True, index=True)
+    decision_montant = db.Column(db.Float, nullable=True)
+    decision_note = db.Column(db.String(255), nullable=True)
+    encaissement_id = db.Column(db.Integer, db.ForeignKey("encaissement.id", ondelete="SET NULL"), nullable=True)
+    decide_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    decide_le = db.Column(db.DateTime, nullable=True)
+
+    inscription_annuelle = db.relationship("InscriptionAnnuelle")
+    encaissement = db.relationship("Encaissement", foreign_keys=[encaissement_id])
+    encaissement_ancien = db.relationship("Encaissement", foreign_keys=[encaissement_ancien_id])
+    decide_par = db.relationship("User", foreign_keys=[decide_par_user_id])
+
+    @property
+    def preuve_detail(self) -> dict:
+        try:
+            return json.loads(self.preuve or "{}")
+        except ValueError:
+            return {}
+
+    @property
+    def mode_origine_label(self):
+        return MODES_PAIEMENT_LABELS.get(self.mode_origine or "", self.mode_origine or "non noté")
 
 
 class CaisseMouvement(db.Model):

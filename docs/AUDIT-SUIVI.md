@@ -1,13 +1,18 @@
 # Suivi de l'audit (main `ce39a1c`) — consolidation
 
-État au 28/09/2026, branche `claude/consolidation-audit-complet` (PR #59).
+État au 28/09/2026. La PR #59 a été fusionnée dans main (`dff7ff2`).
+
+**Suite : trois défauts relevés après la fusion** (règlements de bulletins ignorés à la reprise,
+effacement annulé réappliqué après restauration, écritures concurrentes du registre des numéros)
+et leur correction, avec preuves et limites : **`docs/CONSOLIDATION-APRES-PR59.md`** (branche
+`claude/audit-mon-centre-social-gdy74x`, non fusionnée).
 
 **Trois états à ne pas confondre :**
 
 | Où | Ce que ça veut dire |
 | --- | --- |
-| **main** | Fusionné : PR #56 (chantier 1), #57 (chantier 2), #58 (chantier 3). |
-| **PR #59** | Sur la branche de consolidation, **non fusionné**. Rien de cette colonne n'est dans main. |
+| **main** | Fusionné : PR #56 (chantier 1), #57 (chantier 2), #58 (chantier 3), #59 (consolidation). |
+| **Suite (après PR #59)** | Branche `claude/audit-mon-centre-social-gdy74x`, **non fusionnée**. |
 | **servisa** | **Aucune intervention.** Rien de ce document n'est déployé sur le serveur de production. |
 
 L'installateur Windows de cette validation est l'artefact CI `Mon-Centre-Social-Windows-x64`
@@ -157,8 +162,9 @@ modification du module activité, inscription annuelle sur présence kiosque non
    correctement ».
 6. Rediriger le tunnel : `tailscale funnel --bg http://127.0.0.1:<port kiosque>` (le port est dans
    le dossier confidentiel et dans le message de fin).
-7. Caisse : traiter l'écran « À qualifier » (anciens encaissements sans mode connu) et, s'il y a
-   lieu, « Anomalies de montants ».
+7. Caisse : traiter « Rapprochement des bulletins » (règlements d'anciens bulletins ni prouvés
+   reportés ni exclus — voir `docs/CONSOLIDATION-APRES-PR59.md` §4), puis l'écran « À qualifier »
+   (anciens encaissements sans mode connu) et, s'il y a lieu, « Anomalies de montants ».
 8. RGPD : la purge automatique reste **désactivée** ; la direction relit Contrôle → Purge RGPD
    (liste et durées de conservation) avant de l'activer.
 
@@ -199,7 +205,7 @@ modification du module activité, inscription annuelle sur présence kiosque non
 | Autorité HTTPS des installations existantes | Une installation antérieure garde son autorité sans restriction (6.7). | La remplacer couperait l'accès HTTPS de tous les postes jusqu'au redéploiement : à décider par la DSI (réinstallation neuve + reprise + redéploiement du certificat). |
 | Choix de l'adresse IP et pare-feu VPN sur servisa (6.3) | Si la détection se trompait, les postes ne joindraient pas le serveur. | Non testable en CI (une carte) ; l'assistant affiche l'adresse retenue et permet de la corriger : **à vérifier à l'installation**. |
 | Durées réelles sur servisa (sauvegarde, migration) | Délais proportionnés, mais non mesurés sur vos volumes. | Aucun accès à la production (consigne). |
-| Registre des effacements (restauration) hors Windows | Une installation manuelle (Linux) sans `APP_DATA_DIR` ne réapplique pas les anonymisations après restauration. | Même emplacement que le registre des numéros de reçus ; documenté. |
+| Registre des effacements (restauration) hors Windows | Une installation manuelle (Linux) sans `APP_DATA_DIR` ne tient pas les registres hors base (numéros, effacements). | Même emplacement que le registre des numéros de reçus ; documenté. Les défauts de ces registres relevés après la fusion sont traités dans `docs/CONSOLIDATION-APRES-PR59.md`. |
 | Veille : rebinding DNS | Un nom qui change d'adresse entre le contrôle et la connexion n'est pas couvert. | Limite classique ; le cas nécessite un serveur DNS hostile. |
 | Libellés QPV propres à Creil (SENACS, magatomatique) | Une autre structure verrait « Rouher / Hauts de Creil ». | Antérieur à ce chantier, choix produit ; la consigne de généricité portait sur la reprise, qui est générique. |
 | Contacts des partenaires | Pas de durée de conservation automatique. | Contacts professionnels ; suppression à la main si besoin. |

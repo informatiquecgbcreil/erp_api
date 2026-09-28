@@ -67,12 +67,17 @@
     </div>
   {% endif %}
 
-  {% if etat.nb_a_qualifier or etat.nb_anomalies %}
+  {% if etat.nb_a_qualifier or etat.nb_anomalies or etat.nb_a_rapprocher %}
     <div class="caisse-alerte no-print" style="border:1px solid #e8c887; background:#fff5e0; padding:10px 14px; border-radius:8px; margin:12px 0;">
       {% if etat.nb_a_qualifier %}
         <p style="margin:0 0 4px;"><strong>{{ etat.nb_a_qualifier }} somme(s) ancienne(s) à qualifier ({{ "%.2f"|format(etat.a_qualifier) }} €)</strong> :
           reprises d'une version précédente sans mode de règlement sûr. Elles ne comptent pas dans le théorique tant que
           vous n'avez pas tranché. <a href="{{ url_for('main.caisse_a_qualifier') }}">Les examiner</a></p>
+      {% endif %}
+      {% if etat.nb_a_rapprocher %}
+        <p style="margin:0 0 4px;"><strong>{{ etat.nb_a_rapprocher }} règlement(s) d'anciens bulletins à rapprocher</strong> :
+          rien ne prouve qu'ils ont été recopiés dans les règlements des fiches, rien ne prouve le contraire.
+          <a href="{{ url_for('main.caisse_rapprochement_bulletins') }}">Les rapprocher</a></p>
       {% endif %}
       {% if etat.nb_anomalies %}
         <p style="margin:0;"><strong>{{ etat.nb_anomalies }} montant(s) invalide(s)</strong> (valeur « NaN » ou infinie héritée) :
