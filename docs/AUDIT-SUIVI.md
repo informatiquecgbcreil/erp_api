@@ -7,12 +7,16 @@ effacement annulé réappliqué après restauration, écritures concurrentes du 
 et leur correction, avec preuves et limites : **`docs/CONSOLIDATION-APRES-PR59.md`** (branche
 `claude/audit-mon-centre-social-gdy74x`, non fusionnée).
 
+**Suite après la PR #60** (report partiel compté deux fois, restauration d'une sauvegarde ancienne,
+registre des numéros endommagé) : **`docs/CONSOLIDATION-APRES-PR60.md`** (branche
+`claude/audit-mon-centre-social-gdy74x`, non fusionnée).
+
 **Trois états à ne pas confondre :**
 
 | Où | Ce que ça veut dire |
 | --- | --- |
-| **main** | Fusionné : PR #56 (chantier 1), #57 (chantier 2), #58 (chantier 3), #59 (consolidation). |
-| **Suite (après PR #59)** | Branche `claude/audit-mon-centre-social-gdy74x`, **non fusionnée**. |
+| **main** | Fusionné : PR #56 (chantier 1), #57 (chantier 2), #58 (chantier 3), #59 (consolidation), #60 (suite de la #59). |
+| **Suite (après PR #60)** | Branche `claude/audit-mon-centre-social-gdy74x`, **non fusionnée**. |
 | **servisa** | **Aucune intervention.** Rien de ce document n'est déployé sur le serveur de production. |
 
 L'installateur Windows de cette validation est l'artefact CI `Mon-Centre-Social-Windows-x64`

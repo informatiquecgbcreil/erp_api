@@ -19,6 +19,34 @@
   <p>À rapprocher : <strong>{{ resume.a_rapprocher }}</strong> · reportés (déduits) : {{ resume.reporte }} ·
      déjà suivis : {{ resume.suivi }} · décidés : {{ resume.decides }}</p>
 
+  {% if a_corriger %}
+  <h2>À corriger ou vérifier ({{ a_corriger|length }})</h2>
+  <p class="muted">Rapprochements déjà décidés avec la version précédente, où la somme historique « à qualifier »
+    ferait compter une partie de l'argent deux fois. Rien n'a été modifié automatiquement.</p>
+  {% for l in a_corriger %}
+    <div class="card" style="margin:12px 0; padding:12px 14px;">
+      <p style="margin:0 0 6px;"><strong>{{ "%.2f"|format(l.montant_origine) }} €</strong> notés sur le bulletin
+        {% if l.inscription_annuelle_id %}n° {{ l.inscription_annuelle_id }}{% endif %} ({{ l.annee_scolaire }}) —
+        {{ "%.2f"|format(l.montant_prouve) }} € reportés,
+        {% if l.decision_montant %}{{ "%.2f"|format(l.decision_montant) }} € constatés,{% endif %}
+        somme historique de {{ "%.2f"|format(l.montant_origine) }} € non annulée.</p>
+      {% if peut_editer %}
+      <form method="post" class="inline" style="gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="ligne_id" value="{{ l.id }}">
+        <label>Note<br><input name="note" maxlength="255" required></label>
+        {% if l.controle == 'doublon_a_annuler' %}
+          <button class="btn btn-primary" name="action" value="corriger">Annuler la somme historique en doublon</button>
+        {% else %}
+          <span class="muted">Somme historique déjà qualifiée : à vérifier dans la caisse (contre-passation manuelle si besoin).</span>
+        {% endif %}
+        <button class="btn" name="action" value="verifier">Vérifié</button>
+      </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+  {% endif %}
+
   <h2>À rapprocher</h2>
   {% if not a_rapprocher %}<p><strong>Rien à rapprocher.</strong></p>{% endif %}
   {% for l in a_rapprocher %}{% set preuve = l.preuve_detail %}
@@ -38,15 +66,34 @@
           </tbody>
         </table>
       {% else %}<p class="muted">Aucun règlement enregistré en face.</p>{% endif %}
+      {% if l.encaissement_ancien_id %}
+        <p class="muted" style="margin:0 0 6px;">Une somme historique de {{ "%.2f"|format(l.montant_origine) }} € figure aussi
+          dans les sommes à qualifier. Votre décision la traite en même temps : elle est annulée (contre-passation motivée)
+          et remplacée par ce qui a été reporté + ce qui manque, pour un total de {{ "%.2f"|format(l.montant_origine) }} €.</p>
+      {% endif %}
       {% if peut_editer %}
+      {% if exige_verification(l) %}
+        <p class="alert alert-warning" style="margin:6px 0;">Vérification manuelle nécessaire : la somme historique a déjà été
+          qualifiée (comptée) alors que {{ "%.2f"|format(l.montant_prouve) }} € ont aussi été reportés. Contrôlez la caisse,
+          corrigez si besoin par une contre-passation, puis indiquez ce que vous avez vérifié.</p>
+        <form method="post" class="inline" style="gap:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="ligne_id" value="{{ l.id }}">
+          <label>Ce qui a été vérifié ou corrigé<br><input name="note" maxlength="255" required></label>
+          <button class="btn" name="action" value="verifier">Vérifié</button>
+        </form>
+      {% else %}
       <form method="post" class="inline" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="ligne_id" value="{{ l.id }}">
         <label>Note (sur quoi repose votre décision)<br><input name="note" maxlength="255" required></label>
         <button class="btn" name="action" value="confirmer">Déjà reporté</button>
-        <label>Montant manquant<br><input name="montant" inputmode="decimal" value="{{ '%.2f'|format(l.montant_ecart or l.montant_origine) }}" size="8"></label>
+        {% if manquant_maximal(l) > 0.009 %}
+        <label>Montant manquant (au plus {{ "%.2f"|format(manquant_maximal(l)) }} €)<br><input name="montant" inputmode="decimal" value="{{ '%.2f'|format(manquant_maximal(l)) }}" size="8"></label>
         <button class="btn btn-primary" name="action" value="constater">Somme distincte</button>
+        {% endif %}
       </form>
+      {% endif %}
       {% endif %}
     </div>
   {% endfor %}
@@ -95,7 +142,7 @@
     <thead><tr><th>Bulletin</th><th>Somme notée</th><th>Décision</th><th>Montant</th><th>Par</th><th>Le</th><th>Note</th></tr></thead>
     <tbody>{% for l in decides %}
       <tr><td>{{ l.inscription_annuelle_id or '—' }}</td><td>{{ "%.2f"|format(l.montant_origine) }} €</td>
-          <td>{{ "Déjà reporté" if l.decision == 'report_confirme' else "Somme distincte" }}</td>
+          <td>{{ {"report_confirme": "Déjà reporté", "encaissement_constate": "Somme distincte", "verifie_manuellement": "Vérifié à la main"}.get(l.decision, l.decision) }}{% if l.controle in ("corrige", "verifie") %} · {{ "doublon annulé" if l.controle == "corrige" else "vérifié" }}{% endif %}</td>
           <td>{{ "%.2f €"|format(l.decision_montant) if l.decision_montant else '' }}</td>
           <td>{{ l.decide_par.email if l.decide_par else '' }}</td>
           <td>{{ l.decide_le.strftime('%d/%m/%Y %H:%M') if l.decide_le else '' }}</td>

@@ -46,7 +46,7 @@ from datetime import date, datetime
 
 import sqlalchemy as sa
 
-VERSION = 1
+VERSION = 2
 TOLERANCE = 0.009
 
 
@@ -152,8 +152,17 @@ def classer(bind, bulletin: dict, *, autres_bulletins: list[dict] | None = None)
 
     if a_qualifier_ancien is not None:
         resultat["encaissement_ancien_id"] = a_qualifier_ancien["id"]
-        traite = not a_qualifier_ancien["a_qualifier"] or a_qualifier_ancien["contre_passe"]
-        if traite:
+        if a_qualifier_ancien["contre_passe"]:
+            resultat.update(classement="suivi", montant_ecart=0.0,
+                            motif="Somme reprise « à qualifier » puis annulée par une personne.")
+        elif not a_qualifier_ancien["a_qualifier"] and prouve > TOLERANCE:
+            # Version 2 : la somme historique a été qualifiée (donc comptée)
+            # alors qu'un report existe aussi. Impossible de savoir seul si
+            # la personne en a tenu compte : vérification humaine.
+            resultat.update(motif=(f"Somme historique déjà qualifiée alors que {prouve:.2f} € ont aussi été "
+                                   f"reportés en versements « {libelle} » : vérification nécessaire."),
+                            montant_ecart=_cents(max(0.0, montant - prouve)))
+        elif not a_qualifier_ancien["a_qualifier"]:
             resultat.update(classement="suivi", montant_ecart=0.0,
                             motif="Somme reprise « à qualifier » et déjà traitée par une personne.")
         elif prouve > TOLERANCE:
@@ -268,3 +277,47 @@ def classer_tout(bind, *, source: str = "base", source_detail: str | None = None
         else:
             compte["deja_classes"] += 1
     return compte
+
+
+def controler_decisions(bind) -> int:
+    """Consolidation après la PR #60 : repère, sans rien corriger, les
+    rapprochements où la somme « à qualifier » historique ferait double
+    emploi. Rejouable. Renvoie le nombre de lignes signalées.
+
+    - décision « somme distincte » prise alors que la somme historique est
+      restée à qualifier (la PR #60 ne l'annulait pas) : doublon_a_annuler ;
+      la correction (annulation motivée) reste un geste humain, en un clic ;
+    - somme historique déjà qualifiée alors qu'un report existe (décidée ou
+      non) : a_verifier, jamais corrigée automatiquement ;
+    - ligne classée « suivi » par la version 1 dans ce dernier cas : repassée
+      « à rapprocher » pour être présentée.
+    """
+    lignes = bind.execute(sa.text(
+        "SELECT r.id, r.decision, r.classement, r.montant_prouve, e.a_qualifier, "
+        "(SELECT count(*) FROM encaissement x WHERE x.origine_id = e.id) "
+        "FROM rapprochement_bulletin r JOIN encaissement e ON e.id = r.encaissement_ancien_id "
+        "WHERE r.controle IS NULL")).fetchall()
+    signales = 0
+    for rid, decision, classement, prouve, a_qualifier, annule in lignes:
+        if annule:
+            continue
+        controle, reclasser = None, False
+        if decision == "encaissement_constate" and a_qualifier:
+            controle = "doublon_a_annuler"
+        elif not a_qualifier and float(prouve or 0) > TOLERANCE:
+            if decision is not None:
+                controle = "a_verifier"
+            elif classement == "suivi":
+                reclasser = True
+        if controle:
+            bind.execute(sa.text("UPDATE rapprochement_bulletin SET controle = :c WHERE id = :r"),
+                         {"c": controle, "r": rid})
+            signales += 1
+        elif reclasser:
+            bind.execute(sa.text(
+                "UPDATE rapprochement_bulletin SET classement = 'a_rapprocher', version_classement = :v, "
+                "motif = :m WHERE id = :r"),
+                {"v": VERSION, "r": rid,
+                 "m": "Somme historique déjà qualifiée alors qu'un report existe aussi : vérification nécessaire."})
+            signales += 1
+    return signales

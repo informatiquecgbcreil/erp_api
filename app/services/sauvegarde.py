@@ -434,22 +434,63 @@ def _private_pg_connection(db_uri):
     return url._replace(password=None).render_as_string(hide_password=False), env
 
 
-def _restaurer_postgres(src_sql: Path, db_uri: str) -> None:
-    from app.extensions import db
+_CREATE_TABLE = re.compile(r'^CREATE (?:UNLOGGED )?TABLE public\.("?)([A-Za-z0-9_]+)\1 \(', re.M)
 
+
+def _tables_du_dump(src_sql: Path) -> set[str]:
+    with open(src_sql, encoding="utf-8", errors="replace") as fichier:
+        return {m.group(2) for m in _CREATE_TABLE.finditer(fichier.read())}
+
+
+def _sql_tables_plus_recentes(src_sql: Path) -> str:
+    """SQL (exécuté par psql, dans la transaction de la restauration) qui
+    supprime les tables de la base cible absentes du dump : créées par une
+    version plus récente (ex. effacement_rgpd, rapprochement_bulletin sous un
+    dump de la PR #59). Le --clean du dump ne les touche pas ; leurs clés
+    étrangères empêcheraient de supprimer les tables du dump, et leurs
+    données n'appartiennent pas à l'état restauré. Les migrations les
+    recréent ensuite. Dump sans table métier reconnue : rien n'est supprimé."""
+    try:
+        tables = _tables_du_dump(src_sql)
+    except OSError:
+        return ""
+    if not set(TABLES_TEMOINS) <= tables:
+        return ""
+    liste = ", ".join("'" + nom.replace("'", "''") + "'" for nom in sorted(tables))
+    return (
+        "DO $restauration$ DECLARE t text; BEGIN\n"
+        "  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+        f"AND tablename <> ALL (ARRAY[{liste}]) LOOP\n"
+        "    EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE', t);\n"
+        "  END LOOP;\nEND $restauration$;\n")
+
+
+def _restaurer_postgres_brut(src_sql: Path, db_uri: str) -> None:
+    """psql en une seule transaction : suppression des tables plus récentes que
+    le dump, puis le dump. Une erreur annule TOUT (la base reste intacte)."""
     exe = _trouver_psql()
     if not exe:
         raise RuntimeError(
             "La commande psql est introuvable. Ajoutez le dossier « bin » de PostgreSQL "
             "au PATH, ou définissez PSQL_PATH avec le chemin complet vers psql.exe."
         )
-    db.session.remove()
-    db.engine.dispose()
     uri, pg_env = _private_pg_connection(db_uri)
-    cmd = [exe, "-X", uri, "--single-transaction", "-v", "ON_ERROR_STOP=1", "-f", str(src_sql)]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=pg_env)
+    with tempfile.TemporaryDirectory(prefix="mcs-restauration-") as dossier:
+        prealable = Path(dossier) / "tables-plus-recentes.sql"
+        prealable.write_text(_sql_tables_plus_recentes(src_sql), encoding="utf-8")
+        cmd = [exe, "-X", uri, "--single-transaction", "-v", "ON_ERROR_STOP=1",
+               "-f", str(prealable), "-f", str(src_sql)]
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=pg_env)
     if proc.returncode != 0:
         raise RuntimeError("La restauration PostgreSQL a échoué ; sa transaction a été annulée.")
+
+
+def _restaurer_postgres(src_sql: Path, db_uri: str) -> None:
+    from app.extensions import db
+
+    db.session.remove()
+    db.engine.dispose()
+    _restaurer_postgres_brut(src_sql, db_uri)
 
 
 def restaurer_a_blanc(base: str, uri_cible: str) -> dict:
@@ -555,6 +596,131 @@ def _restaurer_uploads(zip_file: Path, upload_dir: Path) -> None:
                 remap_paths(connection, manifest["roots"], roots)
 
 
+# --------------------------------------------------------------------------
+# Remise en service après restauration (consolidation après la PR #60)
+#
+# Une sauvegarde peut être plus ancienne que l'application : sa base revient
+# à un schéma antérieur. Elle n'est remise en service qu'après les
+# migrations. Pendant toute l'opération, une marque sur disque (dossier des
+# sauvegardes, jamais restauré) met l'application en maintenance ; elle
+# survit à un arrêt brutal. En cas d'échec, l'état d'avant la restauration
+# est remis depuis la sauvegarde de sécurité ; si même cela échoue, la
+# maintenance reste et indique la marche à suivre.
+# --------------------------------------------------------------------------
+
+def _fichier_restauration() -> Path:
+    return dossier_sauvegardes() / "restauration-en-cours.json"
+
+
+def restauration_inachevee() -> dict | None:
+    """État d'une restauration non terminée ({etat, lot, securite, …}) ou None."""
+    import json
+    try:
+        return json.loads(_fichier_restauration().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        # Marque illisible : on reste prudent, maintenance.
+        return {"etat": "inconnu", "lot": None, "securite": None}
+
+
+def _marquer_restauration(etat: dict) -> None:
+    import json
+    chemin = _fichier_restauration()
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    provisoire = chemin.with_name(chemin.name + ".part")
+    provisoire.write_text(json.dumps({**etat, "date": dt.datetime.now().isoformat(timespec="seconds")},
+                                     ensure_ascii=False), encoding="utf-8")
+    provisoire.replace(chemin)
+
+
+def _lever_la_maintenance() -> None:
+    _fichier_restauration().unlink(missing_ok=True)
+
+
+def _mettre_le_schema_a_jour() -> None:
+    """Migrations jusqu'à la dernière version, puis les initialisations du
+    démarrage (droits, secteurs). Vérifie que la base est bien à la tête."""
+    from alembic.script import ScriptDirectory
+    from flask_migrate import upgrade
+    from sqlalchemy import text
+    from app.extensions import db
+    db.session.remove()
+    db.engine.dispose()
+    upgrade()
+    tete = ScriptDirectory.from_config(current_app.extensions["migrate"].migrate.get_config()).get_current_head()
+    with db.engine.connect() as connexion:
+        version = connexion.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    if version != tete:
+        raise RuntimeError(f"schéma à la révision {version}, attendue {tete}")
+    from app.rbac import bootstrap_rbac
+    from app.secteurs import bootstrap_secteurs_from_config
+    bootstrap_rbac()
+    bootstrap_secteurs_from_config()
+    db.session.remove()
+
+
+def _remplacer_base_et_fichiers(db_file: Path, uploads_file: Path) -> None:
+    db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
+    upload_cfg = current_app.config.get("APP_UPLOAD_DIR")
+    if db_uri.startswith("sqlite:///") and db_file.suffix.lower() == ".db":
+        _restaurer_sqlite(db_file, db_uri)
+    elif db_uri.startswith("postgresql") and db_file.suffix.lower() == ".sql":
+        _restaurer_postgres(db_file, db_uri)
+    else:
+        raise RuntimeError("Type de base courant incompatible avec le fichier de sauvegarde sélectionné.")
+    if upload_cfg:
+        _restaurer_uploads(uploads_file, Path(upload_cfg))
+
+
+def _fichiers_de_base(base: str, dossier: Path) -> tuple[Path | None, Path]:
+    for ext in (".sql", ".db"):
+        cand = dossier / f"{base}{ext}"
+        if cand.exists():
+            return cand, dossier / f"{base}_uploads.zip"
+    return None, dossier / f"{base}_uploads.zip"
+
+
+def _revenir_a_la_securite(base: str, securite: str | None, cause: str) -> None:
+    """Remet l'état d'avant la restauration (sauvegarde de sécurité, au
+    schéma courant). Lève TOUJOURS RuntimeError : la restauration demandée
+    n'a pas abouti. Maintenance levée seulement si le retour a réussi."""
+    if not securite:
+        _marquer_restauration({"etat": "echec", "lot": base, "securite": None, "erreur": cause})
+        raise RuntimeError(f"La restauration de « {base} » a échoué ({cause}) et aucune sauvegarde de sécurité "
+                           "n'est disponible. L'application reste en maintenance.")
+    _marquer_restauration({"etat": "retour_en_cours", "lot": base, "securite": securite, "erreur": cause})
+    try:
+        db_file, uploads_file = _fichiers_de_base(securite, dossier_sauvegardes())
+        if db_file is None:
+            raise RuntimeError("sauvegarde de sécurité introuvable")
+        _remplacer_base_et_fichiers(db_file, uploads_file)
+        _mettre_le_schema_a_jour()
+    except Exception as exc2:  # noqa: BLE001
+        current_app.logger.exception("Restauration : retour à l'état précédent impossible")
+        _marquer_restauration({"etat": "echec", "lot": base, "securite": securite,
+                               "erreur": f"{cause} ; retour : {exc2}"})
+        raise RuntimeError(
+            f"La restauration de « {base} » a échoué ({cause}), et l'état d'avant la restauration n'a pas pu "
+            f"être remis en place ({exc2}). L'application reste en maintenance : restaurez la sauvegarde de "
+            f"sécurité « {securite} » depuis Administration → Sauvegardes (seule page accessible), ou faites "
+            "appel à la DSI avec le journal de l'application.") from exc2
+    _lever_la_maintenance()
+    raise RuntimeError(
+        f"La restauration de « {base} » a échoué ({cause}). L'état d'avant la restauration a été remis en "
+        f"place depuis la sauvegarde de sécurité « {securite} » : rien n'a changé.")
+
+
+def remettre_en_service(base: str, securite: str | None) -> None:
+    """Base et fichiers du lot en place : schéma mis à jour ; sinon retour à
+    la sauvegarde de sécurité (RuntimeError, message pour l'écran)."""
+    try:
+        _mettre_le_schema_a_jour()
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.exception("Restauration : mise à jour du schéma impossible")
+        _revenir_a_la_securite(base, securite, f"base non mise à jour : {exc}")
+
+
 def restaurer_lot(base: str) -> dict:
     """Restaure une sauvegarde (base + pièces jointes).
 
@@ -610,18 +776,19 @@ def restaurer_lot(base: str) -> dict:
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"Sauvegarde de sécurité préalable impossible — restauration annulée ({exc}).")
 
-    db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
-    upload_cfg = current_app.config.get("APP_UPLOAD_DIR")
-
-    if db_uri.startswith("sqlite:///") and db_file.suffix.lower() == ".db":
-        _restaurer_sqlite(db_file, db_uri)
-    elif db_uri.startswith("postgresql") and db_file.suffix.lower() == ".sql":
-        _restaurer_postgres(db_file, db_uri)
-    else:
-        raise RuntimeError("Type de base courant incompatible avec le fichier de sauvegarde sélectionné.")
-
-    if upload_cfg:
-        _restaurer_uploads(uploads_file, Path(upload_cfg))
+    # Maintenance pendant toute la remise en service (marque sur disque).
+    _marquer_restauration({"etat": "en_cours", "lot": base, "securite": securite.get("base")})
+    try:
+        _remplacer_base_et_fichiers(db_file, uploads_file)
+    except Exception as exc:  # noqa: BLE001
+        # Remplacement interrompu (base ou pièces jointes) : état incertain,
+        # retour complet à la sauvegarde de sécurité.
+        current_app.logger.exception("Restauration : remplacement interrompu")
+        _revenir_a_la_securite(base, securite.get("base"), str(exc))
+    # Une sauvegarde plus ancienne que l'application revient à son schéma :
+    # migrations AVANT tout traitement qui utilise les tables récentes.
+    remettre_en_service(base, securite.get("base"))
+    _lever_la_maintenance()
 
     # Une sauvegarde antérieure à une anonymisation ou à une suppression ne
     # fait pas revenir la personne en silence (mineur RGPD de l'audit).

@@ -3338,6 +3338,13 @@ class RapprochementBulletin(db.Model):
     encaissement_id = db.Column(db.Integer, db.ForeignKey("encaissement.id", ondelete="SET NULL"), nullable=True)
     decide_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     decide_le = db.Column(db.DateTime, nullable=True)
+    #: Contrôle a posteriori (consolidation après la PR #60) : doublon_a_annuler
+    #: (somme « à qualifier » historique jamais annulée alors qu'une somme
+    #: distincte a été constatée), a_verifier (somme historique déjà qualifiée
+    #: alors qu'un report existe : impossible à départager seul), corrige,
+    #: verifie. Vide : rien à signaler.
+    controle = db.Column(db.String(30), nullable=True, index=True)
+    controle_note = db.Column(db.String(255), nullable=True)
 
     inscription_annuelle = db.relationship("InscriptionAnnuelle")
     encaissement = db.relationship("Encaissement", foreign_keys=[encaissement_id])

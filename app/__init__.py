@@ -332,6 +332,34 @@ def create_app():
     from app.services.modules import endpoint_module, module_enabled, can_manage_modules
 
     @app.before_request
+    def _maintenance_restauration():
+        # Restauration non terminée (en cours, interrompue ou en échec) : personne
+        # ne travaille sur une base à moitié remise en service. Seules la
+        # connexion et l'administration des sauvegardes restent ouvertes, pour
+        # terminer ou annuler (droits habituels : admin:rbac).
+        from app.services.sauvegarde import restauration_inachevee
+        etat = restauration_inachevee()
+        if etat is None:
+            return None
+        ouverts = {"static", "healthz", "auth.login", "auth.logout", "admin.sauvegardes",
+                   "admin.sauvegarde_restaurer", "admin.sauvegarde_verifier"}
+        if (request.endpoint or "") in ouverts:
+            return None
+        from markupsafe import escape
+        securite = escape(etat.get("securite") or "—")
+        page = (
+            "<!doctype html><html lang='fr'><meta charset='utf-8'><title>Maintenance</title>"
+            "<body style='font-family:sans-serif;max-width:720px;margin:40px auto;line-height:1.5'>"
+            "<h1>Maintenance en cours</h1>"
+            "<p>Une restauration de sauvegarde est en cours ou n'a pas pu se terminer. L'application est "
+            "indisponible pour éviter tout travail sur une base incomplète.</p>"
+            "<p><strong>Administrateur :</strong> ouvrez <a href='/admin/sauvegardes'>Administration → "
+            "Sauvegardes</a>. Si la restauration a échoué, restaurez la sauvegarde de sécurité "
+            f"<code>{securite}</code> (état d'avant la restauration), ou relancez la restauration voulue.</p>"
+            "</body></html>")
+        return page, 503, {"Retry-After": "120"}
+
+    @app.before_request
     def _enforce_module_scope():
         from flask import abort
         import posixpath

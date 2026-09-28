@@ -570,11 +570,14 @@ def controle_registres():
     erreurs = []
     try:
         numeros = financial_sequence.lire_registre()
+    except financial_sequence.RegistreBloque:
+        numeros = None
     except RegistreErreur as exc:
         numeros = None
         erreurs.append(f"Numéros émis : {exc} ({exc.detail})")
+    blocage = financial_sequence.blocage()
     compteurs = {ligne.namespace: ligne.value for ligne in FinancialSequence.query.all()}
-    espaces = sorted(set(numeros or {}) | set(compteurs))
+    espaces = sorted(set(numeros or {}) | set(compteurs) | set((blocage or {}).get("bornes") or {}))
     try:
         effacements = registre_effacements.etat()
     except RegistreErreur as exc:
@@ -583,6 +586,7 @@ def controle_registres():
     return render_template(
         "controle_registres.html",
         tenu=financial_sequence._registre() is not None,
+        blocage=blocage,
         numeros=numeros, compteurs=compteurs, espaces=espaces,
         effacements=effacements,
         a_verifier=registre_effacements.a_verifier(),
@@ -685,4 +689,55 @@ def controle_registres_dernier_numero():
         return redirect(url_for("main.controle_registres"))
     journaliser("registres.dernier_numero", cible=espace, details={"numero": numero})
     flash(f"Série {espace} : la numérotation reprendra au-delà du n° {numero}.", "success")
+    return redirect(url_for("main.controle_registres"))
+
+
+@bp.post("/controle/registres/retablir")
+@login_required
+@require_perm("admin:rbac")
+def controle_registres_retablir():
+    """Lève la suspension des émissions : dernier numéro de chaque série,
+    relevé sur les documents papier, jamais sous une borne connue."""
+    from app.services.audit import journaliser
+    from app.services.financial_sequence import blocage, retablir
+
+    declares = {}
+    for cle, valeur in request.form.items():
+        if cle.startswith("max_") and (valeur or "").strip():
+            try:
+                declares[cle[4:]] = int(valeur)
+            except ValueError:
+                flash(f"{cle[4:]} : un nombre entier est attendu.", "danger")
+                return redirect(url_for("main.controle_registres"))
+    serie, annee, numero = (request.form.get(k, "").strip() for k in ("autre_serie", "autre_annee", "autre_numero"))
+    if serie and annee and numero:
+        try:
+            declares[f"{serie}:{int(annee)}"] = int(numero)
+        except ValueError:
+            flash("Série supplémentaire : année et numéro entiers attendus.", "danger")
+            return redirect(url_for("main.controle_registres"))
+    avant = blocage()
+    try:
+        retenus = retablir(declares)
+    except ValueError as exc:
+        flash(f"Rétablissement refusé : {exc}", "danger")
+        return redirect(url_for("main.controle_registres"))
+    journaliser("registres.numeros_retablis", details={"declares": declares, "retenus": retenus,
+                                                       "blocage": avant})
+    flash("Registre des numéros rétabli : l'émission reprend au-delà des numéros déclarés.", "success")
+    return redirect(url_for("main.controle_registres"))
+
+
+@bp.post("/controle/registres/effacements/incident")
+@login_required
+@require_perm("admin:rbac")
+def controle_registres_incident_effacements():
+    from app.services.registre_effacements import clore_incident
+
+    note = (request.form.get("note") or "").strip()
+    if len(note) < 3:
+        flash("Indiquez ce qui a été vérifié.", "danger")
+        return redirect(url_for("main.controle_registres"))
+    clore_incident(note)
+    flash("Incident du registre des effacements clos (vérification journalisée).", "success")
     return redirect(url_for("main.controle_registres"))

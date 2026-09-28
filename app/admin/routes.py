@@ -678,6 +678,13 @@ def sauvegardes():
     except (TypeError, ValueError):
         seuil = 2
     from app.services.sauvegarde import lire_etat_sauvegarde, reglage_hors_serveur
+    from app.services.sauvegarde import restauration_inachevee
+    etat_restauration = restauration_inachevee()
+    if etat_restauration:
+        flash(f"Maintenance : la restauration « {etat_restauration.get('lot') or '?'} » n'est pas terminée "
+              f"({etat_restauration.get('etat')}). Restaurez la sauvegarde de sécurité "
+              f"« {etat_restauration.get('securite') or '—'} » pour revenir à l'état d'avant, ou relancez la "
+              "restauration voulue.", "danger")
     return render_template(
         "admin_sauvegardes.html",
         lots=lister_lots(),
