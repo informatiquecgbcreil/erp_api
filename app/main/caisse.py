@@ -294,6 +294,12 @@ def caisse_rapprochement_bulletins():
                 ligne = encaissement
                 message = (f"{encaissement.montant:.2f} € ajoutés aux sommes « à qualifier » : "
                            "précisez-y le ou les modes et la prise en compte en caisse.")
+            elif action == "corriger":
+                rr.corriger_doublon(ligne_id, user_id=user_id, note=request.form.get("note"))
+                message = "Somme historique en doublon annulée (contre-passation motivée)."
+            elif action == "verifier":
+                rr.marquer_verifie(ligne_id, user_id=user_id, note=request.form.get("note"))
+                message = "Vérification enregistrée : rien n'a été modifié en caisse."
             elif action == "comparer":
                 base = (request.form.get("base") or "").strip()
                 compte = rr.comparer_avec_sauvegarde(base)
@@ -317,6 +323,8 @@ def caisse_rapprochement_bulletins():
     return render_template(
         "caisse_rapprochement_bulletins.html",
         a_rapprocher=rr.a_rapprocher(), reportes=rr.reportes_deduits(), decides=rr.decides(),
+        a_corriger=rr.a_corriger(), exige_verification=rr.exige_verification,
+        manquant_maximal=rr.manquant_maximal,
         resume=rr.resume(), lots=lister_lots(), peut_editer=can("caisse:edit"),
     )
 

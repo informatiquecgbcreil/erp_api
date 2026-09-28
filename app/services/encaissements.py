@@ -268,6 +268,13 @@ def qualifier(encaissement: Encaissement, parts: list[tuple[str, float]], *, dan
         raise EncaissementErreur("Cet encaissement n'est pas à qualifier.")
     if encaissement.est_contre_passe:
         raise EncaissementErreur("Cet encaissement a été contre-passé : rien à qualifier.")
+    from app.services.rapprochement_reglements import ancien_en_attente
+    if ancien_en_attente(encaissement.id) is not None:
+        # Somme historique d'un bulletin dont une partie est déjà reportée :
+        # la qualifier maintenant la compterait en double (défaut 60 €).
+        raise EncaissementErreur(
+            "Rapprochez d'abord ce bulletin (Caisse → Rapprochement des bulletins) : une partie de cette somme "
+            "a peut-être déjà été reportée en règlements.")
     propres = []
     for mode, montant in parts:
         valeur = parse_montant(montant)

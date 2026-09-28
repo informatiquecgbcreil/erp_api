@@ -87,33 +87,103 @@ def _reclamer(ligne_id: int, decision: str, *, user_id, montant=None, note=None)
     return ligne
 
 
+def _note_obligatoire(note) -> str:
+    note = (note or "").strip()
+    if len(note) < 3:
+        raise EncaissementErreur("Indiquez sur quoi repose cette décision (elle est conservée au journal).")
+    return note[:255]
+
+
+def somme_historique(ligne: RapprochementBulletin) -> Encaissement | None:
+    """La somme « à qualifier » reprise par la PR #59 pour ce bulletin, si elle
+    n'a pas été annulée (lecture verrouillée : l'état ne change plus d'ici le
+    commit)."""
+    if not ligne.encaissement_ancien_id:
+        return None
+    verrouiller("encaissement", ligne.encaissement_ancien_id)
+    ancien = db.session.get(Encaissement, ligne.encaissement_ancien_id)
+    if ancien is None:
+        return None
+    db.session.refresh(ancien)
+    return None if ancien.est_contre_passe else ancien
+
+
+def exige_verification(ligne: RapprochementBulletin) -> bool:
+    """Somme historique déjà QUALIFIÉE (donc comptée) alors qu'un report
+    existe : aucune décision automatique ne peut garantir le bon total."""
+    ancien = db.session.get(Encaissement, ligne.encaissement_ancien_id) if ligne.encaissement_ancien_id else None
+    return bool(ancien is not None and not ancien.est_contre_passe and not ancien.a_qualifier
+                and float(ligne.montant_prouve or 0) > 0.009)
+
+
+def _refuser_si_indecidable(ligne: RapprochementBulletin) -> None:
+    if exige_verification(ligne):
+        raise EncaissementErreur(
+            "La somme historique de ce bulletin a déjà été qualifiée (comptée) alors qu'un report existe aussi : "
+            "cette situation demande une vérification manuelle. Contrôlez la caisse, corrigez si besoin par "
+            "une contre-passation, puis indiquez « Vérifié ».")
+
+
+def _annuler_somme_historique(ligne: RapprochementBulletin, motif: str, *, user_id) -> Encaissement | None:
+    """Contre-passe (jamais n'efface) la somme historique encore à qualifier."""
+    ancien = somme_historique(ligne)
+    if ancien is None or not ancien.a_qualifier:
+        return None
+    return contre_passer(ancien, motif[:255], user_id=user_id)
+
+
+def manquant_maximal(ligne: RapprochementBulletin) -> float:
+    """Ce qui peut encore manquer : la somme notée moins ce qui est prouvé
+    reporté (jamais plus : le total du bulletin resterait faux)."""
+    return round(max(0.0, float(ligne.montant_origine) - float(ligne.montant_prouve or 0)), 2)
+
+
 def confirmer_report(ligne_id: int, *, user_id=None, note: str | None = None) -> RapprochementBulletin:
     """Rien n'est ajouté. Une somme « à qualifier » en double emploi est
     contre-passée (non commité)."""
-    note = (note or "").strip()
-    if len(note) < 3:
-        raise EncaissementErreur("Indiquez sur quoi repose cette confirmation (elle est conservée au journal).")
-    ligne = _reclamer(ligne_id, "report_confirme", user_id=user_id, note=note[:255])
-    ancien = db.session.get(Encaissement, ligne.encaissement_ancien_id) if ligne.encaissement_ancien_id else None
-    if ancien is not None and ancien.a_qualifier and not ancien.est_contre_passe:
-        contre_passer(ancien, f"Rapprochement n° {ligne.id} : déjà reporté en versements ({note})"[:255],
-                      user_id=user_id)
+    note = _note_obligatoire(note)
+    ligne = db.session.get(RapprochementBulletin, ligne_id)
+    if ligne is None:
+        raise EncaissementErreur("Ligne de rapprochement introuvable.")
+    _refuser_si_indecidable(ligne)
+    ligne = _reclamer(ligne_id, "report_confirme", user_id=user_id, note=note)
+    _refuser_si_indecidable(ligne)       # état relu sous verrou
+    _annuler_somme_historique(ligne, f"Rapprochement n° {ligne.id} : déjà reporté en versements ({note})",
+                              user_id=user_id)
     return ligne
 
 
 def constater_encaissement(ligne_id: int, montant, *, user_id=None, note: str | None = None) -> Encaissement:
-    """Ajoute la somme non reportée comme encaissement « à qualifier », hors
-    caisse (non commité). Jamais deux fois pour la même ligne."""
+    """Constate la part manquante (non commité), en un seul geste :
+
+    - elle est bornée à la somme notée moins ce qui est prouvé reporté ;
+    - la somme « à qualifier » historique, qui couvrait TOUT le bulletin
+      (report compris), est annulée par contre-passation motivée ;
+    - la part manquante devient un encaissement « à qualifier », hors caisse.
+
+    Total une fois tout qualifié : report prouvé + manquant = somme notée.
+    Jamais deux fois pour la même ligne (verrou + mise à jour conditionnelle
+    + clé unique)."""
     ligne = db.session.get(RapprochementBulletin, ligne_id)
     if ligne is None:
         raise EncaissementErreur("Ligne de rapprochement introuvable.")
-    valeur = parse_montant(montant)
-    if valeur is None or valeur <= 0 or valeur > float(ligne.montant_origine) + 0.009:
+    _refuser_si_indecidable(ligne)
+    maximum = manquant_maximal(ligne)
+    if maximum <= 0.009:
         raise EncaissementErreur(
-            f"Le montant constaté doit être supérieur à 0 € et au plus {ligne.montant_origine:.2f} € "
-            "(la somme notée sur le bulletin).")
+            f"Les {ligne.montant_origine:.2f} € notés sur le bulletin sont déjà reportés en versements : rien ne "
+            "manque. Choisissez « Déjà reporté ».")
+    valeur = parse_montant(montant)
+    if valeur is None or valeur <= 0 or valeur > maximum + 0.009:
+        raise EncaissementErreur(
+            f"Le montant constaté doit être supérieur à 0 € et au plus {maximum:.2f} € "
+            f"(somme notée {ligne.montant_origine:.2f} € moins {float(ligne.montant_prouve or 0):.2f} € déjà reportés).")
     valeur = round(valeur, 2)
     ligne = _reclamer(ligne_id, "encaissement_constate", user_id=user_id, montant=valeur, note=(note or "")[:255])
+    _refuser_si_indecidable(ligne)       # état relu sous verrou
+    _annuler_somme_historique(
+        ligne, f"Rapprochement n° {ligne.id} : remplacée par {float(ligne.montant_prouve or 0):.2f} € déjà reportés "
+               f"+ {valeur:.2f} € constatés (somme notée {ligne.montant_origine:.2f} €)", user_id=user_id)
     encaissement = Encaissement(
         montant=valeur, mode="inconnu",
         date_encaissement=ligne.date_origine or date(ligne.annee_scolaire, 9, 1),
@@ -134,6 +204,65 @@ def constater_encaissement(ligne_id: int, montant, *, user_id=None, note: str | 
         raise DejaEnregistre("Ce bulletin a déjà été rapproché.") from exc
     ligne.encaissement_id = encaissement.id
     return encaissement
+
+
+def _marquer_controle(ligne_id: int, depuis: tuple[str, ...], vers: str, note: str) -> RapprochementBulletin:
+    verrouiller("rapprochement", ligne_id)
+    table = RapprochementBulletin.__table__
+    resultat = db.session.execute(table.update().where(table.c.id == ligne_id, table.c.controle.in_(depuis))
+                                  .values(controle=vers, controle_note=note))
+    if resultat.rowcount != 1:
+        raise DejaEnregistre("Ce rapprochement a déjà été corrigé ou vérifié.")
+    ligne = db.session.get(RapprochementBulletin, ligne_id)
+    db.session.refresh(ligne)
+    return ligne
+
+
+def corriger_doublon(ligne_id: int, *, user_id=None, note: str | None = None) -> RapprochementBulletin:
+    """Installations ayant déjà décidé avec la PR #60 : annule (contre-passe)
+    la somme historique restée à qualifier à côté de la somme constatée.
+    Refusé si elle a été qualifiée entre-temps (vérification humaine)."""
+    note = _note_obligatoire(note)
+    ligne = _marquer_controle(ligne_id, ("doublon_a_annuler",), "corrige", note)
+    ancien = somme_historique(ligne)
+    if ancien is not None and not ancien.a_qualifier:
+        raise EncaissementErreur(
+            "La somme historique a été qualifiée entre-temps : correction automatique impossible, vérifiez "
+            "la caisse puis indiquez « Vérifié ».")
+    _annuler_somme_historique(
+        ligne, f"Rapprochement n° {ligne.id} : doublon de {float(ligne.montant_prouve or 0):.2f} € reportés + "
+               f"{float(ligne.decision_montant or 0):.2f} € constatés ({note})", user_id=user_id)
+    return ligne
+
+
+def marquer_verifie(ligne_id: int, *, user_id=None, note: str | None = None) -> RapprochementBulletin:
+    """Situation indécidable, vérifiée par une personne (qui a corrigé à la
+    main si besoin). Rien n'est écrit en caisse ; la note est conservée."""
+    note = _note_obligatoire(note)
+    ligne = db.session.get(RapprochementBulletin, ligne_id)
+    if ligne is None:
+        raise EncaissementErreur("Ligne de rapprochement introuvable.")
+    if ligne.decision is None:
+        if not exige_verification(ligne):
+            raise EncaissementErreur("Ce bulletin se rapproche normalement : « Déjà reporté » ou « Somme distincte ».")
+        return _reclamer(ligne_id, "verifie_manuellement", user_id=user_id, note=note)
+    return _marquer_controle(ligne_id, ("a_verifier", "doublon_a_annuler"), "verifie", note)
+
+
+def a_corriger() -> list[RapprochementBulletin]:
+    return (RapprochementBulletin.query.filter(RapprochementBulletin.controle.in_(("doublon_a_annuler", "a_verifier")))
+            .order_by(RapprochementBulletin.id.asc()).all())
+
+
+def ancien_en_attente(encaissement_id: int) -> RapprochementBulletin | None:
+    """Rapprochement non terminé qui porte sur cette somme historique : elle
+    ne doit pas être qualifiée avant (sinon double emploi)."""
+    return (RapprochementBulletin.query
+            .filter(RapprochementBulletin.encaissement_ancien_id == encaissement_id,
+                    db.or_(db.and_(RapprochementBulletin.classement == "a_rapprocher",
+                                   RapprochementBulletin.decision.is_(None)),
+                           RapprochementBulletin.controle == "doublon_a_annuler"))
+            .first())
 
 
 # ---------------------------------------------------------------------------

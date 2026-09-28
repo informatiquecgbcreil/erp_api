@@ -201,10 +201,12 @@ def test_a_report_partiel(app, admin_client):
         ligne = _ligne(b.id)
         assert (ligne.classement, ligne.montant_prouve, ligne.montant_ecart) == ("a_rapprocher", 20.0, 10.0)
         lid = ligne.id
-    # Plus que la somme notée : refusé.
-    r = admin_client.post("/caisse/rapprochement-bulletins", data={
-        "action": "constater", "ligne_id": lid, "montant": "31", "note": "x"}, follow_redirects=True)
-    assert "au plus 30.00" in r.get_data(as_text=True)
+    # Plus que la part non reportée (30 notés - 20 reportés) : refusé
+    # (depuis la consolidation après la PR #60 ; avant : borné à 30 €).
+    for trop in ("31", "11"):
+        r = admin_client.post("/caisse/rapprochement-bulletins", data={
+            "action": "constater", "ligne_id": lid, "montant": trop, "note": "x"}, follow_redirects=True)
+        assert "au plus 10.00" in r.get_data(as_text=True)
     admin_client.post("/caisse/rapprochement-bulletins", data={
         "action": "constater", "ligne_id": lid, "montant": "10", "note": "reste reçu en espèces"})
     with app.app_context():

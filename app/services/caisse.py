@@ -144,8 +144,9 @@ def etat_caisse() -> dict:
 def _nb_a_rapprocher() -> int:
     from app.models import RapprochementBulletin
     try:
-        return RapprochementBulletin.query.filter(RapprochementBulletin.classement == "a_rapprocher",
-                                                  RapprochementBulletin.decision.is_(None)).count()
+        return RapprochementBulletin.query.filter(db.or_(
+            db.and_(RapprochementBulletin.classement == "a_rapprocher", RapprochementBulletin.decision.is_(None)),
+            RapprochementBulletin.controle.in_(("doublon_a_annuler", "a_verifier")))).count()
     except Exception:  # noqa: BLE001 — table pas encore migrée
         db.session.rollback()
         return 0
