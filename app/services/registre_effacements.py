@@ -159,25 +159,86 @@ def _valider(donnees: dict | None) -> dict:
     return donnees
 
 
-def _lire_fichier(fichier: Path) -> dict:
-    """Sous verrou. Endommagé : mis de côté et reconstitué depuis la copie
-    précédente et la base (qui contient tout effacement validé depuis la
-    dernière restauration)."""
+NOM_INCIDENT = "registre-effacements.incident.json"
+
+
+def _reconstituer(fichier: Path, raison: str, detail: str, mis_de_cote: Path | None) -> dict:
+    """Reconstruction depuis la copie précédente et la base. Ce n'est PAS une
+    garantie complète (une entrée présente seulement dans le fichier perdu
+    manquerait) : un incident persistant est ouvert, affiché dans Contrôle →
+    Registres jusqu'à ce qu'une personne habilitée l'ait vérifié."""
+    from app.models import EffacementRgpd
+    from app.utils.dates import utcnow as _maintenant
     try:
-        return _valider(fichier_registre.lire(fichier))
-    except RegistreEndommage as exc:
-        try:
-            copie = _valider(fichier_registre.lire(fichier.with_name(fichier.name + ".prec")))
-        except RegistreEndommage:
-            copie = _valider(None)
-        mis_de_cote = fichier_registre.mettre_de_cote(fichier)
-        from app.models import EffacementRgpd
-        for ligne in EffacementRgpd.query.all():
+        copie = _valider(fichier_registre.lire(fichier.with_name(fichier.name + ".prec")))
+    except RegistreEndommage:
+        copie = _valider(None)
+    # Connexion propre : appelé aussi après une validation (after_commit), où
+    # la session ne peut plus émettre de requête.
+    table = EffacementRgpd.__table__
+    with db.engine.connect() as connexion:
+        for ligne in connexion.execute(table.select()):
             copie["entrees"][ligne.cle] = _gagnante(copie["entrees"].get(ligne.cle), _entree(ligne))
-        fichier_registre.ecrire(fichier, copie)
-        journal.error("Registre des effacements endommagé (%s) : mis de côté sous %s, reconstitué depuis la "
-                      "copie précédente et la base.", exc.detail, mis_de_cote.name if mis_de_cote else "?")
-        return copie
+    fichier_registre.ecrire(fichier, copie)
+    fichier_registre.ecrire(fichier.with_name(NOM_INCIDENT), {
+        "raison": raison, "detail": detail, "depuis": _maintenant().isoformat(timespec="seconds"),
+        "mis_de_cote": mis_de_cote.name if mis_de_cote else None, "entrees_reconstituees": len(copie["entrees"])})
+    journal.error("Registre des effacements %s (%s) : reconstitué depuis la copie précédente et la base ; "
+                  "incident ouvert (Contrôle → Registres).", raison, detail)
+    return copie
+
+
+def _lire_fichier(fichier: Path) -> dict:
+    """Sous verrou. Endommagé, ou disparu alors que des effacements avaient
+    déjà été recopiés : fichier conservé, reconstitution depuis la copie
+    précédente et la base, incident ouvert jusqu'à vérification."""
+    try:
+        donnees = fichier_registre.lire(fichier)
+    except RegistreEndommage as exc:
+        mis_de_cote = fichier_registre.mettre_de_cote(fichier)
+        return _reconstituer(fichier, "endommagé", exc.detail, mis_de_cote)
+    if donnees is None:
+        from app.models import EffacementRgpd
+        table = EffacementRgpd.__table__
+        try:
+            with db.engine.connect() as connexion:
+                deja_recopies = connexion.execute(
+                    table.select().where(table.c.exporte_le.isnot(None)).limit(1)).first() is not None
+        except Exception:  # noqa: BLE001 — table absente
+            deja_recopies = False
+        if deja_recopies or fichier.with_name(fichier.name + ".prec").exists():
+            return _reconstituer(fichier, "disparu", "fichier absent alors que des effacements y avaient été recopiés",
+                                 None)
+    try:
+        return _valider(donnees)
+    except RegistreEndommage as exc:
+        mis_de_cote = fichier_registre.mettre_de_cote(fichier)
+        return _reconstituer(fichier, "endommagé", exc.detail, mis_de_cote)
+
+
+def incident() -> dict | None:
+    fichier = chemin()
+    if fichier is None:
+        return None
+    try:
+        return fichier_registre.lire(fichier.with_name(NOM_INCIDENT))
+    except RegistreEndommage:
+        return {"raison": "inconnu", "detail": "marque d'incident illisible"}
+
+
+def clore_incident(note: str) -> dict | None:
+    """Une personne habilitée a vérifié la reconstruction (demandes
+    d'effacement, journal) : l'incident est clos, la note journalisée."""
+    fichier = chemin()
+    if fichier is None:
+        return None
+    with fichier_registre.verrou(fichier):
+        ouvert = incident()
+        fichier.with_name(NOM_INCIDENT).unlink(missing_ok=True)
+    from app.services.audit import enregistrer
+    enregistrer("registres.effacements_incident_clos", details={"incident": ouvert, "note": (note or "")[:255]})
+    db.session.commit()
+    return ouvert
 
 
 def fusionner_dans_fichier(entrees: dict[str, dict]) -> int:
@@ -521,4 +582,5 @@ def etat() -> dict:
         "tenu": chemin() is not None,
         "en_attente": nombre_en_attente(),
         "a_verifier": len(a_verifier()),
+        "incident": incident(),
     }

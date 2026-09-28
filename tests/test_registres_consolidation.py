@@ -26,11 +26,24 @@ from app.utils.dates import utcnow
 RACINE = Path(__file__).resolve().parents[1]
 
 
+def oublier_registre_tenu(app):
+    """La base de test est partagée : effacer la trace « registre des numéros
+    tenu » laissée par d'autres tests, pour que ce dossier vierge soit une
+    première installation (et non un registre disparu, qui bloque)."""
+    from app.extensions import db
+    from app.models import TachePlanifiee
+    from app.services.financial_sequence import TACHE_TENU
+    with app.app_context():
+        TachePlanifiee.query.filter_by(nom=TACHE_TENU).delete()
+        db.session.commit()
+
+
 @pytest.fixture()
-def donnees(tmp_path, monkeypatch):
-    """Dossier de données propre au test (registres vides)."""
+def donnees(app, tmp_path, monkeypatch):
+    """Dossier de données propre au test (registres vides, première installation)."""
     monkeypatch.setenv("APP_DATA_DIR", str(tmp_path))
     (tmp_path / "runtime").mkdir()
+    oublier_registre_tenu(app)
     return tmp_path / "runtime"
 
 
@@ -180,11 +193,13 @@ def test_c_ancien_format_repris_tel_quel(app, donnees):
     assert registre == {espace: 42, "facture:2025": 9}
 
 
-def test_c_fichier_endommage_mis_de_cote_et_reconstitue(app, donnees):
-    """Illisible ≠ vide : le fichier est conservé à part, les maxima sont
-    reconstitués depuis la copie précédente et les compteurs de la base."""
+def test_c_fichier_endommage_mis_de_cote_et_emission_suspendue(app, donnees):
+    """Illisible ≠ vide : le fichier est conservé à part. Depuis la
+    consolidation après la PR #60, la copie précédente et les compteurs de la
+    base ne servent plus qu'à donner des bornes basses : l'émission est
+    suspendue jusqu'au rétablissement (voir test_registre_numeros_blocage)."""
     from app.extensions import db
-    from app.services.financial_sequence import lire_registre, next_number, noter_maxima
+    from app.services.financial_sequence import RegistreBloque, blocage, lire_registre, next_number, noter_maxima
     from app.services.registre_externe import registres_mis_de_cote
     espace = _espace()
     noter_maxima({"hors-base:2026": 70})
@@ -193,10 +208,11 @@ def test_c_fichier_endommage_mis_de_cote_et_reconstitue(app, donnees):
         assert next_number(espace, []) == 1
         db.session.commit()
         (donnees / "numeros-emis.json").write_text('{"hors-base:2026": 80, "tron', encoding="utf-8")
-        registre = lire_registre()
-    assert registre["hors-base:2026"] >= 70 and registre[espace] == 1
+        with pytest.raises(RegistreBloque):
+            lire_registre()
+        bornes = blocage()["bornes"]
+    assert bornes["hors-base:2026"] == 80 and bornes[espace] == 1   # copie précédente (80) et base (1)
     assert len(registres_mis_de_cote()) == 1
-    assert json.loads((donnees / "numeros-emis.json").read_text(encoding="utf-8")) == registre
 
 
 def test_c_fichier_inaccessible_refuse_l_emission(app, donnees, monkeypatch):
@@ -762,8 +778,18 @@ def test_restaurer_sur_une_machine_neuve_rapporte_les_registres(app, donnees, lo
     neuve = tmp_path / "machine-neuve"
     (neuve / "runtime").mkdir(parents=True)
     monkeypatch.setenv("APP_DATA_DIR", str(neuve))              # registres vides
+    from app.services.financial_sequence import RegistreBloque, blocage, retablir
     with app.app_context():
         svc.restaurer_lot(lot)
+        # La base restaurée sait qu'un registre était tenu : sur cette machine
+        # il manque, des numéros ont pu être émis après le lot → émission
+        # suspendue, bornes connues = celles du lot (consolidation après #60).
+        with pytest.raises(RegistreBloque):
+            next_number(espace, [])
+        db.session.rollback()
+        bornes = blocage()["bornes"]
+        assert bornes[espace] == 5
+        retablir(dict(bornes))                                  # papier : rien de plus
         assert lire_registre()[espace] == 5
         assert next_number(espace, []) == 6
         db.session.commit()
@@ -812,11 +838,16 @@ def test_transfert_export_import_et_dernier_numero_declare(app, admin_client, do
     assert "altérée" in r.get_data(as_text=True)
     admin_client.post("/controle/registres/import", data={"fichier": (io.BytesIO(contenu), "registres.json")},
                       content_type="multipart/form-data")
+    from app.services.financial_sequence import blocage
     with app.app_context():
-        assert lire_registre()[espace] >= 7
-    # Sinistre : le papier dit que le n° 12 a été émis.
+        # La base sait qu'un registre était tenu ; cette installation ne l'a
+        # pas : émission suspendue, l'import relève les bornes connues.
+        bornes = blocage()["bornes"]
+        assert bornes[espace] >= 7
+    # Le papier dit que le n° 12 a été émis : rétablissement explicite.
     serie, annee = espace.split(":")
-    admin_client.post("/controle/registres/dernier-numero", data={"serie": serie, "annee": annee, "numero": "12"})
+    admin_client.post("/controle/registres/retablir",
+                      data={**{f"max_{k}": str(v) for k, v in bornes.items()}, f"max_{espace}": "12"})
     admin_client.post("/controle/registres/dernier-numero", data={"serie": serie, "annee": annee, "numero": "3"})
     with app.app_context():
         assert lire_registre()[espace] == 12

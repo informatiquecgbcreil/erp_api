@@ -50,14 +50,19 @@ def _empreinte(corps: dict) -> str:
 def instantane() -> dict:
     """Registres complets à cet instant : fichiers hors base ET base."""
     from app.models import EffacementRgpd
-    numeros = financial_sequence.fusionner(financial_sequence.lire_registre(),
-                                           financial_sequence._compteurs_base())
+    # Pendant un blocage (registre des numéros endommagé), seules des bornes
+    # basses sont connues : la copie le dit, elle ne les présente pas comme
+    # le dernier numéro émis.
+    maxima, incomplets = financial_sequence.maxima_connus()
+    numeros = financial_sequence.fusionner(maxima, financial_sequence._compteurs_base())
     effacements = registre_effacements.lire_fichier()
     for ligne in EffacementRgpd.query.all():
         effacements[ligne.cle] = registre_effacements._gagnante(effacements.get(ligne.cle),
                                                                registre_effacements._entree(ligne))
     corps = {"format": FORMAT, "cree_le": utcnow().isoformat(timespec="seconds"),
              "numeros": numeros, "effacements": effacements}
+    if incomplets:
+        corps["numeros_incomplets"] = True
     return {**corps, "empreinte": _empreinte(corps)}
 
 
@@ -88,7 +93,7 @@ def fusionner(donnees: dict) -> dict:
     from app.models import FinancialSequence
     donnees = valider(donnees)
     numeros = {k: int(v) for k, v in donnees["numeros"].items() if isinstance(v, int) and v >= 0}
-    financial_sequence.noter_maxima(numeros)
+    financial_sequence.noter_maxima(numeros, pendant_blocage=True)
     for espace, valeur in numeros.items():
         ligne = FinancialSequence.query.filter_by(namespace=espace).first()
         if ligne is None:

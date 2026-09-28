@@ -21,6 +21,34 @@
     {% endif %}
   </div>
 
+  {% if blocage %}
+  <div class="card" style="border:2px solid #c0392b;">
+    <h2>Émission suspendue</h2>
+    <p>Le registre des numéros déjà émis est <strong>{{ blocage.raison }}</strong> (depuis le {{ blocage.depuis }}).
+      Le dernier numéro de chaque série ne peut pas être établi avec certitude : aucun reçu, facture ni avoir
+      n'est émis tant que ce n'est pas rétabli (même après un redémarrage).
+      {% if blocage.fichiers_mis_de_cote %}Fichier(s) conservé(s) pour diagnostic : {{ blocage.fichiers_mis_de_cote|join(", ") }}.{% endif %}</p>
+    <p><strong>Que faire :</strong> relevez sur les derniers reçus, factures et avoirs émis (papier, PDF envoyés) le plus
+      grand numéro de chaque série, puis saisissez-le. Les valeurs « au moins » viennent de la copie précédente et de la
+      base : le vrai dernier numéro peut être plus grand, jamais plus petit.</p>
+    <form method="post" action="{{ url_for('main.controle_registres_retablir') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <table class="table">
+        <thead><tr><th>Série</th><th>Au moins</th><th>Dernier numéro émis (relevé)</th></tr></thead>
+        <tbody>{% for espace, borne in (blocage.bornes or {})|dictsort %}
+          <tr><td>{{ espace }}</td><td>{{ borne }}</td>
+              <td><input name="max_{{ espace }}" inputmode="numeric" size="8" required></td></tr>{% endfor %}
+        </tbody>
+      </table>
+      <p>Autre série émise absente de la liste :
+        <select name="autre_serie"><option value="">—</option><option value="don">Reçus de dons</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>
+        <input name="autre_annee" inputmode="numeric" size="5" placeholder="Année">
+        <input name="autre_numero" inputmode="numeric" size="6" placeholder="Dernier n°"></p>
+      <button class="btn btn-primary">Rétablir et reprendre l'émission</button>
+    </form>
+  </div>
+  {% endif %}
+
   <div class="card">
     <h2>Numéros émis</h2>
     <table class="table">
@@ -63,6 +91,23 @@
       <button class="btn">Déclarer</button>
     </form>
   </div>
+
+  {% if effacements and effacements.incident %}
+  <div class="card" style="border:2px solid #d68910;">
+    <h2>Registre des effacements reconstitué</h2>
+    <p>Le registre des effacements était <strong>{{ effacements.incident.raison }}</strong>. Il a été reconstitué depuis
+      sa copie précédente et la base ({{ effacements.incident.entrees_reconstituees }} entrée(s)) : un effacement qui
+      n'existait que dans le fichier perdu pourrait manquer.
+      {% if effacements.incident.mis_de_cote %}Fichier endommagé conservé : {{ effacements.incident.mis_de_cote }}.{% endif %}</p>
+    <p>Vérifiez les demandes d'effacement récentes (registre RGPD de la structure, journal) et refaites si besoin
+      les anonymisations manquantes, puis indiquez ce qui a été vérifié.</p>
+    <form method="post" action="{{ url_for('main.controle_registres_incident_effacements') }}" class="inline" style="gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input name="note" maxlength="255" required placeholder="Ce qui a été vérifié">
+      <button class="btn">Vérifié</button>
+    </form>
+  </div>
+  {% endif %}
 
   <div class="card">
     <h2>Effacements RGPD</h2>

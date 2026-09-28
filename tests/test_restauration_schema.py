@@ -51,6 +51,8 @@ def lots(app_restauration, tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "dossier_sauvegardes", lambda: dossier)
     monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "donnees"))
     (tmp_path / "donnees" / "runtime").mkdir(parents=True)
+    from test_registres_consolidation import oublier_registre_tenu
+    oublier_registre_tenu(app_restauration)
     with app_restauration.app_context():
         if conftest._SUR_POSTGRES and not (svc._trouver_psql() and svc._trouver_pg_dump()):
             pytest.skip("psql ou pg_dump indisponible")
