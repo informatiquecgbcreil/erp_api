@@ -213,6 +213,10 @@ class InstanceSettings(db.Model):
     conservation_donateurs_annees = db.Column(db.Integer, nullable=True)
     conservation_comptes_annees = db.Column(db.Integer, nullable=True)
     conservation_imports_annees = db.Column(db.Integer, nullable=True)
+    # Destinations des copies hors serveur (une par ligne), réglées dans
+    # Administration > Sauvegardes ; prioritaire sur BACKUP_OFFSITE_DIRS
+    # (audit 6.5 : l'installation Windows n'a pas de fichier .env).
+    sauvegarde_hors_serveur = db.Column(db.Text, nullable=True)
 
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 

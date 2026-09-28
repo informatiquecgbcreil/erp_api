@@ -44,11 +44,30 @@
       cloud) sont ce qui rend une remise en service possible après la perte du serveur.
     </p>
 
+    <form method="post" action="{{ url_for('admin.sauvegarde_hors_serveur') }}" style="margin:10px 0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="ui-label" for="destinations">Dossiers de copie (un par ligne) : disque externe, partage réseau (<code>\\NAS\sauvegardes\centre</code>), dossier synchronisé</label>
+      <textarea class="in" id="destinations" name="destinations" rows="3" style="width:100%;">{{ reglage_hors_serveur }}</textarea>
+      <button class="btn" type="submit">Enregistrer et tester l'écriture</button>
+      <span class="muted" style="font-size:12px;">Le test écrit un petit fichier avec le compte qui fait la sauvegarde quotidienne
+        (sous Windows : <code>NT SERVICE\MonCentreSocial</code>) : un partage que seul l'administrateur peut écrire est détecté ici.</span>
+    </form>
+
+    {% if etat_quotidien %}
+      <div class="callout {{ 'info' if etat_quotidien.ok else 'danger' }}" style="margin:10px 0;">
+        {% if etat_quotidien.ok %}✅{% else %}⚠️{% endif %}
+        <strong>Sauvegarde quotidienne du {{ etat_quotidien.date[:10] }}</strong> —
+        lot {{ 'vérifié' if etat_quotidien.lot_ok else 'NON restaurable' }}
+        {% if etat_quotidien.copies %}; copie(s) hors serveur :
+          {% for copie in etat_quotidien.copies %}{{ copie.destination }} {{ '✓' if copie.ok else '✗ (' ~ copie.detail ~ ')' }}{% if not loop.last %}, {% endif %}{% endfor %}
+        {% elif not etat_quotidien.hors_serveur_configure %}; aucune copie hors serveur.{% endif %}
+      </div>
+    {% endif %}
+
     {% if not hors_serveur.configure %}
       <div class="callout danger" style="margin:10px 0;">
         ⚠️ <strong>Aucune copie hors serveur configurée.</strong> Toutes les sauvegardes sont
-        sur cette machine, et uniquement sur elle. Renseignez <code>BACKUP_OFFSITE_DIRS</code>
-        dans le fichier <code>.env</code> du serveur, puis redémarrez l'application.
+        sur cette machine, et uniquement sur elle. Indiquez un dossier ci-dessus.
       </div>
     {% else %}
       <div class="tablewrap">

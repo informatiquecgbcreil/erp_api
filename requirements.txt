@@ -22,3 +22,5 @@ certifi==2026.7.22
 # Analyse XML durcie : openpyxl l'utilise automatiquement quand il est
 # présent (classeurs importés), la veille financements aussi (flux RSS).
 defusedxml==0.7.1
+# Autorité HTTPS contrainte de l'installation Windows (desktop/runtime.py, audit 6.7).
+cryptography==50.0.1

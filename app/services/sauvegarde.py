@@ -191,6 +191,38 @@ def creer_sauvegarde() -> dict:
     }
 
 
+def _fichier_etat() -> Path:
+    return dossier_sauvegardes() / "etat-sauvegarde-quotidienne.json"
+
+
+def enregistrer_etat_sauvegarde(base: str, cree: bool, verification: dict, copies: list[dict]) -> dict:
+    """Trace de la sauvegarde quotidienne (service Windows), lue par
+    l'administration : lot vérifié ? copies hors serveur réussies ?"""
+    import json
+    etat = {
+        "date": dt.datetime.now().isoformat(timespec="seconds"),
+        "base": base, "nouveau_lot": cree,
+        "lot_ok": bool(verification.get("ok")),
+        "controles": verification.get("controles", []),
+        "copies": copies,
+        "hors_serveur_configure": bool(destinations_hors_serveur()),
+    }
+    etat["ok"] = etat["lot_ok"] and all(c.get("ok") for c in copies)
+    try:
+        _fichier_etat().write_text(json.dumps(etat, ensure_ascii=False, default=str), encoding="utf-8")
+    except OSError:
+        current_app.logger.warning("État de la sauvegarde quotidienne non écrit.")
+    return etat
+
+
+def lire_etat_sauvegarde() -> dict | None:
+    import json
+    try:
+        return json.loads(_fichier_etat().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def humaniser_taille(octets: int) -> str:
     taille = float(octets)
     for unite in ("o", "Ko", "Mo", "Go", "To"):
@@ -409,6 +441,45 @@ def _restaurer_postgres(src_sql: Path, db_uri: str) -> None:
         raise RuntimeError("La restauration PostgreSQL a échoué ; sa transaction a été annulée.")
 
 
+def restaurer_a_blanc(base: str, uri_cible: str) -> dict:
+    """Restauration COMPLÈTE d'un lot PostgreSQL dans une base vide jetable
+    (jamais la base en service) : rejoue le dump avec psql en une
+    transaction, compte les tables témoins, compare la révision du schéma et
+    déballe l'archive des documents dans un dossier temporaire. Prouve qu'un
+    lot se restaure réellement, pas seulement qu'il a l'air complet
+    (demande de la consolidation : test de restauration complète)."""
+    import tempfile
+    from sqlalchemy import create_engine, text
+    base = _safe_name(base)
+    dossier = dossier_sauvegardes()
+    dump, archive = dossier / f"{base}.sql", dossier / f"{base}_uploads.zip"
+    if not dump.exists() or not archive.exists():
+        raise RuntimeError("Lot incomplet : base ou documents manquants.")
+    exe = _trouver_psql()
+    if not exe:
+        raise RuntimeError("psql introuvable pour l'essai de restauration.")
+    uri, pg_env = _private_pg_connection(uri_cible)
+    proc = subprocess.run([exe, "-X", uri, "--single-transaction", "-v", "ON_ERROR_STOP=1", "-q", "-f", str(dump)],
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=pg_env)
+    if proc.returncode != 0:
+        raise RuntimeError("Le dump ne se rejoue pas dans une base vide ; lot non restaurable.")
+    rapport = {"base": base, "tables": {}}
+    moteur = create_engine(uri_cible)
+    try:
+        with moteur.connect() as connexion:
+            for table in TABLES_TEMOINS:
+                rapport["tables"][table] = connexion.execute(text(f'SELECT count(*) FROM "{table}"')).scalar()
+            rapport["revision"] = connexion.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    finally:
+        moteur.dispose()
+    from app.services.instance_archive import stage_archive
+    with tempfile.TemporaryDirectory(prefix="mcs-essai-restauration-") as temporaire:
+        stage_archive(archive, temporaire)
+        rapport["documents"] = sum(len(fichiers) for _d, _s, fichiers in os.walk(temporaire))
+    rapport["ok"] = rapport["tables"].get("user", 0) > 0
+    return rapport
+
+
 def _zip_entrees_suspectes(zf: zipfile.ZipFile, dest: Path) -> list[str]:
     """Entrées de l'archive qui tenteraient d'écrire HORS du dossier cible
     (chemin absolu ou traversée « ../ ») — protection contre le zip-slip."""
@@ -496,6 +567,13 @@ def restaurer_lot(base: str) -> dict:
 
     if verifier_integrite(base) is False:
         raise RuntimeError("Contrôle d'intégrité échoué : la sauvegarde semble corrompue. Restauration annulée.")
+    # Lot incomplet ou tronqué (sauvegarde interrompue, pg_dump coupé) : jamais
+    # restauré (audit 6.5). La vérification profonde regarde le marqueur de
+    # fin du dump et la lisibilité de l'archive, même sans fichier d'empreintes.
+    verification = verifier_lot(base)
+    if not verification["ok"]:
+        motifs = "; ".join(f"{c['nom']} : {c['detail']}" for c in verification["controles"] if c["ok"] is False)
+        raise RuntimeError(f"Sauvegarde non restaurable : restauration refusée ({motifs}).")
 
     # L'archive est entièrement validée avant le moindre changement de base.
     from app.services.instance_archive import stage_archive
@@ -690,13 +768,52 @@ def verifier_lot(base: str) -> dict:
 SUFFIXE_COPIE_EN_COURS = ".part"
 
 
+def reglage_hors_serveur() -> str:
+    """Destinations saisies dans Administration > Sauvegardes (prioritaires
+    sur BACKUP_OFFSITE_DIRS, que l'installation Windows n'a pas)."""
+    try:
+        from app.models import InstanceSettings
+        ligne = InstanceSettings.query.first()
+    except Exception:  # noqa: BLE001 — base pas encore migrée
+        from app.extensions import db
+        db.session.rollback()
+        return ""
+    return (getattr(ligne, "sauvegarde_hors_serveur", None) or "") if ligne else ""
+
+
+def tester_destination(dest: Path) -> dict:
+    """Écrit, relit et efface un petit fichier dans la destination, SOUS LE
+    COMPTE qui fait tourner l'application (celui de la sauvegarde
+    quotidienne, NT SERVICE\\MonCentreSocial sous Windows). Un partage
+    accessible à l'administrateur mais pas au service est ainsi détecté."""
+    import getpass
+    import secrets
+    compte = ""
+    try:
+        compte = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        _preparer_destination(dest)
+        essai = dest / f".essai-ecriture-{secrets.token_hex(4)}.tmp"
+        contenu = secrets.token_hex(16)
+        essai.write_text(contenu, encoding="ascii")
+        relu = essai.read_text(encoding="ascii")
+        essai.unlink()
+        if relu != contenu:
+            raise RuntimeError("le fichier relu ne correspond pas à celui écrit")
+        return {"destination": str(dest), "ok": True, "compte": compte, "detail": "écriture, relecture et effacement réussis"}
+    except Exception as exc:  # noqa: BLE001
+        return {"destination": str(dest), "ok": False, "compte": compte, "detail": str(exc)}
+
+
 def destinations_hors_serveur() -> list[Path]:
     """Destinations configurées (``BACKUP_OFFSITE_DIRS``), dans l'ordre.
 
     Séparateur : point-virgule ou saut de ligne — jamais la virgule ni le
     deux-points, qui apparaissent dans les chemins Windows (``D:\\...``).
     """
-    brut = (current_app.config.get("BACKUP_OFFSITE_DIRS") or "").strip()
+    brut = (reglage_hors_serveur() or current_app.config.get("BACKUP_OFFSITE_DIRS") or "").strip()
     if not brut:
         return []
     chemins: list[Path] = []

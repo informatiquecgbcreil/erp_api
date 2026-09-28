@@ -662,6 +662,7 @@ def sauvegardes():
         seuil = int(current_app.config.get("BACKUP_ALERT_DAYS") or 2)
     except (TypeError, ValueError):
         seuil = 2
+    from app.services.sauvegarde import lire_etat_sauvegarde, reglage_hors_serveur
     return render_template(
         "admin_sauvegardes.html",
         lots=lister_lots(),
@@ -669,7 +670,41 @@ def sauvegardes():
         seuil_alerte=seuil,
         moteur=moteur,
         hors_serveur=etat_hors_serveur(),
+        reglage_hors_serveur=reglage_hors_serveur(),
+        etat_quotidien=lire_etat_sauvegarde(),
     )
+
+
+@bp.route("/sauvegardes/hors-serveur", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_hors_serveur():
+    """Destinations des copies hors serveur (audit 6.5), puis test d'écriture
+    sous le compte de l'application, celui de la sauvegarde quotidienne."""
+    from pathlib import Path
+    from app.models import InstanceSettings
+    from app.services.sauvegarde import tester_destination
+
+    lignes = [l.strip().strip('"') for l in (request.form.get("destinations") or "").replace(";", "\n").splitlines()]
+    lignes = [l for l in lignes if l]
+    reglages = InstanceSettings.query.first()
+    if reglages is None:
+        reglages = InstanceSettings()
+        db.session.add(reglages)
+    reglages.sauvegarde_hors_serveur = "\n".join(lignes) or None
+    db.session.commit()
+    journaliser("backup.offsite_reglage", details={"destinations": len(lignes)})
+    if not lignes:
+        flash("Copies hors serveur désactivées : les sauvegardes restent sur cette machine uniquement.", "warning")
+        return redirect(url_for("admin.sauvegardes"))
+    for resultat in (tester_destination(Path(l)) for l in lignes):
+        compte = f" (compte : {resultat['compte']})" if resultat.get("compte") else ""
+        if resultat["ok"]:
+            flash(f"✅ {resultat['destination']} : {resultat['detail']}{compte}.", "success")
+        else:
+            flash(f"❌ {resultat['destination']} : {resultat['detail']}{compte}. La sauvegarde quotidienne "
+                  "ne pourra pas y écrire : donnez les droits d'écriture à ce compte.", "danger")
+    return redirect(url_for("admin.sauvegardes"))
 
 
 @bp.route("/sauvegardes/creer", methods=["POST"])
@@ -703,7 +738,7 @@ def sauvegarde_creer():
     if not destinations_hors_serveur():
         flash(
             "⚠️ Aucune copie hors serveur configurée : cette sauvegarde est sur la "
-            "machine qu'elle protège. Renseignez BACKUP_OFFSITE_DIRS dans le fichier .env.",
+            "machine qu'elle protège. Indiquez une destination dans « Copies hors serveur » ci-dessous.",
             "warning",
         )
         return redirect(url_for("admin.sauvegardes"))

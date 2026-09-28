@@ -555,7 +555,9 @@ def migrate(c, runtime):
             raise MigrationError("Les dossiers source et destination doivent être distincts.")
     work = root / "runtime" / "reprise"
     work.mkdir(parents=True, exist_ok=True)
-    completed = work / "complete.json"
+    # Contient les réglages importés (mots de passe SMTP, jetons) : dossier
+    # private (administrateurs et SYSTEM), jamais runtime (mineur de l'audit).
+    completed = root / "private" / "reprise-complete.json"
     if completed.exists():
         return json.loads(completed.read_text(encoding="utf-8"))
     target = create_engine(target_url, hide_parameters=True, connect_args={"options": FLOAT_OPTIONS})
@@ -663,7 +665,8 @@ def migrate(c, runtime):
                                 "introuvables_dans_la_source": documents["missing"]},
                   "modules": modules, "settings": source["settings"],
                   "reglages_importes": sorted(source["settings"])}
-        # Ce fichier contient des paramètres privés, dans le dossier protégé runtime.
+        # Ce fichier contient des paramètres privés : dossier protégé private.
+        completed.parent.mkdir(parents=True, exist_ok=True)
         temp = completed.with_suffix(".new")
         temp.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
         temp.replace(completed)

@@ -66,7 +66,9 @@ static class Program {
                         MessageBox.Show("Rien n'a été modifié.\n\nPour repartir d'une installation vierge, lancez « MonCentreSocial.exe --reset » en administrateur : l'installation actuelle sera mise de côté (renommée, rien n'est effacé), puis l'assistant s'ouvrira.", "Mon Centre Social", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 1;
                     }
-                    FinishInstallation(existing); return 0;
+                    FinishInstallation(existing);
+                    if (TunnelNotice(existing).Length > 0) MessageBox.Show(TunnelNotice(existing), "Accès hors les murs", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return 0;
                 }
                 using (var choice = new InstallationChoice()) {
                     if (choice.ShowDialog() != DialogResult.OK) return 1;
@@ -96,6 +98,15 @@ static class Program {
                 }
             }
             if (mode == "--stop") { StopService(); return 0; }
+            if (mode == "--restore-test") {
+                // Restauration réelle du dernier lot dans une base jetable, supprimée ensuite.
+                int code = RunPython("--restore-test", ReadConfiguration(), 3600000);
+                var reportFile = Path.Combine(Root, "private", "essai-restauration.json");
+                string detail = File.Exists(reportFile) ? File.ReadAllText(reportFile, Utf8) : "aucun rapport";
+                if (!Environment.UserInteractive || args.Length > 1) { Console.WriteLine(detail); return code; }
+                MessageBox.Show((code == 0 ? "La dernière sauvegarde se restaure correctement.\n\n" : "La dernière sauvegarde NE se restaure PAS.\n\n") + detail, "Test de restauration", MessageBoxButtons.OK, code == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                return code;
+            }
             if (mode == "--reset") {
                 // Repartir de zéro sans rien détruire : l'installation actuelle est
                 // renommée (données, base, dossier confidentiel compris).
@@ -143,6 +154,17 @@ static class Program {
         bool done = c.ContainsKey("migration_done") && Convert.ToBoolean(c["migration_done"]);
         bool pending = c.ContainsKey("migration_pending_activation") && Convert.ToBoolean(c["migration_pending_activation"]);
         return !done || pending;
+    }
+    /// Mineur Windows : journaux jamais purgés. Au-delà de 5 Mo, l'ancien
+    /// devient .previous.log (un seul conservé).
+    internal static void RotateLog(string path) {
+        try {
+            if (File.Exists(path) && new FileInfo(path).Length > 5000000) {
+                var previous = Path.ChangeExtension(path, ".previous.log");
+                if (File.Exists(previous)) File.Delete(previous);
+                File.Move(path, previous);
+            }
+        } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
     internal static string SystemExe(string name) { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), name); }
     internal static string Quote(string s) {
@@ -274,34 +296,127 @@ static class Program {
         }
         Run(SystemExe("sc.exe"), "config " + ProxyServiceName + " start= auto");
     }
+    /// Audit 6.2 : un programme qui écoute sur UNE adresse précise (VPN,
+    /// Tailscale, seconde carte) laissait le port « libre » vu de 127.0.0.1.
+    internal static bool PortInUse(int port) {
+        var g = IPGlobalProperties.GetIPGlobalProperties();
+        foreach (var e in g.GetActiveTcpListeners()) if (e.Port == port) return true;
+        foreach (var e in g.GetActiveUdpListeners()) if (e.Port == port) return true;
+        return false;
+    }
     internal static int FreePort(int start) {
-        for (int port = start; port < start + 100; port++) try { var l = new TcpListener(IPAddress.Loopback, port); l.Start(); l.Stop(); return port; } catch (SocketException) {}
+        for (int port = start; port < start + 100; port++) {
+            if (PortInUse(port)) continue;
+            try {
+                var any = new TcpListener(IPAddress.IPv6Any, port); any.Server.DualMode = true; any.Server.ExclusiveAddressUse = true;
+                any.Start(); any.Stop();
+                var loop = new TcpListener(IPAddress.Loopback, port); loop.Start(); loop.Stop();
+                return port;
+            } catch (SocketException) {}
+        }
         throw new Exception("Aucun port disponible pour l'application.");
+    }
+    /// Un programme installé après coup occupe un de nos ports : on en prend
+    /// un autre (services arrêtés à ce moment). Le port PostgreSQL est inscrit
+    /// dans le cluster : on ne le change pas, on le dit.
+    internal static void ReassignBusyPorts(Dictionary<string, object> c) {
+        if (c.ContainsKey("db_port") && PortInUse(Convert.ToInt32(c["db_port"])))
+            throw new Exception("Le port " + c["db_port"] + " de la base locale est occupé par un autre programme. Libérez-le puis relancez l'assistant.");
+        foreach (var key in new[] { "web_port", "https_port", "kiosk_http_port" }) {
+            if (!c.ContainsKey(key)) continue;
+            int port = Convert.ToInt32(c[key]);
+            if (port < 1 || !PortInUse(port)) continue;
+            c[key] = FreePort(port + 1);
+            if (key == "https_port" && c.ContainsKey("network") && Convert.ToBoolean(c["network"])) c["url"] = "https://" + c["hostname"] + ":" + c["https_port"];
+            if (key == "web_port" && !(c.ContainsKey("network") && Convert.ToBoolean(c["network"]))) c["url"] = "http://127.0.0.1:" + c["web_port"];
+            if (key == "kiosk_http_port") c.Remove("kiosk_url");
+        }
     }
     static bool IsUsableLanAddress(IPAddress address) {
         if (address == null || address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(address)) return false;
         var bytes = address.GetAddressBytes();
         return bytes.Length == 4 && !(bytes[0] == 169 && bytes[1] == 254);
     }
-    internal static string LanAddress() {
-        string fallback = null;
+    static readonly string[] VirtualAdapterWords = { "tap", "tun", "wintun", "wireguard", "tailscale", "zerotier", "openvpn", "vpn", "hyper-v", "vethernet", "virtualbox", "vmware", "loopback", "docker", "wsl" };
+    static bool IsVirtualAdapter(NetworkInterface adapter) {
+        string text = (adapter.Name + " " + adapter.Description).ToLowerInvariant();
+        foreach (var word in VirtualAdapterWords) if (text.Contains(word)) return true;
+        return adapter.NetworkInterfaceType == NetworkInterfaceType.Tunnel || adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback;
+    }
+    static bool IsCarrierGradeNat(IPAddress address) {
+        var b = address.GetAddressBytes(); return b[0] == 100 && b[1] >= 64 && b[1] <= 127;
+    }
+    /// Adresses IPv4 portées par une carte active (pour savoir si une adresse
+    /// mémorisée existe toujours).
+    internal static bool AddressIsLocal(string ip) {
         try {
             foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces()) {
                 if (adapter.OperationalStatus != OperationalStatus.Up) continue;
-                bool preferred = adapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet || adapter.NetworkInterfaceType == NetworkInterfaceType.Wireless80211;
-                foreach (var item in adapter.GetIPProperties().UnicastAddresses) {
+                foreach (var item in adapter.GetIPProperties().UnicastAddresses) if (item.Address.ToString() == ip) return true;
+            }
+        } catch (NetworkInformationException) { }
+        return false;
+    }
+    /// Audit 6.3 : la carte du réseau local est celle qui a une passerelle par
+    /// défaut, hors cartes virtuelles (TAP, Wintun, Hyper-V, vEthernet, VPN…)
+    /// et hors 100.64.0.0/10 (Tailscale). L'assistant l'affiche et permet de
+    /// la corriger ; une adresse mémorisée est gardée tant qu'elle existe.
+    internal static string LanAddress() {
+        string withGateway = null, physical = null, fallback = null;
+        try {
+            foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces()) {
+                if (adapter.OperationalStatus != OperationalStatus.Up) continue;
+                var props = adapter.GetIPProperties();
+                bool gateway = false;
+                foreach (var g in props.GatewayAddresses) if (g.Address != null && g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any)) gateway = true;
+                bool virtualAdapter = IsVirtualAdapter(adapter);
+                bool preferredType = adapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet || adapter.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 || adapter.NetworkInterfaceType == NetworkInterfaceType.GigabitEthernet;
+                foreach (var item in props.UnicastAddresses) {
                     if (!IsUsableLanAddress(item.Address)) continue;
-                    if (preferred) return item.Address.ToString();
+                    if (IsCarrierGradeNat(item.Address)) { if (fallback == null) fallback = item.Address.ToString(); continue; }
+                    if (!virtualAdapter && gateway && withGateway == null) withGateway = item.Address.ToString();
+                    if (!virtualAdapter && preferredType && physical == null) physical = item.Address.ToString();
                     if (fallback == null) fallback = item.Address.ToString();
                 }
             }
         } catch (NetworkInformationException) { }
+        if (withGateway != null) return withGateway;
+        if (physical != null) return physical;
         if (fallback != null) return fallback;
         try {
             foreach (var address in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
                 if (IsUsableLanAddress(address)) return address.ToString();
         } catch (SocketException) { }
         throw new Exception("Aucune adresse IPv4 de réseau local n'a été trouvée. Connectez le serveur au réseau puis relancez l'assistant.");
+    }
+    internal static List<string> ExtraHosts(Dictionary<string, object> c) {
+        var list = new List<string>();
+        if (!c.ContainsKey("hotes_supplementaires") || c["hotes_supplementaires"] == null) return list;
+        var items = c["hotes_supplementaires"] as System.Collections.IEnumerable;
+        if (items == null || c["hotes_supplementaires"] is string) return list;
+        foreach (var item in items) { var text = Convert.ToString(item).Trim().ToLowerInvariant(); if (text.Length > 0 && !list.Contains(text)) list.Add(text); }
+        return list;
+    }
+    /// Plages autorisées au pare-feu en plus du sous-réseau local : Tailscale
+    /// (100.64.0.0/10) et le /24 de chaque adresse VPN déclarée.
+    internal static string FirewallRemote(Dictionary<string, object> c) {
+        var ranges = new List<string> { "LocalSubnet" };
+        foreach (var host in ExtraHosts(c)) {
+            IPAddress address;
+            if (!IPAddress.TryParse(host, out address) || address.AddressFamily != AddressFamily.InterNetwork) continue;
+            var b = address.GetAddressBytes();
+            string range = IsCarrierGradeNat(address) ? "100.64.0.0/10" : b[0] + "." + b[1] + "." + b[2] + ".0/24";
+            if (!ranges.Contains(range)) ranges.Add(range);
+        }
+        return string.Join(",", ranges.ToArray());
+    }
+    /// Message de fin : un tunnel Tailscale Funnel repris de l'ancienne
+    /// installation vise encore l'ancien port (audit 6.1).
+    internal static string TunnelNotice(Dictionary<string, object> c) {
+        var settings = c.ContainsKey("application_settings") ? c["application_settings"] as Dictionary<string, object> : null;
+        if (settings == null || !settings.ContainsKey("KIOSK_PUBLIC_HOST") || string.IsNullOrWhiteSpace(Convert.ToString(settings["KIOSK_PUBLIC_HOST"]))) return "";
+        string port = c.ContainsKey("kiosk_http_port") ? Convert.ToString(c["kiosk_http_port"]) : "(port kiosque)";
+        return "Accès « hors les murs » repris (" + settings["KIOSK_PUBLIC_HOST"] + ") : redirigez le tunnel vers la nouvelle installation, sinon les QR codes resteront en erreur. Avec Tailscale : tailscale funnel --bg http://127.0.0.1:" + port + " (après avoir arrêté l'ancien tunnel).";
     }
     internal static void EnsureNetworkSettings(Dictionary<string, object> c) {
         bool network = c.ContainsKey("network") && Convert.ToBoolean(c["network"]);
@@ -310,9 +425,11 @@ static class Program {
             if (!c.ContainsKey("kiosk_url") || string.IsNullOrWhiteSpace(Convert.ToString(c["kiosk_url"]))) c["kiosk_url"] = c["url"];
             return;
         }
-        string detectedLanIp = LanAddress();
-        bool lanAddressChanged = !c.ContainsKey("lan_ip") || !string.Equals(Convert.ToString(c["lan_ip"]), detectedLanIp, StringComparison.OrdinalIgnoreCase);
-        c["lan_ip"] = detectedLanIp;
+        string stored = c.ContainsKey("lan_ip") ? Convert.ToString(c["lan_ip"]) : "";
+        bool keep = stored.Length > 0 && stored != "127.0.0.1" && AddressIsLocal(stored);
+        string lanIp = keep ? stored : LanAddress();
+        bool lanAddressChanged = !string.Equals(stored, lanIp, StringComparison.OrdinalIgnoreCase);
+        c["lan_ip"] = lanIp;
         if (!c.ContainsKey("kiosk_http_port") || Convert.ToInt32(c["kiosk_http_port"]) < 1) c["kiosk_http_port"] = FreePort(8080);
         if (lanAddressChanged || !c.ContainsKey("kiosk_url") || string.IsNullOrWhiteSpace(Convert.ToString(c["kiosk_url"]))) c["kiosk_url"] = "http://" + c["lan_ip"] + ":" + c["kiosk_http_port"];
     }
@@ -329,7 +446,10 @@ static class Program {
         c["data_root"] = Root; c["db_password"] = Secret(); c["db_admin_password"] = Secret(); c["secret_key"] = Secret();
         c["db_port"] = FreePort(55432); c["web_port"] = FreePort(18080); c["https_port"] = FreePort(8443);
         c["url"] = (bool)c["network"] ? "https://" + c["hostname"] + ":" + c["https_port"] : "http://127.0.0.1:" + c["web_port"];
-        if ((bool)c["network"]) { c["lan_ip"] = LanAddress(); c["kiosk_http_port"] = FreePort(8080); }
+        if ((bool)c["network"]) {
+            if (!c.ContainsKey("lan_ip") || string.IsNullOrWhiteSpace(Convert.ToString(c["lan_ip"]))) c["lan_ip"] = LanAddress();
+            c["kiosk_http_port"] = FreePort(8080);
+        }
         EnsureNetworkSettings(c);
         SaveConfiguration(c);
         WriteReport(c); // Produit avant le démarrage, reste disponible en cas de reprise.
@@ -359,6 +479,7 @@ static class Program {
             if (!CopyStillCurrent(c)) throw new Exception("La base source change encore pendant la reprise : une application écrit toujours dedans. Arrêtez-la puis relancez l'assistant.");
         }
         // Reprise après une interruption entre l'enregistrement et la création du dossier.
+        ReassignBusyPorts(c);
         EnsureNetworkSettings(c);
         SaveConfiguration(c);
         var reportPath = Path.Combine(Root, "Direction-DSI", "Installation-confidentielle.txt");
@@ -368,11 +489,22 @@ static class Program {
         var kioskFile = Path.Combine(Root, "public", "kiosk-url.txt"); GuardPath(kioskFile); File.WriteAllText(kioskFile, (string)c["kiosk_url"] + "/kiosk/", Utf8);
         RegisterService(); StartService();
         var ready = Path.Combine(Root, "runtime", "ready");
-        for (int i = 0; i < 480; i++) { if (File.Exists(ready)) break; Thread.Sleep(500); if (i == 479) throw new Exception("Le service n'est pas prêt. Le diagnostic est dans " + Path.Combine(Root, "logs") + "."); }
+        // Audit 6.6 : une mise à jour du schéma peut durer ; tant que le témoin
+        // « upgrading » est rafraîchi, on attend au lieu d'annoncer un échec.
+        var upgrading = Path.Combine(Root, "runtime", "upgrading");
+        var readyDeadline = DateTime.UtcNow.AddSeconds(240);
+        while (!File.Exists(ready)) {
+            bool migrating = File.Exists(upgrading) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(upgrading)).TotalSeconds < 60;
+            if (!migrating && DateTime.UtcNow > readyDeadline) throw new Exception("Le service n'est pas prêt. Le diagnostic est dans " + Path.Combine(Root, "logs") + ".");
+            if (migrating) readyDeadline = DateTime.UtcNow.AddSeconds(240);
+            Thread.Sleep(500);
+        }
         if ((bool)c["network"]) {
             PrepareProxy(c);
             using (var proxy = new ServiceController(ProxyServiceName)) { proxy.Start(); proxy.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(30)); }
-            var certPath = Path.Combine(Root, "https", "tls", "pki", "authorities", "local", "root.crt");
+            // Audit 6.7 : installation neuve = autorité contrainte (noms et adresses
+            // privées du centre) ; installation existante = autorité déjà déployée.
+            var certPath = ProxyRootCertificate();
             for (int i=0; !File.Exists(certPath); i++) { if (i>=120) throw new Exception("Le certificat HTTPS n'est pas prêt."); Thread.Sleep(500); }
             var pem = File.ReadAllText(certPath).Replace("-----BEGIN CERTIFICATE-----", "").Replace("-----END CERTIFICATE-----", "");
             var certificate = new X509Certificate2(Convert.FromBase64String(pem));
@@ -380,9 +512,15 @@ static class Program {
             var publicCertificate = Path.Combine(Root, "public", "Certificat-du-centre.cer"); GuardPath(publicCertificate);
             File.WriteAllBytes(publicCertificate, certificate.Export(X509ContentType.Cert));
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social HTTPS\"", false);
-            Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social HTTPS\" dir=in action=allow protocol=TCP localport=" + c["https_port"] + " remoteip=LocalSubnet profile=private,domain program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
+            // Mineur Windows : les collègues passant par le VPN ou Tailscale
+            // perdaient l'accès. Leurs plages s'ajoutent au sous-réseau local ;
+            // leurs cartes étant souvent classées « Public », le profil est alors
+            // élargi, la liste d'adresses restant limitée à ces plages.
+            string remote = FirewallRemote(c);
+            string profile = remote == "LocalSubnet" ? "private,domain" : "any";
+            Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social HTTPS\" dir=in action=allow protocol=TCP localport=" + c["https_port"] + " remoteip=" + remote + " profile=" + profile + " program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
-            Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=LocalSubnet profile=private,domain program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
+            Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=" + remote + " profile=" + profile + " program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
         }
         c.Remove("admin_password"); SaveConfiguration(c); WriteReport(c);
         // Le premier démarrage provisionne PostgreSQL et le compte direction.
@@ -435,6 +573,14 @@ static class Program {
     }
     /// Lance une étape Python élevée (configuration complète par l'entrée
     /// standard, jamais en argument). Rend le code de sortie.
+    internal static string ProxyRootCertificate() {
+        var constrained = Path.Combine(Root, "https", "autorite", "racine.crt");
+        return File.Exists(constrained) ? constrained : Path.Combine(Root, "https", "tls", "pki", "authorities", "local", "root.crt");
+    }
+    internal static string ProxyRootKey() {
+        var constrained = Path.Combine(Root, "https", "autorite", "racine.key");
+        return File.Exists(constrained) ? constrained : Path.Combine(Root, "https", "tls", "pki", "authorities", "local", "root.key");
+    }
     internal static int RunPython(string mode, Dictionary<string, object> c, int timeoutMs) {
         var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " " + mode) {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
@@ -481,7 +627,7 @@ static class Program {
         // déjà en service continue à utiliser ses binaires 17 sans conversion.
         var data = Path.Combine(Root,"postgresql");
         var version = Path.Combine(data,"PG_VERSION");
-        var completed = Path.Combine(Root,"runtime","reprise","complete.json");
+        var completed = Path.Combine(Root,"private","reprise-complete.json");
         var provisioned = Path.Combine(Root,"runtime","provisioned");
         if (File.Exists(completed)) {
             if (!File.Exists(version)) throw new Exception("Le cluster de la copie terminée est introuvable. La reprise est suspendue.");
@@ -543,7 +689,8 @@ static class Program {
             // Le rapport consultable ne contient aucun secret ni données nominatives.
             result.Remove("settings");
             File.WriteAllText(Path.Combine(Root,"Direction-DSI","Reprise.json"),Json.Serialize(result),Utf8);
-            File.Delete(Path.Combine(Root,"runtime","reprise","complete.json"));
+            File.Delete(Path.Combine(Root,"private","reprise-complete.json"));
+            var ancienRapport = Path.Combine(Root,"runtime","reprise","complete.json"); if (File.Exists(ancienRapport)) File.Delete(ancienRapport);
         } catch {
             StopService();
             RestoreOldApplication(c);
@@ -584,7 +731,7 @@ static class Program {
         text.AppendLine("Données : " + Root);
         text.AppendLine("Configuration chiffrée DPAPI : " + ConfigFile);
         text.AppendLine("Pièces jointes : " + Path.Combine(Root, "uploads"));
-        text.AppendLine("Sauvegardes : " + Path.Combine(Root, "backups") + " (quotidiennes, 30 lots). Prévoir une copie hors machine dans Administration > Sauvegardes.");
+        text.AppendLine("Sauvegardes : " + Path.Combine(Root, "backups") + " (une par jour, 30 lots, vérifiées). Copie hors machine : indiquer un dossier dans Administration > Sauvegardes (test d'écriture avec le compte du service).");
         text.AppendLine("Service Windows : " + ServiceName + " ; compte virtuel NT SERVICE\\" + ServiceName);
         text.AppendLine("Le service démarre avant toute ouverture de session. L'icône apparaît à la connexion Windows.");
         if (Convert.ToBoolean(c["network"])) {
@@ -596,6 +743,9 @@ static class Program {
         } else {
             text.AppendLine("Réseau : accès limité à cet ordinateur (127.0.0.1) ; aucune ouverture de PostgreSQL.");
         }
+        if (ExtraHosts(c).Count > 0) text.AppendLine("Autres adresses du serveur (VPN, Tailscale) couvertes par le certificat et le pare-feu : " + string.Join(", ", ExtraHosts(c).ToArray()));
+        if (TunnelNotice(c).Length > 0) text.AppendLine("À FAIRE : " + TunnelNotice(c));
+        text.AppendLine("Test de restauration complète (base jetable, rien n'est modifié) : MonCentreSocial.exe --restore-test en administrateur ; rapport dans " + Path.Combine(Root, "private", "essai-restauration.json") + ".");
         text.AppendLine("Restauration : réinstaller la même version, créer un compte direction, puis Administration > Sauvegardes. La configuration DPAPI dépend de cette machine ; utiliser ce dossier pour reconfigurer après sinistre.");
         text.AppendLine("La désinstallation conserve les données et ce dossier. Guide complet : " + Path.Combine(Install, "GUIDE-WINDOWS.md"));
         File.WriteAllText(path, text.ToString(), Utf8);
@@ -618,6 +768,7 @@ sealed class ProxyService : ServiceBase {
     internal ProxyService() { ServiceName=Program.ProxyServiceName; CanStop=true; CanShutdown=true; AutoLog=true; }
     protected override void OnStart(string[] args) {
         var root = Path.Combine(Program.Root,"https");
+        Program.RotateLog(Path.Combine(root,"proxy.log"));
         log = new StreamWriter(Path.Combine(root,"proxy.log"),true,Program.Utf8) {AutoFlush=true};
         var psi = new ProcessStartInfo(Path.Combine(Program.Install,"caddy","caddy.exe"),
             "run --config " + Program.Quote(Path.Combine(root,"Caddyfile")) + " --adapter caddyfile") {
@@ -650,6 +801,7 @@ sealed class CentreService : ServiceBase {
         var c = Program.ReadConfiguration();
         var stop = Path.Combine(Program.Root, "runtime", "stop"); if (File.Exists(stop)) File.Delete(stop);
         var ready = Path.Combine(Program.Root, "runtime", "ready"); if (File.Exists(ready)) File.Delete(ready);
+        Program.RotateLog(Path.Combine(Program.Root, "logs", "service.log"));
         log = new StreamWriter(Path.Combine(Program.Root, "logs", "service.log"), true, Program.Utf8) { AutoFlush = true };
         var psi = new ProcessStartInfo(Path.Combine(Program.Install, "python", "python.exe"), "-B " + Program.Quote(Path.Combine(Program.Install, "desktop", "runtime.py")) + " --supervise") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Program.Install, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
         psi.EnvironmentVariables.Remove("PYTHONPATH"); psi.EnvironmentVariables.Remove("PYTHONHOME");
@@ -693,7 +845,12 @@ sealed class Tray : ApplicationContext {
         menu.Items.Add("Ouvrir la page d'administration", null, delegate { Safely(Program.Open); });
         menu.Items.Add("Redémarrer", null, delegate { Safely(delegate { Control("--restart"); }); });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Fermer", null, delegate { Safely(delegate { if (Control("--stop")) { icon.Visible = false; ExitThread(); } }); });
+        // Mineur Windows : « Fermer » arrêtait le service pour toute l'équipe.
+        // Fermer l'icône ne touche plus au service ; l'arrêt est une action à part, confirmée.
+        menu.Items.Add("Arrêter le service pour tout le monde…", null, delegate { Safely(delegate {
+            if (MessageBox.Show("L'application sera coupée pour TOUS les postes jusqu'au prochain redémarrage du service ou de Windows.\n\nArrêter le service ?", "Mon Centre Social", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes) Control("--stop");
+        }); });
+        menu.Items.Add("Fermer l'icône (le service continue)", null, delegate { icon.Visible = false; ExitThread(); });
         icon.ContextMenuStrip = menu; icon.DoubleClick += delegate { Safely(Program.Open); };
     }
     bool Control(string mode) { var p = Process.Start(new ProcessStartInfo(Program.Exe, mode) { UseShellExecute = true, Verb = "runas" }); p.WaitForExit(); return p.ExitCode == 0; }
@@ -753,7 +910,7 @@ sealed class SetupWizard : Form {
     readonly Panel content = new Panel(); readonly Label heading = new Label(); readonly Label stepLabel = new Label();
     readonly Button next = new Button(); readonly Button back = new Button(); readonly Label status = new Label();
     readonly TextBox organization = new TextBox(); readonly TextBox adminName = new TextBox(); readonly TextBox email = new TextBox(); readonly TextBox password = new TextBox(); readonly TextBox confirm = new TextBox();
-    readonly CheckedListBox modules = new CheckedListBox(); readonly RadioButton local = new RadioButton(); readonly RadioButton network = new RadioButton(); readonly TextBox hostname = new TextBox();
+    readonly CheckedListBox modules = new CheckedListBox(); readonly RadioButton local = new RadioButton(); readonly RadioButton network = new RadioButton(); readonly TextBox hostname = new TextBox(); readonly TextBox lanIp = new TextBox(); readonly TextBox extraHosts = new TextBox();
     readonly TextBox smtpHost = new TextBox(); readonly TextBox smtpPort = new TextBox(); readonly TextBox smtpUser = new TextBox(); readonly TextBox smtpPassword = new TextBox(); readonly TextBox smtpSender = new TextBox();
     readonly string[] keys = { "presences", "statistiques", "adhesions", "finances", "ressources", "accompagnement", "partenaires", "questionnaires", "transitions", "rh" };
     readonly string[] names = { "Accueil, inscriptions et présences (toujours inclus)", "Statistiques et bilans", "Adhésions, caisse et impayés", "Finances et projets", "Salles et matériel", "Accompagnement et pédagogie", "Partenaires", "Questionnaires", "Transitions", "Ressources humaines" };
@@ -816,9 +973,12 @@ sealed class SetupWizard : Form {
             heading.Text = "Où l'équipe utilisera-t-elle l'application ?";
             local.Text = "Sur cet ordinateur uniquement"; local.SetBounds(0,16,670,34); content.Controls.Add(local);
             network.Text = "Sur plusieurs postes du réseau de la structure"; network.SetBounds(0,66,700,34); content.Controls.Add(network);
-            Field("Nom de cet ordinateur sur le réseau",hostname,127,0,500);
-            TextLine("En réseau, l'administration est chiffrée (HTTPS). Pour l'émargement, les téléphones et tablettes utilisent une adresse locale dédiée, sans certificat à installer. Le certificat d'administration et les instructions sont fournis automatiquement.",205,75);
-            TextLine("Le service fonctionne aussi sans session ouverte sur Windows Server.",292);
+            if (lanIp.Text.Length == 0) { try { lanIp.Text = Program.LanAddress(); } catch (Exception) { } }
+            Field("Nom de cet ordinateur sur le réseau",hostname,110,0,330);
+            Field("Adresse IP du serveur (vérifiez-la)",lanIp,110,365,341);
+            Field("Autres adresses de ce serveur (VPN, Tailscale), séparées par des virgules — facultatif",extraHosts,180,0,706);
+            TextLine("L'adresse IP proposée est celle de la carte réseau reliée à la box ou au routeur (hors VPN). Si les postes ne la voient pas, corrigez-la. En réseau, l'administration est chiffrée (HTTPS) ; les tablettes utilisent une adresse locale dédiée, sans certificat.",250,62);
+            TextLine("Le service fonctionne aussi sans session ouverte sur Windows Server.",318,26);
         } else if (step == 3) {
             if (migrationSource.Length > 0) {
                 heading.Text = "Vos paramètres sont conservés";
@@ -849,11 +1009,25 @@ sealed class SetupWizard : Form {
         }
         if (step == 1 && modules.CheckedItems.Count == 0) throw new Exception("Choisissez au moins un outil pour démarrer.");
         if (step == 2 && !Regex.IsMatch(hostname.Text.Trim(), "^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$")) throw new Exception("Vérifiez le nom de l'ordinateur (lettres, chiffres, points et tirets).");
+        if (step == 2 && network.Checked) {
+            IPAddress address;
+            if (!IPAddress.TryParse(lanIp.Text.Trim(), out address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork || IPAddress.IsLoopback(address))
+                throw new Exception("Indiquez l'adresse IPv4 du serveur sur le réseau local (par exemple 192.168.1.20).");
+            foreach (var host in ExtraHostList())
+                if (!Regex.IsMatch(host, "^[a-z0-9][a-z0-9.-]{0,252}$")) throw new Exception("Vérifiez les autres adresses : « " + host + " » n'est ni une adresse IP ni un nom valide.");
+        }
         if (step == 3 && smtpHost.Text.Trim().Length > 0) {
             int port; if (!int.TryParse(smtpPort.Text,out port) || port < 1 || port > 65535 || port == 465) throw new Exception("Indiquez le port STARTTLS du serveur mail, généralement 587.");
             if (!Regex.IsMatch(smtpHost.Text.Trim(), "^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$")) throw new Exception("Vérifiez le nom du serveur SMTP.");
             var sender = new MailAddress(smtpSender.Text.Trim()); if (sender.Address != smtpSender.Text.Trim()) throw new Exception("Vérifiez l'adresse d'expédition.");
         }
+    }
+    List<string> ExtraHostList() {
+        var list = new List<string>();
+        foreach (var part in extraHosts.Text.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)) {
+            var host = part.Trim().ToLowerInvariant(); if (host.Length > 0 && !list.Contains(host)) list.Add(host);
+        }
+        return list;
     }
     async Task Next() {
         try {
@@ -862,12 +1036,14 @@ sealed class SetupWizard : Form {
             var selected = new List<string>(); for (int i=0;i<keys.Length;i++) if (modules.GetItemChecked(i)) selected.Add(keys[i]);
             if (!selected.Contains("presences")) selected.Insert(0, "presences"); // socle toujours actif
             var c = new Dictionary<string,object> { {"organization",organization.Text.Trim()}, {"admin_name",adminName.Text.Trim()}, {"admin_email",email.Text.Trim().ToLowerInvariant()}, {"admin_password",password.Text}, {"modules",selected.ToArray()}, {"network",network.Checked}, {"hostname",hostname.Text.Trim().ToLowerInvariant()}, {"smtp_host",smtpHost.Text.Trim()}, {"smtp_port",string.IsNullOrWhiteSpace(smtpHost.Text) ? 587 : int.Parse(smtpPort.Text)}, {"smtp_user",smtpUser.Text.Trim()}, {"smtp_password",smtpPassword.Text}, {"smtp_sender",smtpSender.Text.Trim()} };
+            if (network.Checked) { c["lan_ip"] = lanIp.Text.Trim(); c["hotes_supplementaires"] = ExtraHostList().ToArray(); }
             if (migrationSource.Length > 0) { c["migration_source"] = migrationSource; c["migration_uri"] = ""; if (migrationDb != null) c["migration_source_db"] = migrationDb; c["migration_service"] = migrationService; }
             busy = true; next.Enabled = false; back.Enabled = false; UseWaitCursor = true;
             await Task.Run(delegate { Program.InstallConfiguration(c, message => BeginInvoke(new Action(delegate { status.Text = message; }))); });
             busy = false; UseWaitCursor = false;
             string mobile = (bool)c["network"] ? "\n\nKiosque tablettes/téléphones (même Wi-Fi) : " + c["kiosk_url"] + "/kiosk/" : "";
-            MessageBox.Show("Votre centre est prêt.\n\nAdresse administration : " + Program.AccessUrl(c) + "\n(ou " + c["url"] + ")" + mobile + "\n\nLe dossier confidentiel est dans :\n" + Path.Combine(Program.Root,"Direction-DSI") + "\n\nL'icône Mon Centre Social permet d'ouvrir l'administration, de redémarrer et de fermer le service.", "Installation terminée", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (Program.TunnelNotice(c).Length > 0) mobile += "\n\n" + Program.TunnelNotice(c);
+            MessageBox.Show("Votre centre est prêt.\n\nAdresse administration : " + Program.AccessUrl(c) + "\n(ou " + c["url"] + ")" + mobile + "\n\nLe dossier confidentiel est dans :\n" + Path.Combine(Program.Root,"Direction-DSI") + "\n\nL'icône Mon Centre Social permet d'ouvrir l'administration et de redémarrer le service ; fermer l'icône ne coupe pas l'application.", "Installation terminée", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK; Close();
         } catch (Exception e) { busy = false; UseWaitCursor = false; next.Enabled = true; back.Enabled = true; status.Text = e.Message; MessageBox.Show(e.Message,"Mon Centre Social",MessageBoxButtons.OK,MessageBoxIcon.Warning); }
     }

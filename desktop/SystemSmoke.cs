@@ -26,11 +26,44 @@ static class SystemSmoke {
     static void Healthy(Dictionary<string, object> config) {
         var request = (HttpWebRequest)WebRequest.Create((string)config["url"] + "/healthz");
         request.Proxy = null; request.Timeout = 30000;
-        using (var response = (HttpWebResponse)request.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "HTTPS indisponible");
+        using (var response = (HttpWebResponse)request.GetResponse()) {
+            Check(response.StatusCode == HttpStatusCode.OK, "HTTPS indisponible");
+            // HTTP/3 (UDP) ne doit plus être annoncé : le pare-feu n'ouvre que TCP.
+            Check(string.IsNullOrEmpty(response.Headers["Alt-Svc"]), "HTTP/3 encore annoncé par le proxy");
+        }
         // Adresse IP du réseau local : certificat valable et vérifié sans DNS.
         var byIp = (HttpWebRequest)WebRequest.Create(Program.AccessUrl(config) + "/healthz");
         byIp.Proxy = null; byIp.Timeout = 30000;
         using (var response = (HttpWebResponse)byIp.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "HTTPS par adresse IP indisponible");
+    }
+    /// Audit 6.2 : un port occupé sur une seule adresse (VPN, Tailscale) doit
+    /// être vu comme occupé.
+    static void PortsReallyFree() {
+        int port = Program.FreePort(47000);
+        var other = new System.Net.Sockets.TcpListener(IPAddress.Any, port);
+        other.Start();
+        try {
+            Check(Program.PortInUse(port), "Port occupé sur toutes les adresses non détecté");
+            Check(Program.FreePort(port) != port, "FreePort propose un port déjà occupé");
+        } finally { other.Stop(); }
+        Console.WriteLine("PORTS_OCCUPES_DETECTES_OK");
+    }
+    /// Audit 6.5 : sauvegarde quotidienne faite au démarrage, vérifiée ; puis
+    /// restauration complète du lot dans une base jetable.
+    static void BackupAndRestore() {
+        var state = Path.Combine(Program.Root, "backups", "etat-sauvegarde-quotidienne.json");
+        for (int i = 0; ; i++) {
+            if (File.Exists(state)) {
+                var etat = Program.Json.Deserialize<Dictionary<string, object>>(File.ReadAllText(state, Program.Utf8));
+                if (etat.ContainsKey("lot_ok") && Convert.ToBoolean(etat["lot_ok"])) break;
+            }
+            Check(i < 600, "La sauvegarde quotidienne vérifiée n'a pas été produite");
+            System.Threading.Thread.Sleep(1000);
+        }
+        int code = Program.RunPython("--restore-test", Program.ReadConfiguration(), 1800000);
+        var report = Path.Combine(Program.Root, "private", "essai-restauration.json");
+        Check(code == 0 && File.Exists(report), "La restauration complète du dernier lot a échoué");
+        Console.WriteLine("SAUVEGARDE_VERIFIEE_ET_RESTAURATION_COMPLETE_OK " + File.ReadAllText(report, Program.Utf8));
     }
     static void KioskHealthy(Dictionary<string, object> config) {
         var request = (HttpWebRequest)WebRequest.Create((string)config["kiosk_url"] + "/kiosk/");
@@ -103,8 +136,10 @@ static class SystemSmoke {
                 {"modules", new[] {"presences", "statistiques"}}, {"network", true}, {"hostname", "localhost"},
                 {"smtp_host", ""}, {"smtp_port", 587}, {"smtp_user", ""}, {"smtp_password", ""}, {"smtp_sender", ""}
             };
+            PortsReallyFree();
                 Program.InstallConfiguration(c, message => Console.WriteLine(message));
             Healthy(c); KioskHealthy(c);
+            BackupAndRestore();
             using (var service = new ServiceController(Program.ServiceName)) Check(service.Status == ServiceControllerStatus.Running, "Service non démarré");
             var report = Path.Combine(Program.Root, "Direction-DSI", "Installation-confidentielle.txt");
             Check(!File.ReadAllText(report).Contains((string)c["secret_key"]) && !File.ReadAllText(report).Contains((string)c["db_password"]), "Un secret figure dans le rapport");
@@ -118,7 +153,9 @@ static class SystemSmoke {
             var serviceJson = Program.Utf8.GetString(System.Security.Cryptography.ProtectedData.Unprotect(File.ReadAllBytes(Program.ServiceConfigFile),null,System.Security.Cryptography.DataProtectionScope.LocalMachine));
             Check(!serviceJson.Contains("db_admin_password") && !serviceJson.Contains("admin_password"),"Un secret de provisionnement reste accessible au service web");
             var webSid = (SecurityIdentifier)new NTAccount("NT SERVICE",Program.ServiceName).Translate(typeof(SecurityIdentifier));
-            foreach (var protectedFile in new[] {Program.ConfigFile,Path.Combine(Program.Root,"https","tls","pki","authorities","local","root.key")}) {
+            // Installation neuve : autorité contrainte aux noms et adresses du centre (audit 6.7).
+            Check(File.Exists(Path.Combine(Program.Root,"https","autorite","racine.crt")), "L'autorité contrainte n'a pas été créée");
+            foreach (var protectedFile in new[] {Program.ConfigFile,Program.ProxyRootKey()}) {
                 foreach (FileSystemAccessRule rule in File.GetAccessControl(protectedFile).GetAccessRules(true,true,typeof(SecurityIdentifier)))
                     Check(rule.AccessControlType != AccessControlType.Allow || !rule.IdentityReference.Equals(webSid),"Le web peut lire la configuration administrative ou la clé CA");
             }
