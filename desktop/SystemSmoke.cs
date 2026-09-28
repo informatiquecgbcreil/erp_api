@@ -147,7 +147,9 @@ static class SystemSmoke {
             var task = Capture(Program.SystemExe("schtasks.exe"), "/Query /TN " + Program.Quote(Program.RenewalTaskName) + " /XML");
             Check(task.Contains("--certificat-renouveler") && task.Contains("S-1-5-18"), "Tâche de renouvellement SYSTEM absente");
             Check(!WebCanRead(key) && !WebCanRead(Path.Combine(Program.Root, "private", "acme", "compte.pem")), "Le service web peut lire une clé du certificat reconnu");
-            Check(File.ReadAllText(Path.Combine(Program.Root, "https", "Caddyfile")).Contains("https://" + name + ":" + c["https_port"] + " {\n tls "), "Caddyfile sans le certificat reconnu");
+            // Fins de ligne Windows (\r\n) : Python écrit le Caddyfile en mode texte.
+            var caddyfile = File.ReadAllText(Path.Combine(Program.Root, "https", "Caddyfile")).Replace("\r\n", "\n");
+            Check(caddyfile.Contains("https://" + name + ":" + c["https_port"] + " {\n tls "), "Caddyfile sans le certificat reconnu :\n" + caddyfile);
             // 3. Nom public servi avec la chaîne Let's Encrypt (de test), vérifiée par Windows.
             string served = ServedByName(c, name);
             Check(served == LeafThumbprint(certificate), "Le proxy ne présente pas le certificat reconnu");
