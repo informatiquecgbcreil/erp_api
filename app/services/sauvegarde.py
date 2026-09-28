@@ -183,10 +183,21 @@ def creer_sauvegarde() -> dict:
     except OSError:
         current_app.logger.warning("Empreinte d'intégrité non écrite pour %s", base)
 
+    # Copie des registres (numéros émis, effacements RGPD) : elle suit le lot
+    # hors serveur et se FUSIONNE à la restauration, sans jamais rien faire
+    # reculer. Son absence ne rend pas le lot inutilisable ; elle est signalée.
+    registres = None
+    try:
+        from app.services.registres_transfert import ecrire_pour_lot
+        registres = ecrire_pour_lot(out_dir, base).name
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception("Copie des registres non jointe au lot %s", base)
+
     return {
         "base": base,
         "db_fichier": db_artifact.name,
         "uploads_fichier": uploads_zip.name,
+        "registres_fichier": registres,
         "horodatage": stamp,
     }
 
@@ -361,7 +372,7 @@ def _nettoyer_dossier(dossier: Path, max_lots: int) -> int:
         return 0
     supprimes = 0
     for lot in lots[max_lots:]:
-        for nom in (lot["db_nom"], lot["uploads_nom"], f"{lot['base']}.sha256"):
+        for nom in (lot["db_nom"], lot["uploads_nom"], f"{lot['base']}.sha256", f"{lot['base']}_registres.json"):
             if not nom:
                 continue
             cible = dossier / nom
@@ -580,6 +591,19 @@ def restaurer_lot(base: str) -> dict:
     with tempfile.TemporaryDirectory(prefix="mcs-validate-") as temporary:
         stage_archive(uploads_file, temporary)
 
+    # Effacements RGPD validés mais pas encore recopiés hors base : la base
+    # courante est leur seule trace, la restauration l'écraserait. On recopie
+    # d'abord ; si c'est impossible, on ne restaure pas.
+    from app.services.registre_effacements import exporter_en_attente
+    from app.services.registre_externe import RegistreErreur
+    try:
+        exporter_en_attente()
+    except RegistreErreur as exc:
+        raise RuntimeError(
+            "Des effacements RGPD récents n'ont pas encore pu être recopiés dans le registre de "
+            f"l'installation ({exc}). Restauration refusée : elle les ferait oublier. Vérifiez les "
+            "droits du dossier des données, puis réessayez.") from exc
+
     # Filet de sécurité : on sauvegarde l'état courant AVANT d'écraser.
     try:
         securite = creer_sauvegarde()
@@ -603,7 +627,18 @@ def restaurer_lot(base: str) -> dict:
     # fait pas revenir la personne en silence (mineur RGPD de l'audit).
     from app.extensions import db
     db.session.remove()
-    reanonymises, erreur_rgpd = [], None
+    reanonymises, erreur_rgpd, registres = [], None, None
+    copie = out_dir / f"{base}_registres.json"
+    if copie.exists():
+        # Fusion (jamais d'écrasement) : utile surtout sur une machine neuve,
+        # sans effet sur des registres plus récents.
+        try:
+            from app.services.registres_transfert import fusionner, lire as lire_registres
+            registres = fusionner(lire_registres(copie))
+        except Exception as exc:  # noqa: BLE001 — la restauration elle-même a réussi
+            db.session.rollback()
+            registres = {"erreur": str(exc)}
+            current_app.logger.exception("Restauration : copie des registres du lot non fusionnée")
     try:
         from app.services.registre_effacements import reappliquer
         reanonymises = reappliquer()
@@ -611,8 +646,10 @@ def restaurer_lot(base: str) -> dict:
         db.session.rollback()
         erreur_rgpd = str(exc)
         current_app.logger.exception("Restauration : anonymisations à réappliquer à la main")
+    if registres and registres.get("reappliques"):
+        reanonymises = sorted(set(reanonymises) | set(registres["reappliques"]))
     return {"base": base, "securite": securite.get("base"),
-            "reanonymises": reanonymises, "erreur_rgpd": erreur_rgpd}
+            "reanonymises": reanonymises, "erreur_rgpd": erreur_rgpd, "registres": registres}
 
 
 # --------------------------------------------------------------------------
@@ -750,6 +787,21 @@ def verifier_lot(base: str) -> dict:
             ok, detail = _verifier_db_dump_postgres(db_file)
         ajouter("Base de données", ok, detail)
 
+    registres = out_dir / f"{base}_registres.json"
+    if registres.exists():
+        from app.services.registres_transfert import lire as lire_registres
+        from app.services.registre_externe import RegistreEndommage
+        try:
+            copie = lire_registres(registres)
+            ajouter("Copie des registres", True, f"{len(copie['numeros'])} série(s) de numéros, "
+                                                  f"{len(copie['effacements'])} effacement(s)")
+        except RegistreEndommage as exc:
+            # Le lot reste restaurable ; les registres de l'installation ne
+            # reculent jamais, seule la copie jointe est inutilisable.
+            ajouter("Copie des registres", None, f"illisible, ignorée à la restauration ({exc})")
+    else:
+        ajouter("Copie des registres", None, "absente (lot créé par une version précédente)")
+
     tout_ok = all(c["ok"] is not False for c in controles) and bool(db_file) and uploads_file.exists()
     return {"base": base, "ok": tout_ok, "controles": controles}
 
@@ -832,6 +884,7 @@ def _fichiers_du_lot(base: str, dossier: Path) -> list[Path]:
         dossier / f"{base}.db",
         dossier / f"{base}_uploads.zip",
         dossier / f"{base}.sha256",
+        dossier / f"{base}_registres.json",
     ]
     return [c for c in candidats if c.exists()]
 

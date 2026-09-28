@@ -898,7 +898,12 @@ def sauvegarde_restaurer():
                   "(voir le journal d'audit).", "warning")
         if res.get("erreur_rgpd"):
             flash("Attention : les anonymisations postérieures à cette sauvegarde n'ont pas pu être "
-                  f"réappliquées ({res['erreur_rgpd']}). Vérifiez Contrôle → Purge RGPD.", "danger")
+                  f"réappliquées ({res['erreur_rgpd']}). Vérifiez Contrôle → Registres.", "danger")
+        registres = res.get("registres")
+        if registres and registres.get("erreur"):
+            flash("La copie des registres jointe à cette sauvegarde n'a pas pu être reprise ; les registres "
+                  "de l'installation sont inchangés (ils ne reculent jamais). Détail : Contrôle → Registres.",
+                  "warning")
     except Exception as exc:  # noqa: BLE001
         current_app.logger.exception("Échec de la restauration")
         flash(f"La restauration a échoué : {exc}", "danger")

@@ -56,6 +56,12 @@ def main() -> int:
         app.config.from_object(Config)
         db.init_app(app)
         with app.app_context():
+            # Effacements RGPD validés pas encore recopiés hors base : la base
+            # courante est leur seule trace. Recopie d'abord, sinon refus.
+            from sqlalchemy import inspect as _inspect
+            if _inspect(db.engine).has_table("effacement_rgpd"):
+                from app.services.registre_effacements import exporter_en_attente
+                exporter_en_attente()
             securite = creer_sauvegarde()
             if sqlite:
                 _restaurer_sqlite(db_path, db_uri)
@@ -70,7 +76,13 @@ def main() -> int:
             db.engine.dispose()
     # Les migrations portent maintenant sur la base restaurée. En cas d'échec,
     # le lot de sécurité reste conservé et le service doit rester arrêté.
-    create_app()
+    restauree = create_app()   # migrations, puis réapplication des effacements confirmés
+    copie = db_path.with_name(db_path.stem + "_registres.json")
+    if copie.exists():
+        # Copie des registres jointe au lot : fusionnée, jamais écrasante.
+        from app.services.registres_transfert import fusionner, lire
+        with restauree.app_context():
+            fusionner(lire(copie))
 
     print("Restauration terminée. Lot de sécurité conservé : " + securite["base"])
     return 0

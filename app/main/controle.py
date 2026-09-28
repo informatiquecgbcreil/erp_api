@@ -551,3 +551,138 @@ def purge_rgpd_reglages():
         "success",
     )
     return redirect(url_for("main.purge_rgpd"))
+
+
+# ---------------------------------------------------------------------
+# Registres hors base : numéros émis et effacements RGPD
+# ---------------------------------------------------------------------
+
+@bp.route("/controle/registres")
+@login_required
+@require_perm("controle:view")
+def controle_registres():
+    """État des registres qui survivent aux restaurations, et rapprochement
+    des anciennes entrées d'effacement impossibles à départager seules."""
+    from app.models import FinancialSequence
+    from app.services import financial_sequence, registre_effacements
+    from app.services.registre_externe import RegistreErreur, registres_mis_de_cote
+
+    erreurs = []
+    try:
+        numeros = financial_sequence.lire_registre()
+    except RegistreErreur as exc:
+        numeros = None
+        erreurs.append(f"Numéros émis : {exc} ({exc.detail})")
+    compteurs = {ligne.namespace: ligne.value for ligne in FinancialSequence.query.all()}
+    espaces = sorted(set(numeros or {}) | set(compteurs))
+    try:
+        effacements = registre_effacements.etat()
+    except RegistreErreur as exc:
+        effacements = None
+        erreurs.append(f"Effacements : {exc} ({exc.detail})")
+    return render_template(
+        "controle_registres.html",
+        tenu=financial_sequence._registre() is not None,
+        numeros=numeros, compteurs=compteurs, espaces=espaces,
+        effacements=effacements,
+        a_verifier=registre_effacements.a_verifier(),
+        mis_de_cote=[p.name for p in registres_mis_de_cote()],
+        erreurs=erreurs,
+    )
+
+
+@bp.post("/controle/registres/effacements/<int:entree_id>")
+@login_required
+@require_perm("participants:anonymize")
+def controle_registres_decider(entree_id: int):
+    from app.services.registre_effacements import decider
+
+    decision = (request.form.get("decision") or "").strip()
+    if decision not in {"confirmer", "ecarter"}:
+        flash("Décision inconnue.", "danger")
+        return redirect(url_for("main.controle_registres"))
+    message = decider(entree_id, decision, user_id=getattr(current_user, "id", None))
+    flash(message, "info" if "déjà" in message else "success")
+    return redirect(url_for("main.controle_registres"))
+
+
+@bp.post("/controle/registres/recopier")
+@login_required
+@require_perm("controle:view")
+def controle_registres_recopier():
+    from app.services.registre_effacements import exporter_en_attente
+    from app.services.registre_externe import RegistreErreur
+
+    try:
+        nombre = exporter_en_attente()
+        flash(f"{nombre} effacement(s) recopié(s) dans le registre de l'installation.", "success")
+    except RegistreErreur as exc:
+        flash(f"Recopie impossible : {exc}", "danger")
+    return redirect(url_for("main.controle_registres"))
+
+
+@bp.get("/controle/registres/export")
+@login_required
+@require_perm("admin:rbac")
+def controle_registres_export():
+    """Copie des registres à emporter vers une nouvelle installation."""
+    import json as _json
+    from flask import Response
+    from app.services.audit import journaliser
+    from app.services.registres_transfert import instantane
+
+    contenu = _json.dumps(instantane(), sort_keys=True, ensure_ascii=False, indent=1)
+    journaliser("registres.export")
+    nom = f"registres-mon-centre-social-{date.today().isoformat()}.json"
+    return Response(contenu, mimetype="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{nom}"'})
+
+
+@bp.post("/controle/registres/import")
+@login_required
+@require_perm("admin:rbac")
+def controle_registres_import():
+    """Transfert : fusionne une copie des registres (jamais d'écrasement)."""
+    import json as _json
+    from app.services.audit import journaliser
+    from app.services.registre_externe import RegistreErreur
+    from app.services.registres_transfert import fusionner
+
+    fichier = request.files.get("fichier")
+    if fichier is None or not fichier.filename:
+        flash("Choisissez le fichier de registres exporté de l'ancienne installation.", "danger")
+        return redirect(url_for("main.controle_registres"))
+    try:
+        donnees = _json.loads(fichier.read(20_000_000).decode("utf-8"))
+        rapport = fusionner(donnees)
+    except (ValueError, UnicodeDecodeError):
+        flash("Ce fichier n'est pas une copie des registres de Mon Centre Social.", "danger")
+        return redirect(url_for("main.controle_registres"))
+    except RegistreErreur as exc:
+        flash(f"Import refusé : {exc}", "danger")
+        return redirect(url_for("main.controle_registres"))
+    journaliser("registres.import", details={"numeros": rapport["numeros"], "effacements": rapport["effacements"],
+                                              "reappliques": len(rapport["reappliques"])})
+    flash(f"Registres fusionnés : {rapport['numeros']} série(s) de numéros, {rapport['effacements']} "
+          f"effacement(s) ; {len(rapport['reappliques'])} fiche(s) anonymisée(s) de nouveau.", "success")
+    return redirect(url_for("main.controle_registres"))
+
+
+@bp.post("/controle/registres/dernier-numero")
+@login_required
+@require_perm("admin:rbac")
+def controle_registres_dernier_numero():
+    """Après un sinistre : déclarer le dernier numéro émis connu (papier)."""
+    from app.services.audit import journaliser
+    from app.services.registres_transfert import declarer_dernier_numero
+
+    espace = f"{(request.form.get('serie') or '').strip()}:{(request.form.get('annee') or '').strip()}"
+    try:
+        numero = int(request.form.get("numero") or 0)
+        declarer_dernier_numero(espace, numero)
+    except ValueError:
+        flash("Indiquez une série, une année (4 chiffres) et un numéro supérieur à 0.", "danger")
+        return redirect(url_for("main.controle_registres"))
+    journaliser("registres.dernier_numero", cible=espace, details={"numero": numero})
+    flash(f"Série {espace} : la numérotation reprendra au-delà du n° {numero}.", "success")
+    return redirect(url_for("main.controle_registres"))

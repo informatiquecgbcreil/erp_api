@@ -37,6 +37,12 @@ def executer(declenchement: str = "automatique (quotidien)") -> dict:
         except Exception:  # noqa: BLE001
             db.session.rollback()
             current_app.logger.exception("Maintenance : file d'effacement non traitée")
+        try:
+            from app.services.registre_effacements import exporter_en_attente
+            rapport["effacements_recopies"] = exporter_en_attente()
+        except Exception:  # noqa: BLE001 — affiché dans Contrôle, retenté demain
+            db.session.rollback()
+            current_app.logger.exception("Maintenance : recopie du registre des effacements en attente")
         from app.services import purge_rgpd
         if purge_rgpd.purge_auto_active():
             purge_rgpd.purge_quotidienne_si_necessaire()
