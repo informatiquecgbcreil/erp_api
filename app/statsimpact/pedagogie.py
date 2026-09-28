@@ -177,6 +177,11 @@ def _query_presence_export(flt, participant_q: str | None = None):
         .outerjoin(Quartier, Participant.quartier_id == Quartier.id)
     )
     query = _apply_common_filters(query, flt)
+    # Une ligne = une venue : mêmes règles que SENACS et les bilans (audit
+    # 5.3). Les absences excusées et les séances annulées ou à venir, qui
+    # n'ont pas de colonne pour les distinguer, faussaient le décompte.
+    from app.services.presences_comptees import seance_tenue, venue_reelle
+    query = query.filter(venue_reelle(), seance_tenue())
 
     if participant_q:
         like = f"%{participant_q.lower()}%"

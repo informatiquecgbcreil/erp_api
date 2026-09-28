@@ -360,6 +360,10 @@ def stats():
             .join(AtelierActivite, AtelierActivite.id == SessionActivite.atelier_id)
             .filter(Participant.quartier_id == quartier.id)
         )
+        # Mêmes règles que SENACS et les bilans (audit 5.3).
+        from app.services.presences_comptees import seance_tenue, venue_reelle
+        filtered_presence_q = filtered_presence_q.filter(
+            SessionActivite.is_deleted.is_(False), venue_reelle(), seance_tenue())
         if type_public_filter:
             filtered_presence_q = filtered_presence_q.filter(Participant.type_public == type_public_filter)
         if secteur_filter:

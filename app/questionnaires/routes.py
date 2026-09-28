@@ -128,6 +128,14 @@ def index():
         questionnaires = questionnaires.filter(db.func.lower(Questionnaire.nom).like(like))
     questionnaires = questionnaires.order_by(Questionnaire.nom.asc()).all()
     ateliers = AtelierActivite.query.filter_by(is_deleted=False).all()
+    if not can("scope:all_secteurs"):
+        # Mineur sécurité de l'audit : la liste montrait les titres des
+        # questionnaires de tous les secteurs. Restent les questionnaires
+        # communs et ceux ouverts à son secteur (même règle que leurs pages).
+        secteur = effective_sector()
+        questionnaires = [q for q in questionnaires
+                          if not q.secteurs or secteur in {s.secteur for s in q.secteurs}]
+        ateliers = [a for a in ateliers if a.secteur == secteur]
     ateliers_map = {a.id: f"{a.secteur} — {a.nom}" for a in ateliers}
     return render_template(
         "questionnaires/index.html",

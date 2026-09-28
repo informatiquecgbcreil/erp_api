@@ -36,4 +36,18 @@ if __name__ == "__main__":
                 pass
         _safe_print(f"DATABASE_URL={safe}")
 
-    serve(app, host=host, port=port, threads=threads)
+    # Derrière nginx (ou un autre proxy local) : ERP_TRUSTED_PROXY=127.0.0.1
+    # fait lire à waitress l'adresse réelle transmise par X-Forwarded-For
+    # (mineur de l'audit : sans lui, tous les appareils partageaient les
+    # compteurs anti-abus du kiosque). Sans réglage : comportement inchangé.
+    proxy = os.environ.get("ERP_TRUSTED_PROXY", "").strip()
+    options = {}
+    if proxy:
+        options = {
+            "trusted_proxy": proxy,
+            "trusted_proxy_count": int(os.environ.get("ERP_TRUSTED_PROXY_COUNT", "1")),
+            "trusted_proxy_headers": {"x-forwarded-for", "x-forwarded-proto", "x-forwarded-host"},
+            "clear_untrusted_proxy_headers": True,
+        }
+        _safe_print(f"Proxy de confiance : {proxy}")
+    serve(app, host=host, port=port, threads=threads, **options)

@@ -70,6 +70,19 @@ def _role_donne_admin(role) -> bool:
     return bool(role) and any(p.code == "admin:rbac" for p in (role.permissions or []))
 
 
+def _role_attribuable(role) -> bool:
+    """Mineur sécurité de l'audit : « admin:users » sans « admin:rbac »
+    pouvait créer un compte doté d'un rôle plus puissant que le sien (rôle
+    personnalisé de direction). Sans admin:rbac, on n'attribue qu'un rôle
+    dont chaque permission est déjà la sienne, et jamais admin:rbac."""
+    if role is None:
+        return False
+    if can("admin:rbac"):
+        return True
+    codes = {p.code for p in (role.permissions or [])}
+    return "admin:rbac" not in codes and all(current_user.has_perm(code) for code in codes)
+
+
 def _est_admin(u) -> bool:
     admin_ids = _role_ids_admin_rbac()
     return any(r.id in admin_ids for r in (getattr(u, "roles", None) or []))
@@ -118,13 +131,15 @@ def users():
             flash("Un utilisateur utilisant cette adresse e-mail existe déjà.", "danger")
             return redirect(url_for("admin.users"))
 
+        role = Role.query.filter_by(code=role_code).first()
+        if not _role_attribuable(role):
+            flash("Vous ne pouvez pas attribuer ce rôle : il donne des droits que votre compte n'a pas.", "danger")
+            return redirect(url_for("admin.users"))
+
         u = User(email=email, nom=nom or "Utilisateur")
         u.set_password(password)
         u.secteur_assigne = secteur
-
-        role = Role.query.filter_by(code=role_code).first()
-        if role:
-            u.roles.append(role)
+        u.roles.append(role)
 
         db.session.add(u)
         db.session.commit()
@@ -134,7 +149,7 @@ def users():
         return redirect(url_for("admin.users"))
 
     users = User.query.order_by(User.nom).all()
-    roles = Role.query.order_by(Role.code).all()
+    roles = [r for r in Role.query.order_by(Role.code).all() if _role_attribuable(r)]
     secteurs = get_secteur_labels(active_only=True)
 
     # Les comptes à portée globale n'ont pas besoin d'un secteur assigné.

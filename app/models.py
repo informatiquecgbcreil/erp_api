@@ -2526,6 +2526,19 @@ class SessionAssessmentSkill(db.Model):
 
 # ---------- JOURNAL DES CONNEXIONS (sécurité + audit) ----------
 
+class SessionRevoquee(db.Model):
+    """Session fermée par « Se déconnecter » (mineur sécurité de l'audit).
+
+    Le cookie de session est signé mais ne vit que chez le navigateur : sans
+    cette liste, un cookie copié avant la déconnexion restait valable. La
+    ligne disparaît après la durée maximale d'une session (le cookie ne
+    serait plus accepté de toute façon)."""
+    __tablename__ = "session_revoquee"
+
+    sid = db.Column(db.String(64), primary_key=True)
+    expire_le = db.Column(db.DateTime, nullable=False, index=True)
+
+
 class JournalConnexion(db.Model):
     """Trace chaque tentative de connexion (réussie ou non).
 

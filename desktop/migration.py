@@ -287,15 +287,64 @@ def apply_document_plan(connection, plan, source_roots, new_roots):
                 connection.execute(update(table).where(table.c[column] == old).values({column: new}))
 
 
+def _valeur_par_defaut(column):
+    """Valeur de remplissage d'une colonne ajoutée : défaut simple, ou défaut
+    calculé (date du jour, horodatage…) évalué une fois (mineur de l'audit :
+    une colonne obligatoire à défaut calculé bloquait la reprise)."""
+    if column.default is None:
+        return None
+    if column.default.is_scalar:
+        return column.default.arg
+    if getattr(column.default, "is_callable", False):
+        try:
+            return column.default.arg(None)
+        except Exception:  # noqa: BLE001 — défaut qui a besoin du contexte d'insertion
+            return None
+    return None
+
+
+def _famille_type(sql_type) -> str:
+    """Famille comparable d'un type (le nom exact varie selon le moteur)."""
+    nom = str(sql_type).lower()
+    for famille, mots in (("booleen", ("bool",)), ("date_heure", ("timestamp", "datetime")),
+                          ("date", ("date",)), ("entier", ("int", "serial")),
+                          ("decimal", ("numeric", "decimal", "float", "double", "real")),
+                          ("texte", ("char", "text", "clob", "string"))):
+        if any(mot in nom for mot in mots):
+            return famille
+    return nom
+
+
+def ecarts_de_type(engine, metadata) -> list[str]:
+    """Colonnes présentes dont la famille de type diffère du modèle (mineur
+    de l'audit : non détecté). Rien n'est modifié : signalé au rapport."""
+    from sqlalchemy import inspect as _inspect
+    ecarts = []
+    with engine.connect() as connection:
+        actual = _inspect(connection)
+        for table in metadata.sorted_tables:
+            if not actual.has_table(table.name):
+                continue
+            reels = {c["name"]: c["type"] for c in actual.get_columns(table.name)}
+            for column in table.columns:
+                if column.name not in reels:
+                    continue
+                attendu, trouve = _famille_type(column.type), _famille_type(reels[column.name])
+                compatibles = {attendu, trouve} <= {"date", "date_heure"} or {attendu, trouve} <= {"entier", "booleen"}
+                if attendu != trouve and not compatibles:
+                    ecarts.append(f"{table.name}.{column.name} : attendu {attendu}, trouvé {trouve}")
+    return ecarts
+
+
 def reconcile_columns(engine, metadata):
     """Ajoute les colonnes que le logiciel attend et que la base n'a pas.
 
     Seules des AJOUTS sont faits, jamais de suppression ni de modification :
     colonne facultative ajoutée vide ; colonne obligatoire avec une valeur par
-    défaut simple, ajoutée puis remplie avec cette valeur. Une colonne
-    obligatoire sans valeur connue bloque la reprise (analyse nécessaire).
-    Les contraintes de clé étrangère ne sont pas recréées. Rend la liste
-    « table.colonne » ajoutée, pour le rapport.
+    défaut (simple ou calculée), ajoutée puis remplie. Une colonne obligatoire
+    sans valeur connue bloque la reprise (analyse nécessaire). Sur
+    PostgreSQL, la clé étrangère d'une colonne ajoutée est recréée (mineur de
+    l'audit). Rend la liste « table.colonne » ajoutée, pour le rapport.
     """
     from sqlalchemy import inspect as _inspect
     added = []
@@ -309,7 +358,7 @@ def reconcile_columns(engine, metadata):
             for column in table.columns:
                 if column.name in present:
                     continue
-                default = column.default.arg if column.default is not None and column.default.is_scalar else None
+                default = _valeur_par_defaut(column)
                 if not column.nullable and default is None and column.server_default is None:
                     raise MigrationError(f"Colonne obligatoire absente de l'ancienne base : {table.name}.{column.name}. "
                                          "Une analyse du schéma est nécessaire ; la source est intacte.")
@@ -321,6 +370,16 @@ def reconcile_columns(engine, metadata):
                     connection.execute(text(f"UPDATE {table_name} SET {name} = :v"), {"v": default})
                     if not column.nullable and connection.dialect.name == "postgresql":
                         connection.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN {name} SET NOT NULL"))
+                if connection.dialect.name == "postgresql":
+                    for cle in column.foreign_keys:
+                        cible = cle.column
+                        if not actual.has_table(cible.table.name):
+                            continue
+                        contrainte = preparer.quote(f"fk_{table.name}_{column.name}"[:63])
+                        suppression = f" ON DELETE {cle.ondelete}" if cle.ondelete else ""
+                        connection.execute(text(
+                            f"ALTER TABLE {table_name} ADD CONSTRAINT {contrainte} FOREIGN KEY ({name}) "
+                            f"REFERENCES {preparer.format_table(cible.table)} ({preparer.quote(cible.name)}){suppression}"))
                 added.append(f"{table.name}.{column.name}")
     return added
 
@@ -629,6 +688,7 @@ def migrate(c, runtime):
             # Bases anciennes dont le schéma a dérivé de l'historique Alembic
             # (colonnes ajoutées à la main ou par l'ancien correctif de schéma).
             completed_columns = reconcile_columns(db.engine, db.metadata)
+            types_differents = ecarts_de_type(db.engine, db.metadata)
             from app.rbac import bootstrap_rbac
             from app.secteurs import bootstrap_secteurs_from_config
             bootstrap_rbac()
@@ -657,6 +717,7 @@ def migrate(c, runtime):
                   "tables": {k: v["rows"] for k, v in before.items()}, "files": len(manifest["files"]),
                   "accounts_preserved": True, "organization": organization,
                   "colonnes_completees": completed_columns,
+                  "types_differents_a_verifier": types_differents,
                   "source_mise_au_repos": au_repos,
                   "documents": {"copies_avec_les_dossiers": len(manifest["files"]),
                                 "retrouves_apres_deplacement": len(documents["relocated"]),

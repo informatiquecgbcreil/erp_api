@@ -195,3 +195,102 @@ def test_installation_existante_garde_son_autorite(tmp_path):
     texte = write_caddy(dict(_CONFIG_PROXY), tmp_path).read_text(encoding="utf-8")
     assert " pki {" not in texte
     assert not fichiers_autorite(tmp_path)[0].exists()
+
+
+def test_reecriture_des_chemins_par_lots(tmp_path):
+    """Mineur de la reprise : 20 000 chemins réécrits en quelques secondes
+    (une requête par chemin, sur colonne non indexée, était quadratique)."""
+    import time
+    from sqlalchemy import create_engine, text
+    from app.services.instance_archive import remap_paths
+    moteur = create_engine(f"sqlite:///{tmp_path / 'chemins.db'}")
+    with moteur.begin() as c:
+        c.execute(text("CREATE TABLE presence_activite (id INTEGER PRIMARY KEY, signature_path TEXT)"))
+        c.execute(text("INSERT INTO presence_activite (id, signature_path) VALUES (:i, :p)"),
+                  [{"i": i, "p": f"D:/ancien/uploads/signatures/sig_{i}.png"} for i in range(1, 20001)])
+    debut = time.monotonic()
+    with moteur.begin() as c:
+        remap_paths(c, {"uploads": "D:/ancien/uploads"}, {"uploads": "/nouveau/uploads"})
+    duree = time.monotonic() - debut
+    with moteur.connect() as c:
+        valeurs = [v for (v,) in c.execute(text("SELECT signature_path FROM presence_activite"))]
+    assert all(v.replace("\\", "/").startswith("/nouveau/uploads/signatures/") for v in valeurs)
+    assert duree < 30, duree
+
+
+def _metadonnees_modele():
+    import datetime as dt
+    import sqlalchemy as sa
+    meta = sa.MetaData()
+    sa.Table("parent", meta, sa.Column("id", sa.Integer, primary_key=True))
+    sa.Table("enfant", meta,
+             sa.Column("id", sa.Integer, primary_key=True),
+             sa.Column("cree_le", sa.DateTime, nullable=False, default=lambda: dt.datetime(2024, 1, 1)),
+             sa.Column("parent_id", sa.Integer, sa.ForeignKey("parent.id", ondelete="SET NULL"), nullable=True),
+             sa.Column("quantite", sa.Integer, nullable=True))
+    return meta
+
+
+def _base_ancienne(url):
+    import sqlalchemy as sa
+    moteur = sa.create_engine(url)
+    with moteur.begin() as c:
+        c.execute(sa.text("DROP TABLE IF EXISTS enfant"))
+        c.execute(sa.text("DROP TABLE IF EXISTS parent"))
+        c.execute(sa.text("CREATE TABLE parent (id INTEGER PRIMARY KEY)"))
+        c.execute(sa.text("CREATE TABLE enfant (id INTEGER PRIMARY KEY, quantite VARCHAR(20))"))
+        c.execute(sa.text("INSERT INTO enfant (id, quantite) VALUES (1, 'douze')"))
+    return moteur
+
+
+def test_reprise_colonne_obligatoire_a_defaut_calcule_et_ecart_de_type(tmp_path):
+    import sqlalchemy as sa
+    from desktop.migration import ecarts_de_type, reconcile_columns
+    moteur = _base_ancienne(f"sqlite:///{tmp_path / 'ancienne.db'}")
+    ajoutees = reconcile_columns(moteur, _metadonnees_modele())
+    assert {"enfant.cree_le", "enfant.parent_id"} <= set(ajoutees)
+    with moteur.connect() as c:
+        assert c.execute(sa.text("SELECT cree_le FROM enfant")).scalar() is not None
+    assert any(e.startswith("enfant.quantite") for e in ecarts_de_type(moteur, _metadonnees_modele()))
+
+
+def test_reprise_cle_etrangere_recreee_sur_postgresql(app):
+    import sqlalchemy as sa
+    url = app.config.get("SQLALCHEMY_DATABASE_URI") or ""
+    if not url.startswith("postgresql"):
+        pytest.skip("clé étrangère ajoutée : PostgreSQL uniquement")
+    from desktop.migration import reconcile_columns
+    from sqlalchemy.engine import make_url
+    nom = f"mcs_reprise_fk_{uuid.uuid4().hex[:6]}"
+    admin = sa.create_engine(make_url(url).set(database="postgres"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as c:
+        c.execute(sa.text(f'CREATE DATABASE "{nom}"'))
+    try:
+        moteur = _base_ancienne(make_url(url).set(database=nom).render_as_string(hide_password=False))
+        reconcile_columns(moteur, _metadonnees_modele())
+        cles = sa.inspect(moteur).get_foreign_keys("enfant")
+        assert any(k["referred_table"] == "parent" and k["constrained_columns"] == ["parent_id"] for k in cles)
+        moteur.dispose()
+    finally:
+        with admin.connect() as c:
+            c.execute(sa.text(f'DROP DATABASE IF EXISTS "{nom}" WITH (FORCE)'))
+        admin.dispose()
+
+
+def test_retour_arriere_des_migrations_de_la_consolidation(fresh_app):
+    """Chaque migration de cette consolidation se défait proprement jusqu'à
+    la révision de main (a4c7e2f9d153), puis se rejoue (procédure de retour
+    arrière : voir la PR). Sur SQLite et PostgreSQL."""
+    from flask_migrate import downgrade, upgrade
+    from sqlalchemy import inspect, text
+    from app.extensions import db
+    with fresh_app.app_context():
+        downgrade(revision="a4c7e2f9d153")
+        with db.engine.connect() as c:
+            assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "a4c7e2f9d153"
+        tables = set(inspect(db.engine).get_table_names())
+        assert "encaissement" not in tables and "session_revoquee" not in tables
+        upgrade(revision="head")
+        with db.engine.connect() as c:
+            assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "b8d0f2a4c593"
+        assert "encaissement" in set(inspect(db.engine).get_table_names())

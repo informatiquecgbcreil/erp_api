@@ -187,7 +187,9 @@ def _qpv_bucket(participant: Participant | None, quartier: Quartier | None = Non
     quartier = quartier or (getattr(participant, "quartier", None) if participant else None)
     if not quartier:
         return "Inconnu"
-    return "QPV" if quartier.is_qpv else "Hors QPV"
+    # Le champ qpv du quartier fait foi (comme Participant.is_qpv) ; le
+    # booléen historique reste un repli.
+    return "QPV" if (getattr(quartier, "qpv", None) or "").strip() or quartier.is_qpv else "Hors QPV"
 
 
 def _orientation_filtered_query(year: int):

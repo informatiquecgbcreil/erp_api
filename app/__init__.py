@@ -406,6 +406,26 @@ def create_app():
     installer_recherche_texte()
 
     @app.before_request
+    def _controler_session_equipe():
+        """Fin de session après inactivité, durée maximale et session fermée
+        par une déconnexion (mineur sécurité de l'audit). Le kiosque, qui
+        n'utilise pas de compte, n'est pas concerné."""
+        from flask import flash as _flash, redirect as _redirect, session as _session
+        from flask_login import logout_user as _logout_user
+        endpoint = request.endpoint or ""
+        if (not current_user.is_authenticated or request.blueprint == "kiosk"
+                or endpoint.startswith("static") or endpoint in {"healthz", "auth.logout"}):
+            return None
+        from app.services.sessions_securite import motif_de_fin
+        motif = motif_de_fin()
+        if motif is None:
+            return None
+        _logout_user()
+        _session.clear()
+        _flash(motif, "warning")
+        return _redirect(url_for("auth.login"))
+
+    @app.before_request
     def _memoriser_contexte_de_travail():
         """Retient l'année et le secteur consultés, pour les proposer par
         défaut à l'écran suivant.

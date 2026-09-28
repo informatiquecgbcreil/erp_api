@@ -133,31 +133,61 @@ def install_staged(staging, roots):
             shutil.copy2(source, target)
 
 
+def _chemin_remappe(old, column, old_roots, new_roots, source_directory):
+    """Nouveau chemin d'une valeur, ou None si elle n'est pas concernée."""
+    if not old or (column.startswith("modele_docx_") and old.startswith("builtin:")):
+        return None
+    normalized = old.replace("\\", "/")
+    if source_directory and not (PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute()):
+        normalized = str((Path(source_directory) / old).resolve()).replace("\\", "/")
+    for label, prefix in old_roots.items():
+        if label not in new_roots or not new_roots[label]:
+            continue
+        prefix = prefix.replace("\\", "/").rstrip("/") + "/"
+        compare = str.casefold if ":" in prefix else lambda s: s
+        if compare(normalized).startswith(compare(prefix)):
+            relative = normalized[len(prefix):]
+            if ".." in PurePosixPath(relative).parts:
+                raise RuntimeError("Chemin métier non portable dans la base.")
+            return str(Path(new_roots[label]) / relative)
+    return None
+
+
 def remap_paths(connection, old_roots, new_roots, *, source_directory=None):
-    """Réécrit uniquement les colonnes de chemins métier, jamais les notes."""
-    from sqlalchemy import MetaData, Table, inspect, select, update
+    """Réécrit uniquement les colonnes de chemins métier, jamais les notes.
+
+    Mineur de la reprise (audit) : une requête par chemin, filtrée sur une
+    colonne non indexée, coûtait ~30 min pour 100 000 documents. Les
+    nouvelles valeurs sont calculées en mémoire puis écrites par lots de
+    1 000, par clé primaire (indexée)."""
+    from sqlalchemy import MetaData, Table, bindparam, inspect, select, update
     inspector = inspect(connection)
     for table_name in inspector.get_table_names():
         columns = PATH_COLUMNS & {c["name"] for c in inspector.get_columns(table_name)}
         if not columns:
             continue
         table = Table(table_name, MetaData(), autoload_with=connection)
+        cles = list(table.primary_key.columns)
         for column in columns:
-            for (old,) in connection.execute(select(table.c[column]).distinct()):
-                if not old or (column.startswith("modele_docx_") and old.startswith("builtin:")):
-                    continue
-                normalized = old.replace("\\", "/")
-                if source_directory and not (PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute()):
-                    normalized = str((Path(source_directory) / old).resolve()).replace("\\", "/")
-                for label, prefix in old_roots.items():
-                    if label not in new_roots or not new_roots[label]:
-                        continue
-                    prefix = prefix.replace("\\", "/").rstrip("/") + "/"
-                    compare = str.casefold if ":" in prefix else lambda s: s
-                    if compare(normalized).startswith(compare(prefix)):
-                        relative = normalized[len(prefix):]
-                        if ".." in PurePosixPath(relative).parts:
-                            raise RuntimeError("Chemin métier non portable dans la base.")
-                        target = str(Path(new_roots[label]) / relative)
+            if len(cles) != 1:
+                # Sans clé primaire simple : ancienne méthode, valeur par valeur.
+                for (old,) in connection.execute(select(table.c[column]).distinct()):
+                    target = _chemin_remappe(old, column, old_roots, new_roots, source_directory)
+                    if target is not None:
                         connection.execute(update(table).where(table.c[column] == old).values({column: target}))
-                        break
+                continue
+            cle = cles[0]
+            lot = []
+            instruction = (update(table).where(cle == bindparam("_cle"))
+                           .values({column: bindparam("_valeur")}))
+            lignes = connection.execute(select(cle, table.c[column]).where(table.c[column].isnot(None))).all()
+            for identifiant, old in lignes:
+                target = _chemin_remappe(old, column, old_roots, new_roots, source_directory)
+                if target is None:
+                    continue
+                lot.append({"_cle": identifiant, "_valeur": target})
+                if len(lot) >= 1000:
+                    connection.execute(instruction, lot)
+                    lot = []
+            if lot:
+                connection.execute(instruction, lot)

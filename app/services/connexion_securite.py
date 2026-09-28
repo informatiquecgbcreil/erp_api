@@ -96,6 +96,30 @@ def minutes_avant_deverrouillage(email: str, adresse_ip: str | None = None) -> i
     return max(1, int(restant // 60) + 1)
 
 
+#: Plafond par adresse, tous comptes confondus (mineur sécurité de l'audit :
+#: une adresse pouvait essayer un mot de passe sur des centaines de comptes).
+MAX_ECHECS_ADRESSE = int(os.environ.get("LOGIN_MAX_ECHECS_ADRESSE", "30"))
+
+
+def minutes_avant_deverrouillage_adresse(adresse_ip: str | None) -> int:
+    """0 si l'adresse peut encore essayer, sinon minutes d'attente."""
+    if not adresse_ip:
+        return 0
+    try:
+        depuis = utcnow() - timedelta(minutes=FENETRE_MINUTES)
+        echecs = (JournalConnexion.query
+                  .filter(JournalConnexion.adresse_ip == adresse_ip, JournalConnexion.succes.is_(False),
+                          JournalConnexion.cree_le >= depuis)
+                  .order_by(JournalConnexion.cree_le.desc()).limit(MAX_ECHECS_ADRESSE).all())
+    except SQLAlchemyError:
+        db.session.rollback()
+        return 0
+    if len(echecs) < MAX_ECHECS_ADRESSE:
+        return 0
+    restant = (echecs[-1].cree_le + timedelta(minutes=FENETRE_MINUTES) - utcnow()).total_seconds()
+    return max(1, int(restant // 60) + 1) if restant > 0 else 0
+
+
 def enregistrer_echec(email: str, adresse_ip: str | None) -> int:
     """Enregistre un échec. Retourne les minutes de verrouillage (0 si non verrouillé)."""
     try:
