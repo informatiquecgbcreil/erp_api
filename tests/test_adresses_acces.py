@@ -6,7 +6,6 @@ répond 400 « Host 'gestion.cgb:8443' is not trusted », et l'autorité contrai
 (NameConstraints fixées à la création) ne peut pas certifier ce nom.
 """
 import datetime
-import ipaddress
 import json
 import subprocess
 import sys

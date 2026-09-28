@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#135b63">
+  <title>{{ nom_app }} — pas de connexion</title>
+  <style>
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#135b63;color:#fff;
+         min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box}
+    main{max-width:420px}
+    img{width:96px;height:96px;border-radius:22px}
+    h1{font-size:1.5rem;margin:16px 0 8px}
+    p{line-height:1.5;opacity:.92}
+    button{margin-top:16px;font:inherit;font-weight:600;padding:12px 24px;border-radius:999px;border:0;background:#f2b84b;color:#10383d;cursor:pointer}
+  </style>
+</head>
+<body>
+  <main>
+    <img src="{{ url_for('static', filename='pwa/icone-192.png') }}" alt="">
+    <h1>Le serveur du centre ne répond pas</h1>
+    <p>{{ nom_app }} fonctionne uniquement sur le réseau du centre{% if structure %} ({{ structure }}){% endif %}.
+       Vérifiez que l'appareil est connecté au wifi du centre, puis réessayez.</p>
+    <button type="button" onclick="location.reload()">Réessayer</button>
+  </main>
+</body>
+</html>

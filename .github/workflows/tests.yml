@@ -28,6 +28,19 @@ jobs:
       - name: Installer le navigateur Playwright (test de fumée)
         run: python -m playwright install --with-deps chromium
 
+      # Certificat reconnu : Pebble (serveur ACME de test de Let's Encrypt) et
+      # son DNS de test, sinon tests/test_certificat_public.py les ignore.
+      - name: Installer Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: Installer Pebble
+        run: |
+          go install github.com/letsencrypt/pebble/v2/cmd/pebble@v2.10.1 github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@v2.10.1
+          echo "PEBBLE_BIN_DIR=$(go env GOPATH)/bin" >> "$GITHUB_ENV"
+
       - name: Lancer les tests
         run: python -m pytest
 

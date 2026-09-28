@@ -58,6 +58,7 @@ Type: filesandordirs; Name: "{app}\caddy"
 Name: "{group}\Mon Centre Social"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--tray"
 Name: "{group}\Configurer Mon Centre Social"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--configure"
 Name: "{group}\Adresses d'accès au serveur"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--adresses"
+Name: "{group}\Certificat reconnu (nom public)"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--certificat"
 Name: "{group}\Guide d'installation"; Filename: "{app}\GUIDE-WINDOWS.md"
 Name: "{autodesktop}\Mon Centre Social"; Filename: "{app}\MonCentreSocial.exe"; Parameters: "--tray"
 

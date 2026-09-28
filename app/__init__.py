@@ -291,6 +291,7 @@ def create_app():
     from app.inventaire_materiel.routes import bp as inventaire_materiel_bp
     from app.participants.routes import bp as participants_bp
     from app.launcher import bp as launcher_bp
+    from app.pwa import bp as pwa_bp
     from app.pedagogie.routes import bp as pedagogie_bp
     from app.quartiers import bp as quartiers_bp
     from app.partenaires import bp as partenaires_bp
@@ -319,6 +320,7 @@ def create_app():
     app.register_blueprint(inventaire_materiel_bp)
     app.register_blueprint(participants_bp)
     app.register_blueprint(launcher_bp)
+    app.register_blueprint(pwa_bp)
     app.register_blueprint(pedagogie_bp)
     app.register_blueprint(quartiers_bp)
     app.register_blueprint(partenaires_bp)
@@ -554,7 +556,10 @@ def create_app():
         from app.models import User
 
         endpoint = (request.endpoint or "")
-        if endpoint.startswith("static") or endpoint.startswith("setup.") or endpoint in {"media_file", "healthz", "source_archive"}:
+        # pwa.* : manifeste et service worker doivent rester ce qu'ils sont
+        # (JSON, JavaScript), jamais une redirection vers l'assistant.
+        if (endpoint.startswith(("static", "setup.", "pwa."))
+                or endpoint in {"media_file", "healthz", "source_archive"}):
             return None
 
         if User.query.count() == 0:
@@ -704,6 +709,15 @@ def create_app():
     @app.context_processor
     def _inject_rbac_helpers():
         return {"can": can}
+
+    @app.context_processor
+    def _inject_alerte_certificat():
+        # Certificat reconnu proche de l'échéance sans renouvellement :
+        # bandeau pour les administrateurs seulement.
+        if not current_user.is_authenticated or not can("admin:rbac"):
+            return {}
+        from app.services.certificat_https import alerte_certificat
+        return {"alerte_certificat": alerte_certificat()}
 
     @app.context_processor
     def _inject_salles():
