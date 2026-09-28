@@ -23,8 +23,11 @@ ECRIVAINS, TOURS = 6, 40
 
 
 def charger(installation: Path):
+    # Même disposition que desktop/runtime.py : l'application livrée est
+    # dans « application », une copie de travail à la racine.
+    racine = installation / "application" if (installation / "application").is_dir() else installation
     spec = importlib.util.spec_from_file_location(
-        "registre_externe", installation / "app" / "services" / "registre_externe.py")
+        "registre_externe", racine / "app" / "services" / "registre_externe.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
