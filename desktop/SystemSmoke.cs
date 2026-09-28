@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.AccessControl;
+using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using System.ServiceProcess;
 
@@ -35,6 +36,54 @@ static class SystemSmoke {
         var byIp = (HttpWebRequest)WebRequest.Create(Program.AccessUrl(config) + "/healthz");
         byIp.Proxy = null; byIp.Timeout = 30000;
         using (var response = (HttpWebResponse)byIp.GetResponse()) Check(response.StatusCode == HttpStatusCode.OK, "HTTPS par adresse IP indisponible");
+    }
+    static bool HostAccepted(Dictionary<string, object> config, string host) {
+        var request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:" + config["web_port"] + "/healthz");
+        request.Proxy = null; request.Timeout = 30000; request.AllowAutoRedirect = false;
+        request.Host = host + ":" + config["https_port"];
+        try { using (var response = (HttpWebResponse)request.GetResponse()) return (int)response.StatusCode != 400; }
+        catch (WebException e) {
+            var response = e.Response as HttpWebResponse;
+            if (response == null) throw;
+            using (response) return (int)response.StatusCode != 400;
+        }
+    }
+    static X509Certificate2 PemCertificate(string pem) {
+        return new X509Certificate2(Convert.FromBase64String(pem.Replace("-----BEGIN CERTIFICATE-----", "").Replace("-----END CERTIFICATE-----", "")));
+    }
+    /// Nom ajouté après l'installation (ex. gestion.cgb) : ajouté à la main dans
+    /// le Caddyfile, il était refusé par l'application (400 « not trusted ») et
+    /// hors du périmètre de l'autorité contrainte (« Non sécurisé »).
+    static void AccessAddressAdded(Dictionary<string, object> c) {
+        var rootFile = Path.Combine(Program.Root, "https", "autorite", "racine.crt");
+        var before = File.ReadAllText(rootFile);
+        var hosts = Program.ParseHosts("https://Gestion-Recette.test:8443/");
+        Check(hosts.Count == 1 && hosts[0] == "gestion-recette.test", "Saisie d'une adresse complète mal lue");
+        Check(!HostAccepted(c, "gestion-recette.test"), "Nom non déclaré accepté par l'application");
+        Check(Program.ChangeAccessAddresses(hosts, delegate { return false; }) == null, "Nouveau certificat créé sans accord");
+        Check(File.ReadAllText(rootFile) == before && Program.ExtraHosts(Program.ReadConfiguration()).Count == 0, "Changement appliqué malgré le refus");
+        var message = Program.ChangeAccessAddresses(hosts, delegate(string missing) { Check(missing == "gestion-recette.test", "Nom hors autorité mal signalé : " + missing); return true; });
+        c["hotes_supplementaires"] = hosts.ToArray();
+        Check(message != null && message.Contains("NOUVEAU CERTIFICAT"), "Redéploiement du certificat non signalé");
+        var after = File.ReadAllText(rootFile);
+        Check(after != before, "Autorité non renouvelée");
+        var stored = Program.ReadConfiguration();
+        Check(!stored.ContainsKey("renouveler_autorite") && Program.ExtraHosts(stored).Contains("gestion-recette.test"), "Configuration des adresses incorrecte");
+        Check(File.ReadAllText(Path.Combine(Program.Root, "https", "Caddyfile")).Contains("https://gestion-recette.test:" + c["https_port"]), "Caddyfile sans le nouveau nom");
+        var oldRoot = PemCertificate(before); var newRoot = PemCertificate(after);
+        using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine)) {
+            store.Open(OpenFlags.ReadOnly);
+            Check(store.Certificates.Find(X509FindType.FindByThumbprint, oldRoot.Thumbprint, false).Count == 0, "Ancienne autorité encore reconnue par le serveur");
+            Check(store.Certificates.Find(X509FindType.FindByThumbprint, newRoot.Thumbprint, false).Count == 1, "Nouvelle autorité absente du magasin");
+        }
+        Check(new X509Certificate2(Path.Combine(Program.Root, "public", "Certificat-du-centre.cer")).Thumbprint == newRoot.Thumbprint, "Certificat public non mis à jour");
+        Check(Directory.GetFiles(Path.Combine(Program.Root, "https", "autorite", "remplacees"), "racine.crt", SearchOption.AllDirectories).Length == 1, "Ancienne autorité non conservée");
+        // Chaîne recréée par Caddy sous la nouvelle autorité, vérifiée par Windows.
+        Healthy(c);
+        Check(HostAccepted(c, "gestion-recette.test") && !HostAccepted(c, "intrus.test"), "Hôtes de confiance de l'application incorrects");
+        // Sans nouveau nom : aucune question, aucun nouveau certificat.
+        Check(Program.ChangeAccessAddresses(hosts, delegate { throw new Exception("Accord demandé sans raison"); }) != null, "Réenregistrement refusé");
+        Check(File.ReadAllText(rootFile) == after, "Autorité renouvelée sans nouveau nom");
     }
     /// Audit 6.2 : un port occupé sur une seule adresse (VPN, Tailscale) doit
     /// être vu comme occupé.
@@ -154,6 +203,8 @@ static class SystemSmoke {
                 Program.InstallConfiguration(c, message => Console.WriteLine(message));
             Healthy(c); KioskHealthy(c);
             BackupAndRestore();
+            AccessAddressAdded(c);
+            var rootAfterRenewal = File.ReadAllText(Path.Combine(Program.Root,"https","autorite","racine.crt"));
             using (var service = new ServiceController(Program.ServiceName)) Check(service.Status == ServiceControllerStatus.Running, "Service non démarré");
             var report = Path.Combine(Program.Root, "Direction-DSI", "Installation-confidentielle.txt");
             Check(!File.ReadAllText(report).Contains((string)c["secret_key"]) && !File.ReadAllText(report).Contains((string)c["db_password"]), "Un secret figure dans le rapport");
@@ -178,7 +229,9 @@ static class SystemSmoke {
             Program.StopService();
             Check(!File.Exists(Path.Combine(Program.Root, "postgresql", "postmaster.pid")), "PostgreSQL encore démarré");
             Program.FinishInstallation(c); Healthy(c); KioskHealthy(c);
-            Console.WriteLine("SERVICE_HTTPS_DPAPI_ACL_ARRET_REDEMARRAGE_OK");
+            Check(File.ReadAllText(Path.Combine(Program.Root,"https","autorite","racine.crt")) == rootAfterRenewal, "Autorité changée au redémarrage");
+            Check(HostAccepted(c, "gestion-recette.test"), "Nom d'accès perdu au redémarrage");
+            Console.WriteLine("SERVICE_HTTPS_DPAPI_ACL_ARRET_REDEMARRAGE_ADRESSES_OK");
             return 0;
         } catch (Exception e) {
             Console.Error.WriteLine(e.GetType().Name + ": " + e.Message);

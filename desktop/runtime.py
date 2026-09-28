@@ -187,6 +187,21 @@ def hotes_supplementaires(c) -> list[str]:
     return propres
 
 
+def hotes_de_confiance(c) -> list[str]:
+    """Noms acceptés par l'application (sinon « Host … is not trusted », 400) :
+    les mêmes que ceux du Caddyfile et du certificat. Un nom ajouté à la main
+    dans le Caddyfile seul est refusé ici, et le Caddyfile est de toute façon
+    réécrit au démarrage : passer par « Adresses d'accès au serveur »."""
+    trusted_hosts = ["127.0.0.1", "localhost", str(c["hostname"]).lower()]
+    lan_ip = str(c.get("lan_ip") or "").strip()
+    if lan_ip and lan_ip not in trusted_hosts:
+        trusted_hosts.append(lan_ip)
+    for hote in hotes_supplementaires(c):
+        if hote not in trusted_hosts:
+            trusted_hosts.append(hote)
+    return trusted_hosts
+
+
 def web(c):
     if c.get("migration_source") and not c.get("migration_done"):
         raise RuntimeError("La reprise doit être terminée dans l'assistant avant le démarrage.")
@@ -214,13 +229,7 @@ def web(c):
         fini.set()
         temoin.unlink(missing_ok=True)
     protect_pending_activation(app, root)
-    trusted_hosts = ["127.0.0.1", "localhost", c["hostname"]]
-    lan_ip = str(c.get("lan_ip") or "").strip()
-    if lan_ip and lan_ip not in trusted_hosts:
-        trusted_hosts.append(lan_ip)
-    for hote in hotes_supplementaires(c):
-        if hote not in trusted_hosts:
-            trusted_hosts.append(hote)
+    trusted_hosts = hotes_de_confiance(c)
     from app.services.public_ingress import hostname
     public_host = hostname(app.config.get("KIOSK_PUBLIC_HOST") or "")
     if public_host:
@@ -358,29 +367,10 @@ def fichiers_autorite(root):
     return dossier / "racine.crt", dossier / "racine.key"
 
 
-def autorite_contrainte(c, root):
-    """Audit 6.7 : l'autorité créée par Caddy (CA:TRUE, sans restriction)
-    pouvait signer un certificat pour n'importe quel site, et elle est
-    installée sur les postes. Une installation neuve reçoit désormais une
-    autorité dont l'extension NameConstraints (critique) limite la signature
-    au nom du serveur, aux autres noms déclarés et aux adresses privées :
-    même volée, elle ne permet pas d'usurper un site de l'Internet.
-
-    Une installation existante garde l'autorité déjà déployée sur ses postes
-    (la remplacer couperait l'accès HTTPS de tous jusqu'au redéploiement) :
-    renvoie None. Sinon (cert, clé), créés une fois puis réutilisés."""
-    certificat, cle = fichiers_autorite(root)
-    if certificat.exists() and cle.exists():
-        return certificat, cle
-    ancienne = Path(root) / "https" / "tls" / "pki" / "authorities" / "local" / "root.crt"
-    if ancienne.exists():
-        return None
-    import datetime
+def perimetre_autorite(c):
+    """Noms et plages que l'autorité du centre doit pouvoir certifier : nom du
+    serveur, autres noms déclarés, adresses privées, adresse du réseau local."""
     import ipaddress
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
     noms, adresses = {"localhost", str(c["hostname"]).lower()}, [ipaddress.ip_network(p) for p in PLAGES_AUTORISEES]
     for hote in hotes_supplementaires(c):
         try:
@@ -397,6 +387,85 @@ def autorite_contrainte(c, root):
             adresses.append(ipaddress.ip_network(f"{adresse}/32"))
     except ValueError:
         pass
+    return noms, adresses
+
+
+def noms_hors_autorite(c, certificat) -> list[str]:
+    """Noms ou adresses du centre que l'autorité contrainte existante ne peut
+    PAS certifier (NameConstraints fixées à sa création). Un nom ajouté après
+    l'installation (ex. « gestion.cgb ») y figure : le navigateur refuserait
+    son certificat même si l'autorité est installée sur le poste."""
+    import ipaddress
+    from cryptography import x509
+    racine = x509.load_pem_x509_certificate(Path(certificat).read_bytes())
+    try:
+        permis = racine.extensions.get_extension_for_class(x509.NameConstraints).value.permitted_subtrees or []
+    except x509.ExtensionNotFound:
+        return []
+    noms_permis = [n.value.lower().lstrip(".") for n in permis if isinstance(n, x509.DNSName)]
+    plages = [n.value for n in permis if isinstance(n, x509.IPAddress)]
+    noms, adresses = perimetre_autorite(c)
+    manquants = [n for n in sorted(noms)
+                 if not any(n == p or n.endswith("." + p) for p in noms_permis)]
+    for reseau in adresses:
+        if not any(reseau.version == p.version and reseau.subnet_of(p) for p in plages):
+            manquants.append(str(reseau.network_address) if reseau.prefixlen == reseau.max_prefixlen else str(reseau))
+    return manquants
+
+
+def _mettre_de_cote_autorite(root):
+    """Remplacement consenti : l'ancienne autorité, le certificat
+    intermédiaire et les certificats de site qu'elle a signés sont DÉPLACÉS
+    (jamais effacés) dans https/autorite/remplacees/<date>. Caddy recrée alors
+    l'intermédiaire et les certificats sous la nouvelle autorité ; l'icône
+    Windows retire l'ancienne du magasin de confiance du serveur."""
+    import shutil
+    certificat, cle = fichiers_autorite(root)
+    base = certificat.parent / "remplacees" / time.strftime("%Y%m%d-%H%M%S")
+    archive, n = base, 1
+    while archive.exists():
+        archive, n = base.with_name(f"{base.name}_{n}"), n + 1
+    archive.mkdir(parents=True)
+    stockage = Path(root) / "https" / "tls"
+    for source in (certificat, cle,
+                   stockage / "pki" / "authorities" / "local" / "intermediate.crt",
+                   stockage / "pki" / "authorities" / "local" / "intermediate.key",
+                   stockage / "certificates" / "local"):
+        if source.exists():
+            shutil.move(str(source), str(archive / source.name))
+
+
+def autorite_contrainte(c, root):
+    """Audit 6.7 : l'autorité créée par Caddy (CA:TRUE, sans restriction)
+    pouvait signer un certificat pour n'importe quel site, et elle est
+    installée sur les postes. Une installation neuve reçoit désormais une
+    autorité dont l'extension NameConstraints (critique) limite la signature
+    au nom du serveur, aux autres noms déclarés et aux adresses privées :
+    même volée, elle ne permet pas d'usurper un site de l'Internet.
+
+    Une installation existante garde l'autorité déjà déployée sur ses postes
+    (la remplacer couperait l'accès HTTPS de tous jusqu'au redéploiement) :
+    renvoie None. Sinon (cert, clé), créés une fois puis réutilisés.
+
+    Ses contraintes ne pouvant pas être étendues, un nom ajouté ensuite
+    (« Adresses d'accès au serveur ») n'est couvert qu'en la REMPLAÇANT : cela
+    n'arrive que sur consentement explicite (``renouveler_autorite``), car
+    chaque poste devra réinstaller le certificat du centre."""
+    certificat, cle = fichiers_autorite(root)
+    if certificat.exists() and cle.exists():
+        if not (c.get("renouveler_autorite") and noms_hors_autorite(c, certificat)):
+            return certificat, cle
+        _mettre_de_cote_autorite(root)
+    else:
+        ancienne = Path(root) / "https" / "tls" / "pki" / "authorities" / "local" / "root.crt"
+        if ancienne.exists():
+            return None
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    noms, adresses = perimetre_autorite(c)
     permis = [x509.DNSName(n) for n in sorted(noms)] + [x509.IPAddress(a) for a in adresses]
     cle_privee = ec.generate_private_key(ec.SECP256R1())
     sujet = x509.Name([x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Mon Centre Social"),
@@ -679,11 +748,24 @@ def essai_restauration(c):
         raise SystemExit(1)
 
 
+def verifier_autorite(c):
+    """Code 3 : l'autorité contrainte ne couvre pas tous les noms déclarés
+    (l'assistant « Adresses d'accès » demande alors l'accord de la
+    direction pour la remplacer). Code 0 : rien à remplacer."""
+    certificat, cle = fichiers_autorite(Path(c["data_root"]))
+    if certificat.exists() and cle.exists():
+        manquants = noms_hors_autorite(c, certificat)
+        if manquants:
+            print(", ".join(manquants))
+            raise SystemExit(3)
+
+
 MODES = {
     "--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation,
     "--prepare-proxy": lambda c: write_caddy(c, Path(c["data_root"])),
     "--verify-source": verifier_source, "--release-source": liberer_source,
     "--cleanup-attempts": nettoyer_apres_activation, "--restore-test": essai_restauration,
+    "--verifier-autorite": verifier_autorite,
 }
 
 if __name__ == "__main__":
