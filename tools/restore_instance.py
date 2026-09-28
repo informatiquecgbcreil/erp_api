@@ -26,6 +26,36 @@ def _restore_uploads(zip_file: Path, upload_dir: Path) -> None:
     _restaurer_uploads(zip_file, upload_dir)
 
 
+def _revenir_a_la_securite(base_securite: str, cause: str):
+    """Remet le lot de sécurité (schéma courant) ; maintenance maintenue si
+    c'est impossible."""
+    from flask import Flask
+    from config import Config
+    from app.extensions import db
+    from app.services import sauvegarde as svc
+    secours = Flask("restore-offline-retour", instance_path=Config.INSTANCE_DIR)
+    secours.config.from_object(Config)
+    db.init_app(secours)
+    with secours.app_context():
+        try:
+            db_file, uploads_file = svc._fichiers_de_base(base_securite, svc.dossier_sauvegardes())
+            if db_file is None:
+                raise RuntimeError("sauvegarde de sécurité introuvable")
+            svc._remplacer_base_et_fichiers(db_file, uploads_file)
+            db.session.remove()
+            db.engine.dispose()
+        except Exception as exc:  # noqa: BLE001
+            svc._marquer_restauration({"etat": "echec", "securite": base_securite,
+                                       "erreur": f"{cause} ; retour : {exc}", "outil": "ligne de commande"})
+            raise RuntimeError(
+                f"Restauration en échec ({cause}) et retour impossible ({exc}). Application en maintenance : "
+                f"restaurez la sauvegarde de sécurité « {base_securite} » (Administration → Sauvegardes).") from exc
+    application = create_app()
+    with application.app_context():
+        svc._lever_la_maintenance()
+    return application
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Restauration instance")
     parser.add_argument("--db", required=True, help="Chemin .db (SQLite) ou .sql (PostgreSQL)")
@@ -63,6 +93,11 @@ def main() -> int:
                 from app.services.registre_effacements import exporter_en_attente
                 exporter_en_attente()
             securite = creer_sauvegarde()
+            # Même garde que le parcours web : maintenance (marque sur disque)
+            # jusqu'à la remise en service complète.
+            from app.services.sauvegarde import _marquer_restauration
+            _marquer_restauration({"etat": "en_cours", "lot": db_path.stem, "securite": securite["base"],
+                                   "outil": "ligne de commande"})
             if sqlite:
                 _restaurer_sqlite(db_path, db_uri)
             else:
@@ -74,9 +109,19 @@ def main() -> int:
                     remap_paths(connection, manifest["roots"], roots)
             db.session.remove()
             db.engine.dispose()
-    # Les migrations portent maintenant sur la base restaurée. En cas d'échec,
-    # le lot de sécurité reste conservé et le service doit rester arrêté.
-    restauree = create_app()   # migrations, puis réapplication des effacements confirmés
+    # Les migrations portent maintenant sur la base restaurée (create_app les
+    # exécute AVANT les traitements des registres). En cas d'échec : retour à
+    # la sauvegarde de sécurité, comme le parcours web.
+    try:
+        restauree = create_app()   # migrations, puis réapplication des effacements confirmés
+    except Exception as exc:  # noqa: BLE001
+        restauree = _revenir_a_la_securite(securite["base"], str(exc))
+        raise RuntimeError(
+            f"La base restaurée n'a pas pu être mise à jour ({exc}). L'état d'avant la restauration a été remis "
+            f"en place depuis la sauvegarde de sécurité « {securite['base']} » : rien n'a changé.") from exc
+    with restauree.app_context():
+        from app.services.sauvegarde import _lever_la_maintenance
+        _lever_la_maintenance()
     copie = db_path.with_name(db_path.stem + "_registres.json")
     if copie.exists():
         # Copie des registres jointe au lot : fusionnée, jamais écrasante.
