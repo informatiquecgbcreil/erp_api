@@ -225,7 +225,8 @@ garde son autorité (déjà déployée sur les postes) ; pour passer à une auto
 contrainte, repartir d'une installation neuve (`--reset` puis reprise) et
 redéployer le nouveau certificat. En attendant, ne déployer
 `Certificat-du-centre.cer` que sur les postes qui utilisent l'administration.
-Changer ensuite le nom du serveur demande une nouvelle autorité. La DSI déploie
+Changer ensuite le nom du serveur demande une nouvelle autorité (voir
+« Ajouter un nom d'accès » ci-dessous pour un nom supplémentaire). La DSI déploie
 `C:\ProgramData\MonCentreSocial\public\Certificat-du-centre.cer` dans les
 **Autorités de certification racines de confiance** des postes (GPO possible).
 Seul ce certificat public est à diffuser ; jamais le dossier `https\tls`.
@@ -234,6 +235,36 @@ Sa clé privée est réservée au service HTTPS distinct `MonCentreSocialHTTPS`,
 Le DNS local doit résoudre le nom choisi. Ne pas ignorer une alerte de certificat.
 Pour une exposition Internet, faire configurer le domaine, le certificat public
 et les règles réseau par la DSI ; ce paquet est configuré pour le réseau local.
+
+### Ajouter un nom d'accès après l'installation (ex. `gestion.cgb`)
+
+**Ne pas modifier le Caddyfile à la main** : il est réécrit à chaque démarrage,
+et l'application refuse un nom qu'elle ne connaît pas (page « Bad Request —
+Host 'gestion.cgb:8443' is not trusted », code 400). Utiliser le menu Démarrer
+**Adresses d'accès au serveur** (ou l'icône → « Adresses d'accès au serveur… »,
+droits administrateur) : un nom ou une adresse par ligne ; une adresse collée
+en entier (`https://gestion.cgb:8443/`) est ramenée au nom. Le service redémarre
+et le nom entre à la fois dans les hôtes acceptés par l'application, le
+Caddyfile et le certificat.
+
+Si l'autorité du centre est **contrainte** et ne couvre pas ce nom (cas d'un nom
+qui n'est ni celui du serveur ni un sous-nom de celui-ci), elle ne peut pas être
+étendue : l'outil l'annonce et demande l'accord pour en créer une nouvelle.
+Refus : rien ne change. Accord : l'ancienne autorité, son certificat
+intermédiaire et ses certificats de site sont déplacés (jamais effacés) dans
+`https\autorite\remplacees\<date>`, l'ancienne est retirée du magasin de
+confiance du serveur, et **le nouveau `Certificat-du-centre.cer` doit être
+installé sur chaque poste** (sinon « Non sécurisé »). Une installation plus
+ancienne (autorité non contrainte) n'a pas ce problème.
+
+Sur les postes, le nom doit désigner l'adresse IPv4 du serveur : enregistrement
+DNS (box ou serveur DNS du centre) ou ligne `192.168.1.200 gestion.cgb` dans
+`C:\Windows\System32\drivers\etc\hosts` (exemple d'adresse). Toujours
+`https://…:8443` : `http://` sur ce port répond « Bad Request » (400).
+
+En ligne de commande (administrateur) :
+`MonCentreSocial.exe --adresses "gestion.cgb,10.8.0.4" [--renouveler-autorite]`
+(code 2 si une nouvelle autorité est nécessaire sans l'option : rien n'a changé).
 
 ### Téléphones et tablettes : kiosque sans certificat
 

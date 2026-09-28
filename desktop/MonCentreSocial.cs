@@ -97,6 +97,21 @@ static class Program {
                     return 1;
                 }
             }
+            if (mode == "--adresses") {
+                // Ajouter un nom d'accès (ex. gestion.cgb) sans réinstaller. En ligne de
+                // commande : --adresses "nom1,nom2" [--renouveler-autorite].
+                bool console = args.Length > 1;
+                List<string> hosts;
+                if (console) hosts = ParseHosts(args[1]);
+                else using (var dialog = new AccessAddresses(ExtraHosts(ReadConfiguration()))) { if (dialog.ShowDialog() != DialogResult.OK) return 1; hosts = dialog.Hosts; }
+                string done = ChangeAccessAddresses(hosts, delegate(string missing) {
+                    if (console) return args.Length > 2 && args[2] == "--renouveler-autorite";
+                    return MessageBox.Show(RenewalWarning(missing), "Nouveau certificat du centre", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+                });
+                if (done == null) { if (!console) MessageBox.Show("Rien n'a été modifié.", "Mon Centre Social", MessageBoxButtons.OK, MessageBoxIcon.Information); else Console.Error.WriteLine("Nouveau certificat requis : relancer avec --renouveler-autorite."); return 2; }
+                if (console) Console.WriteLine(done); else MessageBox.Show(done, "Adresses d'accès au serveur", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return 0;
+            }
             if (mode == "--stop") { StopService(); return 0; }
             if (mode == "--restore-test") {
                 // Restauration réelle du dernier lot dans une base jetable, supprimée ensuite.
@@ -397,6 +412,60 @@ static class Program {
         foreach (var item in items) { var text = Convert.ToString(item).Trim().ToLowerInvariant(); if (text.Length > 0 && !list.Contains(text)) list.Add(text); }
         return list;
     }
+    /// Liste saisie (virgules, espaces ou lignes). « https://gestion.cgb:8443/ »
+    /// est ramené à « gestion.cgb » ; IPv6 et boucle locale sont refusées.
+    internal static List<string> ParseHosts(string text) {
+        var list = new List<string>();
+        foreach (var part in (text ?? "").Split(new[] { ',', ';', ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)) {
+            var host = Regex.Replace(Regex.Replace(part.Trim().ToLowerInvariant(), "^https?://", ""), "(:[0-9]+)?/*$", "");
+            if (host.Length == 0 || list.Contains(host)) continue;
+            IPAddress address;
+            if (IPAddress.TryParse(host, out address)) {
+                if (address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any))
+                    throw new Exception("« " + part.Trim() + " » : indiquez une adresse IPv4 du réseau (ni IPv6, ni 127.0.0.1).");
+            } else if (!Regex.IsMatch(host, "^[a-z0-9][a-z0-9.-]{0,252}$"))
+                throw new Exception("« " + part.Trim() + " » n'est ni une adresse IPv4 ni un nom valide (lettres, chiffres, points et tirets).");
+            list.Add(host);
+        }
+        return list;
+    }
+    internal static string RenewalWarning(string missing) {
+        return "Le certificat du centre ne peut pas couvrir : " + missing + ".\n\n"
+            + "Par sécurité, l'autorité du centre est limitée aux noms déclarés lors de sa création ; il faut en créer une nouvelle.\n\n"
+            + "CONSÉQUENCE : sur CHAQUE poste, le navigateur affichera une alerte de sécurité tant que le nouveau certificat « "
+            + Path.Combine(Root, "public", "Certificat-du-centre.cer") + " » n'y est pas installé (Autorités de certification racines de confiance, ou stratégie de groupe).\n\n"
+            + "L'ancienne autorité est conservée dans un dossier daté, rien n'est effacé.\n\nCréer le nouveau certificat maintenant ?";
+    }
+    /// Enregistre les autres noms d'accès et relance le service : hôtes de
+    /// confiance de l'application, Caddyfile et certificat en découlent (un
+    /// Caddyfile modifié à la main est réécrit à chaque démarrage). Rend null si
+    /// un nouveau certificat est nécessaire et refusé : rien n'a changé.
+    internal static string ChangeAccessAddresses(List<string> hosts, Func<string, bool> confirmRenewal) {
+        var c = ReadConfiguration();
+        if (MigrationIncomplete(c)) throw new Exception("La reprise de l'ancienne installation n'est pas terminée. Relancez « Configurer Mon Centre Social » ; rien n'a été modifié.");
+        if (!c.ContainsKey("network") || !Convert.ToBoolean(c["network"])) throw new Exception("L'accès depuis les autres postes n'est pas activé sur cette installation : aucune adresse d'accès à configurer.");
+        c["hotes_supplementaires"] = hosts.ToArray();
+        var missing = new StringBuilder();
+        int code = RunPythonCapture("--verifier-autorite", c, 120000, missing);
+        bool renew = code == 3;
+        if (code != 0 && !renew) throw new Exception("Vérification du certificat HTTPS impossible ; rien n'a été modifié.");
+        if (renew) {
+            if (!confirmRenewal(missing.ToString().Trim())) return null;
+            c["renouveler_autorite"] = true;
+        }
+        try { StopService(); FinishInstallation(c); }
+        finally { if (c.Remove("renouveler_autorite")) SaveConfiguration(c); }
+        var text = new StringBuilder();
+        text.AppendLine("Adresses d'accès enregistrées : " + (hosts.Count == 0 ? "aucune en plus de « " + c["hostname"] + " » et " + c["lan_ip"] : string.Join(", ", hosts.ToArray())) + ".");
+        text.AppendLine();
+        text.AppendLine("Adresse à ouvrir sur les postes : https://<nom>:" + c["https_port"] + " (toujours https://, jamais http://).");
+        text.AppendLine("Chaque nom doit désigner " + c["lan_ip"] + " sur les postes : enregistrement DNS (box ou serveur DNS du centre) ou fichier hosts du poste.");
+        if (renew) {
+            text.AppendLine();
+            text.AppendLine("NOUVEAU CERTIFICAT : installez « " + Path.Combine(Root, "public", "Certificat-du-centre.cer") + " » sur chaque poste (Autorités de certification racines de confiance). Sans cela, le navigateur affiche « Non sécurisé ». L'ancien certificat du centre peut ensuite être retiré des postes.");
+        }
+        return text.ToString();
+    }
     /// Plages autorisées au pare-feu en plus du sous-réseau local : Tailscale
     /// (100.64.0.0/10) et le /24 de chaque adresse VPN déclarée.
     internal static string FirewallRemote(Dictionary<string, object> c) {
@@ -508,7 +577,16 @@ static class Program {
             for (int i=0; !File.Exists(certPath); i++) { if (i>=120) throw new Exception("Le certificat HTTPS n'est pas prêt."); Thread.Sleep(500); }
             var pem = File.ReadAllText(certPath).Replace("-----BEGIN CERTIFICATE-----", "").Replace("-----END CERTIFICATE-----", "");
             var certificate = new X509Certificate2(Convert.FromBase64String(pem));
-            using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine)) { store.Open(OpenFlags.ReadWrite); store.Add(certificate); }
+            using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine)) {
+                store.Open(OpenFlags.ReadWrite); store.Add(certificate);
+                // Autorité remplacée (nouveau nom d'accès) : plus reconnue par ce serveur.
+                var replaced = Path.Combine(Root, "https", "autorite", "remplacees");
+                if (Directory.Exists(replaced)) foreach (var oldFile in Directory.GetFiles(replaced, "racine.crt", SearchOption.AllDirectories)) {
+                    var oldPem = File.ReadAllText(oldFile).Replace("-----BEGIN CERTIFICATE-----", "").Replace("-----END CERTIFICATE-----", "");
+                    var oldCertificate = new X509Certificate2(Convert.FromBase64String(oldPem));
+                    if (oldCertificate.Thumbprint != certificate.Thumbprint) store.Remove(oldCertificate);
+                }
+            }
             var publicCertificate = Path.Combine(Root, "public", "Certificat-du-centre.cer"); GuardPath(publicCertificate);
             File.WriteAllBytes(publicCertificate, certificate.Export(X509ContentType.Cert));
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social HTTPS\"", false);
@@ -592,6 +670,22 @@ static class Program {
             byte[] payload = Utf8.GetBytes(Json.Serialize(c));
             process.StandardInput.BaseStream.Write(payload,0,payload.Length); process.StandardInput.Close();
             if (!process.WaitForExit(timeoutMs)) { process.Kill(); throw new Exception("Une étape de la reprise a dépassé son délai. L'ancien dossier et sa base sont conservés."); }
+            return process.ExitCode;
+        }
+    }
+    internal static int RunPythonCapture(string mode, Dictionary<string, object> c, int timeoutMs, StringBuilder output) {
+        var info = new ProcessStartInfo(Path.Combine(Install,"python","python.exe"), "-B " + Quote(Path.Combine(Install,"desktop","runtime.py")) + " " + mode) {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
+            RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Install
+        };
+        using (var process = Process.Start(info)) {
+            process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null) lock (output) output.AppendLine(e.Data); };
+            process.ErrorDataReceived += delegate {};
+            process.BeginOutputReadLine(); process.BeginErrorReadLine();
+            byte[] payload = Utf8.GetBytes(Json.Serialize(c));
+            process.StandardInput.BaseStream.Write(payload,0,payload.Length); process.StandardInput.Close();
+            if (!process.WaitForExit(timeoutMs)) { process.Kill(); throw new Exception("Une étape a dépassé son délai ; rien n'a été modifié."); }
+            process.WaitForExit();
             return process.ExitCode;
         }
     }
@@ -844,6 +938,7 @@ sealed class Tray : ApplicationContext {
         var menu = new ContextMenuStrip();
         menu.Items.Add("Ouvrir la page d'administration", null, delegate { Safely(Program.Open); });
         menu.Items.Add("Redémarrer", null, delegate { Safely(delegate { Control("--restart"); }); });
+        menu.Items.Add("Adresses d'accès au serveur…", null, delegate { Safely(delegate { Control("--adresses"); }); });
         menu.Items.Add(new ToolStripSeparator());
         // Mineur Windows : « Fermer » arrêtait le service pour toute l'équipe.
         // Fermer l'icône ne touche plus au service ; l'arrêt est une action à part, confirmée.
@@ -856,6 +951,27 @@ sealed class Tray : ApplicationContext {
     bool Control(string mode) { var p = Process.Start(new ProcessStartInfo(Program.Exe, mode) { UseShellExecute = true, Verb = "runas" }); p.WaitForExit(); return p.ExitCode == 0; }
     void Safely(Action action) { try { action(); } catch (System.ComponentModel.Win32Exception) { } catch (Exception e) { icon.ShowBalloonTip(6000, "Mon Centre Social", e.Message, ToolTipIcon.Warning); } }
     protected override void Dispose(bool disposing) { if (disposing) icon.Dispose(); base.Dispose(disposing); }
+}
+
+/// Autres noms par lesquels les postes joignent le serveur (nom DNS du centre
+/// comme gestion.cgb, adresse VPN ou Tailscale).
+sealed class AccessAddresses : Form {
+    readonly TextBox hosts = new TextBox { Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical };
+    internal List<string> Hosts;
+    internal AccessAddresses(List<string> current) {
+        Text = "Mon Centre Social — Adresses d'accès au serveur"; ClientSize = new Size(640,420);
+        Font = new Font("Segoe UI",10); StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
+        Controls.Add(new Label { Text = "Autres noms ou adresses par lesquels les postes ouvrent Mon Centre Social, un par ligne (par exemple gestion.cgb, une adresse VPN ou Tailscale). Le nom de l'ordinateur et son adresse sur le réseau local sont toujours acceptés.", Location = new Point(20,15), Size = new Size(600,70) });
+        hosts.SetBounds(20,90,600,170); hosts.Text = string.Join(Environment.NewLine, current.ToArray()); Controls.Add(hosts);
+        Controls.Add(new Label { Text = "Ne modifiez pas le Caddyfile à la main : il est réécrit à chaque démarrage, et l'application refuserait un nom qu'elle ne connaît pas (« Host … is not trusted »). Chaque nom doit aussi être connu des postes (DNS du centre ou fichier hosts).", Location = new Point(20,270), Size = new Size(600,80) });
+        var save = new Button { Text = "Enregistrer et redémarrer", Location = new Point(390,370), Size = new Size(230,32) };
+        var cancel = new Button { Text = "Annuler", Location = new Point(270,370), Size = new Size(110,32), DialogResult = DialogResult.Cancel };
+        save.Click += delegate {
+            try { Hosts = Program.ParseHosts(hosts.Text); } catch (Exception e) { MessageBox.Show(e.Message, "Adresses d'accès", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            DialogResult = DialogResult.OK; Close();
+        };
+        Controls.Add(save); Controls.Add(cancel); CancelButton = cancel;
+    }
 }
 
 sealed class InstallationChoice : Form {
