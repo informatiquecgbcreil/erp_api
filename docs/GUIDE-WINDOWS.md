@@ -311,9 +311,23 @@ conserver les journaux et restaurer une sauvegarde dans une installation de la
 version correspondante ; ne pas forcer un retour à un ancien programme sur un
 schéma plus récent.
 
+**Registres des numéros émis et des effacements RGPD.** Ils vivent dans
+`runtime` (hors des sauvegardes ordinaires) pour qu'une restauration ancienne
+ne fasse jamais réutiliser un numéro de reçu ou de facture, ni revenir une
+personne effacée. Chaque lot en emporte une **copie** (`<lot>_registres.json`),
+copiée hors serveur avec lui ; à la restauration elle est **fusionnée** (rien
+ne recule). Changement de serveur : Contrôle → Registres → « Exporter » sur
+l'ancien, « Importer » sur le nouveau après la restauration. Une restauration
+est refusée tant qu'un effacement récent n'a pas pu être recopié dans le
+registre (droits du dossier des données à vérifier). Détail :
+`docs/CONSOLIDATION-APRES-PR59.md`.
+
 Après sinistre : réinstaller, recréer le compte direction, restaurer les lots
 depuis l'administration puis reconfigurer le SMTP et les secrets depuis le
-coffre-fort. Les clés HTTPS doivent être redéployées sur les clients si l'autorité
+coffre-fort. Si aucune copie récente n'a survécu, déclarer dans Contrôle →
+Registres le dernier numéro de chaque série relevé sur les reçus, factures et
+avoirs papier, et rejouer les demandes d'effacement RGPD reçues depuis la
+dernière sauvegarde. Les clés HTTPS doivent être redéployées sur les clients si l'autorité
 du centre a changé.
 
 La désinstallation arrête/supprime les deux services et leurs règles de pare-feu, mais
