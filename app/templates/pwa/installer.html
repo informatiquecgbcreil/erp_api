@@ -1,0 +1,136 @@
+{% extends "layout.html" %}
+{% block body %}
+<style>
+  .install-wrap{max-width:760px;margin:0 auto}
+  .install-hero{display:flex;gap:16px;align-items:center}
+  .install-hero img{width:72px;height:72px;border-radius:16px;flex:none}
+  .install-steps{margin:0;padding-left:1.3em;line-height:1.7}
+  .install-steps li{margin-bottom:6px}
+  .install-kbd{display:inline-block;padding:1px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);font-weight:600}
+  .install-qr{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .install-qr img{width:180px;height:180px;background:#fff;padding:8px;border-radius:12px}
+  [data-appareil][hidden], [data-etat][hidden]{display:none !important}
+  .install-big{font-size:1.1rem;padding:12px 22px}
+  .install-wrap code{word-break:break-all;white-space:normal}
+</style>
+<div class="stack install-wrap">
+  <div class="card">
+    <div class="install-hero">
+      <img src="{{ url_for('static', filename='pwa/icone-192.png') }}" alt="">
+      <div>
+        <h1 style="margin:0">Installer {{ nom_app }}</h1>
+        <p class="muted" style="margin:4px 0 0">Une icône sur l'écran d'accueil ou le bureau : l'application s'ouvre
+          en plein écran, comme une appli, sans passer par un store.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-etat="installee" hidden>
+    <h2 style="margin-top:0">✅ C'est installé</h2>
+    <p>Vous utilisez déjà l'application installée sur cet appareil.</p>
+  </div>
+
+  <div class="card" data-etat="non-securise" hidden style="border-color:var(--danger)">
+    <h2 style="margin-top:0">⚠️ Installation impossible depuis cette adresse</h2>
+    <p>Cette page n'est pas ouverte avec une adresse sécurisée reconnue par l'appareil.
+      Ouvrez <code>{{ adresse }}</code> (ou scannez le QR code ci-dessous).</p>
+  </div>
+
+  <div class="card" data-appareil="android" hidden>
+    <h2 style="margin-top:0">📱 Téléphone ou tablette Android</h2>
+    <p data-etat="bouton" hidden><button type="button" class="btn ok install-big" data-installer>Installer l'application</button></p>
+    <ol class="install-steps">
+      <li>Dans <strong>Chrome</strong> : menu <span class="install-kbd">⋮</span> en haut à droite →
+        <strong>« Installer l'application »</strong> (ou « Ajouter à l'écran d'accueil »).</li>
+      <li>Dans <strong>Samsung Internet</strong> : menu <span class="install-kbd">≡</span> →
+        <strong>« Ajouter la page à »</strong> → <strong>« Écran d'accueil »</strong>.</li>
+      <li>Confirmez : l'icône apparaît sur l'écran d'accueil.</li>
+    </ol>
+  </div>
+
+  <div class="card" data-appareil="ios" hidden>
+    <h2 style="margin-top:0">📱 iPhone ou iPad</h2>
+    <ol class="install-steps">
+      <li>Ouvrez cette page dans <strong>Safari</strong> (l'appareil photo l'ouvre dans Safari quand on scanne le QR code).</li>
+      <li>Touchez le bouton <strong>Partager</strong> <span class="install-kbd">⬆︎</span> (carré avec une flèche vers le haut),
+        en bas de l'écran sur iPhone, en haut sur iPad.</li>
+      <li>Faites défiler et touchez <strong>« Sur l'écran d'accueil »</strong>, puis <strong>« Ajouter »</strong>.</li>
+    </ol>
+  </div>
+
+  <div class="card" data-appareil="pc" hidden>
+    <h2 style="margin-top:0">💻 Ordinateur</h2>
+    <p data-etat="bouton" hidden><button type="button" class="btn ok install-big" data-installer>Installer l'application</button></p>
+    <ol class="install-steps">
+      <li>Dans <strong>Edge</strong> ou <strong>Chrome</strong> : cliquez sur l'icône <strong>« Installer »</strong>
+        à droite de la barre d'adresse (ou menu <span class="install-kbd">⋯</span> → Applications → Installer).</li>
+      <li>L'application s'ajoute au menu Démarrer ; clic droit sur son icône dans la barre des tâches →
+        « Épingler » pour la garder à portée.</li>
+      <li>Avec Firefox, l'installation n'est pas proposée : utilisez Edge.</li>
+    </ol>
+  </div>
+
+  <details class="card">
+    <summary><strong>Autre appareil ?</strong> Voir toutes les instructions</summary>
+    <div class="spacer"></div>
+    <p class="muted">Android : menu ⋮ → « Installer l'application ». iPhone/iPad : Safari → Partager → « Sur l'écran
+      d'accueil ». Ordinateur : Edge ou Chrome → icône « Installer » dans la barre d'adresse.</p>
+  </details>
+
+  <div class="card">
+    <h2 style="margin-top:0">Pour un autre appareil</h2>
+    <div class="install-qr">
+      <img alt="QR code vers cette page" src="{{ url_for('launcher.launcher_qr', u=adresse) }}">
+      <div>
+        <p style="margin-top:0">Scannez avec l'appareil photo du téléphone, <strong>connecté au wifi du centre</strong>.</p>
+        <p><code>{{ adresse }}</code></p>
+        {% if current_user.is_authenticated %}
+          <a class="btn" href="{{ url_for('pwa.affiche') }}" target="_blank" rel="noopener">🖨️ Imprimer l'affiche</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Bon à savoir</h2>
+    <ul class="install-steps">
+      <li>L'application fonctionne <strong>uniquement sur le réseau du centre</strong>.</li>
+      <li>Rien n'est enregistré sur l'appareil : les informations restent sur le serveur du centre.</li>
+      <li>Sur un appareil partagé, pensez à vous <strong>déconnecter</strong> après usage.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function () {
+  var ua = navigator.userAgent || "";
+  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var android = /Android/.test(ua);
+  var appareil = ios ? "ios" : (android ? "android" : "pc");
+  function montrer(selecteur, oui) {
+    document.querySelectorAll(selecteur).forEach(function (el) { el.hidden = !oui; });
+  }
+  var installee = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  montrer('[data-etat="installee"]', installee);
+  montrer('[data-etat="non-securise"]', !window.isSecureContext);
+  montrer('[data-appareil="' + appareil + '"]', !installee);
+  var invite = null;
+  window.addEventListener("beforeinstallprompt", function (evenement) {
+    evenement.preventDefault();
+    invite = evenement;
+    montrer('[data-etat="bouton"]', true);
+  });
+  document.querySelectorAll("[data-installer]").forEach(function (bouton) {
+    bouton.addEventListener("click", function () {
+      if (!invite) return;
+      invite.prompt();
+      invite.userChoice.finally(function () { invite = null; montrer('[data-etat="bouton"]', false); });
+    });
+  });
+  window.addEventListener("appinstalled", function () {
+    montrer('[data-etat="installee"]', true);
+    montrer("[data-appareil]", false);
+  });
+})();
+</script>
+{% endblock %}

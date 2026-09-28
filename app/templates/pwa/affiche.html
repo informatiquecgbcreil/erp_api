@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Affiche — installer {{ nom_app }}</title>
+  <style>
+    @page{size:A4;margin:14mm}
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#10383d;margin:0}
+    .page{max-width:180mm;margin:0 auto;text-align:center}
+    .entete{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:6mm}
+    .entete img{width:26mm;height:26mm;border-radius:6mm}
+    h1{font-size:30pt;margin:6mm 0 2mm;line-height:1.1}
+    .sous{font-size:15pt;margin:0 0 8mm;color:#135b63}
+    .qr{width:95mm;height:95mm}
+    .adresse{font-size:13pt;font-family:ui-monospace,Consolas,monospace;margin:3mm 0 8mm;word-break:break-all}
+    .etapes{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm;text-align:left;font-size:12pt;line-height:1.45}
+    .etape{border:1.2mm solid #f2b84b;border-radius:5mm;padding:4mm}
+    .etape b{display:block;font-size:14pt;margin-bottom:2mm;color:#135b63}
+    .pied{margin-top:8mm;font-size:11pt;color:#335}
+    .imprimer{margin:6mm auto;font:inherit;font-size:13pt;padding:8px 20px;border-radius:999px;border:0;background:#135b63;color:#fff;cursor:pointer}
+    @media print{.imprimer{display:none}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <button type="button" class="imprimer" onclick="window.print()">🖨️ Imprimer</button>
+    <div class="entete">
+      <img src="{{ url_for('static', filename='pwa/icone-512.png') }}" alt="">
+      <div style="text-align:left"><div style="font-size:20pt;font-weight:700">{{ nom_app }}</div>
+        {% if structure %}<div style="font-size:13pt">{{ structure }}</div>{% endif %}</div>
+    </div>
+    <h1>L'application du centre<br>sur votre téléphone</h1>
+    <p class="sous">Téléphone, tablette ou ordinateur — connecté au <strong>wifi du centre</strong></p>
+    <img class="qr" alt="QR code" src="{{ url_for('launcher.launcher_qr', u=adresse) }}">
+    <div class="adresse">{{ adresse }}</div>
+    <div class="etapes">
+      <div class="etape"><b>1. Scannez</b>avec l'appareil photo du téléphone.</div>
+      <div class="etape"><b>2. Installez</b>Android : « Installer l'application ».<br>iPhone : Partager → « Sur l'écran d'accueil ».</div>
+      <div class="etape"><b>3. Ouvrez</b>l'icône {{ nom_app }} et connectez-vous avec vos identifiants habituels.</div>
+    </div>
+    <p class="pied">Rien n'est enregistré sur l'appareil. Sur un appareil partagé, déconnectez-vous après usage.</p>
+  </div>
+</body>
+</html>

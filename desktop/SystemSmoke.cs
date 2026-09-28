@@ -85,6 +85,94 @@ static class SystemSmoke {
         Check(Program.ChangeAccessAddresses(hosts, delegate { throw new Exception("Accord demandé sans raison"); }) != null, "Réenregistrement refusé");
         Check(File.ReadAllText(rootFile) == after, "Autorité renouvelée sans nouveau nom");
     }
+    static bool WebCanRead(string path) {
+        var webSid = (SecurityIdentifier)new NTAccount("NT SERVICE", Program.ServiceName).Translate(typeof(SecurityIdentifier));
+        foreach (FileSystemAccessRule rule in File.GetAccessControl(path).GetAccessRules(true, true, typeof(SecurityIdentifier)))
+            if (rule.AccessControlType == AccessControlType.Allow && rule.IdentityReference.Equals(webSid)) return true;
+        return false;
+    }
+    static string Capture(string exe, string arguments) {
+        using (var p = Process.Start(new ProcessStartInfo(exe, arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })) {
+            string text = p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd(); p.WaitForExit(); return p.ExitCode == 0 ? text : "";
+        }
+    }
+    /// Page servie sous le nom public : chaîne vérifiée par Windows (aucune
+    /// exception de certificat), rend l'empreinte du certificat présenté.
+    static string ServedByName(Dictionary<string, object> config, string name) {
+        var request = (HttpWebRequest)WebRequest.Create("https://" + name + ":" + config["https_port"] + "/healthz");
+        request.Proxy = null; request.Timeout = 30000; request.KeepAlive = false;
+        using (var response = (HttpWebResponse)request.GetResponse()) {
+            Check(response.StatusCode == HttpStatusCode.OK, "HTTPS par le nom public indisponible");
+            return new X509Certificate2(request.ServicePoint.Certificate).Thumbprint;
+        }
+    }
+    static string LeafThumbprint(string pemFile) {
+        var pem = File.ReadAllText(pemFile);
+        int start = pem.IndexOf("-----BEGIN CERTIFICATE-----"), end = pem.IndexOf("-----END CERTIFICATE-----");
+        return PemCertificate(pem.Substring(start, end - start)).Thumbprint;
+    }
+    /// Certificat reconnu de bout en bout : Pebble (Let's Encrypt de test),
+    /// DNS de test et faux cPanel lancés par desktop/recette_certificat.py.
+    static void PublicCertificateRecette(string benchFile) {
+        var bench = Program.Json.Deserialize<Dictionary<string, object>>(File.ReadAllText(benchFile, Program.Utf8));
+        string name = (string)bench["nom"], cpanel = (string)bench["cpanel"], user = (string)bench["utilisateur"], token = (string)bench["jeton"];
+        Environment.SetEnvironmentVariable("MCS_ACME_REPERTOIRE", (string)bench["acme"]);
+        Environment.SetEnvironmentVariable("MCS_ACME_CA", (string)bench["acme_ca"]);
+        Environment.SetEnvironmentVariable("MCS_CPANEL_CA", (string)bench["cpanel_ca"]);
+        Environment.SetEnvironmentVariable("MCS_DNS_SERVEURS", (string)bench["dns"]);
+        var hosts = Path.Combine(Environment.SystemDirectory, "drivers", "etc", "hosts");
+        var hostsBefore = File.ReadAllText(hosts);
+        var roots = new List<X509Certificate2>();
+        var pems = File.ReadAllText((string)bench["racine"]).Split(new[] { "-----END CERTIFICATE-----" }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var pem in pems) if (pem.Contains("BEGIN CERTIFICATE")) roots.Add(PemCertificate(pem.Substring(pem.IndexOf("-----BEGIN CERTIFICATE-----"))));
+        Check(roots.Count > 0, "Racine Pebble introuvable");
+        try {
+            File.AppendAllText(hosts, Environment.NewLine + "127.0.0.1 " + name + " # recette Mon Centre Social" + Environment.NewLine);
+            using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine)) { store.Open(OpenFlags.ReadWrite); foreach (var r in roots) store.Add(r); }
+            var certificate = Path.Combine(Program.Root, "https", "public", "certificat.crt");
+            var key = Path.Combine(Program.Root, "https", "public", "certificat.key");
+            // 1. Jeton refusé : message clair, rien de changé.
+            string refusal = "";
+            try { Program.ConfigurePublicCertificate(name, cpanel, user, "mauvais-jeton"); } catch (Exception e) { refusal = e.Message; }
+            Check(refusal.Contains("rien n'a été modifié") && refusal.Contains("jeton"), "Jeton refusé mal signalé : " + refusal);
+            Check(Program.PublicName(Program.ReadConfiguration()).Length == 0 && !File.Exists(certificate), "Changement malgré l'échec");
+            Check(Capture(Program.SystemExe("schtasks.exe"), "/Query /TN " + Program.Quote(Program.RenewalTaskName)).Length == 0, "Tâche créée malgré l'échec");
+            // 2. Premier certificat.
+            var message = Program.ConfigurePublicCertificate("https://" + name.ToUpperInvariant() + "/", cpanel, user, token);
+            var c = Program.ReadConfiguration();
+            Check(message.Contains("https://" + name + ":" + c["https_port"]), "Adresse publique non annoncée : " + message);
+            Check(Program.PublicName(c) == name && Convert.ToString(c["certificat_public_jeton"]) == token, "Configuration du nom public incorrecte");
+            var serviceJson = Program.Utf8.GetString(System.Security.Cryptography.ProtectedData.Unprotect(File.ReadAllBytes(Program.ServiceConfigFile), null, System.Security.Cryptography.DataProtectionScope.LocalMachine));
+            Check(!serviceJson.Contains(token) && serviceJson.Contains(name), "Le jeton cPanel est lisible par le service web");
+            var task = Capture(Program.SystemExe("schtasks.exe"), "/Query /TN " + Program.Quote(Program.RenewalTaskName) + " /XML");
+            Check(task.Contains("--certificat-renouveler") && task.Contains("S-1-5-18"), "Tâche de renouvellement SYSTEM absente");
+            Check(!WebCanRead(key) && !WebCanRead(Path.Combine(Program.Root, "private", "acme", "compte.pem")), "Le service web peut lire une clé du certificat reconnu");
+            Check(File.ReadAllText(Path.Combine(Program.Root, "https", "Caddyfile")).Contains("https://" + name + ":" + c["https_port"] + " {\n tls "), "Caddyfile sans le certificat reconnu");
+            // 3. Nom public servi avec la chaîne Let's Encrypt (de test), vérifiée par Windows.
+            string served = ServedByName(c, name);
+            Check(served == LeafThumbprint(certificate), "Le proxy ne présente pas le certificat reconnu");
+            Check(HostAccepted(c, name), "Nom public refusé par l'application");
+            Healthy(c);
+            // 4. Tâche quotidienne : rien à faire tant que le certificat est loin de l'échéance.
+            var bytes = File.ReadAllBytes(certificate);
+            Check(Program.RenewPublicCertificate() == 0 && Convert.ToBase64String(File.ReadAllBytes(certificate)) == Convert.ToBase64String(bytes), "Renouvellement inutile effectué");
+            // 5. Certificat perdu : la tâche en obtient un autre et relance le proxy.
+            File.Delete(certificate);
+            Check(Program.RenewPublicCertificate() == 0 && File.Exists(certificate), "Certificat non renouvelé");
+            Check(ServedByName(c, name) == LeafThumbprint(certificate) && LeafThumbprint(certificate) != served, "Nouveau certificat non servi après renouvellement");
+            Check(File.ReadAllText(Path.Combine(Program.Root, "logs", "certificat.log")).Contains("Renouvellement " + name), "Journal du certificat absent");
+            // 6. Désactivation : retour à l'adresse du serveur, tâche et jeton retirés.
+            Program.DisablePublicCertificate();
+            c = Program.ReadConfiguration();
+            Check(Program.PublicName(c).Length == 0 && !c.ContainsKey("certificat_public_jeton"), "Nom public encore configuré");
+            Check(Capture(Program.SystemExe("schtasks.exe"), "/Query /TN " + Program.Quote(Program.RenewalTaskName)).Length == 0, "Tâche de renouvellement restée");
+            Check(!File.ReadAllText(Path.Combine(Program.Root, "https", "Caddyfile")).Contains(name), "Nom public resté dans le Caddyfile");
+            Healthy(c);
+        } finally {
+            File.WriteAllText(hosts, hostsBefore);
+            using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine)) { store.Open(OpenFlags.ReadWrite); foreach (var r in roots) store.Remove(r); }
+        }
+    }
     /// Audit 6.2 : un port occupé sur une seule adresse (VPN, Tailscale) doit
     /// être vu comme occupé.
     static void PortsReallyFree() {
@@ -187,6 +275,10 @@ static class SystemSmoke {
                     Console.WriteLine("REPRISE_APRES_TENTATIVE_POSTGRESQL17_CONSERVEE_OK");
                 } finally { MigrationHelper(args[1], "stop", source, target); }
                 return 0;
+            }
+            if (args.Length == 2 && args[0] == "certificat") {
+                PublicCertificateRecette(args[1]);
+                Console.WriteLine("CERTIFICAT_RECONNU_OK"); return 0;
             }
             if (args.Length == 1 && args[0] == "resume") {
                 var stored = Program.ReadConfiguration(); Program.FinishInstallation(stored); Healthy(stored);

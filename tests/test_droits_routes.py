@@ -21,6 +21,9 @@ PUBLIQUES = {
     "static", "media_file", "healthz", "source_archive",
     "auth.login", "auth.password_reset_request", "auth.password_reset_token",
     "main.calendrier_ics", "launcher.index", "launcher.launcher_qr",
+    # Application installable : manifeste, service worker, page hors connexion
+    # et mode d'emploi, avant toute connexion (aucune donnée).
+    "pwa.manifeste", "pwa.service_worker", "pwa.hors_ligne", "pwa.installer",
 }
 ROLES = ["animateur", "accueil", "responsable_secteur", "finance", "directrice", "admin_tech"]
 #: Pages d'administration technique : jamais pour un rôle métier limité.

@@ -21,6 +21,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      # Pebble : serveur ACME de test de Let's Encrypt (recette du certificat reconnu).
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
       - name: Préparer les outils de construction
         shell: pwsh
         run: |
@@ -49,6 +54,18 @@ jobs:
           # Registres hors base : verrou et écriture atomique entre processus, avec le Python livré.
           & "$appDir/python/python.exe" -B (Resolve-Path 'desktop/recette_registres.py').Path $appDir
           if ($LASTEXITCODE -ne 0) { throw 'Recette des registres échouée' }
+          # Certificat reconnu (nom public) : Pebble, DNS de test et faux cPanel.
+          go install github.com/letsencrypt/pebble/v2/cmd/pebble@v2.10.1 github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@v2.10.1
+          if ($LASTEXITCODE -ne 0) { throw 'Installation de Pebble impossible' }
+          $env:PEBBLE_BIN_DIR = Join-Path (go env GOPATH) 'bin'
+          $bench = Join-Path $env:RUNNER_TEMP 'banc-certificat'
+          $benchProcess = Start-Process "$appDir/python/python.exe" -ArgumentList '-B', (Resolve-Path 'desktop/recette_certificat.py').Path, $bench -WindowStyle Hidden -PassThru -RedirectStandardError "$env:RUNNER_TEMP/banc-certificat.err"
+          for ($i = 0; !(Test-Path "$bench/banc.json"); $i++) { if ($i -ge 120 -or $benchProcess.HasExited) { Get-Content "$env:RUNNER_TEMP/banc-certificat.err" -ErrorAction SilentlyContinue; throw 'Banc du certificat non démarré' }; Start-Sleep -Milliseconds 500 }
+          & "$appDir/RecetteSysteme.exe" certificat "$bench/banc.json"
+          $certificatCode = $LASTEXITCODE
+          New-Item "$bench/stop" -ItemType File | Out-Null
+          $benchProcess.WaitForExit(30000) | Out-Null
+          if ($certificatCode -ne 0) { Get-Content "$bench/pebble.log" -Tail 40 -ErrorAction SilentlyContinue; throw 'Recette du certificat reconnu échouée' }
           # Reproduit la version réelle de la source, distincte du moteur 18.6 livré.
           $pgFixture = Join-Path $env:RUNNER_TEMP 'postgresql-18.1-fixture'
           $pgZip = Join-Path $env:RUNNER_TEMP 'postgresql-18.1.zip'
@@ -69,7 +86,7 @@ jobs:
           if (Test-Path "$appDir/MonCentreSocial.exe") { throw 'Le programme subsiste après désinstallation' }
           if (!(Test-Path "$env:ProgramData/MonCentreSocial/Direction-DSI/Installation-confidentielle.txt")) { throw 'Le dossier confidentiel a été perdu' }
           if (!(Test-Path "$env:ProgramData/MonCentreSocial/postgresql/PG_VERSION")) { throw 'La base a été perdue' }
-          'Installation, service, HTTPS, DPAPI, ACL, reprise PostgreSQL ancienne avec comptes et documents, source intacte, arrêt, redémarrage, mise à jour et désinstallation : OK.' | Set-Content outputs/recette-systeme.txt
+          'Installation, service, HTTPS, certificat reconnu, DPAPI, ACL, reprise PostgreSQL ancienne avec comptes et documents, source intacte, arrêt, redémarrage, mise à jour et désinstallation : OK.' | Set-Content outputs/recette-systeme.txt
       - name: Diagnostic protégé en cas d'échec
         if: failure()
         shell: pwsh

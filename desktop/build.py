@@ -103,6 +103,7 @@ def build(args):
     (payload / "desktop").mkdir()
     shutil.copy2(REPO / "desktop/runtime.py", payload / "desktop/runtime.py")
     shutil.copy2(REPO / "desktop/migration.py", payload / "desktop/migration.py")
+    shutil.copy2(REPO / "desktop/certificat_public.py", payload / "desktop/certificat_public.py")
     shutil.copy2(REPO / "docs/GUIDE-WINDOWS.md", payload / "GUIDE-WINDOWS.md")
     shutil.copy2(downloads / "vc_redist.x64.exe",payload)
     icon(payload / "mon-centre-social.ico")

@@ -112,6 +112,20 @@ static class Program {
                 if (console) Console.WriteLine(done); else MessageBox.Show(done, "Adresses d'accès au serveur", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 0;
             }
+            if (mode == "--certificat") {
+                // Certificat reconnu par tous les appareils (Let's Encrypt, DNS cPanel).
+                // Ligne de commande : --certificat <nom> <adresse cPanel> <identifiant>
+                // (jeton dans MCS_CPANEL_JETON) ou --certificat --desactiver.
+                bool console = args.Length > 1;
+                if (console && args[1] == "--desactiver") { Console.WriteLine(DisablePublicCertificate()); return 0; }
+                if (console) {
+                    if (args.Length < 4) throw new Exception("Usage : --certificat <nom> <adresse cPanel> <identifiant cPanel> (jeton dans MCS_CPANEL_JETON)");
+                    string result = ConfigurePublicCertificate(args[1], args[2], args[3], Environment.GetEnvironmentVariable("MCS_CPANEL_JETON"));
+                    Console.WriteLine(result); return 0;
+                }
+                using (var dialog = new PublicCertificate(ReadConfiguration())) return dialog.ShowDialog() == DialogResult.OK ? 0 : 1;
+            }
+            if (mode == "--certificat-renouveler") { return RenewPublicCertificate(); }
             if (mode == "--stop") { StopService(); return 0; }
             if (mode == "--restore-test") {
                 // Restauration réelle du dernier lot dans une base jetable, supprimée ensuite.
@@ -137,6 +151,7 @@ static class Program {
                 StopService();
                 if (ServiceExists()) Run(SystemExe("sc.exe"), "delete " + ServiceName, false);
                 if (ServiceExists(ProxyServiceName)) Run(SystemExe("sc.exe"), "delete " + ProxyServiceName, false);
+                Run(SystemExe("schtasks.exe"), "/Delete /TN " + Quote(RenewalTaskName) + " /F", false);
                 var certPath = Path.Combine(Root,"public","Certificat-du-centre.cer");
                 if (File.Exists(certPath)) {
                     var cert = new X509Certificate2(File.ReadAllBytes(certPath));
@@ -250,6 +265,8 @@ static class Program {
         WriteConfiguration(c, ConfigFile, false);
         var service = new Dictionary<string,object>(c);
         service.Remove("migration_uri"); service.Remove("migration_source_db");
+        // Jeton cPanel : utilisé par l'outil d'administration et la tâche SYSTEM seulement.
+        service.Remove("certificat_public_jeton"); service.Remove("certificat_public_forcer");
         if (File.Exists(Path.Combine(Root,"runtime","provisioned"))) service.Remove("db_admin_password");
         WriteConfiguration(service, ServiceConfigFile, true);
     }
@@ -466,6 +483,99 @@ static class Program {
         }
         return text.ToString();
     }
+    internal const string RenewalTaskName = "Mon Centre Social - certificat reconnu";
+    internal static Dictionary<string, object> PublicCertificateSettings(Dictionary<string, object> c) {
+        return c.ContainsKey("certificat_public") ? c["certificat_public"] as Dictionary<string, object> : null;
+    }
+    internal static string PublicName(Dictionary<string, object> c) {
+        var settings = PublicCertificateSettings(c);
+        return settings != null && settings.ContainsKey("nom") ? Convert.ToString(settings["nom"]).Trim().ToLowerInvariant() : "";
+    }
+    /// Dossier de la clé du compte Let's Encrypt : administrateurs et SYSTEM
+    /// seulement (private\ reste lisible par le service web).
+    internal static void SecureAcmeDirectory() { SecureDirectory(Path.Combine(Root, "private", "acme"), false, false); }
+    /// Tâche SYSTEM quotidienne : renouvelle le certificat reconnu au dernier
+    /// tiers de sa validité. Retirée quand aucun nom public n'est configuré.
+    internal static void EnsureRenewalTask(Dictionary<string, object> c) {
+        if (PublicName(c).Length == 0) { Run(SystemExe("schtasks.exe"), "/Delete /TN " + Quote(RenewalTaskName) + " /F", false); return; }
+        Run(SystemExe("schtasks.exe"), "/Create /TN " + Quote(RenewalTaskName) + " /TR " + Quote(Quote(Exe) + " --certificat-renouveler")
+            + " /SC DAILY /ST 03:17 /RU SYSTEM /RL HIGHEST /F");
+    }
+    static void LogCertificate(string message) {
+        try {
+            var log = Path.Combine(Root, "logs", "certificat.log"); RotateLog(log);
+            File.AppendAllText(log, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + message.Trim() + Environment.NewLine, Utf8);
+        } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+    /// Premier certificat : rien n'est enregistré tant que Let's Encrypt ne
+    /// l'a pas délivré (message clair, installation inchangée).
+    internal static string ConfigurePublicCertificate(string name, string host, string user, string token) {
+        var c = ReadConfiguration();
+        if (MigrationIncomplete(c)) throw new Exception("La reprise de l'ancienne installation n'est pas terminée ; rien n'a été modifié.");
+        if (!c.ContainsKey("network") || !Convert.ToBoolean(c["network"])) throw new Exception("L'accès depuis les autres postes n'est pas activé sur cette installation.");
+        name = Regex.Replace((name ?? "").Trim().ToLowerInvariant(), "^https?://", ""); name = Regex.Replace(name, "(:[0-9]+)?/*$", "");
+        if (!Regex.IsMatch(name, "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$")) throw new Exception("« " + name + " » n'est pas un nom de domaine public (exemple : gestion.cgbcreil.com).");
+        if (string.IsNullOrWhiteSpace(token)) {
+            var previous = c.ContainsKey("certificat_public_jeton") ? Convert.ToString(c["certificat_public_jeton"]) : "";
+            if (previous.Length == 0) throw new Exception("Indiquez le jeton d'API cPanel.");
+            token = previous; // jeton déjà enregistré, laissé vide dans la fenêtre
+        }
+        var settings = new Dictionary<string, object> { {"nom", name}, {"cpanel_hote", (host ?? "").Trim()}, {"cpanel_utilisateur", (user ?? "").Trim()} };
+        // Recette uniquement : service ACME et DNS de test (jamais proposés dans la fenêtre).
+        foreach (var pair in new[] { new[] {"MCS_ACME_REPERTOIRE","acme_repertoire"}, new[] {"MCS_ACME_CA","acme_ca"}, new[] {"MCS_CPANEL_CA","cpanel_ca"} }) {
+            var value = Environment.GetEnvironmentVariable(pair[0]); if (!string.IsNullOrEmpty(value)) settings[pair[1]] = value;
+        }
+        var dns = Environment.GetEnvironmentVariable("MCS_DNS_SERVEURS");
+        if (!string.IsNullOrEmpty(dns)) { var list = new List<object>(); foreach (var server in dns.Split(',')) { var parts = server.Trim().Split(':'); list.Add(new object[] { parts[0], int.Parse(parts[1]) }); } settings["dns_serveurs"] = list.ToArray(); }
+        var trial = new Dictionary<string, object>(c);
+        trial["certificat_public"] = settings; trial["certificat_public_jeton"] = token.Trim(); trial["certificat_public_forcer"] = true;
+        SecureAcmeDirectory();
+        var output = new StringBuilder();
+        int code = RunPythonCapture("--certificat-public", trial, 900000, output);
+        LogCertificate("Configuration " + name + " : code " + code + " " + output);
+        if (code != 10) throw new Exception("Le certificat n'a pas été obtenu ; rien n'a été modifié.\n\n" + (output.ToString().Trim().Length > 0 ? output.ToString().Trim() : "Détail dans " + Path.Combine(Root, "logs", "certificat.log")));
+        trial.Remove("certificat_public_forcer");
+        StopService(); FinishInstallation(trial);
+        var text = new StringBuilder();
+        text.AppendLine("Certificat reconnu obtenu pour " + name + ".");
+        text.AppendLine();
+        text.AppendLine("Adresse à donner aux collègues : https://" + name + ":" + trial["https_port"]);
+        text.AppendLine("Aucun certificat à installer sur les PC, téléphones ou tablettes. Renouvellement automatique chaque nuit si nécessaire.");
+        try {
+            bool found = false;
+            foreach (var address in Dns.GetHostAddresses(name)) if (address.ToString() == Convert.ToString(trial["lan_ip"])) found = true;
+            if (!found) text.AppendLine("\nATTENTION : « " + name + " » ne désigne pas encore " + trial["lan_ip"] + ". Ajoutez l'enregistrement A « " + name.Split('.')[0] + " » → " + trial["lan_ip"] + " dans la zone DNS (cPanel → Zone Editor).");
+        } catch (SocketException) {
+            text.AppendLine("\nATTENTION : « " + name + " » est introuvable dans le DNS. Ajoutez l'enregistrement A « " + name.Split('.')[0] + " » → " + trial["lan_ip"] + " dans la zone DNS (cPanel → Zone Editor), puis attendez quelques minutes.");
+        }
+        return text.ToString();
+    }
+    internal static string DisablePublicCertificate() {
+        var c = ReadConfiguration();
+        c.Remove("certificat_public"); c.Remove("certificat_public_jeton"); c.Remove("certificat_public_forcer");
+        var state = Path.Combine(Root, "runtime", "certificat-public.json"); GuardPath(state); File.Delete(state);
+        StopService(); FinishInstallation(c);
+        return "Nom public désactivé : les postes utilisent de nouveau l'adresse du serveur et le certificat du centre.";
+    }
+    /// Tâche planifiée (SYSTEM) : renouvelle si besoin, puis relance le seul
+    /// service HTTPS. Un échec laisse le certificat en place et l'écrit au journal.
+    internal static int RenewPublicCertificate() {
+        var c = ReadConfiguration();
+        if (PublicName(c).Length == 0 || MigrationIncomplete(c)) return 0;
+        SecureAcmeDirectory();
+        var output = new StringBuilder();
+        int code = RunPythonCapture("--certificat-public", c, 900000, output);
+        LogCertificate("Renouvellement " + PublicName(c) + " : code " + code + " " + output);
+        if (code == 10) {
+            PrepareProxy(c);
+            using (var proxy = new ServiceController(ProxyServiceName)) {
+                if (proxy.Status != ServiceControllerStatus.Stopped) { proxy.Stop(); proxy.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30)); }
+                proxy.Start(); proxy.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
+            }
+            return 0;
+        }
+        return code;
+    }
     /// Plages autorisées au pare-feu en plus du sous-réseau local : Tailscale
     /// (100.64.0.0/10) et le /24 de chaque adresse VPN déclarée.
     internal static string FirewallRemote(Dictionary<string, object> c) {
@@ -600,6 +710,7 @@ static class Program {
             Run(SystemExe("netsh.exe"), "advfirewall firewall delete rule name=\"Mon Centre Social Kiosque mobile\"", false);
             Run(SystemExe("netsh.exe"), "advfirewall firewall add rule name=\"Mon Centre Social Kiosque mobile\" dir=in action=allow protocol=TCP localport=" + c["kiosk_http_port"] + " remoteip=" + remote + " profile=" + profile + " program=" + Quote(Path.Combine(Install, "caddy", "caddy.exe")));
         }
+        EnsureRenewalTask(c);
         c.Remove("admin_password"); SaveConfiguration(c); WriteReport(c);
         // Le premier démarrage provisionne PostgreSQL et le compte direction.
         // Redémarre sans ces secrets avant d'ouvrir l'application aux utilisateurs.
@@ -939,6 +1050,7 @@ sealed class Tray : ApplicationContext {
         menu.Items.Add("Ouvrir la page d'administration", null, delegate { Safely(Program.Open); });
         menu.Items.Add("Redémarrer", null, delegate { Safely(delegate { Control("--restart"); }); });
         menu.Items.Add("Adresses d'accès au serveur…", null, delegate { Safely(delegate { Control("--adresses"); }); });
+        menu.Items.Add("Certificat reconnu (nom public)…", null, delegate { Safely(delegate { Control("--certificat"); }); });
         menu.Items.Add(new ToolStripSeparator());
         // Mineur Windows : « Fermer » arrêtait le service pour toute l'équipe.
         // Fermer l'icône ne touche plus au service ; l'arrêt est une action à part, confirmée.
@@ -971,6 +1083,54 @@ sealed class AccessAddresses : Form {
             DialogResult = DialogResult.OK; Close();
         };
         Controls.Add(save); Controls.Add(cancel); CancelButton = cancel;
+    }
+}
+
+/// Nom public (ex. gestion.cgbcreil.com) avec certificat Let's Encrypt obtenu
+/// par la zone DNS cPanel : plus aucun certificat à installer sur les appareils.
+sealed class PublicCertificate : Form {
+    readonly TextBox name = new TextBox(), host = new TextBox(), user = new TextBox(), token = new TextBox { UseSystemPasswordChar = true };
+    readonly Label status = new Label();
+    readonly Button obtain = new Button { Text = "Obtenir le certificat" }, disable = new Button { Text = "Désactiver" }, close = new Button { Text = "Fermer", DialogResult = DialogResult.Cancel };
+    void Field(string label, TextBox box, int y) { Controls.Add(new Label { Text = label, Location = new Point(20, y), AutoSize = true }); box.SetBounds(20, y + 22, 600, 28); Controls.Add(box); }
+    internal PublicCertificate(Dictionary<string, object> c) {
+        Text = "Mon Centre Social — Certificat reconnu"; ClientSize = new Size(640, 560);
+        Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
+        Controls.Add(new Label { Text = "Avec un nom de votre domaine et un certificat Let's Encrypt, PC, téléphones et tablettes ouvrent l'application sans alerte et sans rien installer. L'application reste accessible uniquement depuis le réseau du centre.", Location = new Point(20, 12), Size = new Size(600, 60) });
+        var settings = Program.PublicCertificateSettings(c);
+        Field("Nom public (enregistrement A vers " + (c.ContainsKey("lan_ip") ? c["lan_ip"] : "l'adresse du serveur") + ")", name, 78);
+        Field("Adresse du cPanel (ex. https://votre-serveur.o2switch.net:2083)", host, 136);
+        Field("Identifiant cPanel", user, 194);
+        Field("Jeton d'API cPanel (Sécurité → Gérer les jetons d'API)" + (settings != null ? " — vide : garder l'actuel" : ""), token, 252);
+        if (settings != null) {
+            name.Text = Program.PublicName(c);
+            host.Text = settings.ContainsKey("cpanel_hote") ? Convert.ToString(settings["cpanel_hote"]) : "";
+            user.Text = settings.ContainsKey("cpanel_utilisateur") ? Convert.ToString(settings["cpanel_utilisateur"]) : "";
+        } else name.Text = "gestion.";
+        Controls.Add(new Label { Text = "Le jeton donne accès à l'hébergement : il reste chiffré sur ce serveur, lisible par les seuls administrateurs Windows. Le nom sera visible dans les registres publics de certificats ; le serveur, lui, n'est pas ouvert sur Internet.", Location = new Point(20, 312), Size = new Size(600, 62) });
+        status.SetBounds(20, 380, 600, 110); Controls.Add(status);
+        obtain.SetBounds(430, 510, 190, 32); disable.SetBounds(290, 510, 130, 32); close.SetBounds(180, 510, 100, 32);
+        disable.Enabled = settings != null;
+        obtain.Click += async delegate {
+            SetBusy(true, "Demande en cours auprès de Let's Encrypt (une à trois minutes)…");
+            string n = name.Text, h = host.Text, u = user.Text, t = token.Text;
+            try {
+                string result = await Task.Run(() => Program.ConfigurePublicCertificate(n, h, u, t));
+                SetBusy(false, ""); MessageBox.Show(result, "Certificat reconnu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                DialogResult = DialogResult.OK; Close();
+            } catch (Exception e) { SetBusy(false, e.Message); }
+        };
+        disable.Click += async delegate {
+            if (MessageBox.Show("Revenir à l'adresse du serveur et au certificat du centre ?", "Certificat reconnu", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            SetBusy(true, "Désactivation…");
+            try { string result = await Task.Run(() => Program.DisablePublicCertificate()); SetBusy(false, ""); MessageBox.Show(result); DialogResult = DialogResult.OK; Close(); }
+            catch (Exception e) { SetBusy(false, e.Message); }
+        };
+        Controls.Add(obtain); Controls.Add(disable); Controls.Add(close); CancelButton = close;
+    }
+    void SetBusy(bool busy, string message) {
+        obtain.Enabled = close.Enabled = !busy; disable.Enabled = !busy && Program.PublicCertificateSettings(Program.ReadConfiguration()) != null;
+        UseWaitCursor = busy; status.Text = message;
     }
 }
 

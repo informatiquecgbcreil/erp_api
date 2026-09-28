@@ -34,6 +34,15 @@ def postgres_bin(root, c=None):
     return INSTALL / ("postgresql" if major == "17" else "postgresql18") / "bin"
 
 
+def adresse_publique(c) -> str:
+    """Adresse donnée aux collègues : le nom à certificat reconnu s'il est
+    configuré (aucun certificat à installer), sinon l'adresse habituelle."""
+    from desktop.certificat_public import nom_public
+    if c.get("network") and nom_public(c):
+        return f"https://{nom_public(c)}:{int(c['https_port'])}"
+    return c["url"]
+
+
 def configure_environment(c):
     root = Path(c["data_root"])
     for name in ("instance", "uploads", "logs", "backups", "runtime"):
@@ -51,7 +60,7 @@ def configure_environment(c):
         "APP_DATA_DIR": str(root), "APP_UPLOAD_DIR": str(root / "uploads"),
         "ERP_LOG_DIR": str(root / "logs"), "MCS_BACKUP_DIR": str(root / "backups"),
         "MCS_MODULES": ",".join(c["modules"]), "MCS_SETUP_DISABLED": "1",
-        "ERP_PUBLIC_BASE_URL": c["url"],
+        "ERP_PUBLIC_BASE_URL": adresse_publique(c),
         "MCS_SOURCE_ARCHIVE": str(INSTALL / "sources-Mon-Centre-Social.zip"),
         "KIOSK_PUBLIC_BASE_URL": c.get("kiosk_url") or c["url"],
         "SESSION_COOKIE_SECURE": "1" if c["network"] else "0",
@@ -171,10 +180,13 @@ def hotes_supplementaires(c) -> list[str]:
     import re
     brut = list(c.get("hotes_supplementaires") or [])
     brut += str((c.get("application_settings") or {}).get("ERP_LAN_HOSTS") or "").split(",")
-    propres = []
+    from desktop.certificat_public import nom_public
+    propres, public = [], nom_public(c)
     for valeur in brut:
         valeur = str(valeur).strip().lower()
-        if not valeur or valeur in propres:
+        # Le nom à certificat reconnu a son propre bloc (write_caddy) et ne
+        # concerne pas l'autorité du centre.
+        if not valeur or valeur in propres or valeur == public:
             continue
         try:
             adresse = ipaddress.ip_address(valeur)
@@ -199,6 +211,9 @@ def hotes_de_confiance(c) -> list[str]:
     for hote in hotes_supplementaires(c):
         if hote not in trusted_hosts:
             trusted_hosts.append(hote)
+    from desktop.certificat_public import nom_public
+    if nom_public(c) and nom_public(c) not in trusted_hosts:
+        trusted_hosts.append(nom_public(c))
     return trusted_hosts
 
 
@@ -395,7 +410,6 @@ def noms_hors_autorite(c, certificat) -> list[str]:
     PAS certifier (NameConstraints fixées à sa création). Un nom ajouté après
     l'installation (ex. « gestion.cgb ») y figure : le navigateur refuserait
     son certificat même si l'autorité est installée sur le poste."""
-    import ipaddress
     from cryptography import x509
     racine = x509.load_pem_x509_certificate(Path(certificat).read_bytes())
     try:
@@ -514,6 +528,21 @@ def write_caddy(c, root):
             sites.append(f"https://{lan}:{https_port}")
     except ValueError:
         pass
+    # Nom à certificat reconnu (Let's Encrypt) : bloc à part avec ses fichiers.
+    # Certificat absent, expiré ou incohérent : le nom retombe sur l'autorité
+    # du centre, l'accès n'est jamais coupé.
+    from desktop.certificat_public import certificat_valide, nom_public
+    bloc_public = ""
+    if nom_public(c):
+        valide = certificat_valide(c, root)
+        site_public = f"https://{nom_public(c)}:{https_port}"
+        if valide is None:
+            if site_public not in sites:
+                sites.append(site_public)
+        else:
+            chemins = [json.dumps(str(f).replace("\\", "/"), ensure_ascii=False) for f in valide[:2]]
+            bloc_public = (f"{site_public} {{\n tls {chemins[0]} {chemins[1]}\n"
+                           f" reverse_proxy 127.0.0.1:{int(c['web_port'])}\n}}\n")
     kiosk_port = int(c["kiosk_http_port"])
     web_port = int(c["web_port"])
     pki = ""
@@ -536,6 +565,7 @@ def write_caddy(c, root):
         f" servers :{kiosk_port} {{\n  trusted_proxies static 127.0.0.1/32 ::1/128\n }}\n}}\n"
         f"{', '.join(sites)} {{\n tls internal\n"
         f" reverse_proxy 127.0.0.1:{web_port}\n}}\n"
+        + bloc_public +
         f":{kiosk_port} {{\n"
         " @kiosk path /kiosk /kiosk/* /static /static/* /media/branding /media/branding/* /healthz /sources\n"
         " handle @kiosk {\n"
@@ -760,12 +790,26 @@ def verifier_autorite(c):
             raise SystemExit(3)
 
 
+def certificat_public(c):
+    """Obtient ou renouvelle le certificat reconnu. Code 10 : nouveau
+    certificat (le proxy doit relire le Caddyfile) ; code 1 : échec, message
+    en clair sur la sortie (le certificat précédent reste en place)."""
+    from desktop.certificat_public import ErreurCertificat, executer
+    try:
+        code = executer(c, forcer=bool(c.get("certificat_public_forcer")))
+    except ErreurCertificat as exc:
+        print(str(exc))
+        raise SystemExit(1)
+    if code:
+        raise SystemExit(code)
+
+
 MODES = {
     "--supervise": supervise, "--web": web, "--backup": backup, "--migrate": migrate_installation,
     "--prepare-proxy": lambda c: write_caddy(c, Path(c["data_root"])),
     "--verify-source": verifier_source, "--release-source": liberer_source,
     "--cleanup-attempts": nettoyer_apres_activation, "--restore-test": essai_restauration,
-    "--verifier-autorite": verifier_autorite,
+    "--verifier-autorite": verifier_autorite, "--certificat-public": certificat_public,
 }
 
 if __name__ == "__main__":

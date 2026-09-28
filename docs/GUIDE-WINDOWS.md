@@ -266,6 +266,76 @@ En ligne de commande (administrateur) :
 `MonCentreSocial.exe --adresses "gestion.cgb,10.8.0.4" [--renouveler-autorite]`
 (code 2 si une nouvelle autorité est nécessaire sans l'option : rien n'a changé).
 
+### Certificat reconnu : aucun certificat à installer sur les appareils
+
+Avec un nom de **votre domaine** (ex. `gestion.cgbcreil.com`) et un certificat
+**Let's Encrypt**, PC, téléphones Android et iPhone, tablettes ouvrent
+l'application sans alerte ni installation. L'application reste joignable
+**seulement depuis le réseau du centre** : rien n'est ouvert sur Internet, la
+preuve de propriété passe par la zone DNS.
+
+Prérequis (zone DNS gérée par cPanel, par exemple chez O2Switch) :
+
+1. cPanel → **Zone Editor** → votre domaine → enregistrement **A** : nom
+   `gestion`, adresse IPv4 du serveur sur le réseau local (ex. `192.168.1.200`).
+   Vérifier depuis un poste : `nslookup gestion.cgbcreil.com`. Certaines box
+   refusent un nom public pointant vers une adresse privée (protection
+   « DNS rebinding ») : la désactiver pour ce nom, ou déclarer le nom dans le
+   DNS local.
+2. cPanel → **Sécurité → Gérer les jetons d'API** → créer un jeton. Le copier
+   tout de suite (il n'est plus affiché ensuite). **Ne jamais l'envoyer par mail
+   ni le coller ailleurs que dans la fenêtre ci-dessous.**
+
+Puis, sur le serveur : menu Démarrer **Certificat reconnu (nom public)** (ou
+l'icône) : nom, adresse du cPanel (`https://<serveur>.o2switch.net:2083`),
+identifiant cPanel, jeton → **Obtenir le certificat** (une à trois minutes).
+En cas d'échec, **rien n'est modifié** et la raison s'affiche (jeton refusé,
+zone introuvable, DNS pas encore publié…). En cas de succès, l'adresse à donner
+aux collègues est `https://gestion.cgbcreil.com:<port HTTPS>`.
+
+- **Renouvellement** : tâche planifiée « Mon Centre Social - certificat
+  reconnu » (compte SYSTEM, chaque nuit à 3 h 17) ; renouvellement au dernier
+  tiers de la validité, puis relance du seul service HTTPS. Journal :
+  `logs\certificat.log`. Un échec laisse le certificat en place et la tâche
+  réessaie la nuit suivante ; si l'échéance approche (21 jours avec échec, ou
+  14 jours), un **bandeau** prévient les administrateurs dans l'application.
+- **Repli** : certificat absent, expiré ou incohérent → le nom passe par
+  l'autorité du centre ; l'accès n'est jamais coupé, les postes qui ont le
+  certificat du centre continuent de fonctionner.
+- **Secrets** : le jeton cPanel est chiffré dans la configuration
+  administrative (il n'est pas dans celle du service web) ; la clé du compte
+  Let's Encrypt est dans `private\acme` (administrateurs et SYSTEM) ; la clé
+  du certificat dans `https\public` (service HTTPS). Le jeton donne accès à tout
+  l'hébergement cPanel : le révoquer dans cPanel si le serveur est compromis.
+- **Visibilité** : comme tout certificat reconnu, le nom apparaît dans les
+  registres publics de certificats (Certificate Transparency). Il ne révèle
+  qu'une adresse privée, injoignable depuis Internet.
+- **Désactiver** : même fenêtre, bouton « Désactiver » (retour à l'adresse du
+  serveur ; tâche et jeton retirés).
+
+En ligne de commande (administrateur, jeton dans une variable d'environnement,
+jamais sur la ligne de commande) :
+`set MCS_CPANEL_JETON=…` puis
+`MonCentreSocial.exe --certificat gestion.cgbcreil.com https://<serveur>.o2switch.net:2083 <identifiant>` ;
+`MonCentreSocial.exe --certificat --desactiver`.
+
+### Application installable sur PC, téléphones et tablettes
+
+Chaque page annonce l'application comme **installable** (icône sur l'écran
+d'accueil ou le bureau, ouverture plein écran, sans store). Mode d'emploi par
+appareil, avec QR code : `https://<adresse>/installer` (lien « Installer l'appli »
+sous la connexion). Une **affiche A4** à imprimer (QR code + 3 étapes) est
+proposée aux personnes connectées : `/installer/affiche`.
+
+- L'installation exige une adresse **reconnue comme sûre** par l'appareil :
+  en pratique le **certificat reconnu** ci-dessus (sinon le certificat du
+  centre doit être installé sur l'appareil).
+- **Aucune donnée n'est gardée sur l'appareil** : le service worker ne met en
+  cache que la page « Le serveur du centre ne répond pas » et l'icône ; tout le
+  reste est demandé au serveur à chaque fois.
+- Hors du wifi du centre, l'icône affiche cette page d'aide au lieu d'une
+  erreur du navigateur.
+
 ### Téléphones et tablettes : kiosque sans certificat
 
 L'installation réseau crée aussi une **adresse kiosque locale** dans le dossier

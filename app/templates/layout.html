@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ APP_NAME }}</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='mon-centre-social.svg') }}">
+  {# Application installable : manifeste, icônes, plein écran sur iPhone. #}
+  <link rel="manifest" href="{{ url_for('pwa.manifeste') }}">
+  <meta name="theme-color" content="#135b63">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='pwa/apple-touch-icon.png') }}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="{{ APP_NAME }}">
 
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/feedback-kit.css') }}">
@@ -523,6 +530,15 @@
       }catch(e){}
     })();
   </script>
+  <script>
+    // Application installable : le service worker ne garde que la page
+    // « hors connexion » (aucune donnée). Adresse sécurisée obligatoire.
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      window.addEventListener('load', function(){
+        navigator.serviceWorker.register('{{ url_for('pwa.service_worker') }}', {scope: '/'}).catch(function(){});
+      });
+    }
+  </script>
   {% block head_extra %}{% endblock %}
 </head>
 
@@ -926,6 +942,15 @@
   {% endif %}
 
   <main id="main-content" class="container" tabindex="-1">
+    {% if alerte_certificat %}
+      <div class="stack flash-stack" role="alert">
+        <div class="flash flash-warning warning" data-alerte-certificat="1">
+          <div class="flash__icon" aria-hidden="true"></div>
+          <div class="flash__body">{{ alerte_certificat }}</div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+    {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="stack flash-stack">
