@@ -1,4 +1,4 @@
-from datetime import date, datetime, time as dt_time
+from datetime import date
 from io import BytesIO
 
 from app.utils.dates import utcnow
@@ -317,10 +317,11 @@ def sessions(atelier_id: int):
             taux = round((nb / cap) * 100, 1)
         session_stats.append((s, nb, cap, taux))
 
+    from app.services.presences_comptees import seance_non_annulee
     nb_a_exporter_csat = (
         SessionActivite.query
         .filter_by(atelier_id=atelier.id, is_deleted=False)
-        .filter(SessionActivite.exported_csat_at.is_(None))
+        .filter(SessionActivite.exported_csat_at.is_(None), seance_non_annulee())
         .count()
     )
 
@@ -336,68 +337,51 @@ def sessions(atelier_id: int):
     )
 
 
-def _parse_hhmm(value: str | None) -> dt_time | None:
-    if not value:
-        return None
-    try:
-        h, m = str(value).split(":")[:2]
-        return dt_time(int(h), int(m))
-    except Exception:
-        return None
+def _texte_hhmm(value) -> str:
+    """Heure au format texte « HH:MM » du modèle CSAT : « 9:00 », « 9h »,
+    « 14h30 », « 14:00:00 » deviennent « 09:00 », « 09:00 », « 14:30 »,
+    « 14:00 ». Valeur illisible : rendue telle quelle (visible à l'import)."""
+    import re
+    texte = str(value or "").strip()
+    m = re.fullmatch(r"(\d{1,2})\s*[:hH]\s*(\d{2})?(?::\d{2})?", texte)
+    if not m:
+        return texte
+    heures, minutes = int(m.group(1)), int(m.group(2) or 0)
+    return f"{heures:02d}:{minutes:02d}" if heures < 24 and minutes < 60 else texte
 
 
-@bp.route("/atelier/<int:atelier_id>/export-csat-sessions.xlsx", methods=["POST"])
-@login_required
-def export_csat_sessions(atelier_id: int):
-    """Export des séances d'un atelier au format d'import « Sessions » du
-    portail CSAT (Centres Sociaux Acteurs des Transitions) : évite la
-    ressaisie manuelle des créneaux entre les deux outils.
-
-    Colonnes attendues par CSAT : session_date, session_debut, session_fin
-    (heure de début en texte, heure de fin en valeur horaire, comme dans le
-    modèle d'import fourni par CSAT).
-
-    Comme CSAT n'a pas d'API, on ne peut pas savoir ce qui y a déjà été saisi :
-    on trace donc côté ERP (``exported_csat_at``) les séances déjà transmises,
-    pour ne proposer par défaut que les NOUVELLES séances à chaque export et
-    éviter de régénérer tout l'historique (et donc des doublons dans CSAT).
-    Le paramètre ``tout=1`` permet de forcer un export complet si besoin.
-    """
+def _reponse_csat_sessions(atelier, seances):
+    """Classeur au format du modèle d'import « Sessions » de CSAT (v2.0.0) :
+    feuille « Sessions », colonnes session_date / session_debut / session_fin,
+    toutes en TEXTE (« 2026-05-01 », « 09:00 », « 12:00 »). Séances annulées ou
+    sans date exclues ; les séances transmises sont marquées exportées.
+    Rend None si rien n'est à exporter."""
     from openpyxl import Workbook
 
-    _require_any_perm("ateliers:view", "emargement:view")
-    atelier = db.get_or_404(AtelierActivite, atelier_id)
-    if not _can_access_activity_secteur(atelier.secteur):
-        return _deny_activity_access()
-
-    tout = request.values.get("tout") == "1"
-
-    sessions_q = SessionActivite.query.filter_by(atelier_id=atelier.id, is_deleted=False)
-    if not tout:
-        sessions_q = sessions_q.filter(SessionActivite.exported_csat_at.is_(None))
-    sessions_list = sessions_q.all()
-
     rows = []
-    for s in sessions_list:
+    for s in seances:
+        if (s.statut or "").strip().lower() == "annulee" or s.is_deleted:
+            continue
         if s.session_type == "COLLECTIF":
             eff_date, eff_debut, eff_fin = s.date_session, s.heure_debut, s.heure_fin
         else:
             eff_date, eff_debut, eff_fin = s.rdv_date, s.rdv_debut, s.rdv_fin
         if not eff_date:
             continue
-        rows.append((s, eff_date, eff_debut or "", _parse_hhmm(eff_fin)))
-    rows.sort(key=lambda r: r[1])
-
+        rows.append((s, eff_date, _texte_hhmm(eff_debut), _texte_hhmm(eff_fin)))
+    rows.sort(key=lambda r: (r[1], r[2]))
     if not rows:
-        flash("Aucune nouvelle séance à exporter pour CSAT : tout est déjà à jour.", "info")
-        return redirect(url_for("activite.sessions", atelier_id=atelier.id))
+        return None
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Sessions"
     ws.append(["session_date", "session_debut", "session_fin"])
     for _s, eff_date, eff_debut, eff_fin in rows:
-        ws.append([datetime.combine(eff_date, dt_time()), eff_debut, eff_fin])
+        ws.append([eff_date.isoformat(), eff_debut, eff_fin])
+    for ligne in ws.iter_rows(min_row=2):
+        for cellule in ligne:
+            cellule.number_format = "@"  # texte, comme le modèle : Excel ne convertit rien
 
     buf = BytesIO()
     wb.save(buf)
@@ -415,6 +399,37 @@ def export_csat_sessions(atelier_id: int):
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+@bp.route("/atelier/<int:atelier_id>/export-csat-sessions.xlsx", methods=["POST"])
+@login_required
+def export_csat_sessions(atelier_id: int):
+    """Export des séances d'un atelier au format d'import « Sessions » du
+    portail CSAT (Centres Sociaux Acteurs des Transitions) : évite la
+    ressaisie manuelle des créneaux entre les deux outils.
+
+    Comme CSAT n'a pas d'API, on ne peut pas savoir ce qui y a déjà été saisi :
+    on trace donc côté ERP (``exported_csat_at``) les séances déjà transmises,
+    pour ne proposer par défaut que les NOUVELLES séances à chaque export et
+    éviter de régénérer tout l'historique (et donc des doublons dans CSAT).
+    Le paramètre ``tout=1`` permet de forcer un export complet si besoin ;
+    les séances cochées dans la liste passent par ``sessions_actions``.
+    """
+    _require_any_perm("ateliers:view", "emargement:view")
+    atelier = db.get_or_404(AtelierActivite, atelier_id)
+    if not _can_access_activity_secteur(atelier.secteur):
+        return _deny_activity_access()
+
+    tout = request.values.get("tout") == "1"
+
+    sessions_q = SessionActivite.query.filter_by(atelier_id=atelier.id, is_deleted=False)
+    if not tout:
+        sessions_q = sessions_q.filter(SessionActivite.exported_csat_at.is_(None))
+    reponse = _reponse_csat_sessions(atelier, sessions_q.all())
+    if reponse is None:
+        flash("Aucune nouvelle séance à exporter pour CSAT : tout est déjà à jour.", "info")
+        return redirect(url_for("activite.sessions", atelier_id=atelier.id))
+    return reponse
 
 
 # ------------------ Suppression / Restauration (soft-delete) ------------------
@@ -546,6 +561,15 @@ def sessions_actions(atelier_id: int):
     if not seances:
         flash("Coche d'abord au moins une séance dans la liste.", "warning")
         return redirect(retour)
+
+    if action == "export_csat_sessions":
+        # Séances cochées, au format « Sessions » CSAT (même déjà exportées :
+        # c'est un choix explicite, utile pour renvoyer un créneau corrigé).
+        reponse = _reponse_csat_sessions(atelier, seances)
+        if reponse is None:
+            flash("Aucune séance exportable parmi celles cochées (annulées ou sans date).", "warning")
+            return redirect(retour)
+        return reponse
 
     if action == "export_csat_participants":
         # Personnes venues aux séances cochées, au format « Participants » CSAT.

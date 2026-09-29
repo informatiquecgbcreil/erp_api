@@ -90,10 +90,11 @@ def test_export_sessions_csat_format(app, admin_client):
 
     data_rows = list(ws.iter_rows(min_row=2, values_only=True))
     assert len(data_rows) == 2   # la séance en corbeille est exclue
-    # trié par date croissante
-    assert data_rows[0][0] == dt.datetime(2026, 3, 31, 0, 0)
-    assert data_rows[0][1] == "14:00"
-    assert data_rows[0][2] == dt.time(15, 30)
+    # trié par date croissante ; tout en TEXTE comme le modèle CSAT v2.0.0
+    # (template_import_sessions : « 2026-05-01 », « 09:00 », « 12:00 »).
+    assert data_rows[0] == ("2026-03-31", "14:00", "15:30")
+    assert data_rows[1] == ("2026-04-30", "14:00", "15:30")
+    assert all(c.number_format == "@" for ligne in ws.iter_rows(min_row=2) for c in ligne)
 
 
 def test_export_sessions_csat_ne_reexporte_pas_deux_fois(app, admin_client):
@@ -184,4 +185,55 @@ def test_nouvelle_seance_apparait_apres_export_precedent(app, admin_client):
     wb = load_workbook(BytesIO(r.data))
     rows = list(wb["Sessions"].iter_rows(min_row=2, values_only=True))
     assert len(rows) == 1
-    assert rows[0][0] == dt.datetime(2026, 5, 17, 0, 0)
+    assert rows[0][0] == "2026-05-17"  # texte, modèle CSAT v2.0.0
+
+
+def test_export_sessions_csat_modele_v2_heures_normalisees_annulees_exclues(app, admin_client):
+    from app.extensions import db
+    from app.models import AtelierActivite, SessionActivite
+    from openpyxl import load_workbook
+
+    with app.app_context():
+        at = AtelierActivite(nom=f"AtV2{uuid.uuid4().hex[:6]}", secteur="Numérique", type_atelier="COLLECTIF")
+        db.session.add(at)
+        db.session.flush()
+        db.session.add_all([
+            SessionActivite(atelier_id=at.id, secteur="Numérique", session_type="COLLECTIF",
+                            date_session=dt.date(2026, 5, 1), heure_debut="9h", heure_fin="12:00:00"),
+            SessionActivite(atelier_id=at.id, secteur="Numérique", session_type="INDIVIDUEL",
+                            rdv_date=dt.date(2026, 5, 8), rdv_debut="14h30", rdv_fin="9:05"),
+            SessionActivite(atelier_id=at.id, secteur="Numérique", session_type="COLLECTIF",
+                            date_session=dt.date(2026, 5, 15), heure_debut="14:00", heure_fin="17:00",
+                            statut="annulee"),
+        ])
+        db.session.commit()
+        atid = at.id
+    r = admin_client.post(f"/activite/atelier/{atid}/export-csat-sessions.xlsx")
+    lignes = list(load_workbook(BytesIO(r.data))["Sessions"].iter_rows(min_row=2, values_only=True))
+    assert lignes == [("2026-05-01", "09:00", "12:00"), ("2026-05-08", "14:30", "09:05")]
+    page = admin_client.get(f"/activite/atelier/{atid}/sessions").get_data(as_text=True)
+    assert "(0 nouvelles)" in page, "la séance annulée n'est pas « à exporter »"
+
+
+def test_export_sessions_csat_seances_cochees(app, admin_client):
+    from app.extensions import db
+    from app.models import AtelierActivite, SessionActivite
+    from openpyxl import load_workbook
+
+    with app.app_context():
+        at = AtelierActivite(nom=f"AtCoche{uuid.uuid4().hex[:6]}", secteur="Numérique", type_atelier="COLLECTIF")
+        db.session.add(at)
+        db.session.flush()
+        s1, s2, s3 = (SessionActivite(atelier_id=at.id, secteur="Numérique", session_type="COLLECTIF",
+                                      date_session=dt.date(2026, 6, j), heure_debut="10:00", heure_fin="11:00")
+                      for j in (1, 2, 3))
+        db.session.add_all([s1, s2, s3])
+        db.session.commit()
+        atid, ids = at.id, (s1.id, s2.id, s3.id)
+    # Déjà exportée une fois : cochée, elle repart quand même (choix explicite).
+    admin_client.post(f"/activite/atelier/{atid}/export-csat-sessions.xlsx")
+    r = admin_client.post(f"/activite/atelier/{atid}/sessions/actions",
+                          data={"action": "export_csat_sessions", "sid": [ids[0], ids[2]]})
+    assert r.status_code == 200 and "spreadsheetml" in r.headers["Content-Type"]
+    lignes = list(load_workbook(BytesIO(r.data))["Sessions"].iter_rows(min_row=2, values_only=True))
+    assert lignes == [("2026-06-01", "10:00", "11:00"), ("2026-06-03", "10:00", "11:00")]

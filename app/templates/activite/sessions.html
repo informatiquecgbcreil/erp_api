@@ -25,7 +25,7 @@
           {% endif %}
           <form method="post" action="{{ url_for('activite.export_csat_sessions', atelier_id=atelier.id) }}" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn" type="submit" title="Fichier Excel compatible avec l'import « Sessions » du portail CSAT (Centres Sociaux Acteurs des Transitions). N'inclut que les séances jamais exportées.">⬇ Exporter pour CSAT{% if nb_a_exporter_csat is not none %} ({{ nb_a_exporter_csat }} nouvelle{{ 's' if nb_a_exporter_csat != 1 else '' }}){% endif %}</button>
+            <button class="btn" type="submit" title="Fichier Excel compatible avec l'import « Sessions » du portail CSAT (Centres Sociaux Acteurs des Transitions). N'inclut que les séances jamais exportées.">⬇ Sessions pour CSAT{% if nb_a_exporter_csat is not none %} ({{ nb_a_exporter_csat }} nouvelle{{ 's' if nb_a_exporter_csat != 1 else '' }}){% endif %}</button>
           </form>
           {% if can('participants:view') %}
           <a class="btn" href="{{ url_for('participants.export_csat', atelier_id=atelier.id) }}" title="Participants de cet atelier au format CSAT, par période ou séance.">👥 Participants pour CSAT</a>
@@ -43,6 +43,8 @@
                 onclick="return confirm('Annuler les séances cochées ? Elles restent visibles, mais ne comptent plus dans les statistiques et libèrent leur salle.');">🚫 Annuler (vacances, fermeture)</button>
         <button class="btn" type="submit" form="seances" name="action" value="retablir"
                 title="Remet les séances annulées au programme.">↩ Remettre au programme</button>
+        <button class="btn" type="submit" form="seances" name="action" value="export_csat_sessions"
+                title="Fichier Excel au format « Sessions » du portail CSAT : dates et horaires des séances cochées.">⬇ Sessions pour CSAT</button>
         {% if can('participants:view') %}
         <button class="btn" type="submit" form="seances" name="action" value="export_csat_participants"
                 title="Fichier CSV au format « Participants » du portail CSAT : les personnes venues aux séances cochées.">⬇ Participants pour CSAT</button>
