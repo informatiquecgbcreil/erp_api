@@ -652,17 +652,62 @@ def export_contacts_emailing_csv():
     })
 
 
-@bp.route("/export-csat.csv")
-@login_required
-@require_perm("participants:view")
-def export_csat_csv():
-    """Export des participants au format d'import CSV du portail CSAT
-    (Centres Sociaux Acteurs des Transitions) : évite la ressaisie manuelle
-    entre les deux outils.
+def _csat_entier_liste(nom: str) -> list[int]:
+    valeurs = []
+    for brut in request.values.getlist(nom):
+        for morceau in str(brut).split(","):
+            morceau = morceau.strip()
+            if morceau.isdigit() and int(morceau) not in valeurs:
+                valeurs.append(int(morceau))
+    return valeurs
 
-    Colonnes attendues par CSAT : last_name;first_name;location;gender;birthdate
-    (date au format JJ/MM/AAAA, genre M/F/N).
-    """
+
+def _csat_date(nom: str):
+    try:
+        return date.fromisoformat((request.values.get(nom) or "").strip())
+    except ValueError:
+        return None
+
+
+def _csat_filtres() -> dict:
+    """Filtres de l'export CSAT : période des séances, secteur, ateliers,
+    séances, absences excusées (exclues par défaut : seules les personnes
+    VENUES sont transmises)."""
+    return {
+        "du": _csat_date("du"),
+        "au": _csat_date("au"),
+        "secteur": (request.values.get("secteur") or "").strip(),
+        "ateliers": _csat_entier_liste("atelier_id"),
+        "seances": _csat_entier_liste("session_id"),
+        "excuses": request.values.get("excuses") == "1",
+    }
+
+
+def _csat_filtre_activite(f: dict) -> bool:
+    return bool(f["du"] or f["au"] or f["ateliers"] or f["seances"])
+
+
+def _csat_seances_query(f: dict):
+    """Séances visées par les filtres, dans le périmètre de la personne."""
+    from app.services.presences_comptees import date_seance, seance_non_annulee
+
+    q = SessionActivite.query.filter(SessionActivite.is_deleted.is_(False), seance_non_annulee())
+    if f["du"]:
+        q = q.filter(date_seance() >= f["du"])
+    if f["au"]:
+        q = q.filter(date_seance() <= f["au"])
+    if f["ateliers"]:
+        q = q.filter(SessionActivite.atelier_id.in_(f["ateliers"]))
+    if f["seances"]:
+        q = q.filter(SessionActivite.id.in_(f["seances"]))
+    if not current_user.has_perm("participants:view_all"):
+        q = q.filter(SessionActivite.secteur == _current_secteur())
+    elif f["secteur"]:
+        q = q.filter(SessionActivite.secteur == f["secteur"])
+    return q
+
+
+def _csat_participants(f: dict):
     participants_q = Participant.query.filter(Participant.nom != NOM_ANONYME)
 
     if not current_user.has_perm("participants:view_all"):
@@ -678,12 +723,80 @@ def export_csat_csv():
         participants_q = participants_q.filter(
             (Participant.created_secteur == sec) | (Participant.id.in_(subq_presence_ids))
         )
-    else:
-        secteur_filtre = (request.args.get("secteur") or "").strip()
-        if secteur_filtre:
-            participants_q = participants_q.filter(Participant.created_secteur == secteur_filtre)
+    elif f["secteur"] and not _csat_filtre_activite(f):
+        # Sans filtre d'activité : secteur de création de la fiche (comportement historique).
+        participants_q = participants_q.filter(Participant.created_secteur == f["secteur"])
 
-    participants = participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc()).all()
+    if _csat_filtre_activite(f):
+        from app.services.presences_comptees import venue_reelle
+
+        seances_ids = _csat_seances_query(f).with_entities(SessionActivite.id)
+        presents = db.session.query(PresenceActivite.participant_id).filter(
+            PresenceActivite.session_id.in_(seances_ids))
+        if not f["excuses"]:
+            presents = presents.filter(venue_reelle())
+        participants_q = participants_q.filter(Participant.id.in_(presents.distinct()))
+
+    return participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc())
+
+
+@bp.route("/export-csat")
+@login_required
+@require_perm("participants:view")
+def export_csat():
+    """Préparer l'export CSAT : période, secteur, ateliers, puis choix des
+    séances (toutes cochées par défaut) et aperçu du nombre de personnes."""
+    from app.services.presences_comptees import date_seance
+
+    if not current_user.has_perm("participants:view_all") and not _current_secteur():
+        abort(403)
+    f = _csat_filtres()
+    ateliers_q = AtelierActivite.query.filter(AtelierActivite.is_deleted.is_(False))
+    if not current_user.has_perm("participants:view_all"):
+        ateliers_q = ateliers_q.filter(AtelierActivite.secteur == _current_secteur())
+    elif f["secteur"]:
+        ateliers_q = ateliers_q.filter(AtelierActivite.secteur == f["secteur"])
+    ateliers = ateliers_q.order_by(AtelierActivite.secteur.asc(), AtelierActivite.nom.asc()).all()
+
+    seances = []
+    if f["du"] or f["au"] or f["ateliers"]:
+        vue = dict(f, seances=[])  # la liste montre toutes les séances du filtre
+        seances = (_csat_seances_query(vue)
+                   .order_by(date_seance().asc(), SessionActivite.heure_debut.asc(), SessionActivite.rdv_debut.asc())
+                   .limit(500).all())
+    noms_ateliers = {a.id: a.nom for a in AtelierActivite.query.filter(
+        AtelierActivite.id.in_({s.atelier_id for s in seances})).all()} if seances else {}
+    nombre = _csat_participants(f).count() if _csat_filtre_activite(f) else None
+    return render_template(
+        "participants/export_csat.html", f=f, ateliers=ateliers, seances=seances,
+        noms_ateliers=noms_ateliers, nombre=nombre,
+        secteurs=get_secteur_labels() if current_user.has_perm("participants:view_all") else [],
+        seances_cochees=set(f["seances"]) if f["seances"] else {s.id for s in seances},
+    )
+
+
+@bp.route("/export-csat.csv")
+@login_required
+@require_perm("participants:view")
+def export_csat_csv():
+    """Export des participants au format d'import CSV du portail CSAT
+    (Centres Sociaux Acteurs des Transitions) : évite la ressaisie manuelle
+    entre les deux outils.
+
+    Colonnes attendues par CSAT : last_name;first_name;location;gender;birthdate
+    (date au format JJ/MM/AAAA, genre M/F/N).
+
+    Sans filtre : tout l'annuaire du périmètre. Avec période (``du``/``au``),
+    atelier(s) (``atelier_id``) ou séance(s) (``session_id``) : les personnes
+    venues à ces séances (``excuses=1`` ajoute les absences excusées), chacune
+    une seule fois.
+    """
+    f = _csat_filtres()
+    if request.values.get("choix_seances") == "1" and not f["seances"]:
+        flash("Coche au moins une séance à exporter.", "warning")
+        return redirect(url_for("participants.export_csat", du=f["du"], au=f["au"], secteur=f["secteur"] or None,
+                                atelier_id=f["ateliers"], excuses="1" if f["excuses"] else None))
+    participants = _csat_participants(f).all()
 
     output = StringIO()
     writer = csv.writer(output, delimiter=";")
@@ -697,8 +810,15 @@ def export_csat_csv():
             p.date_naissance.strftime("%d/%m/%Y") if p.date_naissance else "",
         ])
 
+    from app.services.audit import journaliser
+    journaliser("participants.export_csat", cible="participants", details={
+        "personnes": len(participants),
+        "du": f["du"].isoformat() if f["du"] else None, "au": f["au"].isoformat() if f["au"] else None,
+        "secteur": f["secteur"] or None, "ateliers": f["ateliers"], "seances": f["seances"][:50],
+    })
     content = output.getvalue().encode("utf-8-sig")
-    filename = f"participants_csat_{date.today().isoformat()}.csv"
+    periode = "_".join(d.isoformat() for d in (f["du"], f["au"]) if d)
+    filename = f"participants_csat_{periode + '_' if periode else ''}{date.today().isoformat()}.csv"
     return Response(content, mimetype="text/csv", headers={
         "Content-Disposition": f"attachment; filename={filename}"
     })

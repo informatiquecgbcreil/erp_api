@@ -1,0 +1,91 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Exporter les participants pour CSAT</h1>
+      <p class="page-subtitle">Fichier CSV au format d'import « Participants » du portail CSAT
+        (<code>last_name;first_name;location;gender;birthdate</code>) : les personnes venues aux séances choisies,
+        chacune une seule fois.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('participants.list_participants') }}">Retour aux participants</a>
+    </div>
+  </div>
+
+  <form method="get" action="{{ url_for('participants.export_csat') }}" class="card stack" id="csat-filtres">
+    <h2 style="margin:0;">1. Période et ateliers</h2>
+    <div class="row" style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
+      <label>Du<br><input class="in" type="date" name="du" value="{{ f.du.isoformat() if f.du else '' }}"></label>
+      <label>Au<br><input class="in" type="date" name="au" value="{{ f.au.isoformat() if f.au else '' }}"></label>
+      {% if secteurs %}
+        <label>Secteur<br>
+          <select class="in" name="secteur">
+            <option value="">Tous les secteurs</option>
+            {% for s in secteurs %}<option value="{{ s }}" {{ 'selected' if f.secteur == s }}>{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label style="display:flex; gap:6px; align-items:center;">
+        <input type="checkbox" name="excuses" value="1" {{ 'checked' if f.excuses }}>
+        Inclure les absences excusées
+      </label>
+    </div>
+    <label>Ateliers <span class="muted">(aucun coché = tous les ateliers de la période ; Ctrl+clic pour en choisir plusieurs)</span><br>
+      <select class="in" name="atelier_id" multiple size="{{ [ateliers|length, 10]|min if ateliers else 3 }}" style="min-width:min(100%, 520px);">
+        {% for a in ateliers %}
+          <option value="{{ a.id }}" {{ 'selected' if a.id in f.ateliers }}>{{ a.secteur }} — {{ a.nom }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div><button class="btn" type="submit">Afficher les séances →</button></div>
+  </form>
+
+  {% if f.du or f.au or f.ateliers %}
+  <form method="get" action="{{ url_for('participants.export_csat_csv') }}" class="card stack" id="csat-export">
+    <h2 style="margin:0;">2. Séances à inclure ({{ seances|length }}{% if seances|length == 500 %}, limitées aux 500 premières{% endif %})</h2>
+    {% if f.du %}<input type="hidden" name="du" value="{{ f.du.isoformat() }}">{% endif %}
+    {% if f.au %}<input type="hidden" name="au" value="{{ f.au.isoformat() }}">{% endif %}
+    {% if f.secteur %}<input type="hidden" name="secteur" value="{{ f.secteur }}">{% endif %}
+    {% for aid in f.ateliers %}<input type="hidden" name="atelier_id" value="{{ aid }}">{% endfor %}
+    {% if f.excuses %}<input type="hidden" name="excuses" value="1">{% endif %}
+    <input type="hidden" name="choix_seances" value="1">
+    {% if seances %}
+      <p class="muted" style="margin:0;">
+        <a href="#" data-csat-tout="1">Tout cocher</a> · <a href="#" data-csat-tout="0">Tout décocher</a>
+        {% if nombre is not none %} · <strong data-csat-nombre>{{ nombre }}</strong> personne(s) pour la sélection affichée{% endif %}
+      </p>
+      <div style="max-height:420px; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:6px 10px;">
+        {% for s in seances %}
+          {% set jour = s.rdv_date or s.date_session %}
+          <label style="display:flex; gap:8px; align-items:center; padding:3px 0;">
+            <input type="checkbox" name="session_id" value="{{ s.id }}" {{ 'checked' if s.id in seances_cochees }}>
+            <span>{{ jour.strftime('%d/%m/%Y') if jour else 'sans date' }}
+              {{ s.heure_debut or s.rdv_debut or '' }} — <strong>{{ noms_ateliers.get(s.atelier_id, 'Atelier') }}</strong>
+              <span class="muted">({{ s.secteur }}{% if s.session_type != 'COLLECTIF' %}, rendez-vous{% endif %})</span></span>
+          </label>
+        {% endfor %}
+      </div>
+      <div><button class="btn ok" type="submit">⬇ Télécharger le CSV pour CSAT</button></div>
+    {% else %}
+      <p class="muted">Aucune séance tenue sur ces critères (les séances annulées et à la corbeille sont exclues).</p>
+    {% endif %}
+  </form>
+  {% endif %}
+
+  <details class="card">
+    <summary>Exporter tout l'annuaire, sans filtre</summary>
+    <p class="muted">Toutes les fiches de votre périmètre, qu'elles soient venues ou non.</p>
+    <a class="btn" href="{{ url_for('participants.export_csat_csv') }}">⬇ Tout l'annuaire (CSV CSAT)</a>
+  </details>
+</div>
+<script>
+document.querySelectorAll('[data-csat-tout]').forEach(function (lien) {
+  lien.addEventListener('click', function (e) {
+    e.preventDefault();
+    var coche = lien.getAttribute('data-csat-tout') === '1';
+    document.querySelectorAll('#csat-export input[name="session_id"]').forEach(function (c) { c.checked = coche; });
+  });
+});
+</script>
+{% endblock %}

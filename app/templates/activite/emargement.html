@@ -233,6 +233,9 @@
       <div class="hero-actions toolbar-line">
         <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Retour aux sessions</a>
         <a class="btn" href="{{ url_for('activite.session_edit_schedule', session_id=session.id) }}">Modifier la date et l'horaire</a>
+        {% if can('participants:view') %}
+          <a class="btn" href="{{ url_for('participants.export_csat_csv', session_id=session.id) }}" title="Fichier CSV au format « Participants » du portail CSAT : les personnes venues à cette séance.">⬇ Participants CSAT</a>
+        {% endif %}
         {% set kiosk_etat = session.kiosk_etat %}
         {% if kiosk_etat == 'ouvert' %}
           <span class="status-badge status-success" title="Le code et le QR code cessent de fonctionner à cette heure.">Pointage tablette ouvert jusqu'à {{ session.kiosk_expire_heure }}</span>

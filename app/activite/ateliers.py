@@ -547,6 +547,10 @@ def sessions_actions(atelier_id: int):
         flash("Coche d'abord au moins une séance dans la liste.", "warning")
         return redirect(retour)
 
+    if action == "export_csat_participants":
+        # Personnes venues aux séances cochées, au format « Participants » CSAT.
+        return redirect(url_for("participants.export_csat_csv", session_id=[s.id for s in seances]))
+
     if action in {"annuler", "retablir"}:
         require_perm("ateliers:edit")(lambda: None)()
         vise = "annulee" if action == "annuler" else "realisee"
