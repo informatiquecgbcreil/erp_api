@@ -6,6 +6,7 @@ from datetime import datetime, date, timedelta
 from io import BytesIO, StringIO
 
 from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, abort, send_file, Response
+from flask import session as browser_session
 from flask_login import login_required, current_user
 from ..rbac import require_perm, can
 
@@ -36,6 +37,7 @@ from app.services.insertion import (
 from app.services.purge_rgpd import NOM_ANONYME
 from app.services.access_scope import participant_allowed, participant_destructible, require_participant
 from app.utils.montants import nombre_fini
+from app.utils.dates import utcnow
 
 
 
@@ -680,6 +682,10 @@ def _csat_filtres() -> dict:
         "ateliers": _csat_entier_liste("atelier_id"),
         "seances": _csat_entier_liste("session_id"),
         "excuses": request.values.get("excuses") == "1",
+        # Par défaut (aucun formulaire soumis) : seulement les personnes jamais
+        # envoyées, CSAT ne détectant pas les doublons.
+        "nouveaux": (request.values.get("nouveaux") == "1") if request.values.get("filtre") == "1"
+        else request.values.get("nouveaux", "1") == "1",
     }
 
 
@@ -737,7 +743,48 @@ def _csat_participants(f: dict):
             presents = presents.filter(venue_reelle())
         participants_q = participants_q.filter(Participant.id.in_(presents.distinct()))
 
+    if f["nouveaux"]:
+        participants_q = participants_q.filter(Participant.exported_csat_at.is_(None))
     return participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc())
+
+
+def reponse_csv_csat(f: dict, *, marquer: bool):
+    """Fichier CSV CSAT des personnes visées par ``f`` ; ``marquer`` retient
+    la date d'envoi (téléchargement depuis l'application, en POST). None si
+    personne n'est à envoyer."""
+    participants = _csat_participants(f).all()
+    if not participants:
+        return None
+
+    output = StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(["last_name", "first_name", "location", "gender", "birthdate"])
+    for p in participants:
+        writer.writerow([
+            p.nom,
+            p.prenom,
+            p.ville or "",
+            _csat_gender_code(p.genre),
+            p.date_naissance.strftime("%d/%m/%Y") if p.date_naissance else "",
+        ])
+    if marquer:
+        maintenant = utcnow()
+        for p in participants:
+            p.exported_csat_at = maintenant
+        db.session.commit()
+
+    from app.services.audit import journaliser
+    journaliser("participants.export_csat", cible="participants", details={
+        "personnes": len(participants), "marquees": marquer, "nouveaux": f["nouveaux"],
+        "du": f["du"].isoformat() if f["du"] else None, "au": f["au"].isoformat() if f["au"] else None,
+        "secteur": f["secteur"] or None, "ateliers": f["ateliers"], "seances": f["seances"][:50],
+    })
+    content = output.getvalue().encode("utf-8-sig")
+    periode = "_".join(d.isoformat() for d in (f["du"], f["au"]) if d)
+    filename = f"participants_csat_{periode + '_' if periode else ''}{date.today().isoformat()}.csv"
+    return Response(content, mimetype="text/csv", headers={
+        "Content-Disposition": f"attachment; filename={filename}"
+    })
 
 
 @bp.route("/export-csat")
@@ -767,15 +814,19 @@ def export_csat():
     noms_ateliers = {a.id: a.nom for a in AtelierActivite.query.filter(
         AtelierActivite.id.in_({s.atelier_id for s in seances})).all()} if seances else {}
     nombre = _csat_participants(f).count() if _csat_filtre_activite(f) else None
+    from sqlalchemy import func as sa_func
+    deja_envoyees = (db.session.query(sa_func.count(Participant.id))
+                     .filter(Participant.exported_csat_at.isnot(None)).scalar())
     return render_template(
         "participants/export_csat.html", f=f, ateliers=ateliers, seances=seances,
+        deja_envoyees=deja_envoyees, rapprochement=browser_session.pop("csat_rapprochement", None),
         noms_ateliers=noms_ateliers, nombre=nombre,
         secteurs=get_secteur_labels() if current_user.has_perm("participants:view_all") else [],
         seances_cochees=set(f["seances"]) if f["seances"] else {s.id for s in seances},
     )
 
 
-@bp.route("/export-csat.csv")
+@bp.route("/export-csat.csv", methods=["GET", "POST"])
 @login_required
 @require_perm("participants:view")
 def export_csat_csv():
@@ -789,39 +840,130 @@ def export_csat_csv():
     Sans filtre : tout l'annuaire du périmètre. Avec période (``du``/``au``),
     atelier(s) (``atelier_id``) ou séance(s) (``session_id``) : les personnes
     venues à ces séances (``excuses=1`` ajoute les absences excusées), chacune
-    une seule fois.
+    une seule fois. CSAT ne détectant pas les doublons, seules les personnes
+    jamais envoyées partent par défaut (``nouveaux=0`` pour tout renvoyer) ;
+    un téléchargement depuis l'application (POST) les marque envoyées.
     """
     f = _csat_filtres()
+    retour = url_for("participants.export_csat", du=f["du"], au=f["au"], secteur=f["secteur"] or None,
+                     atelier_id=f["ateliers"], excuses="1" if f["excuses"] else None)
     if request.values.get("choix_seances") == "1" and not f["seances"]:
         flash("Coche au moins une séance à exporter.", "warning")
-        return redirect(url_for("participants.export_csat", du=f["du"], au=f["au"], secteur=f["secteur"] or None,
-                                atelier_id=f["ateliers"], excuses="1" if f["excuses"] else None))
-    participants = _csat_participants(f).all()
+        return redirect(retour)
+    reponse = reponse_csv_csat(f, marquer=request.method == "POST")
+    if reponse is None:
+        flash("Personne à envoyer : toutes ces personnes ont déjà été envoyées à CSAT."
+              if f["nouveaux"] else "Personne ne correspond à ces critères.", "info")
+        return redirect(request.referrer if request.method == "POST" and request.referrer else retour)
+    return reponse
 
-    output = StringIO()
-    writer = csv.writer(output, delimiter=";")
-    writer.writerow(["last_name", "first_name", "location", "gender", "birthdate"])
-    for p in participants:
-        writer.writerow([
-            p.nom,
-            p.prenom,
-            p.ville or "",
-            _csat_gender_code(p.genre),
-            p.date_naissance.strftime("%d/%m/%Y") if p.date_naissance else "",
-        ])
 
+def _entete_csat(nom: str) -> str:
+    from app.services.doublons import normaliser_nom
+    return normaliser_nom(nom.replace("_", " "))
+
+
+_ENTETES_CSAT = {
+    "nom": {"lastname", "nom", "nomdefamille", "name"},
+    "prenom": {"firstname", "prenom"},
+    "naissance": {"birthdate", "datedenaissance", "datenaissance", "naissance", "birthday"},
+}
+
+
+def _date_csat(texte: str):
+    texte = (texte or "").strip()
+    for format_ in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(texte, format_).date()
+        except ValueError:
+            continue
+    return None
+
+
+def rapprocher_export_csat(contenu: bytes) -> dict:
+    """Marque « déjà dans CSAT » les personnes d'un export CSV de CSAT
+    (bouton « Exporter CSV » de sa page Participants). Rapprochement prudent :
+    nom et prénom normalisés (accents, casse, tirets) ; en cas d'homonymes, la
+    date de naissance doit départager, sinon rien n'est marqué (ambigu). Rien
+    d'autre n'est lu ni conservé du fichier."""
+    import csv as csv_std
+    from app.services.doublons import normaliser_nom
+
+    try:
+        texte = contenu.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        texte = contenu.decode("cp1252", errors="replace")
+    premiere = texte.splitlines()[0] if texte.strip() else ""
+    separateur = max(";,\t", key=premiere.count) if premiere else ";"
+    lignes = list(csv_std.reader(StringIO(texte), delimiter=separateur))
+    if not lignes:
+        raise ValueError("Fichier vide.")
+    entetes = [_entete_csat(e) for e in lignes[0]]
+    index = {}
+    for cle, variantes in _ENTETES_CSAT.items():
+        for i, e in enumerate(entetes):
+            if e in variantes:
+                index.setdefault(cle, i)
+    if "nom" not in index or "prenom" not in index:
+        raise ValueError("Colonnes nom et prénom introuvables (en-têtes lus : "
+                         + ", ".join(lignes[0][:8]) + ").")
+
+    connus: dict[tuple[str, str], list] = {}
+    for p in _csat_participants(dict(du=None, au=None, secteur="", ateliers=[], seances=[],
+                                     excuses=False, nouveaux=False)):
+        connus.setdefault((normaliser_nom(p.nom), normaliser_nom(p.prenom)), []).append(p)
+
+    resultat = {"lignes": 0, "marquees": 0, "deja": 0, "introuvables": [], "ambigues": []}
+    maintenant = utcnow()
+    for ligne in lignes[1:]:
+        if not any(c.strip() for c in ligne):
+            continue
+        resultat["lignes"] += 1
+        valeur = lambda cle: ligne[index[cle]].strip() if cle in index and index[cle] < len(ligne) else ""  # noqa: E731
+        libelle = f"{valeur('nom')} {valeur('prenom')}".strip()
+        candidats = connus.get((normaliser_nom(valeur("nom")), normaliser_nom(valeur("prenom"))), [])
+        naissance = _date_csat(valeur("naissance"))
+        if naissance and len(candidats) > 1:
+            memes = [p for p in candidats if p.date_naissance == naissance]
+            candidats = memes or [p for p in candidats if p.date_naissance is None]
+        elif naissance and len(candidats) == 1 and candidats[0].date_naissance not in (None, naissance):
+            candidats = []  # même nom, autre personne (date différente)
+        if not candidats:
+            resultat["introuvables"].append(libelle)
+        elif len(candidats) > 1:
+            resultat["ambigues"].append(libelle)
+        elif candidats[0].exported_csat_at is not None:
+            resultat["deja"] += 1
+        else:
+            candidats[0].exported_csat_at = maintenant
+            resultat["marquees"] += 1
+    db.session.commit()
     from app.services.audit import journaliser
-    journaliser("participants.export_csat", cible="participants", details={
-        "personnes": len(participants),
-        "du": f["du"].isoformat() if f["du"] else None, "au": f["au"].isoformat() if f["au"] else None,
-        "secteur": f["secteur"] or None, "ateliers": f["ateliers"], "seances": f["seances"][:50],
-    })
-    content = output.getvalue().encode("utf-8-sig")
-    periode = "_".join(d.isoformat() for d in (f["du"], f["au"]) if d)
-    filename = f"participants_csat_{periode + '_' if periode else ''}{date.today().isoformat()}.csv"
-    return Response(content, mimetype="text/csv", headers={
-        "Content-Disposition": f"attachment; filename={filename}"
-    })
+    journaliser("participants.export_csat_rapprochement", cible="participants", details={
+        k: (len(v) if isinstance(v, list) else v) for k, v in resultat.items()})
+    return resultat
+
+
+@bp.route("/export-csat/deja-dans-csat", methods=["POST"])
+@login_required
+@require_perm("participants:view")
+def export_csat_deja_dans_csat():
+    fichier = request.files.get("fichier")
+    if not fichier or not fichier.filename:
+        flash("Choisis le fichier CSV exporté depuis CSAT.", "warning")
+        return redirect(url_for("participants.export_csat"))
+    contenu = fichier.read(5_000_000)
+    try:
+        resultat = rapprocher_export_csat(contenu)
+    except ValueError as exc:
+        flash(f"Fichier non reconnu : {exc}", "danger")
+        return redirect(url_for("participants.export_csat"))
+    flash(f"{resultat['marquees']} personne(s) marquée(s) « déjà dans CSAT »"
+          f"{', ' + str(resultat['deja']) + ' déjà marquée(s)' if resultat['deja'] else ''} "
+          f"sur {resultat['lignes']} ligne(s) du fichier.", "success")
+    browser_session["csat_rapprochement"] = {"introuvables": resultat["introuvables"][:200],
+                                     "ambigues": resultat["ambigues"][:200]}
+    return redirect(url_for("participants.export_csat"))
 
 
 @bp.route("/search")

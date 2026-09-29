@@ -572,8 +572,19 @@ def sessions_actions(atelier_id: int):
         return reponse
 
     if action == "export_csat_participants":
-        # Personnes venues aux séances cochées, au format « Participants » CSAT.
-        return redirect(url_for("participants.export_csat_csv", session_id=[s.id for s in seances]))
+        # Personnes venues aux séances cochées et jamais envoyées, au format
+        # « Participants » CSAT ; elles sont marquées envoyées.
+        from app.participants.routes import reponse_csv_csat
+
+        require_perm("participants:view")(lambda: None)()
+        filtres = dict(du=None, au=None, secteur="", ateliers=[], seances=[s.id for s in seances],
+                       excuses=False, nouveaux=True)
+        reponse = reponse_csv_csat(filtres, marquer=True)
+        if reponse is None:
+            flash("Personne à envoyer : les participants de ces séances ont déjà été envoyés à CSAT "
+                  "(ou aucune présence).", "info")
+            return redirect(retour)
+        return reponse
 
     if action in {"annuler", "retablir"}:
         require_perm("ateliers:edit")(lambda: None)()

@@ -234,7 +234,12 @@
         <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Retour aux sessions</a>
         <a class="btn" href="{{ url_for('activite.session_edit_schedule', session_id=session.id) }}">Modifier la date et l'horaire</a>
         {% if can('participants:view') %}
-          <a class="btn" href="{{ url_for('participants.export_csat_csv', session_id=session.id) }}" title="Fichier CSV au format « Participants » du portail CSAT : les personnes venues à cette séance.">⬇ Participants CSAT</a>
+          <form method="post" action="{{ url_for('participants.export_csat_csv') }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="session_id" value="{{ session.id }}">
+            <input type="hidden" name="nouveaux" value="1">
+            <button class="btn" type="submit" title="Fichier CSV au format « Participants » du portail CSAT : les personnes venues à cette séance et jamais envoyées à CSAT.">⬇ Participants CSAT</button>
+          </form>
         {% endif %}
         {% set kiosk_etat = session.kiosk_etat %}
         {% if kiosk_etat == 'ouvert' %}

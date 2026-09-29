@@ -13,7 +13,25 @@
     </div>
   </div>
 
+  {% if rapprochement %}
+  <div class="card stack" data-csat-rapprochement>
+    <h2 style="margin:0;">Résultat de la reprise depuis CSAT</h2>
+    {% if rapprochement.introuvables %}
+      <details><summary>{{ rapprochement.introuvables|length }} personne(s) de CSAT introuvable(s) dans l'application</summary>
+        <p class="muted">Absentes de l'application, ou écrites autrement (nom, prénom, date de naissance) : à vérifier à la main.</p>
+        <ul>{% for n in rapprochement.introuvables %}<li>{{ n }}</li>{% endfor %}</ul></details>
+    {% endif %}
+    {% if rapprochement.ambigues %}
+      <details open><summary>{{ rapprochement.ambigues|length }} homonyme(s) non départagé(s) : rien n'a été marqué</summary>
+        <p class="muted">Plusieurs fiches portent ce nom sans date de naissance pour les distinguer.</p>
+        <ul>{% for n in rapprochement.ambigues %}<li>{{ n }}</li>{% endfor %}</ul></details>
+    {% endif %}
+    {% if not rapprochement.introuvables and not rapprochement.ambigues %}<p>Toutes les lignes du fichier ont été retrouvées.</p>{% endif %}
+  </div>
+  {% endif %}
+
   <form method="get" action="{{ url_for('participants.export_csat') }}" class="card stack" id="csat-filtres">
+    <input type="hidden" name="filtre" value="1">
     <h2 style="margin:0;">1. Période et ateliers</h2>
     <div class="row" style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
       <label>Du<br><input class="in" type="date" name="du" value="{{ f.du.isoformat() if f.du else '' }}"></label>
@@ -30,6 +48,10 @@
         <input type="checkbox" name="excuses" value="1" {{ 'checked' if f.excuses }}>
         Inclure les absences excusées
       </label>
+      <label style="display:flex; gap:6px; align-items:center;" title="CSAT ne détecte pas les doublons : une personne déjà envoyée y serait créée une seconde fois.">
+        <input type="checkbox" name="nouveaux" value="1" {{ 'checked' if f.nouveaux }}>
+        Seulement les personnes jamais envoyées à CSAT
+      </label>
     </div>
     <label>Ateliers <span class="muted">(aucun coché = tous les ateliers de la période ; Ctrl+clic pour en choisir plusieurs)</span><br>
       <select class="in" name="atelier_id" multiple size="{{ [ateliers|length, 10]|min if ateliers else 3 }}" style="min-width:min(100%, 520px);">
@@ -42,7 +64,9 @@
   </form>
 
   {% if f.du or f.au or f.ateliers %}
-  <form method="get" action="{{ url_for('participants.export_csat_csv') }}" class="card stack" id="csat-export">
+  <form method="post" action="{{ url_for('participants.export_csat_csv') }}" class="card stack" id="csat-export">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="nouveaux" value="{{ '1' if f.nouveaux else '0' }}">
     <h2 style="margin:0;">2. Séances à inclure ({{ seances|length }}{% if seances|length == 500 %}, limitées aux 500 premières{% endif %})</h2>
     {% if f.du %}<input type="hidden" name="du" value="{{ f.du.isoformat() }}">{% endif %}
     {% if f.au %}<input type="hidden" name="au" value="{{ f.au.isoformat() }}">{% endif %}
@@ -53,7 +77,7 @@
     {% if seances %}
       <p class="muted" style="margin:0;">
         <a href="#" data-csat-tout="1">Tout cocher</a> · <a href="#" data-csat-tout="0">Tout décocher</a>
-        {% if nombre is not none %} · <strong data-csat-nombre>{{ nombre }}</strong> personne(s) pour la sélection affichée{% endif %}
+        {% if nombre is not none %} · <strong data-csat-nombre>{{ nombre }}</strong> personne(s) à envoyer pour la sélection affichée{% if f.nouveaux %} (jamais envoyées){% endif %}{% endif %}
       </p>
       <div style="max-height:420px; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:6px 10px;">
         {% for s in seances %}
@@ -66,17 +90,37 @@
           </label>
         {% endfor %}
       </div>
-      <div><button class="btn ok" type="submit">⬇ Télécharger le CSV pour CSAT</button></div>
+      <div><button class="btn ok" type="submit">⬇ Télécharger le CSV pour CSAT</button>
+        <span class="muted">Les personnes du fichier seront marquées « envoyées à CSAT ».</span></div>
     {% else %}
       <p class="muted">Aucune séance tenue sur ces critères (les séances annulées et à la corbeille sont exclues).</p>
     {% endif %}
   </form>
   {% endif %}
 
+  <div class="card stack">
+    <h2 style="margin:0;">Déjà des personnes dans CSAT ?</h2>
+    <p class="muted" style="margin:0;"><strong>{{ deja_envoyees }}</strong> personne(s) marquée(s) « envoyées à CSAT » dans l'application.
+      Pour celles saisies dans CSAT avant cet outil : dans CSAT, page Participants → <strong>« Exporter CSV »</strong>,
+      puis importez ce fichier ici. Les personnes retrouvées (nom, prénom, date de naissance) sont marquées et ne
+      repartiront plus. Le fichier n'est pas conservé.</p>
+    <form method="post" action="{{ url_for('participants.export_csat_deja_dans_csat') }}" enctype="multipart/form-data"
+          style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input class="in" type="file" name="fichier" accept=".csv,text/csv" required>
+      <button class="btn" type="submit">Marquer les personnes déjà dans CSAT</button>
+    </form>
+  </div>
+
   <details class="card">
-    <summary>Exporter tout l'annuaire, sans filtre</summary>
+    <summary>Exporter tout l'annuaire, sans filtre de séance</summary>
     <p class="muted">Toutes les fiches de votre périmètre, qu'elles soient venues ou non.</p>
-    <a class="btn" href="{{ url_for('participants.export_csat_csv') }}">⬇ Tout l'annuaire (CSV CSAT)</a>
+    <form method="post" action="{{ url_for('participants.export_csat_csv') }}" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit" name="nouveaux" value="1">⬇ Tout l'annuaire, jamais envoyées</button>
+      <button class="btn" type="submit" name="nouveaux" value="0"
+              onclick="return confirm('Renvoyer aussi les personnes déjà envoyées ? CSAT les créerait en double.');">⬇ Tout l'annuaire, même déjà envoyées</button>
+    </form>
   </details>
 </div>
 <script>

@@ -120,15 +120,18 @@ def test_page_de_preparation(admin_client, jeu):
 def test_seances_cochees_dans_la_liste_d_un_atelier(admin_client, jeu):
     r = admin_client.post(f"/activite/atelier/{jeu['a']}/sessions/actions",
                           data={"action": "export_csat_participants", "sid": [jeu["a1"], jeu["a2"]]})
-    assert r.status_code == 302
-    lignes = _lire(admin_client.get(r.headers["Location"]))
-    assert _noms(lignes, jeu["t"]) == ["Deux", "Mars"]
+    assert _noms(_lire(r), jeu["t"]) == ["Deux", "Mars"]
+    # Envoyées : un second export des mêmes séances n'a plus personne à proposer.
+    r = admin_client.post(f"/activite/atelier/{jeu['a']}/sessions/actions",
+                          data={"action": "export_csat_participants", "sid": [jeu["a1"], jeu["a2"]]},
+                          follow_redirects=True)
+    assert "déjà été envoyés à CSAT" in r.get_data(as_text=True)
 
 
 def test_liens_dans_les_pages(admin_client, jeu):
     assert "/participants/export-csat?atelier_id=" in admin_client.get(f"/activite/atelier/{jeu['a']}/sessions").get_data(as_text=True)
-    assert f"/participants/export-csat.csv?session_id={jeu['a1']}" in \
-        admin_client.get(f"/activite/session/{jeu['a1']}/emargement").get_data(as_text=True)
+    page = admin_client.get(f"/activite/session/{jeu['a1']}/emargement").get_data(as_text=True)
+    assert 'action="/participants/export-csat.csv"' in page and f'name="session_id" value="{jeu["a1"]}"' in page
     assert "/participants/export-csat\"" in admin_client.get("/participants/").get_data(as_text=True)
 
 
@@ -151,3 +154,82 @@ def test_compte_borne_a_son_secteur(app, jeu):
     assert _noms(lignes, jeu["t"]) == ["Deux"]
     page = c.get("/participants/export-csat", query_string={"du": "2026-01-01"}).get_data(as_text=True)
     assert f"Atelier A {jeu['t']}" not in page and f"Atelier B {jeu['t']}" in page
+
+
+def test_telechargement_marque_et_ne_renvoie_pas(admin_client, jeu):
+    donnees = {"du": "2026-03-01", "au": "2026-04-30", "atelier_id": jeu["a"], "nouveaux": "1"}
+    assert _noms(_lire(admin_client.post("/participants/export-csat.csv", data=donnees)), jeu["t"]) == ["Deux", "Mars"]
+    # Deuxième fois : personne (CSAT créerait des doublons), message clair.
+    r = admin_client.post("/participants/export-csat.csv", data=donnees, follow_redirects=True)
+    assert "déjà été envoyées à CSAT" in r.get_data(as_text=True)
+    # Renvoi volontaire possible.
+    tout = dict(donnees, nouveaux="0")
+    assert _noms(_lire(admin_client.post("/participants/export-csat.csv", data=tout)), jeu["t"]) == ["Deux", "Mars"]
+    # La page coche « jamais envoyées » par défaut ; décochée, les envoyées comptent.
+    page = admin_client.get("/participants/export-csat", query_string={"du": "2026-03-01", "atelier_id": jeu["a"]}).get_data(as_text=True)
+    assert 'name="nouveaux" value="1" checked' in page and "<strong data-csat-nombre>0</strong>" in page
+    page = admin_client.get("/participants/export-csat", query_string={"filtre": "1", "du": "2026-03-01",
+                                                                         "atelier_id": jeu["a"]}).get_data(as_text=True)
+    assert "<strong data-csat-nombre>2</strong>" in page
+
+
+def test_reprise_depuis_l_export_csv_de_csat(app, admin_client):
+    """Les personnes déjà saisies dans CSAT (avant l'outil) sont retrouvées et
+    marquées ; homonymes départagés par la date de naissance, sinon non marqués."""
+    from app.extensions import db
+    from app.models import Participant
+    t = uuid.uuid4().hex[:6]
+    with app.app_context():
+        fiches = {
+            "exacte": Participant(nom=f"Fakhreddine{t}", prenom="Malika", date_naissance=dt.date(1977, 5, 13)),
+            "accents": Participant(nom=f"Hamadouche-Élan{t}", prenom="Soraya", date_naissance=None),
+            "homonyme1": Participant(nom=f"Kartal{t}", prenom="Ulas", date_naissance=dt.date(2017, 5, 18)),
+            "homonyme2": Participant(nom=f"Kartal{t}", prenom="Ulas", date_naissance=dt.date(1980, 1, 2)),
+            "ambigu1": Participant(nom=f"Goren{t}", prenom="Ada"),
+            "ambigu2": Participant(nom=f"Goren{t}", prenom="Ada"),
+            "autre_date": Participant(nom=f"Martin{t}", prenom="Alex", date_naissance=dt.date(2000, 1, 1)),
+            "absente": Participant(nom=f"Absente{t}", prenom="Zoé"),
+        }
+        db.session.add_all(fiches.values())
+        db.session.commit()
+        ids = {k: p.id for k, p in fiches.items()}
+    # En-têtes tels qu'affichés par CSAT (français), séparateur « ; ».
+    export_csat = (
+        "Nom;Prénom;Genre;Date de naissance;Lieu de résidence\n"
+        f"Fakhreddine{t};Malika;Féminin;13/05/1977;Creil\n"
+        f"HAMADOUCHE ELAN{t};soraya;Féminin;21/05/1973;Cauffry\n"
+        f"Kartal{t};Ulas;Masculin;18/05/2017;Creil\n"
+        f"Goren{t};Ada;Féminin;;Creil\n"
+        f"Martin{t};Alex;Masculin;15/08/1995;Creil\n"
+        f"Inconnue{t};Personne;Féminin;01/01/1990;Creil\n"
+    ).encode("utf-8-sig")
+    r = admin_client.post("/participants/export-csat/deja-dans-csat",
+                          data={"fichier": (io.BytesIO(export_csat), "participants.csv")},
+                          content_type="multipart/form-data", follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert "3 personne(s) marquée(s)" in page and "sur 6 ligne(s)" in page
+    assert f"Goren{t} Ada" in page and f"Inconnue{t} Personne" in page and f"Martin{t} Alex" in page
+    with app.app_context():
+        marque = {k: db.session.get(Participant, i).exported_csat_at is not None for k, i in ids.items()}
+    assert marque == {"exacte": True, "accents": True, "homonyme1": True, "homonyme2": False,
+                      "ambigu1": False, "ambigu2": False, "autre_date": False, "absente": False}
+
+
+def test_reprise_format_d_import_et_fichier_non_reconnu(app, admin_client):
+    from app.extensions import db
+    from app.models import Participant
+    t = uuid.uuid4().hex[:6]
+    with app.app_context():
+        p = Participant(nom=f"Dupont{t}", prenom="Benjamin", date_naissance=dt.date(1995, 8, 15))
+        db.session.add(p)
+        db.session.commit()
+        pid = p.id
+    contenu = f"last_name,first_name,location,gender,birthdate\nDupont{t},Benjamin,Creil,M,1995-08-15\n".encode()
+    admin_client.post("/participants/export-csat/deja-dans-csat",
+                      data={"fichier": (io.BytesIO(contenu), "x.csv")}, content_type="multipart/form-data")
+    with app.app_context():
+        assert db.session.get(Participant, pid).exported_csat_at is not None
+    r = admin_client.post("/participants/export-csat/deja-dans-csat",
+                          data={"fichier": (io.BytesIO(b"colonne;autre\n1;2\n"), "x.csv")},
+                          content_type="multipart/form-data", follow_redirects=True)
+    assert "Fichier non reconnu" in r.get_data(as_text=True)

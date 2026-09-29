@@ -1478,6 +1478,9 @@ class Participant(db.Model):
     # Pour permettre la création "en avance" (avant toute présence) tout en respectant
     # le cloisonnement par secteur en rôle responsable_secteur.
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    # Dernier envoi au portail CSAT (export « Participants ») : CSAT ne
+    # détecte pas les doublons, l'export ne propose que les jamais envoyées.
+    exported_csat_at = db.Column(db.DateTime, nullable=True, index=True)
     created_secteur = db.Column(db.String(80), nullable=True)
 
     # --- Géolocalisation (carte des habitants) -------------------------------
