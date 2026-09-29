@@ -1,7 +1,7 @@
 import os
 import base64
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.utils.dates import utcnow
 
@@ -128,7 +128,7 @@ def _via_facade_publique() -> bool:
 def _active_kiosks():
     return SessionActivite.query.filter(
         SessionActivite.kiosk_open.is_(True), SessionActivite.is_deleted.is_(False),
-        SessionActivite.kiosk_opened_at >= utcnow() - timedelta(hours=12))
+        SessionActivite.kiosk_opened_at >= utcnow() - SessionActivite.KIOSQUE_DUREE)
 
 
 def _participants_for_session(s):
@@ -313,16 +313,18 @@ def kiosk_home():
             return redirect(url_for("kiosk.kiosk_home"))
         return redirect(url_for("kiosk.kiosk_session", token=s.kiosk_token))
 
-    sessions = [] if _via_facade_publique() else _open_sessions_today()
-    return render_template("kiosk/index.html", sessions=sessions)
+    masquee = _via_facade_publique()
+    sessions = [] if masquee else _open_sessions_today()
+    return render_template("kiosk/index.html", sessions=sessions, liste_masquee=masquee)
 
 
 @bp.route("/programme")
 def kiosk_programme():
     """Programme en direct (lecture seule) : les ateliers ouverts du jour,
     consultables sans émarger. Pratique aussi en affichage mural dans le hall."""
-    sessions = [] if _via_facade_publique() else _open_sessions_today()
-    return render_template("kiosk/programme.html", sessions=sessions)
+    masquee = _via_facade_publique()
+    sessions = [] if masquee else _open_sessions_today()
+    return render_template("kiosk/programme.html", sessions=sessions, liste_masquee=masquee)
 
 
 @bp.route("/session/<token>/search")
@@ -363,7 +365,9 @@ def kiosk_session(token: str):
     """Page publique d'émargement d'une session précise."""
     s = _get_open_session_by_token(token)
     if not s:
-        abort(404)
+        # Lien d'une séance fermée ou expirée (12 h) : l'expliquer au
+        # participant plutôt qu'une page « Not Found » en anglais.
+        return render_template("kiosk/ferme.html"), 404
 
     atelier = db.get_or_404(AtelierActivite, s.atelier_id)
     motifs = atelier.motifs() or []

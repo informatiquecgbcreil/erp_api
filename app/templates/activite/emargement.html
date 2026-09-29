@@ -233,7 +233,14 @@
       <div class="hero-actions toolbar-line">
         <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Retour aux sessions</a>
         <a class="btn" href="{{ url_for('activite.session_edit_schedule', session_id=session.id) }}">Modifier la date et l'horaire</a>
-        <span class="status-badge {{ 'status-success' if session.kiosk_open else 'status-warning' }}">{{ 'Pointage tablette ouvert' if session.kiosk_open else 'Pointage tablette fermé' }}</span>
+        {% set kiosk_etat = session.kiosk_etat %}
+        {% if kiosk_etat == 'ouvert' %}
+          <span class="status-badge status-success" title="Le code et le QR code cessent de fonctionner à cette heure.">Pointage tablette ouvert jusqu'à {{ session.kiosk_expire_heure }}</span>
+        {% elif kiosk_etat == 'expire' %}
+          <span class="status-badge status-danger" data-kiosk-expire="1" title="Ouvert il y a plus de 12 heures : le code et le QR code ne fonctionnent plus.">Pointage tablette expiré</span>
+        {% else %}
+          <span class="status-badge status-warning">Pointage tablette fermé</span>
+        {% endif %}
         <form method="post" action="{{ url_for('activite.session_toggle_evenement', session_id=session.id) }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn" type="submit" title="Les séances événementielles sont comptées à part dans le volet événementiel du SENACS.">
@@ -250,7 +257,7 @@
           </form>
         {% endif %}
         {# KIOSQUE PUBLIC #}
-        {% if session.kiosk_open %}
+        {% if kiosk_etat == 'ouvert' %}
           <a class="btn" href="{{ url_for('kiosk.kiosk_home') }}" target="_blank">Ouvrir le pointage tablette</a>
           <a class="btn" href="{{ url_for('kiosk.kiosk_session', token=session.kiosk_token) }}" target="_blank">Ouvrir cette séance</a>
           <form method="post" action="{{ url_for('activite.kiosk_close', session_id=session.id) }}" style="margin:0;">
@@ -266,7 +273,8 @@
       <input type="hidden" name="conso_period_mode" value="{{ conso_period_mode }}">
       <input type="hidden" name="conso_period_start" value="{{ conso_period_start_value or '' }}">
       <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
-            <button class="btn" type="submit">Ouvrir le pointage tablette</button>
+            {# Expiré : nouveau code, nouveau lien et nouveau QR code, valables 12 h. #}
+            <button class="btn{{ ' ok' if kiosk_etat == 'expire' else '' }}" type="submit">{{ 'Rouvrir le pointage tablette (nouveau code)' if kiosk_etat == 'expire' else 'Ouvrir le pointage tablette' }}</button>
           </form>
         {% endif %}
       </div>
@@ -483,7 +491,17 @@
   </section>
   {% endif %}
 
-  {% if session.kiosk_open %}
+  {% if session.kiosk_etat == 'expire' %}
+  <section class="section-card" style="border-color: color-mix(in srgb, var(--danger,#dc2626) 55%, var(--border));">
+    <h2 style="margin-top:0;">Pointage tablette expiré</h2>
+    <p class="muted">Ce pointage a été ouvert il y a plus de 12 heures : l'ancien code et l'ancien QR code
+      ne fonctionnent plus (les participants voient « Ce pointage n'est plus ouvert »).
+      Cliquez sur <strong>« Rouvrir le pointage tablette »</strong> en haut de la page pour obtenir un nouveau code
+      et un nouveau QR code, valables 12 heures.</p>
+  </section>
+  {% endif %}
+
+  {% if session.kiosk_etat == 'ouvert' %}
   <section class="section-card">
     <h2 style="margin-top:0;">Pointage tablette</h2>
     <div class="muted">

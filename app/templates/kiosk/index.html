@@ -26,7 +26,13 @@
         {% endfor %}
       </div>
     {% else %}
-      <p class="k-hint">Aucun atelier ouvert pour le moment. Demandez le code à l'animateur ci-dessous.</p>
+      {% if liste_masquee %}
+        {# Adresse « hors les murs » (tunnel) : liste volontairement masquée. #}
+        <p class="k-hint">Depuis cette adresse, la liste des ateliers n'est pas affichée (protection de l'annuaire).
+          Scannez le QR code de l'atelier ou entrez son code ci-dessous.</p>
+      {% else %}
+        <p class="k-hint">Aucun atelier ouvert pour le moment. Demandez le code à l'animateur ci-dessous.</p>
+      {% endif %}
     {% endif %}
   </div>
 
