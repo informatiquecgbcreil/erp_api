@@ -1,6 +1,6 @@
 
 from app.utils.dates import utcnow
-from datetime import date
+from datetime import date, timedelta
 import json
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
@@ -1861,6 +1861,36 @@ class SessionActivite(db.Model):
     kiosk_pin = db.Column(db.String(10), nullable=True, index=True)
     kiosk_token = db.Column(db.String(64), nullable=True, index=True)
     kiosk_opened_at = db.Column(db.DateTime, nullable=True)
+
+    #: Durée de validité d'un pointage tablette (code, lien, QR code) : le lien
+    #: peut circuler hors du centre (tunnel « hors les murs »), il s'éteint seul.
+    KIOSQUE_DUREE = timedelta(hours=12)
+
+    @property
+    def kiosk_expire_le(self):
+        """Fin de validité (UTC naïf) du pointage ouvert, sinon None."""
+        if not self.kiosk_open or not self.kiosk_opened_at:
+            return None
+        return self.kiosk_opened_at + self.KIOSQUE_DUREE
+
+    @property
+    def kiosk_etat(self) -> str:
+        """« ouvert », « expire » (ouvert il y a plus de 12 h, ou date
+        d'ouverture inconnue : code et QR code ne fonctionnent plus) ou « ferme ».
+        Même règle que le kiosque (app/kiosk/routes._active_kiosks)."""
+        if not self.kiosk_open:
+            return "ferme"
+        fin = self.kiosk_expire_le
+        return "ouvert" if fin is not None and utcnow() < fin else "expire"
+
+    @property
+    def kiosk_expire_heure(self) -> str:
+        """Heure locale du serveur (« 21:35 ») de fin de validité."""
+        fin = self.kiosk_expire_le
+        if fin is None:
+            return ""
+        from datetime import timezone
+        return fin.replace(tzinfo=timezone.utc).astimezone().strftime("%H:%M")
 
     # Pont manuel CSAT (portail sans API) : date de dernière inclusion dans
     # l'export « Sessions ». NULL = jamais exportée, remonte dans le prochain export.

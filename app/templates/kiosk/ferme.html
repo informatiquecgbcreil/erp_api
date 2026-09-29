@@ -1,0 +1,12 @@
+{% extends 'kiosk/base.html' %}
+{% block header_title %}Pointer ma présence{% endblock %}
+{% block body %}
+  <div class="k-card">
+    <h1 class="k-card__title">Ce pointage n'est plus ouvert</h1>
+    <p class="k-card__sub">Le lien ou le QR code de cet atelier a été fermé, ou il a expiré
+      (un pointage reste ouvert 12 heures).</p>
+    <p class="k-card__sub">Demandez à l'animateur·rice le <strong>nouveau code</strong> ou le
+      <strong>nouveau QR code</strong> de l'atelier.</p>
+    <p style="margin-top:14px;"><a class="k-btn" href="{{ url_for('kiosk.kiosk_home') }}">Entrer un code →</a></p>
+  </div>
+{% endblock %}
