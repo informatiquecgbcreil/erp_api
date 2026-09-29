@@ -35,11 +35,15 @@ def _migration(nom):
 
 
 def _personne(db, **extra):
+    """Insertion limitée aux colonnes explicites (et à celles qui ont une
+    valeur par défaut) : fonctionne aussi sur une base ramenée à un ancien
+    schéma, où les colonnes ajoutées depuis (ex. participant.exported_csat_at)
+    n'existent pas encore. Seul l'identifiant est utilisé par ces tests."""
+    from types import SimpleNamespace
     from app.models import Participant
-    p = Participant(nom=f"Regl{uuid.uuid4().hex[:8]}", prenom="Test", created_secteur="Familles", **extra)
-    db.session.add(p)
-    db.session.flush()
-    return p
+    resultat = db.session.execute(Participant.__table__.insert().values(
+        nom=f"Regl{uuid.uuid4().hex[:8]}", prenom="Test", created_secteur="Familles", **extra))
+    return SimpleNamespace(id=resultat.inserted_primary_key[0])
 
 
 def _cotisation(db, *, participant=None, foyer_id=None, type_cotisation="participation", du=60.0, annee=ANNEE):
