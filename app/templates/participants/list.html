@@ -28,7 +28,7 @@
           {% if can('participants:delete') or can('ateliers:sync') %}
           <a class="pill" href="#nettoyage-imports">Nettoyage des imports</a>
           {% endif %}
-          <a class="pill" href="{{ url_for('participants.export_csat_csv') }}" title="Fichier CSV compatible avec l'import « Participants » du portail CSAT (Centres Sociaux Acteurs des Transitions).">⬇ Exporter pour CSAT (CSV)</a>
+          <a class="pill" href="{{ url_for('participants.export_csat') }}" title="Fichier CSV compatible avec l'import « Participants » du portail CSAT (Centres Sociaux Acteurs des Transitions) : par période, atelier(s) ou séance(s).">⬇ Exporter pour CSAT (CSV)</a>
           <a class="pill" href="{{ url_for('participants.export_contacts_emailing_csv') }}" title="Fichier CSV des personnes ayant un e-mail renseigné, à importer dans un outil d'envoi de newsletters (Brevo, Mailjet…).">⬇ Exporter les contacts (e-mailing)</a>
         </div>
       </details>
