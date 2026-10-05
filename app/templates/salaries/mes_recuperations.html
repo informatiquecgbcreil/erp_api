@@ -109,7 +109,7 @@
             <td>{{ h.date_travail.strftime('%d/%m/%Y') }}</td>
             <td {% if h.minutes < 0 %}style="color:var(--danger,#dc2626);"{% endif %}>{{ es.format_minutes(h.minutes) }}</td>
             <td>
-              {% if h.est_ajustement %}<strong>Retrait par la direction</strong>{% if h.commentaire_direction %} : {{ h.commentaire_direction }}{% endif %}
+              {% if h.est_ajustement %}<strong>{{ 'Retrait par toi-même' if h.par_interesse else 'Retrait par la direction' }}</strong>{% if h.commentaire_direction %} : {{ h.commentaire_direction }}{% endif %}
               {% else %}{{ h.motif or '' }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}{% endif %}
             </td>
           </tr>

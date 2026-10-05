@@ -3060,6 +3060,9 @@ class HeureSupplementaire(db.Model):
     est_ajustement = db.Column(db.Boolean, nullable=False, default=False)
     origine_id = db.Column(db.Integer, db.ForeignKey("heure_supplementaire.id"), nullable=True, index=True)
     commentaire_direction = db.Column(db.Text, nullable=True)
+    #: Retrait décidé par la personne elle-même sur son propre solde : permis,
+    #: mais toujours signalé (fiche, journal, accueil de la direction).
+    par_interesse = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     #: Lien vers ce qui a été fait ce jour-là (séance animée, réunion…).
     session_id = db.Column(db.Integer, db.ForeignKey("session_activite.id", ondelete="SET NULL"), nullable=True, index=True)
     creneau_id = db.Column(db.Integer, db.ForeignKey("agenda_creneau.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -3092,6 +3095,9 @@ class DemandeRecuperation(db.Model):
     transmise_le = db.Column(db.DateTime, nullable=True)
     decidee_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     decidee_le = db.Column(db.DateTime, nullable=True)
+    #: Décision prise par la personne elle-même (ex. la direction sur sa propre
+    #: demande) : permise, mais toujours signalée et contrôlable.
+    decision_par_interesse = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     notifiee_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     notifiee_le = db.Column(db.DateTime, nullable=True)
 

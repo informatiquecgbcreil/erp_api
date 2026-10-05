@@ -54,6 +54,12 @@ def statut_recup(demande) -> dict:
     return meta
 
 
+def est_l_interesse(demande, user) -> bool:
+    """La personne connectée est-elle celle que concerne la demande ?"""
+    uid = getattr(demande.salarie, "user_id", None)
+    return bool(uid and uid == getattr(user, "id", None))
+
+
 def prochaine_etape(demande) -> str:
     s = demande.statut
     if s == "brouillon":
@@ -437,6 +443,10 @@ def a_traiter_equipe(user) -> dict[str, Any]:
             DemandeRecuperation.statut.in_(DECIDEES), DemandeRecuperation.notifiee_le.is_(None)).count()
     if _peut(user, "recup:decider"):
         res["a_decider"] = DemandeRecuperation.query.filter_by(statut="transmise").count()
+        debut_annee = datetime(date.today().year, 1, 1)
+        res["decisions_par_interesse"] = DemandeRecuperation.query.filter(
+            DemandeRecuperation.decision_par_interesse.is_(True),
+            DemandeRecuperation.decidee_le >= debut_annee).count()
         res["heures_30j"] = _somme(HeureSupplementaire.minutes,
                                    HeureSupplementaire.created_at >= utcnow() - timedelta(days=30),
                                    HeureSupplementaire.est_ajustement.is_(False))

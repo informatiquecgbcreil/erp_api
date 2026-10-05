@@ -523,3 +523,68 @@ def test_supprimer_un_compte_garde_la_fiche_et_son_historique(app, admin_client)
         fiche = db.session.get(Salarie, sid)
         assert fiche is not None and fiche.user_id is None
         assert HeureSupplementaire.query.filter_by(salarie_id=sid).count() == 1
+
+
+def _fiche_de_l_admin(app):
+    """Fiche salarié du compte de direction des tests (créée au besoin)."""
+    from tests.conftest import ADMIN_EMAIL
+    with app.app_context():
+        from app.models import Salarie, User
+        uid = User.query.filter_by(email=ADMIN_EMAIL).one().id
+        fiche = Salarie.query.filter_by(user_id=uid).first()
+        if fiche is not None:
+            return fiche.id
+    return _fiche(app, f"Direction{_suffixe()}", "Admin", user_id=uid)
+
+
+def test_la_direction_peut_decider_sa_propre_demande_mais_c_est_signale(app, admin_client):
+    sid = _fiche_de_l_admin(app)
+    admin_client.post("/salarie/recuperations/heures", data={
+        "date_travail": dt.date.today().isoformat(), "duree": "4h", "motif": "CA du soir"})
+    admin_client.post("/salarie/recuperations/demandes", data={
+        "date_recuperation": dt.date.today().isoformat(), "duree": "2h", "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.models import DemandeRecuperation, HeureSupplementaire
+        did = DemandeRecuperation.query.filter_by(salarie_id=sid).order_by(DemandeRecuperation.id.desc()).first().id
+        hid = HeureSupplementaire.query.filter_by(salarie_id=sid, est_ajustement=False).order_by(
+            HeureSupplementaire.id.desc()).first().id
+
+    form = admin_client.get("/salarie/equipe/recuperations").get_data(as_text=True)
+    assert "propre demande" in form
+    r = admin_client.post(f"/salarie/equipe/recuperations/{did}/decider",
+                          data={"decision": "accepter", "signature_data": signature_tracee()})
+    assert r.status_code == 302  # autorisé…
+    admin_client.post(f"/salarie/equipe/heures/{hid}/retirer", data={"commentaire": "Erreur de saisie"})
+    with app.app_context():
+        from app.extensions import db
+        from app.models import AuditLog, DemandeRecuperation, HeureSupplementaire
+        d = db.session.get(DemandeRecuperation, did)
+        assert d.statut == "acceptee" and d.decision_par_interesse  # … mais marqué
+        assert HeureSupplementaire.query.filter_by(origine_id=hid).one().par_interesse
+        actions = {a.action for a in AuditLog.query.filter(AuditLog.cible.in_(
+            [f"demande_recuperation#{did}", f"salarie#{sid}"])).all()}
+        assert {"rh.recup_auto_decision", "rh.heures_retirees_par_interesse"} <= actions
+
+    detail = admin_client.get(f"/salarie/recuperations/demandes/{did}").get_data(as_text=True)
+    assert "Décision prise par la personne qui a fait la demande" in detail
+    filtre = admin_client.get("/salarie/equipe/recuperations?statut=par_interesse").get_data(as_text=True)
+    assert f"/salarie/recuperations/demandes/{did}" in filtre
+    accueil = admin_client.get("/dashboard?espace=salarie").get_data(as_text=True)
+    assert "par l'intéressé" in accueil.replace("&#39;", "'")
+    admin_client.get("/dashboard?espace=activites")
+
+
+def test_une_decision_ordinaire_n_est_pas_marquee(app, admin_client):
+    client, sid, _ = _salarie_connecte(app)
+    client.post("/salarie/recuperations/demandes", data={
+        "date_recuperation": dt.date.today().isoformat(), "duree": "1h", "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.models import DemandeRecuperation
+        did = DemandeRecuperation.query.filter_by(salarie_id=sid).one().id
+    admin_client.post(f"/salarie/equipe/recuperations/{did}/decider",
+                      data={"decision": "accepter", "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.extensions import db
+        from app.models import DemandeRecuperation
+        d = db.session.get(DemandeRecuperation, did)
+        assert d.statut == "acceptee" and not d.decision_par_interesse

@@ -98,6 +98,10 @@
       <a class="esd-signal" data-tone="{{ 'warn' if eq.a_notifier else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='a_traiter') }}">
         <span class="esd-signal__valeur">{{ eq.a_notifier }}</span><span class="esd-signal__label">Décision{{ 's' if eq.a_notifier > 1 }} à notifier</span><span class="esd-signal__detail">Le salarié doit être informé</span></a>
     {% endif %}
+    {% if eq.decisions_par_interesse %}
+      <a class="esd-signal" data-tone="warn" href="{{ url_for('salaries.equipe_recuperations', statut='par_interesse') }}">
+        <span class="esd-signal__valeur">{{ eq.decisions_par_interesse }}</span><span class="esd-signal__label">Décidée{{ 's' if eq.decisions_par_interesse > 1 }} par l'intéressé·e</span><span class="esd-signal__detail">Cette année : à contrôler</span></a>
+    {% endif %}
     {% if eq.heures_30j is defined %}
       <a class="esd-signal" data-tone="info" href="{{ url_for('salaries.equipe_recuperations') }}">
         <span class="esd-signal__valeur">{{ es.format_minutes(eq.heures_30j) }}</span><span class="esd-signal__label">Heures sup déclarées</span><span class="esd-signal__detail">30 derniers jours</span></a>

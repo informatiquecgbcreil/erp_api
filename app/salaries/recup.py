@@ -229,6 +229,8 @@ def equipe_recuperations():
         q = q.filter(DemandeRecuperation.salarie_id == int(f_salarie))
     if f_statut in es.STATUTS_RECUP:
         q = q.filter(DemandeRecuperation.statut == f_statut)
+    elif f_statut == "par_interesse":
+        q = q.filter(DemandeRecuperation.decision_par_interesse.is_(True))
     elif f_statut == "a_traiter":
         q = q.filter(db.or_(DemandeRecuperation.statut.in_(es.EN_ATTENTE),
                             db.and_(DemandeRecuperation.statut.in_(es.DECIDEES),
@@ -302,10 +304,19 @@ def decider_demande(demande_id: int):
     demande.commentaire_direction = commentaire or None
     demande.decidee_par_user_id = current_user.id
     demande.decidee_le = utcnow()
+    # Décider de sa propre demande reste possible (petite structure, pas
+    # d'autre décideur), mais n'est jamais discret : la demande est marquée,
+    # le journal a une action dédiée, l'accueil de la direction la compte.
+    demande.decision_par_interesse = es.est_l_interesse(demande, current_user)
     db.session.commit()
-    journaliser("rh.recup_decision", cible=f"demande_recuperation#{demande.id}",
-                details={"decision": demande.statut, "sans_transmission": demande.transmise_le is None})
-    flash("Récupération acceptée." if accord else "Récupération refusée.", "success")
+    journaliser("rh.recup_auto_decision" if demande.decision_par_interesse else "rh.recup_decision",
+                cible=f"demande_recuperation#{demande.id}",
+                details={"decision": demande.statut, "sans_transmission": demande.transmise_le is None,
+                         "par_l_interesse": demande.decision_par_interesse})
+    message = "Récupération acceptée." if accord else "Récupération refusée."
+    if demande.decision_par_interesse:
+        message += " C'est ta propre demande : elle est marquée « décidée par l'intéressé·e » et tracée au journal."
+    flash(message, "warning" if demande.decision_par_interesse else "success")
     return retour(_url_equipe())
 
 
@@ -347,10 +358,13 @@ def retirer_heures(heure_id: int):
         salarie_id=origine.salarie_id, saisi_par_user_id=current_user.id, date_travail=origine.date_travail,
         minutes=-origine.minutes, motif="Retrait par la direction", est_ajustement=True,
         origine_id=origine.id, commentaire_direction=commentaire,
+        par_interesse=bool(origine.salarie.user_id and origine.salarie.user_id == current_user.id),
     )
     db.session.add(ajustement)
     db.session.commit()
-    journaliser("rh.heures_retirees", cible=f"salarie#{origine.salarie_id}",
-                details={"heure_sup_id": origine.id, "minutes": origine.minutes, "commentaire": commentaire})
+    journaliser("rh.heures_retirees_par_interesse" if ajustement.par_interesse else "rh.heures_retirees",
+                cible=f"salarie#{origine.salarie_id}",
+                details={"heure_sup_id": origine.id, "minutes": origine.minutes, "commentaire": commentaire,
+                         "par_l_interesse": ajustement.par_interesse})
     flash(f"{es.format_minutes(origine.minutes)} retirées du solde, avec ta justification.", "success")
     return retour(_url_equipe())

@@ -19,6 +19,7 @@
     {% if compteurs.a_transmettre is defined %}<a class="es-kpi" data-tone="{{ 'warn' if compteurs.a_transmettre else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='soumise') }}"><strong>{{ compteurs.a_transmettre }}</strong><span>À transmettre</span></a>{% endif %}
     {% if compteurs.a_decider is defined %}<a class="es-kpi" data-tone="{{ 'warn' if compteurs.a_decider else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='transmise') }}"><strong>{{ compteurs.a_decider }}</strong><span>À décider</span></a>{% endif %}
     {% if compteurs.a_notifier is defined %}<a class="es-kpi" data-tone="{{ 'warn' if compteurs.a_notifier else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='a_traiter') }}"><strong>{{ compteurs.a_notifier }}</strong><span>Décisions à notifier</span></a>{% endif %}
+    {% if compteurs.decisions_par_interesse %}<a class="es-kpi" data-tone="warn" href="{{ url_for('salaries.equipe_recuperations', statut='par_interesse') }}"><strong>{{ compteurs.decisions_par_interesse }}</strong><span>Décidées par l'intéressé·e cette année</span></a>{% endif %}
     {% if compteurs.heures_30j is defined %}<div class="es-kpi"><strong>{{ es.format_minutes(compteurs.heures_30j) }}</strong><span>Heures sup déclarées · 30 jours</span></div>{% endif %}
   </div>
 
@@ -31,6 +32,7 @@
       <select class="in" name="statut">
         <option value="">Tous</option>
         <option value="a_traiter" {% if f_statut == 'a_traiter' %}selected{% endif %}>À traiter</option>
+        <option value="par_interesse" {% if f_statut == 'par_interesse' %}selected{% endif %}>Décidées par l'intéressé·e</option>
         {% for code, meta in es.STATUTS_RECUP.items() if code != 'brouillon' %}<option value="{{ code }}" {% if f_statut == code %}selected{% endif %}>{{ meta.label }}</option>{% endfor %}
       </select></label>
     <label class="field-stack slim"><span>Période</span>
@@ -68,6 +70,9 @@
               <details><summary>⚖️ Décider{% if d.statut == 'soumise' %} (sans transmission){% endif %}</summary>
                 <form method="post" action="{{ url_for('salaries.decider_demande', demande_id=d.id) }}" class="stack" style="gap:6px;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  {% if d.salarie.user_id == current_user.id %}
+                    <p class="status-badge status-warning" style="margin:0;">C'est ta propre demande : la décision sera marquée « décidée par l'intéressé·e » et tracée au journal.</p>
+                  {% endif %}
                   <label><input type="radio" name="decision" value="accepter" checked> Accepter</label>
                   <label><input type="radio" name="decision" value="refuser"> Refuser</label>
                   <input class="in" name="commentaire" placeholder="Commentaire (obligatoire si refus)">
@@ -106,7 +111,7 @@
           <td>{{ h.salarie.nom_complet }}</td>
           <td>{{ h.date_travail.strftime('%d/%m/%Y') }}</td>
           <td>{{ es.format_minutes(h.minutes) }}</td>
-          <td>{% if h.est_ajustement %}<em>Retrait : {{ h.commentaire_direction or '' }}</em>{% else %}{{ h.motif }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}{% endif %}</td>
+          <td>{% if h.est_ajustement %}<em>Retrait : {{ h.commentaire_direction or '' }}</em>{% if h.par_interesse %} <span class="status-badge status-warning">⚠️ par l'intéressé·e</span>{% endif %}{% else %}{{ h.motif }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}{% endif %}</td>
           <td>
             {% if not h.est_ajustement and h.minutes > 0 %}
             <details><summary>Retirer</summary>

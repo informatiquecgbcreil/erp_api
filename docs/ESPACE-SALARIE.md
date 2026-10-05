@@ -17,7 +17,7 @@ Le tout appartient au module **« Ressources humaines »**
 | Logique partagée (soldes, liens, signatures, compteurs) | `app/services/espace_salarie.py` |
 | Calcul au barème kilométrique | `app/services/frais_km.py` |
 | Modèles | `app/models.py`, section « ESPACE SALARIÉ » |
-| Migration | `migrations/versions/a9d4e6f8b2c1_espace_salarie.py` |
+| Migrations | `migrations/versions/a9d4e6f8b2c1_espace_salarie.py`, `b3f5a7c9d1e2_decision_par_interesse.py` |
 | Gabarits | `app/templates/salaries/`, `_espace_salarie.html`, `_dashboard_onglets.html` |
 | Cadres de signature | `app/static/js/signature-rh.js` |
 | Tests | `tests/test_espace_salarie.py` |
@@ -51,6 +51,17 @@ Le tout appartient au module **« Ressources humaines »**
 absent·e). Refus motivé obligatoire. Le salarié peut annuler tant que rien
 n'est décidé. Solde = heures sup (ajustements négatifs compris) −
 récupérations **acceptées** ; il peut être négatif (récupération par avance).
+
+**Décider pour soi-même.** Tout le monde a un espace salarié, direction
+comprise : la direction peut donc décider de SA propre demande (et retirer
+des heures de SON solde). C'est permis — une petite structure n'a pas
+toujours d'autre décideur — mais jamais discret : la demande porte
+`decision_par_interesse` (badge « décidée par l'intéressé·e », filtre dédié
+dans la boîte de l'équipe, compteur annuel sur l'accueil de la direction) et
+le journal enregistre une action distincte (`rh.recup_auto_decision`,
+`rh.heures_retirees_par_interesse`). De quoi permettre un contrôle par le
+bureau ou le CA. L'assistant·e peut transmettre et notifier ses propres
+demandes (simple relais, sans pouvoir de décision).
 
 Les compteurs « à traiter » sont calculés à partir des statuts : il n'y a pas
 de liste de tâches parallèle à maintenir (l'ancienne table `tasks` de Récup

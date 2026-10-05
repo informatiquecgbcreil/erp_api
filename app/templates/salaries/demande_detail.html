@@ -43,6 +43,9 @@
     </table></div>
     {% if d.motif %}<p><strong>Motif :</strong> {{ d.motif }}</p>{% endif %}
     {% if d.commentaire_direction %}<p><strong>Commentaire de la direction :</strong> {{ d.commentaire_direction }}</p>{% endif %}
+    {% if d.decision_par_interesse %}
+      <p class="status-badge status-warning">⚠️ Décision prise par la personne qui a fait la demande. Elle est autorisée, mais signalée ici, dans le journal (action « rh.recup_auto_decision ») et sur l'accueil de la direction, pour rester contrôlable.</p>
+    {% endif %}
     {% if d.statut in ('acceptee', 'refusee') and not d.transmise_le %}
       <p class="muted" style="font-size:.85rem;">La direction a décidé sans passer par l'assistant·e (absence).</p>
     {% endif %}

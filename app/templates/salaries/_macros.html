@@ -18,6 +18,7 @@
   {% set s = es.statut_recup(demande) %}
   {% set classe = {'success': 'status-success', 'warning': 'status-warning', 'danger': 'status-danger'}.get(s.tone, 'status-info') %}
   <span class="status-badge {{ classe }}">{{ s.icon }} {{ s.label }}</span>
+  {%- if demande.decision_par_interesse %} <span class="status-badge status-warning" title="La personne qui a décidé est celle qui a fait la demande">⚠️ décidée par l'intéressé·e</span>{% endif %}
 {%- endmacro %}
 
 {% macro sous_menu(actif) -%}
