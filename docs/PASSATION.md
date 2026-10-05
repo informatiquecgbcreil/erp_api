@@ -320,6 +320,12 @@ if "ma_colonne" not in cols:
   `python -c "from alembic.script import ScriptDirectory; from alembic.config import Config; print(ScriptDirectory.from_config(Config('migrations/alembic.ini')).get_heads())"`
   → une seule valeur. Deux têtes = créer une révision de fusion (il en
   existe déjà une dans l'historique : `32d3e4f5a6b7`).
+- Une sauvegarde PostgreSQL ancienne se restaure par-dessus le schéma
+  actuel : `app/services/sauvegarde.py` retire d'abord toutes les clés
+  étrangères (dans la transaction de la restauration), sinon une clé
+  ajoutée depuis sur une table existante bloquerait le `--clean` du dump.
+  Après toute migration qui ajoute une clé étrangère, faire tourner
+  `tests/test_restauration_schema.py` **sur PostgreSQL**.
 - Les migrations s'appliquent au démarrage du service : une migration qui
   plante empêche l'application de démarrer. Les tests les exécutent toutes
   (la fixture `app` de `tests/conftest.py` migre une base neuve) : si
