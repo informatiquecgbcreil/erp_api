@@ -193,6 +193,22 @@ def _ctx_fiches_incompletes(user) -> dict[str, Any] | None:
     }
 
 
+def _ctx_demandes_equipe(user) -> dict[str, Any] | None:
+    """Demandes de récupération qui attendent la personne (transmettre, décider, notifier)."""
+    from app.services.espace_salarie import a_traiter_equipe
+
+    compteurs = a_traiter_equipe(user)
+    n = sum(int(compteurs.get(k) or 0) for k in ("a_transmettre", "a_decider", "a_notifier"))
+    if n == 0:
+        return {"badge": "Rien en attente", "detail": "Aucune demande ne vous attend.", "tone": "ok", "count": 0}
+    return {
+        "badge": f"{n} demande{'s' if n > 1 else ''} à traiter",
+        "detail": "Récupérations à transmettre, décider ou notifier.",
+        "tone": "warn",
+        "count": n,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Catalogue des actions métier (formulées en verbes, mots du quotidien)
 # ---------------------------------------------------------------------------
@@ -315,6 +331,21 @@ POSTE_ACTIONS: dict[str, dict[str, Any]] = {
         "endpoint": "admin.sante_systeme",
         "fallback_endpoint": "main.controle",
     },
+    "mes_heures": {
+        "label": "Mes heures et récupérations",
+        "desc": "Déclarer des heures sup, demander une récupération, voir mon solde.",
+        "icon": "🕒",
+        "perm_any": ["salarie:espace"],
+        "endpoint": "salaries.mes_recuperations",
+    },
+    "demandes_equipe": {
+        "label": "Traiter les demandes de l'équipe",
+        "desc": "Les récupérations à transmettre, décider ou notifier.",
+        "icon": "📥",
+        "perm_any": ["recup:transmettre", "recup:decider"],
+        "endpoint": "salaries.equipe_recuperations",
+        "context": _ctx_demandes_equipe,
+    },
     "verifier_sauvegardes": {
         "label": "Vérifier les sauvegardes",
         "desc": "S'assurer que les données sont bien protégées.",
@@ -379,10 +410,11 @@ ROLE_POSTES: dict[str, list[str]] = {
     "finance": ["a_traiter", "saisir_depense", "suivre_subventions", "preparer_bilan", "monter_projet"],
     "responsable_secteur": ["appel", "accueillir", "a_traiter", "suivre_activite", "monter_projet"],
     "coordinateur": ["appel", "accueillir", "a_traiter", "suivre_activite", "monter_projet"],
-    "animateur": ["appel", "accueillir", "retrouver", "suivre_apprentissages"],
+    "animateur": ["appel", "accueillir", "retrouver", "suivre_apprentissages", "mes_heures"],
     "accueil": ["accueillir", "retrouver", "rattraper_emargements", "appel", "a_traiter"],
     "secretaire": ["accueillir", "retrouver", "rattraper_emargements", "appel", "a_traiter"],
     "benevole": ["appel", "retrouver"],
+    "assistant_direction": ["demandes_equipe", "mes_heures", "retrouver", "a_traiter"],
     "admin_tech": ["gerer_equipe", "regler_droits", "verifier_sante", "verifier_sauvegardes"],
 }
 
@@ -390,13 +422,13 @@ ROLE_POSTES: dict[str, list[str]] = {
 FALLBACK_ORDER = [
     "appel", "accueillir", "retrouver", "rattraper_emargements", "a_traiter", "suivre_activite",
     "caisse", "saisir_depense", "suivre_subventions", "preparer_bilan", "monter_projet",
-    "suivre_apprentissages", "gerer_equipe", "regler_droits",
+    "suivre_apprentissages", "gerer_equipe", "regler_droits", "demandes_equipe", "mes_heures",
 ]
 
 # Priorité de résolution quand une personne cumule plusieurs rôles.
 ROLE_PRIORITY = [
     "direction", "finance", "responsable_secteur", "coordinateur",
-    "animateur", "accueil", "secretaire", "benevole", "admin_tech",
+    "animateur", "accueil", "secretaire", "assistant_direction", "benevole", "admin_tech",
 ]
 
 

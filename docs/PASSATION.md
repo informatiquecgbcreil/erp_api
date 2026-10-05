@@ -379,6 +379,22 @@ sur SA page de signature (`/kiosk/signer/<jeton>`).
   une production existante — sinon personne ne l'a et la fonctionnalité
   est morte à la mise à jour.
 
+### 7.6 bis Salaires : étanchéité de l'accès
+
+- Les profils salariaux (`profil_salarial`) ne se lisent qu'avec la
+  permission `salaires:gerer` (direction) ; chaque salarié voit le sien.
+- **Cette permission ne se donne ni ne se retire que par quelqu'un qui l'a
+  déjà** (garde-fou dans `app/admin/routes.py`, tous les chemins : création
+  de compte, changement de rôle, permissions d'un rôle, suppression de
+  rôle). Sans lui, quiconque gère les droits — l'admin technique compris —
+  pourrait s'ouvrir les salaires de l'équipe. Testé dans
+  `tests/test_espace_salarie.py`.
+- Limite assumée : une personne qui a la main sur le serveur ou la base
+  peut toujours lire les tables. L'étanchéité porte sur l'application.
+- L'historique RH signé (heures, récupérations, frais km, documents) est
+  rattaché à la fiche salarié : une fiche avec historique ne se supprime
+  pas, on renseigne sa date de sortie.
+
 ### 7.7 Le flux agenda est une feuille de temps officielle
 
 Le flux iCal des utilisateurs alimente leur Google Agenda, relevé par la

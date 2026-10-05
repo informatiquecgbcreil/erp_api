@@ -117,6 +117,16 @@ Voir [`docs/inscriptions-annuelles.md`](docs/inscriptions-annuelles.md).
 - Contrôles de qualité de données.
 - Audit de navigation technique pour repérer les liens ou endpoints cassés.
 
+### Espace salarié et ressources humaines
+
+- Accueil à deux onglets : « Activités du centre » et « Espace salarié ».
+- Heures supplémentaires et récupérations, circuit signé : salarié → assistant·e de direction → direction → notification.
+- Frais kilométriques au barème officiel (tranches calculées sur la distance annuelle), justificatifs, passage en dépense sur une ligne de financement.
+- Profils salariaux confidentiels (coûts horaires, calculateur) et report dans la masse salariale.
+- Coffre-fort de documents (fiches de paie, contrats) à liste d'accès stricte.
+- Fiches salariés reliées aux comptes de connexion, automatiquement quand le nom est sans ambiguïté.
+- Détails : [`docs/ESPACE-SALARIE.md`](docs/ESPACE-SALARIE.md).
+
 ### Administration
 
 - Assistant de premier démarrage.

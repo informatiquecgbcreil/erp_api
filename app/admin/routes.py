@@ -35,6 +35,11 @@ CATEGORY_ORDER = [
     "Budget AAP",
     "Subventions",
     "Dépenses",
+    "Espace salarié",
+    "Heures sup et récupérations",
+    "Frais kilométriques",
+    "Salaires (confidentiel)",
+    "Coffre-fort documents",
 ]
 
 
@@ -105,6 +110,45 @@ def _nb_admins_actifs(exclure_user_id=None, exclure_role_id=None) -> int:
     return n
 
 
+# ---------------------------------------------------------------------------
+# Garde-fou « salaires » : l'accès aux profils salariaux (salaires:gerer) ne se
+# donne ni ne se retire que par quelqu'un qui l'a déjà. Sans cela, quiconque
+# gère les droits (admin technique compris) pourrait s'ouvrir les salaires de
+# l'équipe : l'application « Récup » garantissait cette étanchéité, l'ERP la
+# conserve. Exception : tant qu'aucun compte actif n'a cet accès (premier
+# paramétrage), l'administrateur peut le confier.
+# ---------------------------------------------------------------------------
+SALAIRES_PERM = "salaires:gerer"
+
+
+def _role_donne_salaires(role) -> bool:
+    return bool(role) and any(p.code == SALAIRES_PERM for p in (role.permissions or []))
+
+
+def _compte_a_salaires(u) -> bool:
+    return any(_role_donne_salaires(r) for r in (getattr(u, "roles", None) or []))
+
+
+def _salaires_verrouilles() -> bool:
+    """Vrai si le compte connecté ne peut pas toucher à l'accès aux salaires."""
+    if _compte_a_salaires(current_user):
+        return False
+    return any(getattr(u, "actif", True) and _compte_a_salaires(u) for u in User.query.all())
+
+
+MESSAGE_SALAIRES = ("Accès aux salaires : seule une personne qui gère déjà les salaires "
+                    "peut le donner ou le retirer.")
+
+
+def _changement_role_refuse(u, nouveau_role) -> bool:
+    """Changer le rôle de « u » ferait-il gagner ou perdre l'accès aux salaires ?"""
+    return (_compte_a_salaires(u) != _role_donne_salaires(nouveau_role)) and _salaires_verrouilles()
+
+
+def _changement_perms_refuse(role, perm_codes) -> bool:
+    return ((SALAIRES_PERM in perm_codes) != _role_donne_salaires(role)) and _salaires_verrouilles()
+
+
 @bp.route("/users", methods=["GET", "POST"])
 @login_required
 @require_perm("admin:users")
@@ -135,6 +179,9 @@ def users():
         if not _role_attribuable(role):
             flash("Vous ne pouvez pas attribuer ce rôle : il donne des droits que votre compte n'a pas.", "danger")
             return redirect(url_for("admin.users"))
+        if _role_donne_salaires(role) and _salaires_verrouilles():
+            flash(MESSAGE_SALAIRES, "danger")
+            return redirect(url_for("admin.users"))
 
         u = User(email=email, nom=nom or "Utilisateur")
         u.set_password(password)
@@ -145,7 +192,11 @@ def users():
         db.session.commit()
 
         journaliser("user.create", cible=email, details={"role": role_code, "secteur": secteur})
-        flash("Le compte utilisateur a bien été créé.", "success")
+        # Espace salarié : relie le compte à sa fiche RH si le nom ne laisse aucun doute.
+        from app.services.espace_salarie import salarie_de
+        fiche = salarie_de(u)
+        flash("Le compte utilisateur a bien été créé."
+              + (f" Relié à la fiche salarié « {fiche.nom_complet} »." if fiche else ""), "success")
         return redirect(url_for("admin.users"))
 
     users = User.query.order_by(User.nom).all()
@@ -182,6 +233,10 @@ def delete_user(user_id):
         flash("Impossible de supprimer le dernier administrateur (compte capable de gérer les droits).", "danger")
         return redirect(url_for("admin.users"))
     cible = u.email
+    # La fiche salarié (et son historique RH) reste : seul le lien au compte saute.
+    # L'ORM le fait lui-même, SQLite n'appliquant pas les ON DELETE SET NULL.
+    from app.models import Salarie
+    Salarie.query.filter_by(user_id=u.id).update({"user_id": None})
     db.session.delete(u)
     commit_delete(
         f"l'utilisateur « {u.nom} »",
@@ -217,6 +272,9 @@ def edit_user(user_id):
                     and getattr(u, "actif", True)
                     and _nb_admins_actifs(exclure_user_id=u.id) == 0):
                 flash("Impossible : ce changement retirerait le dernier administrateur.", "danger")
+                return redirect(url_for("admin.edit_user", user_id=u.id))
+            if nouveau_role and _changement_role_refuse(u, nouveau_role):
+                flash(MESSAGE_SALAIRES, "danger")
                 return redirect(url_for("admin.edit_user", user_id=u.id))
             if nouveau_role:
                 u.roles = [nouveau_role]
@@ -307,6 +365,9 @@ def droits():
             u = db.get_or_404(User, user_id)
 
             role_code = _get_single_role_code_from_form()
+            if _changement_role_refuse(u, Role.query.filter_by(code=role_code).first() if role_code else None):
+                flash(MESSAGE_SALAIRES, "danger")
+                return redirect(url_for("admin.droits"))
 
             # Force: 1 seul rôle RBAC
             u.roles = []
@@ -326,6 +387,9 @@ def droits():
             perm_codes = set(request.form.getlist("perm_codes"))
 
             role = Role.query.filter_by(code=role_code).first_or_404()
+            if _changement_perms_refuse(role, perm_codes):
+                flash(MESSAGE_SALAIRES, "danger")
+                return redirect(url_for("admin.droits"))
             role.permissions = []
             for pcode in perm_codes:
                 p = Permission.query.filter_by(code=pcode).first()
@@ -367,6 +431,9 @@ def set_user_roles():
             and _nb_admins_actifs(exclure_user_id=u.id) == 0):
         flash("Impossible : ce changement retirerait le dernier administrateur.", "danger")
         return redirect(url_for("admin.droits"))
+    if _changement_role_refuse(u, nouveau_role):
+        flash(MESSAGE_SALAIRES, "danger")
+        return redirect(url_for("admin.droits"))
 
     # Force: 1 seul rôle RBAC
     u.roles = []
@@ -397,6 +464,9 @@ def save_role_perms():
             and "admin:rbac" not in perm_codes
             and _nb_admins_actifs(exclure_role_id=role.id) == 0):
         flash("Impossible : retirer « admin:rbac » de ce rôle verrouillerait l'administration.", "danger")
+        return redirect(url_for("admin.droits"))
+    if _changement_perms_refuse(role, perm_codes):
+        flash(MESSAGE_SALAIRES, "danger")
         return redirect(url_for("admin.droits"))
 
     role.permissions = []
@@ -452,6 +522,9 @@ def delete_role():
     # Garde-fou : supprimer ce rôle ne doit pas vider l'administration.
     if _nb_admins_actifs(exclure_role_id=r.id) == 0:
         flash("Impossible de supprimer ce rôle : il donne l'accès administrateur au dernier compte capable d'administrer.", "danger")
+        return redirect(url_for("admin.droits"))
+    if _role_donne_salaires(r) and _salaires_verrouilles():
+        flash(MESSAGE_SALAIRES, "danger")
         return redirect(url_for("admin.droits"))
 
     # Détache users + perms (évite erreurs tables d'association)
@@ -947,6 +1020,8 @@ def matrice_droits():
         ("Finances", ["subventions:view", "subventions:edit", "depenses:view", "depenses:create", "aap:view"]),
         ("Bilans", ["stats:view", "stats:view_all", "bilans:view", "questionnaires:export"]),
         ("Ressources sensibles", ["rh:view", "dons:view", "caisse:view", "admin:users", "admin:rbac"]),
+        ("Espace salarié", ["salarie:espace", "recup:transmettre", "recup:decider", "frais_km:suivi",
+                            "salaires:gerer"]),
     ]
     roles = Role.query.order_by(Role.label.asc()).all()
     permission_labels = {p.code: p.label for p in Permission.query.all()}

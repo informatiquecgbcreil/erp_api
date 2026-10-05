@@ -1,0 +1,18 @@
+{# Onglets de l'accueil : Activités du centre / Espace salarié. #}
+{% if espace_salarie and espace_salarie.visible %}
+<style>
+  .dash-onglets{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;padding:4px;border:1px solid var(--border,#e3e6ef);border-radius:14px;background:var(--panel,#fff);width:fit-content;max-width:100%;}
+  .dash-onglet{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:10px;font-weight:750;text-decoration:none;color:inherit;}
+  .dash-onglet:hover{background:var(--surface-soft,#f1f5f9);}
+  .dash-onglet.is-active{background:var(--primary,#2563eb);color:#fff;}
+  .dash-onglet__badge{min-width:22px;padding:1px 7px;border-radius:999px;background:#d97706;color:#fff;font-size:.78rem;text-align:center;}
+  @media print{.dash-onglets{display:none;}}
+</style>
+<nav class="dash-onglets" aria-label="Espaces de l'accueil">
+  <a class="dash-onglet {% if espace_actif != 'salarie' %}is-active{% endif %}" href="{{ url_for('main.dashboard', espace='activites') }}" {% if espace_actif != 'salarie' %}aria-current="page"{% endif %}>🎨 Activités du centre</a>
+  <a class="dash-onglet {% if espace_actif == 'salarie' %}is-active{% endif %}" href="{{ url_for('main.dashboard', espace='salarie') }}" {% if espace_actif == 'salarie' %}aria-current="page"{% endif %}>
+    🧑‍💼 Espace salarié
+    {% if espace_salarie.badge %}<span class="dash-onglet__badge" title="Demandes de l'équipe à traiter">{{ espace_salarie.badge }}</span>{% endif %}
+  </a>
+</nav>
+{% endif %}

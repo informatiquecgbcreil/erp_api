@@ -1,0 +1,62 @@
+{# Éléments partagés de l'espace salarié. #}
+
+{% macro signature(legende="Signe dans le cadre", je_signe=False) -%}
+<div class="sig-rh" data-signature>
+  <span class="sig-rh__legende">{{ legende }}</span>
+  <canvas height="130" aria-label="Cadre de signature"></canvas>
+  <input type="hidden" name="signature_data" data-signature-input>
+  <div class="inline-actions" style="justify-content:space-between;">
+    <button type="button" class="btn ghost" data-signature-clear>↺ Effacer</button>
+    {% if je_signe %}
+      <label class="muted" style="font-size:.85rem;"><input type="checkbox" name="je_signe" value="1"> Le cadre ne marche pas : je signe en cochant</label>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro statut(demande, es) -%}
+  {% set s = es.statut_recup(demande) %}
+  {% set classe = {'success': 'status-success', 'warning': 'status-warning', 'danger': 'status-danger'}.get(s.tone, 'status-info') %}
+  <span class="status-badge {{ classe }}">{{ s.icon }} {{ s.label }}</span>
+{%- endmacro %}
+
+{% macro sous_menu(actif) -%}
+<nav class="es-onglets no-print" aria-label="Espace salarié">
+  <a href="{{ url_for('main.dashboard', espace='salarie') }}" class="pill">🏠 Mon espace</a>
+  <a href="{{ url_for('salaries.mes_recuperations') }}" class="pill {% if actif == 'recup' %}active{% endif %}">🕒 Heures &amp; récup</a>
+  <a href="{{ url_for('salaries.mes_frais_km') }}" class="pill {% if actif == 'km' %}active{% endif %}">🚗 Frais km</a>
+  <a href="{{ url_for('salaries.mon_salaire') }}" class="pill {% if actif == 'salaire' %}active{% endif %}">💶 Mon coût horaire</a>
+  <a href="{{ url_for('salaries.documents') }}" class="pill {% if actif == 'documents' %}active{% endif %}">🗄️ Mes documents</a>
+  {% if can('recup:transmettre') or can('recup:decider') %}
+    <a href="{{ url_for('salaries.equipe_recuperations') }}" class="pill {% if actif == 'equipe_recup' %}active{% endif %}">📥 Demandes de l'équipe</a>
+  {% endif %}
+  {% if can('frais_km:suivi') %}
+    <a href="{{ url_for('salaries.equipe_frais_km') }}" class="pill {% if actif == 'equipe_km' %}active{% endif %}">🧾 Frais km de l'équipe</a>
+  {% endif %}
+  {% if can('salaires:gerer') %}
+    <a href="{{ url_for('salaries.equipe_salaires') }}" class="pill {% if actif == 'equipe_salaires' %}active{% endif %}">🔒 Profils salariaux</a>
+  {% endif %}
+</nav>
+{%- endmacro %}
+
+{% macro styles() -%}
+<style>
+  .es-onglets{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px;}
+  .sig-rh{display:grid;gap:6px;margin:8px 0;}
+  .sig-rh__legende{font-weight:700;font-size:.9rem;}
+  .sig-rh canvas{width:100%;max-width:520px;height:130px;border:1px dashed var(--border,#cbd5e1);border-radius:10px;background:#fff;touch-action:none;}
+  .es-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
+  .es-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;}
+  .es-kpi{border:1px solid var(--border,#e3e6ef);border-radius:12px;padding:12px;background:var(--panel,#fff);}
+  .es-kpi strong{display:block;font-size:1.35rem;line-height:1.1;}
+  .es-kpi span{font-size:.82rem;color:var(--muted,#667085);}
+  .es-kpi[data-tone="warn"]{border-left:4px solid #d97706;}
+  .es-kpi[data-tone="danger"]{border-left:4px solid #dc2626;}
+  .es-kpi[data-tone="ok"]{border-left:4px solid #16a34a;}
+  .es-lien{font-size:.8rem;color:var(--muted,#667085);}
+  .es-actions-ligne{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;}
+  .es-actions-ligne details{min-width:240px;}
+  .es-actions-ligne summary{cursor:pointer;font-weight:700;}
+  @media print{.no-print{display:none !important;}}
+</style>
+{%- endmacro %}

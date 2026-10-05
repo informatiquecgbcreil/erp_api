@@ -1,0 +1,149 @@
+{# Espace salarié de l'accueil : mes chiffres, mes raccourcis, l'équipe. #}
+{% set es_ctx = espace_salarie %}
+<style>
+  .esd-hero{background:linear-gradient(135deg,var(--panel,#fff) 0%,rgba(22,163,74,.07) 100%);border:1px solid var(--border,#e3e6ef);border-radius:16px;padding:18px 20px;margin-bottom:14px;}
+  .esd-hero h1{margin:0 0 4px;font-size:1.35rem;}
+  .esd-titre{margin:18px 0 8px;font-size:1.02rem;}
+  .esd-signaux{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px;}
+  .esd-signal{display:grid;gap:3px;padding:12px;border:1px solid var(--border,#e3e6ef);border-left:4px solid #64748b;border-radius:12px;background:var(--panel,#fff);color:inherit;text-decoration:none;}
+  .esd-signal[href]:hover{background:var(--surface-soft,#f8fafc);}
+  .esd-signal[data-tone="ok"]{border-left-color:#16a34a;}
+  .esd-signal[data-tone="warn"]{border-left-color:#d97706;}
+  .esd-signal[data-tone="danger"]{border-left-color:#dc2626;}
+  .esd-signal[data-tone="info"]{border-left-color:#2563eb;}
+  .esd-signal__valeur{font-size:1.3rem;font-weight:850;line-height:1.1;}
+  .esd-signal__label{font-size:.84rem;font-weight:750;}
+  .esd-signal__detail{font-size:.76rem;color:var(--muted,#667085);}
+  .esd-cartes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;}
+  .esd-carte{display:flex;flex-direction:column;gap:5px;padding:14px;border:1px solid var(--border,#e3e6ef);border-radius:14px;background:var(--panel,#fff);color:inherit;text-decoration:none;min-height:100px;transition:transform .08s ease,box-shadow .08s ease;}
+  .esd-carte:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(30,40,80,.10);}
+  .esd-carte__icone{font-size:1.5rem;line-height:1;}
+  .esd-carte__label{font-weight:700;}
+  .esd-carte__desc{font-size:.82rem;opacity:.72;}
+  .esd-colonnes{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px;}
+  @media (max-width:560px){.esd-signaux,.esd-cartes{grid-template-columns:1fr 1fr;}}
+</style>
+
+<section class="esd-hero" aria-label="Espace salarié">
+  <h1>🧑‍💼 Espace salarié</h1>
+  <p class="muted" style="margin:0;">
+    {% if es_ctx.salarie %}{{ es_ctx.salarie.nom_complet }}{% if es_ctx.salarie.poste %} · {{ es_ctx.salarie.poste }}{% endif %}{% if es_ctx.salarie.secteur %} · {{ es_ctx.salarie.secteur }}{% endif %}
+    {% else %}Tes heures, tes récupérations, tes frais et tes documents, au même endroit.{% endif %}
+  </p>
+
+  {% if es_ctx.espace and not es_ctx.salarie %}
+    <div class="section-card compact" style="margin-top:12px;">
+      <strong>Ta fiche salarié n'est pas encore reliée à ton compte.</strong>
+      <span class="muted">La direction peut la relier en un clic depuis Équipe salariée. Tes documents partagés restent accessibles.</span>
+      {% if can('rh:edit') %}<a class="mini-link" href="{{ url_for('main.rh') }}">Ouvrir Équipe salariée</a>{% endif %}
+    </div>
+  {% endif %}
+
+  {% if es_ctx.salarie %}
+    {% set r = es_ctx.recup %}{% set km = es_ctx.km %}
+    <h2 class="esd-titre">Mes chiffres</h2>
+    <div class="esd-signaux">
+      <a class="esd-signal" data-tone="{{ 'danger' if r.solde < 0 else 'ok' }}" href="{{ url_for('salaries.mes_recuperations') }}">
+        <span class="esd-signal__valeur">{{ es.format_minutes(r.solde) }}</span>
+        <span class="esd-signal__label">Solde à récupérer</span>
+        <span class="esd-signal__detail">{% if r.solde < 0 %}Récupéré par avance{% else %}Heures sup moins récupérations acceptées{% endif %}</span>
+      </a>
+      <a class="esd-signal" data-tone="info" href="{{ url_for('salaries.mes_recuperations') }}">
+        <span class="esd-signal__valeur">{{ es.format_minutes(r.credit_annee) }}</span>
+        <span class="esd-signal__label">Heures sup cette année</span>
+        <span class="esd-signal__detail">{{ es.format_minutes(r.pris_annee) }} déjà récupérées</span>
+      </a>
+      <a class="esd-signal" data-tone="{{ 'warn' if r.nb_en_cours else 'ok' }}" href="{{ url_for('salaries.mes_recuperations') }}">
+        <span class="esd-signal__valeur">{{ r.nb_en_cours }}</span>
+        <span class="esd-signal__label">Demande{{ 's' if r.nb_en_cours > 1 }} en cours</span>
+        <span class="esd-signal__detail">{% if r.en_attente %}{{ es.format_minutes(r.en_attente) }} en attente de décision{% else %}Rien en attente{% endif %}</span>
+      </a>
+      <a class="esd-signal" data-tone="info" href="{{ url_for('salaries.mes_frais_km') }}">
+        <span class="esd-signal__valeur">{{ es.format_euros(km.montant) }}</span>
+        <span class="esd-signal__label">Frais km cette année</span>
+        <span class="esd-signal__detail">{{ km.km }} km · {{ km.nb }} note{{ 's' if km.nb > 1 }}</span>
+      </a>
+    </div>
+  {% endif %}
+
+  {% if es_ctx.espace %}
+    <h2 class="esd-titre">Raccourcis</h2>
+    <div class="esd-cartes">
+      {% if es_ctx.salarie %}
+        <a class="esd-carte" href="{{ url_for('salaries.mes_recuperations') }}"><span class="esd-carte__icone">➕</span><span class="esd-carte__label">Déclarer des heures sup</span><span class="esd-carte__desc">Reliées à la séance ou la réunion du jour.</span></a>
+        <a class="esd-carte" href="{{ url_for('salaries.mes_recuperations') }}"><span class="esd-carte__icone">🌴</span><span class="esd-carte__label">Demander une récupération</span><span class="esd-carte__desc">Signée sur l'écran, suivie jusqu'à la décision.</span></a>
+        <a class="esd-carte" href="{{ url_for('salaries.mes_frais_km') }}"><span class="esd-carte__icone">🚗</span><span class="esd-carte__label">Saisir un trajet</span><span class="esd-carte__desc">Montant calculé au barème, note signée.</span></a>
+        <a class="esd-carte" href="{{ url_for('salaries.mon_salaire') }}"><span class="esd-carte__icone">💶</span><span class="esd-carte__label">Mon coût horaire</span><span class="esd-carte__desc">{% if es_ctx.profil %}Calculer le coût d'une action.{% else %}Pas encore renseigné par la direction.{% endif %}</span></a>
+      {% endif %}
+      <a class="esd-carte" href="{{ url_for('salaries.documents') }}"><span class="esd-carte__icone">🗄️</span><span class="esd-carte__label">Mes documents</span><span class="esd-carte__desc">Fiches de paie, contrats, attestations.</span></a>
+      <a class="esd-carte" href="{{ url_for('salaries.deposer_document') }}"><span class="esd-carte__icone">⬆</span><span class="esd-carte__label">Déposer un document</span><span class="esd-carte__desc">Tu choisis qui peut le lire.</span></a>
+    </div>
+  {% endif %}
+</section>
+
+{% set eq = es_ctx.equipe or {} %}
+{% if eq %}
+<section class="section-card" aria-label="Équipe : à traiter">
+  <h2 class="section-title">👥 L'équipe : à traiter</h2>
+  <div class="esd-signaux">
+    {% if eq.a_transmettre is defined %}
+      <a class="esd-signal" data-tone="{{ 'warn' if eq.a_transmettre else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='soumise') }}">
+        <span class="esd-signal__valeur">{{ eq.a_transmettre }}</span><span class="esd-signal__label">Demande{{ 's' if eq.a_transmettre > 1 }} à transmettre</span><span class="esd-signal__detail">Signées par les salariés</span></a>
+    {% endif %}
+    {% if eq.a_decider is defined %}
+      <a class="esd-signal" data-tone="{{ 'warn' if eq.a_decider else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='transmise') }}">
+        <span class="esd-signal__valeur">{{ eq.a_decider }}</span><span class="esd-signal__label">À décider</span><span class="esd-signal__detail">Transmises à la direction</span></a>
+    {% endif %}
+    {% if eq.a_notifier is defined %}
+      <a class="esd-signal" data-tone="{{ 'warn' if eq.a_notifier else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='a_traiter') }}">
+        <span class="esd-signal__valeur">{{ eq.a_notifier }}</span><span class="esd-signal__label">Décision{{ 's' if eq.a_notifier > 1 }} à notifier</span><span class="esd-signal__detail">Le salarié doit être informé</span></a>
+    {% endif %}
+    {% if eq.heures_30j is defined %}
+      <a class="esd-signal" data-tone="info" href="{{ url_for('salaries.equipe_recuperations') }}">
+        <span class="esd-signal__valeur">{{ es.format_minutes(eq.heures_30j) }}</span><span class="esd-signal__label">Heures sup déclarées</span><span class="esd-signal__detail">30 derniers jours</span></a>
+    {% endif %}
+    {% if eq.km_mois_nb is defined %}
+      <a class="esd-signal" data-tone="info" href="{{ url_for('salaries.equipe_frais_km') }}">
+        <span class="esd-signal__valeur">{{ es.format_euros(eq.km_mois_montant) }}</span><span class="esd-signal__label">Frais km du mois</span><span class="esd-signal__detail">{{ eq.km_mois_nb }} note{{ 's' if eq.km_mois_nb > 1 }}</span></a>
+      <a class="esd-signal" data-tone="{{ 'warn' if eq.km_sans_depense else 'ok' }}" href="{{ url_for('salaries.equipe_frais_km', depense='non') }}">
+        <span class="esd-signal__valeur">{{ eq.km_sans_depense }}</span><span class="esd-signal__label">Notes km à imputer</span><span class="esd-signal__detail">Pas encore passées en dépense</span></a>
+    {% endif %}
+    {% if eq.fiches_sans_compte is defined %}
+      <a class="esd-signal" data-tone="{{ 'warn' if eq.fiches_sans_compte else 'ok' }}" href="{{ url_for('main.rh') }}">
+        <span class="esd-signal__valeur">{{ eq.fiches_sans_compte }}</span><span class="esd-signal__label">Fiche{{ 's' if eq.fiches_sans_compte > 1 }} sans compte</span><span class="esd-signal__detail">Sans accès à leur espace salarié</span></a>
+    {% endif %}
+  </div>
+  <div class="inline-actions" style="margin-top:12px;">
+    {% if can('rh:view') %}<a class="btn" href="{{ url_for('main.rh') }}">👥 Équipe salariée</a>{% endif %}
+    {% if can('salaires:gerer') %}<a class="btn" href="{{ url_for('salaries.equipe_salaires') }}">🔒 Profils salariaux</a>{% endif %}
+    {% if can('frais_km:baremes') %}<a class="btn" href="{{ url_for('salaries.baremes_km') }}">📐 Barèmes km</a>{% endif %}
+    {% if can('coffre:types') %}<a class="btn" href="{{ url_for('salaries.types_documents') }}">⚙️ Types de documents</a>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if es_ctx.espace and (es_ctx.dernieres_decisions or es_ctx.documents_recents) %}
+<div class="esd-colonnes">
+  {% if es_ctx.dernieres_decisions %}
+  <section class="section-card">
+    <h2 class="section-title">Mes dernières décisions</h2>
+    <ul style="margin:0;padding-left:18px;">
+      {% for d in es_ctx.dernieres_decisions %}
+        {% set st = es.statut_recup(d) %}
+        <li><a href="{{ url_for('salaries.demande_detail', demande_id=d.id) }}">{{ d.date_recuperation.strftime('%d/%m/%Y') }}</a> · {{ es.format_minutes(d.minutes) }} · {{ st.icon }} {{ st.label }}{% if d.commentaire_direction %} — « {{ d.commentaire_direction }} »{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if es_ctx.documents_recents %}
+  <section class="section-card">
+    <h2 class="section-title">Derniers documents</h2>
+    <ul style="margin:0;padding-left:18px;">
+      {% for doc in es_ctx.documents_recents %}
+        <li><a href="{{ url_for('salaries.telecharger_document', document_id=doc.id) }}">{{ doc.nom_original }}</a> <span class="muted">· {{ doc.type_document.libelle }} · {{ doc.created_at.strftime('%d/%m/%Y') }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endif %}

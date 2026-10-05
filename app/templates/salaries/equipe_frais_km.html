@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🧾 Frais kilométriques de l'équipe</h1>
+      <p class="page-subtitle">Notes signées par les salariés. Passe-les en dépense pour les imputer sur un financement.</p>
+    </div>
+    <div class="hero-actions no-print">
+      {% if can('frais_km:baremes') %}<a class="btn" href="{{ url_for('salaries.baremes_km') }}">📐 Barèmes</a>{% endif %}
+      <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
+    </div>
+  </div>
+  {{ m.sous_menu('equipe_km') }}
+
+  <form method="get" class="section-card compact inline-actions no-print" style="align-items:end;">
+    <label class="field-stack slim"><span>Exercice</span>
+      <select class="in" name="annee">{% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+    <label class="field-stack slim"><span>Salarié</span>
+      <select class="in" name="salarie_id"><option value="">Tous</option>
+        {% for s in salaries %}<option value="{{ s.id }}" {% if f_salarie == s.id|string %}selected{% endif %}>{{ s.nom_complet }}</option>{% endfor %}
+      </select></label>
+    <label class="field-stack slim"><span>Du</span><input class="in" type="date" name="du" value="{{ du.isoformat() if du else '' }}"></label>
+    <label class="field-stack slim"><span>Au</span><input class="in" type="date" name="au" value="{{ au.isoformat() if au else '' }}"></label>
+    <label class="field-stack slim"><span>Dépense</span>
+      <select class="in" name="depense">
+        <option value="">Toutes</option>
+        <option value="non" {% if f_depense == 'non' %}selected{% endif %}>Pas encore passées</option>
+        <option value="oui" {% if f_depense == 'oui' %}selected{% endif %}>Déjà passées</option>
+      </select></label>
+    <button class="btn" type="submit">Filtrer</button>
+  </form>
+
+  <div class="es-kpis">
+    <div class="es-kpi"><strong>{{ notes|length }}</strong><span>Notes affichées</span></div>
+    <div class="es-kpi"><strong>{{ total_km }} km</strong><span>Distance</span></div>
+    <div class="es-kpi" data-tone="ok"><strong>{{ es.format_euros(total) }}</strong><span>Montant</span></div>
+  </div>
+
+  <section class="section-card">
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Date</th><th>Salarié</th><th>Motif</th><th>Véhicule</th><th>Km</th><th>Montant</th><th>Pièces</th><th>Dépense</th></tr></thead>
+      <tbody>
+      {% for n in notes %}
+        <tr>
+          <td>{{ n.date_trajet.strftime('%d/%m/%Y') }}</td>
+          <td><strong>{{ n.salarie.nom_complet }}</strong>{% if n.salarie.secteur %}<div class="es-lien">{{ n.salarie.secteur }}</div>{% endif %}</td>
+          <td>{{ n.motif }}{% set lien = es.libelle_lien(n) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}</td>
+          <td>{{ fk.libelle_vehicule(n.type_vehicule) }} {{ n.puissance_fiscale }} CV{% if n.electrique %} ⚡{% endif %}<div class="es-lien">barème {{ n.annee_bareme }} · {{ fk.format_taux(n.taux_millieme) }} €/km</div></td>
+          <td>{{ n.distance_km }}</td>
+          <td><strong>{{ es.format_euros(n.montant_centimes) }}</strong></td>
+          <td>
+            {% if n.signature_id %}<a class="mini-link" href="{{ url_for('salaries.signature_image', signature_id=n.signature_id) }}" target="_blank" rel="noopener">✍️ signature</a>{% endif %}
+            {% if n.justificatif_chemin %}<a class="mini-link" href="{{ url_for('salaries.justificatif_frais_km', note_id=n.id) }}">📎 justificatif</a>{% endif %}
+          </td>
+          <td>
+            {% if n.depense_id %}
+              <span class="status-badge status-success">Dépense n° {{ n.depense_id }}</span>
+              {% if can('depenses:view') %}<a class="mini-link" href="{{ url_for('budget.depense_edit', depense_id=n.depense_id) }}">ouvrir</a>{% endif %}
+            {% elif peut_depense %}
+              {% if lignes %}
+              <details class="no-print"><summary>Passer en dépense</summary>
+                <form method="post" action="{{ url_for('salaries.frais_km_en_depense', note_id=n.id) }}" class="stack" style="gap:6px;min-width:260px;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <select class="in" name="ligne_budget_id">
+                    {% for l in lignes %}
+                      <option value="{{ l.id }}" {% if suggestions.get(n.id) == l.id %}selected{% endif %}>{{ l.source_sub.nom }} {{ l.source_sub.annee_exercice }} — {{ l.compte }} {{ l.libelle }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn ok" type="submit">Créer la dépense</button>
+                </form>
+              </details>
+              {% else %}<span class="muted">Aucune ligne de charge disponible</span>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8"><div class="quick-empty"><strong>Aucune note pour ces critères.</strong></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% if peut_depense %}<p class="muted" style="font-size:.8rem;">La ligne proposée est celle qui colle le mieux : même exercice, secteur du salarié, compte 625 (déplacements). Vérifie avant de valider.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

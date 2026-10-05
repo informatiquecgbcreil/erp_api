@@ -2988,18 +2988,19 @@ class Salarie(db.Model):
     date_sortie = db.Column(db.Date, nullable=True, index=True)
     commentaire = db.Column(db.Text, nullable=True)
     source_ref = db.Column(db.String(120), nullable=True, index=True)  # id dans l'outil RH externe
-    recup_user_id = db.Column(db.String(120), nullable=True, unique=True, index=True)
-    recup_email = db.Column(db.String(255), nullable=True)
-    recup_active = db.Column(db.Boolean, nullable=True)
+    #: Compte de connexion de la personne : ouvre son espace salarié (heures,
+    #: récupérations, frais km, documents). Relié automatiquement quand le nom
+    #: ne laisse aucun doute, sinon par la direction depuis la page RH.
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"),
+                        nullable=True, unique=True, index=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
-    recup_snapshots = db.relationship(
-        "RecupRhSnapshot",
-        back_populates="salarie",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
+    compte = db.relationship("User", foreign_keys=[user_id], lazy="joined")
+
+    @property
+    def nom_complet(self) -> str:
+        return f"{self.prenom or ''} {self.nom}".strip()
 
     @property
     def contrat_label(self):
@@ -3015,40 +3016,249 @@ class Salarie(db.Model):
         return True
 
 
-class RecupRhSnapshot(db.Model):
-    """Instantane annuel lu depuis Recup, dedoublonne par salarie/exercice."""
+# ---------- ESPACE SALARIÉ : heures sup, récupérations, frais km, salaires, documents ----------
+#
+# Ancienne application « Récup », intégrée. Tout est rattaché à la FICHE
+# salarié (et non au compte) : l'historique signé survit à un changement ou à
+# la suppression du compte. Montants en centimes et durées en minutes
+# (entiers), jamais de flottants pour de l'argent.
 
-    __tablename__ = "recup_rh_snapshot"
+class SignatureRh(db.Model):
+    """Signature manuscrite (PNG) posée à une étape d'un circuit RH.
+
+    L'empreinte SHA-256 permet de prouver que le fichier n'a pas été
+    remplacé après coup."""
+
+    __tablename__ = "signature_rh"
+
+    id = db.Column(db.Integer, primary_key=True)
+    signataire_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
+    signataire_nom = db.Column(db.String(160), nullable=False, default="")
+    contexte = db.Column(db.String(60), nullable=False)          # ex. recup_soumission
+    objet_type = db.Column(db.String(40), nullable=False)        # ex. demande_recuperation
+    objet_id = db.Column(db.Integer, nullable=False, index=True)
+    chemin = db.Column(db.String(500), nullable=True)            # relatif au dossier des pièces jointes
+    sha256 = db.Column(db.String(64), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+
+class HeureSupplementaire(db.Model):
+    """Crédit (ou débit d'ajustement) d'heures supplémentaires.
+
+    Le salarié déclare (minutes > 0) ; la direction peut retirer une
+    déclaration par un ajustement négatif motivé, sans jamais effacer la
+    ligne d'origine."""
+
+    __tablename__ = "heure_supplementaire"
+
+    id = db.Column(db.Integer, primary_key=True)
+    salarie_id = db.Column(db.Integer, db.ForeignKey("salarie.id"), nullable=False, index=True)
+    saisi_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    date_travail = db.Column(db.Date, nullable=False, index=True)
+    minutes = db.Column(db.Integer, nullable=False)
+    motif = db.Column(db.Text, nullable=False, default="")
+    est_ajustement = db.Column(db.Boolean, nullable=False, default=False)
+    origine_id = db.Column(db.Integer, db.ForeignKey("heure_supplementaire.id"), nullable=True, index=True)
+    commentaire_direction = db.Column(db.Text, nullable=True)
+    #: Lien vers ce qui a été fait ce jour-là (séance animée, réunion…).
+    session_id = db.Column(db.Integer, db.ForeignKey("session_activite.id", ondelete="SET NULL"), nullable=True, index=True)
+    creneau_id = db.Column(db.Integer, db.ForeignKey("agenda_creneau.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    salarie = db.relationship("Salarie", lazy="joined")
+    saisi_par = db.relationship("User", foreign_keys=[saisi_par_user_id])
+    session = db.relationship("SessionActivite")
+    creneau = db.relationship("AgendaCreneau")
+
+
+class DemandeRecuperation(db.Model):
+    """Demande de récupération : salarié → assistant·e → direction → notification.
+
+    Statuts : brouillon, soumise, transmise, acceptee, refusee, annulee. Une
+    décision notifiée garde son statut et reçoit ``notifiee_le``."""
+
+    __tablename__ = "demande_recuperation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    salarie_id = db.Column(db.Integer, db.ForeignKey("salarie.id"), nullable=False, index=True)
+    demandeur_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    date_recuperation = db.Column(db.Date, nullable=False, index=True)
+    minutes = db.Column(db.Integer, nullable=False)
+    motif = db.Column(db.Text, nullable=False, default="")
+    statut = db.Column(db.String(20), nullable=False, default="brouillon", index=True)
+    commentaire_direction = db.Column(db.Text, nullable=True)
+
+    transmise_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    transmise_le = db.Column(db.DateTime, nullable=True)
+    decidee_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    decidee_le = db.Column(db.DateTime, nullable=True)
+    notifiee_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    notifiee_le = db.Column(db.DateTime, nullable=True)
+
+    signature_salarie_id = db.Column(db.Integer, db.ForeignKey("signature_rh.id", ondelete="SET NULL"), nullable=True)
+    signature_transmission_id = db.Column(db.Integer, db.ForeignKey("signature_rh.id", ondelete="SET NULL"), nullable=True)
+    signature_decision_id = db.Column(db.Integer, db.ForeignKey("signature_rh.id", ondelete="SET NULL"), nullable=True)
+    signature_notification_id = db.Column(db.Integer, db.ForeignKey("signature_rh.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    salarie = db.relationship("Salarie", lazy="joined")
+    transmise_par = db.relationship("User", foreign_keys=[transmise_par_user_id])
+    decidee_par = db.relationship("User", foreign_keys=[decidee_par_user_id])
+    notifiee_par = db.relationship("User", foreign_keys=[notifiee_par_user_id])
+
+
+class BaremeKilometrique(db.Model):
+    """Ligne du barème kilométrique : montant annuel = d × taux + forfait.
+
+    ``km_de`` / ``km_a`` bornent la DISTANCE ANNUELLE parcourue avec le
+    véhicule (tranches officielles 0–5 000, 5 001–20 000, au-delà). Taux en
+    millièmes d'euro par km (0,529 € → 529) et forfait en centimes."""
+
+    __tablename__ = "bareme_kilometrique"
     __table_args__ = (
-        db.UniqueConstraint("salarie_id", "year", name="uq_recup_rh_snapshot_salarie_year"),
+        db.UniqueConstraint("annee", "type_vehicule", "puissance_fiscale", "km_de", "km_a",
+                            name="uq_bareme_kilometrique"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    salarie_id = db.Column(db.Integer, db.ForeignKey("salarie.id", ondelete="CASCADE"), nullable=False, index=True)
-    year = db.Column(db.Integer, nullable=False, index=True)
-    balance_minutes = db.Column(db.Integer, nullable=False, default=0)
-    overtime_minutes = db.Column(db.Integer, nullable=False, default=0)
-    approved_recovery_minutes = db.Column(db.Integer, nullable=False, default=0)
-    pending_recovery_minutes = db.Column(db.Integer, nullable=False, default=0)
-    mileage_expense_count = db.Column(db.Integer, nullable=False, default=0)
-    mileage_distance_km = db.Column(db.Integer, nullable=False, default=0)
-    mileage_amount_cents = db.Column(db.Integer, nullable=False, default=0)
-    hourly_unloaded_cents = db.Column(db.Integer, nullable=True)
-    hourly_loaded_cents = db.Column(db.Integer, nullable=True)
-    worked_weeks_per_year = db.Column(db.Integer, nullable=True)
-    source_generated_at = db.Column(db.DateTime, nullable=True)
-    synced_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    annee = db.Column(db.Integer, nullable=False, index=True)
+    type_vehicule = db.Column(db.String(30), nullable=False)       # voiture, moto, cyclo…
+    puissance_fiscale = db.Column(db.Integer, nullable=False)      # CV
+    km_de = db.Column(db.Integer, nullable=False, default=0)
+    km_a = db.Column(db.Integer, nullable=True)                    # None = sans limite
+    taux_millieme = db.Column(db.Integer, nullable=False, default=0)
+    forfait_centimes = db.Column(db.Integer, nullable=False, default=0)
+    bonus_electrique_pct = db.Column(db.Integer, nullable=False, default=0)
 
-    salarie = db.relationship("Salarie", back_populates="recup_snapshots")
 
-    def annual_loaded_cost_eur(self, etp: float = 1.0) -> float | None:
-        """Estimation non destructive: taux charge x 35 h x semaines x ETP."""
-        if not self.hourly_loaded_cents or not self.worked_weeks_per_year:
+class FraisKilometrique(db.Model):
+    """Note de frais kilométriques signée par le salarié.
+
+    Le montant est calculé côté serveur et figé avec le barème appliqué.
+    La finance peut la « passer en dépense » : une dépense brouillon est
+    créée et reliée (``depense_id``)."""
+
+    __tablename__ = "frais_kilometrique"
+
+    id = db.Column(db.Integer, primary_key=True)
+    salarie_id = db.Column(db.Integer, db.ForeignKey("salarie.id"), nullable=False, index=True)
+    saisi_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    date_trajet = db.Column(db.Date, nullable=False, index=True)
+    annee = db.Column(db.Integer, nullable=False, index=True)       # exercice du trajet
+    annee_bareme = db.Column(db.Integer, nullable=False)           # barème réellement appliqué
+    type_vehicule = db.Column(db.String(30), nullable=False)
+    puissance_fiscale = db.Column(db.Integer, nullable=False)
+    electrique = db.Column(db.Boolean, nullable=False, default=False)
+    distance_km = db.Column(db.Integer, nullable=False)
+    cumul_km_avant = db.Column(db.Integer, nullable=False, default=0)
+    motif = db.Column(db.String(500), nullable=False)
+    montant_centimes = db.Column(db.Integer, nullable=False)
+    taux_millieme = db.Column(db.Integer, nullable=False, default=0)
+    forfait_centimes = db.Column(db.Integer, nullable=False, default=0)
+    bonus_electrique_pct = db.Column(db.Integer, nullable=False, default=0)
+    justificatif_chemin = db.Column(db.String(500), nullable=True)
+    justificatif_nom = db.Column(db.String(300), nullable=True)
+    statut = db.Column(db.String(20), nullable=False, default="signee")
+    signee_le = db.Column(db.DateTime, nullable=True)
+    signature_id = db.Column(db.Integer, db.ForeignKey("signature_rh.id", ondelete="SET NULL"), nullable=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("session_activite.id", ondelete="SET NULL"), nullable=True, index=True)
+    depense_id = db.Column(db.Integer, db.ForeignKey("depense.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    salarie = db.relationship("Salarie", lazy="joined")
+    session = db.relationship("SessionActivite")
+    depense = db.relationship("Depense")
+
+
+class ProfilSalarial(db.Model):
+    """Coûts horaires d'un salarié — CONFIDENTIEL (permission salaires:gerer).
+
+    Le salarié voit le sien (et son calculateur), personne d'autre."""
+
+    __tablename__ = "profil_salarial"
+
+    id = db.Column(db.Integer, primary_key=True)
+    salarie_id = db.Column(db.Integer, db.ForeignKey("salarie.id"), nullable=False, unique=True, index=True)
+    taux_horaire_brut_centimes = db.Column(db.Integer, nullable=False, default=0)    # hors charges
+    taux_horaire_charge_centimes = db.Column(db.Integer, nullable=False, default=0)  # chargé
+    semaines_travaillees = db.Column(db.Integer, nullable=False, default=46)         # ALISFA : 46/47
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+
+    salarie = db.relationship("Salarie", lazy="joined")
+    charges = db.relationship("ProfilSalarialCharge", cascade="all, delete-orphan",
+                              order_by="ProfilSalarialCharge.id", lazy="selectin")
+
+    def cout_annuel_estime(self, etp: float = 1.0, heures_semaine: float = 35.0) -> float | None:
+        """Taux chargé × 35 h × ETP × semaines travaillées, en euros."""
+        if not self.taux_horaire_charge_centimes or not self.semaines_travaillees:
             return None
-        return round(
-            self.hourly_loaded_cents * 35 * self.worked_weeks_per_year * float(etp or 0) / 100,
-            2,
-        )
+        return round(self.taux_horaire_charge_centimes * heures_semaine * float(etp or 0)
+                     * self.semaines_travaillees / 100, 2)
+
+
+class ProfilSalarialCharge(db.Model):
+    """Détail d'une charge (mutuelle, prévoyance…) DÉJÀ incluse dans le taux chargé."""
+
+    __tablename__ = "profil_salarial_charge"
+
+    id = db.Column(db.Integer, primary_key=True)
+    profil_id = db.Column(db.Integer, db.ForeignKey("profil_salarial.id", ondelete="CASCADE"), nullable=False, index=True)
+    libelle = db.Column(db.String(120), nullable=False)
+    centimes_par_heure = db.Column(db.Integer, nullable=False, default=0)
+    note = db.Column(db.String(500), nullable=True)
+
+
+class TypeDocumentRh(db.Model):
+    """Type de document du coffre-fort et extensions acceptées."""
+
+    __tablename__ = "type_document_rh"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(50), unique=True, nullable=False)
+    libelle = db.Column(db.String(120), nullable=False)
+    extensions = db.Column(db.String(300), nullable=False, default="pdf,jpg,png,docx,xlsx")
+
+    @property
+    def liste_extensions(self) -> list[str]:
+        return [e.strip().lower().lstrip(".") for e in (self.extensions or "").split(",") if e.strip()]
+
+
+class DocumentRh(db.Model):
+    """Document du coffre-fort : lisible par son déposant et par la liste
+    d'accès explicite, personne d'autre (pas même la direction)."""
+
+    __tablename__ = "document_rh"
+
+    id = db.Column(db.Integer, primary_key=True)
+    depose_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
+    type_id = db.Column(db.Integer, db.ForeignKey("type_document_rh.id"), nullable=False, index=True)
+    #: Salarié concerné (fiche de paie, contrat…) : son compte reçoit l'accès.
+    salarie_id = db.Column(db.Integer, db.ForeignKey("salarie.id"), nullable=True, index=True)
+    nom_original = db.Column(db.String(300), nullable=False)
+    chemin = db.Column(db.String(500), nullable=False)
+    taille = db.Column(db.Integer, nullable=False, default=0)
+    mime = db.Column(db.String(120), nullable=True)
+    note = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    depose_par = db.relationship("User", foreign_keys=[depose_par_user_id])
+    type_document = db.relationship("TypeDocumentRh", lazy="joined")
+    salarie = db.relationship("Salarie")
+    acces = db.relationship("DocumentRhAcces", cascade="all, delete-orphan", lazy="selectin")
+
+
+class DocumentRhAcces(db.Model):
+    __tablename__ = "document_rh_acces"
+    __table_args__ = (db.UniqueConstraint("document_id", "user_id", name="uq_document_rh_acces"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, db.ForeignKey("document_rh.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    user = db.relationship("User")
 
 
 # ---------- GLOSSAIRE : personnalisations locales ----------

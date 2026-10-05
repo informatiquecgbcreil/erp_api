@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🔒 Profil salarial — {{ salarie.nom_complet }}</h1>
+      <p class="page-subtitle">{{ salarie.poste or '' }}{% if salarie.secteur %} · {{ salarie.secteur }}{% endif %} · ETP {{ '%g'|format(salarie.etp) }}</p>
+    </div>
+    <div class="hero-actions no-print"><a class="btn" href="{{ url_for('salaries.equipe_salaires') }}">← Tous les profils</a></div>
+  </div>
+  {{ m.sous_menu('equipe_salaires') }}
+
+  <section class="section-card">
+    <h2 class="section-title">Coûts horaires</h2>
+    <form method="post" class="stack" style="gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="enregistrer">
+      <div class="form-grid-3">
+        <label class="field-stack"><span>Taux horaire hors charges (€)</span><input class="in" name="taux_brut" value="{{ ('%.2f'|format(profil.taux_horaire_brut_centimes / 100))|replace('.', ',') if profil else '' }}" required></label>
+        <label class="field-stack"><span>Coût horaire chargé (€)</span><input class="in" name="taux_charge" value="{{ ('%.2f'|format(profil.taux_horaire_charge_centimes / 100))|replace('.', ',') if profil else '' }}" required></label>
+        <label class="field-stack"><span>Semaines travaillées / an</span><input class="in" type="number" name="semaines_travaillees" min="1" max="52" value="{{ profil.semaines_travaillees if profil else 46 }}"></label>
+      </div>
+      <h3 style="margin-bottom:0;">Détail des charges <small class="muted">(déjà comprises dans le coût chargé)</small></h3>
+      <div class="tablewrap clean"><table>
+        <thead><tr><th>Charge</th><th>€ / heure</th><th>Note</th></tr></thead>
+        <tbody>
+          {% set existantes = profil.charges if profil else [] %}
+          {% for c in existantes %}
+            <tr><td><input class="in" name="charge_libelle" value="{{ c.libelle }}"></td><td><input class="in" name="charge_valeur" value="{{ ('%.2f'|format(c.centimes_par_heure / 100))|replace('.', ',') }}"></td><td><input class="in" name="charge_note" value="{{ c.note or '' }}"></td></tr>
+          {% endfor %}
+          {% for _ in range(3) %}
+            <tr><td><input class="in" name="charge_libelle" placeholder="Ex : mutuelle"></td><td><input class="in" name="charge_valeur" placeholder="0,00"></td><td><input class="in" name="charge_note"></td></tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+      <label><input type="checkbox" name="reporter_masse" value="1" {% if salarie.salaire_brut_charge is none %}checked{% endif %}>
+        Reporter le coût annuel estimé (coût chargé × 35 h × ETP × semaines) dans la fiche RH, pour la masse salariale et le SENACS</label>
+      {% if estimation is not none %}
+        <p class="muted" style="margin:0;">Estimation actuelle : <strong>{{ es.format_euros((estimation * 100)|round|int) }}</strong> par an
+          {% if salarie.salaire_brut_charge is not none %}· fiche RH : {{ '%.2f'|format(salarie.salaire_brut_charge)|replace('.', ',') }} €{% endif %}.</p>
+      {% endif %}
+      <div><button class="btn ok" type="submit">Enregistrer le profil</button></div>
+    </form>
+  </section>
+
+  {% if profil %}{% include "salaries/_calculateur.html" %}{% endif %}
+</div>
+{% endblock %}

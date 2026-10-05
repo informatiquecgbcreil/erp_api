@@ -949,9 +949,105 @@ AIDE_PAGES: dict[str, dict] = {
         "etapes": [
             "Choisissez l'exercice à consulter.",
             "Ajoutez ou importez les salariés avec leur poste, leur secteur et leur contrat.",
+            "Vérifiez la colonne « Compte » : une fiche reliée à un compte ouvre l'espace salarié de la personne.",
             "Vérifiez les personnes sans secteur et mettez à jour les départs.",
         ],
-        "astuce": "Mettez cette page à jour avant le bilan SENACS afin de fiabiliser les ETP.",
+        "astuce": "Les comptes se relient tout seuls quand le nom est identique sur la fiche et sur le compte. Pour un départ, renseignez la date de sortie plutôt que de supprimer la fiche.",
+    },
+    # ------------------------------------------------------------------
+    # Espace salarié (heures sup, récupérations, frais km, salaires, documents)
+    # ------------------------------------------------------------------
+    "salaries.mes_recuperations": {
+        "titre": "Mes heures sup et récupérations",
+        "resume": "Déclarez vos heures supplémentaires et demandez à les récupérer : votre solde se tient à jour tout seul.",
+        "etapes": [
+            "Déclarez les heures le jour où vous les faites, en choisissant l'activité de votre agenda si c'est le cas.",
+            "Pour récupérer, créez une demande et signez-la dans le cadre : elle part à l'assistant·e de direction.",
+            "Suivez l'avancement dans « Mes demandes en cours » jusqu'à la décision de la direction.",
+        ],
+        "astuce": "Le solde peut être négatif : vous avez récupéré par avance, les prochaines heures sup le combleront.",
+    },
+    "salaries.demande_detail": {
+        "titre": "Le détail d'une demande de récupération",
+        "resume": "Toutes les étapes de la demande, avec qui a signé et quand.",
+        "etapes": ["Chaque étape signée affiche la signature dessinée.", "Le bouton Imprimer en fait une pièce justificative."],
+    },
+    "salaries.equipe_recuperations": {
+        "titre": "Les demandes de récupération de l'équipe",
+        "resume": "L'assistant·e transmet les demandes et informe les salariés ; la direction décide.",
+        "etapes": [
+            "Filtrez sur « À traiter » pour ne voir que ce qui attend une action.",
+            "Ouvrez l'action de la ligne (Transmettre, Décider, Notifier) et signez dans le cadre.",
+            "Un refus doit toujours être motivé : le salarié verra le commentaire.",
+        ],
+        "astuce": "En l'absence de l'assistant·e, la direction peut décider directement une demande qui n'a pas été transmise.",
+    },
+    "salaries.mes_frais_km": {
+        "titre": "Mes frais kilométriques",
+        "resume": "Saisissez un trajet : le montant est calculé au barème officiel, puis vous signez la note.",
+        "etapes": [
+            "Renseignez la date, le véhicule, la distance aller-retour et le motif.",
+            "Cliquez sur « Calculer le montant » pour voir ce qui vous sera remboursé.",
+            "Ajoutez un justificatif si vous en avez un, signez, enregistrez.",
+        ],
+        "astuce": "Le barème se calcule sur la distance de toute l'année : au-delà de 5 000 km, le taux baisse, et l'application en tient compte toute seule.",
+    },
+    "salaries.equipe_frais_km": {
+        "titre": "Les frais kilométriques de l'équipe",
+        "resume": "Toutes les notes signées, avec leurs justificatifs, prêtes à être passées en dépense.",
+        "etapes": [
+            "Filtrez par exercice, salarié ou période.",
+            "« Passer en dépense » crée la dépense sur la ligne de financement choisie et relie les deux.",
+        ],
+        "astuce": "La ligne proposée d'office est celle du secteur du salarié, au compte 625 (déplacements) : vérifiez-la avant de valider.",
+    },
+    "salaries.baremes_km": {
+        "titre": "Les barèmes kilométriques",
+        "resume": "Les taux officiels par véhicule, puissance et tranche de distance annuelle.",
+        "etapes": [
+            "Saisissez une ligne par véhicule, puissance et tranche (jusqu'à 5 000 km, jusqu'à 20 000 km, au-delà).",
+            "Chaque année, recopiez le barème précédent puis corrigez les lignes revalorisées.",
+        ],
+        "astuce": "Tant que le barème d'une année n'est pas saisi, celui de l'année précédente s'applique, et la note le signale.",
+    },
+    "salaries.mon_salaire": {
+        "titre": "Mon coût horaire",
+        "resume": "Votre coût horaire, renseigné par la direction, et un calculateur pour chiffrer une action.",
+        "etapes": ["Indiquez un nombre d'heures (ou heures par semaine × semaines) pour obtenir le coût.",
+                   "Ou partez d'un budget pour savoir combien d'heures il finance."],
+        "astuce": "Ces montants ne sont visibles que par vous et par la direction.",
+    },
+    "salaries.equipe_salaires": {
+        "titre": "Les profils salariaux",
+        "resume": "Les coûts horaires de l'équipe : information confidentielle, réservée à la direction.",
+        "etapes": ["Ouvrez un salarié pour renseigner ou modifier son profil."],
+        "astuce": "Personne ne peut s'attribuer cet accès s'il ne l'a pas déjà, même l'administrateur technique.",
+    },
+    "salaries.profil_salarial": {
+        "titre": "Le profil salarial d'un salarié",
+        "resume": "Taux horaire hors charges, coût chargé, semaines travaillées et détail des charges.",
+        "etapes": [
+            "Saisissez les deux taux et le nombre de semaines travaillées (46 ou 47 en convention ALISFA).",
+            "Le détail des charges décrit le coût chargé : il ne s'y ajoute pas.",
+            "Cochez « Reporter » pour mettre à jour la masse salariale de la fiche RH et du SENACS.",
+        ],
+    },
+    "salaries.documents": {
+        "titre": "Mes documents",
+        "resume": "Le coffre-fort : fiches de paie, contrats, attestations… lisibles seulement par les personnes choisies.",
+        "etapes": ["Cliquez sur un document pour le télécharger.", "Seule la personne qui a déposé un document peut le retirer."],
+    },
+    "salaries.deposer_document": {
+        "titre": "Déposer un document",
+        "resume": "Choisissez le type, le fichier et les personnes qui pourront le lire.",
+        "etapes": [
+            "Indiquez le salarié concerné : son compte reçoit l'accès automatiquement.",
+            "Cochez les autres personnes autorisées. Personne d'autre n'y aura accès.",
+        ],
+    },
+    "salaries.types_documents": {
+        "titre": "Les types de documents",
+        "resume": "Chaque type de document fixe les formats de fichier acceptés dans le coffre-fort.",
     },
     "main.dons_registre": {
         "titre": "Les dons et reçus fiscaux",
@@ -1261,6 +1357,30 @@ NOTICE: list[dict] = [
             ]),
             ("Reprise de données", [
                 "Administration → Import Excel : pour reprendre un historique de présences existant. Lancez toujours une simulation d'abord : elle montre ce qui sera importé sans rien modifier.",
+            ]),
+        ],
+    },
+    {
+        "id": "espace_salarie",
+        "icone": "🧑‍💼",
+        "titre": "L'espace salarié",
+        "intro": "Heures supplémentaires, récupérations, frais kilométriques, coût horaire et documents : tout ce qui concerne chaque salarié, au même endroit.",
+        "sections": [
+            ("Y accéder", [
+                "Sur l'accueil, l'onglet « Espace salarié » rassemble vos chiffres (solde d'heures, demandes en cours, frais km) et vos raccourcis.",
+                "Votre compte doit être relié à votre fiche salarié. Le lien se fait tout seul quand le nom est identique des deux côtés ; sinon, la direction le fait en un clic depuis Équipe salariée.",
+            ]),
+            ("Heures supplémentaires et récupérations", [
+                "Les heures supplémentaires sont créditées dès leur déclaration. La direction peut retirer une déclaration, toujours avec une justification visible du salarié.",
+                "Une demande de récupération suit le circuit : signée par le salarié → transmise par l'assistant·e de direction → décidée par la direction → notifiée au salarié. Chaque étape est signée.",
+            ]),
+            ("Frais kilométriques", [
+                "Le montant est calculé au barème officiel, sur la distance cumulée de l'année avec le véhicule. La note est signée et peut porter un justificatif.",
+                "La comptabilité passe chaque note en dépense sur une ligne de financement : la dépense et la note restent reliées.",
+            ]),
+            ("Confidentialité", [
+                "Les profils salariaux ne sont visibles que par la direction (et chaque salarié pour le sien). Cet accès ne peut être donné que par quelqu'un qui l'a déjà.",
+                "Un document du coffre-fort n'est lisible que par la personne qui l'a déposé et par celles qu'elle a choisies.",
             ]),
         ],
     },
