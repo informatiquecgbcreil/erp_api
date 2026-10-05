@@ -28,7 +28,8 @@ CATALOG = {
     "partenaires": ("Partenaires", "Annuaire et cartographie des partenaires."),
     "questionnaires": ("Questionnaires", "Enquêtes et réponses des habitants."),
     "transitions": ("Transitions", "Défis et mesures de transition écologique."),
-    "rh": ("Ressources humaines", "Salariés, affectations et masse salariale."),
+    "rh": ("Ressources humaines", "Espace salarié (heures sup, récupérations, frais kilométriques, documents), "
+                                  "salariés, affectations et masse salariale."),
 }
 DEPENDENCIES = {
     "statistiques": {"presences"}, "accompagnement": {"presences"},
@@ -55,7 +56,7 @@ PERMISSIONS = {
     "ressources": "inventaire salles locations",
     "accompagnement": "insertion pedagogie",
     "partenaires": "partenaires", "questionnaires": "questionnaires",
-    "transitions": "transitions", "rh": "rh",
+    "transitions": "transitions", "rh": "rh salarie recup frais_km salaires coffre",
 }
 PERMISSION_MODULE = {p: key for key, prefixes in PERMISSIONS.items() for p in prefixes.split()}
 BLUEPRINT_MODULE = {
@@ -66,6 +67,7 @@ BLUEPRINT_MODULE = {
     "inventaire": "ressources", "inventaire_materiel": "ressources", "salles": "ressources",
     "insertion": "accompagnement", "pedagogie": "accompagnement",
     "partenaires": "partenaires", "questionnaires": "questionnaires", "transitions": "transitions",
+    "salaries": "rh",
 }
 SOURCE_MODULE = {
     "agenda": "presences", "google_agenda": "presences", "benevoles": "presences",

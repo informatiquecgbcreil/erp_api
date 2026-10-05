@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">📐 Barèmes kilométriques</h1>
+      <p class="page-subtitle">Montant annuel = distance de l'année × taux + forfait, par tranche de distance annuelle. Chaque trajet reçoit la part qui lui revient.</p>
+    </div>
+  </div>
+  {{ m.sous_menu('') }}
+
+  <div class="es-grid">
+    <section class="section-card">
+      <h2 class="section-title">Ajouter ou corriger une ligne</h2>
+      <form method="post" class="stack" style="gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="ajouter">
+        <div class="form-grid-3">
+          <label class="field-stack"><span>Année</span><input class="in" type="number" name="annee" value="{{ annee_courante }}" required></label>
+          <label class="field-stack"><span>Véhicule</span>
+            <select class="in" name="type_vehicule">{% for code, lib in vehicules.items() %}<option value="{{ code }}">{{ lib }}</option>{% endfor %}</select></label>
+          <label class="field-stack"><span>Puissance (CV)</span><input class="in" type="number" name="puissance_fiscale" min="1" required></label>
+        </div>
+        <label class="field-stack"><span>Tranche (distance annuelle)</span>
+          <select class="in" name="tranche">
+            <option value="0_5000">Jusqu'à 5 000 km</option>
+            <option value="5001_20000">De 5 001 à 20 000 km</option>
+            <option value="20001_plus">Au-delà de 20 000 km</option>
+            <option value="libre">Autre (saisie libre ci-dessous)</option>
+          </select></label>
+        <div class="form-grid-2">
+          <label class="field-stack"><span>De (km) — si « Autre »</span><input class="in" type="number" name="km_de" min="0"></label>
+          <label class="field-stack"><span>À (km, vide = sans limite)</span><input class="in" type="number" name="km_a" min="0"></label>
+        </div>
+        <div class="form-grid-3">
+          <label class="field-stack"><span>Taux (€/km)</span><input class="in" name="taux" placeholder="0,529" required></label>
+          <label class="field-stack"><span>Forfait annuel (€)</span><input class="in" name="forfait" placeholder="0"></label>
+          <label class="field-stack"><span>Majoration électrique (%)</span><input class="in" type="number" name="bonus_electrique_pct" value="20" min="0" max="100"></label>
+        </div>
+        <div><button class="btn ok" type="submit">Enregistrer la ligne</button></div>
+        <p class="muted" style="font-size:.8rem;margin:0;">Une ligne qui existe déjà (même année, véhicule, CV et tranche) est mise à jour. Les notes déjà signées gardent le montant calculé à leur signature.</p>
+      </form>
+    </section>
+
+    <section class="section-card">
+      <h2 class="section-title">Recopier un barème d'une année sur l'autre</h2>
+      <p class="muted" style="margin-top:0;">Le barème n'est pas toujours revalorisé : recopie-le, puis corrige les lignes qui changent.</p>
+      <form method="post" class="stack" style="gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="dupliquer">
+        <div class="form-grid-2">
+          <label class="field-stack"><span>De l'année</span>
+            <select class="in" name="annee_source">{% for a in annees %}<option value="{{ a }}">{{ a }}</option>{% endfor %}</select></label>
+          <label class="field-stack"><span>Vers l'année</span><input class="in" type="number" name="annee_cible" value="{{ annee_courante }}" required></label>
+        </div>
+        <label class="field-stack"><span>Véhicule (vide = tous)</span>
+          <select class="in" name="type_vehicule"><option value="">Tous</option>{% for code, lib in vehicules.items() %}<option value="{{ code }}">{{ lib }}</option>{% endfor %}</select></label>
+        <label class="field-stack"><span>Nouvelle majoration électrique (%) — vide = inchangée</span><input class="in" type="number" name="bonus_electrique_pct" min="0" max="100"></label>
+        <div><button class="btn" type="submit" {% if not annees %}disabled{% endif %}>Recopier</button></div>
+      </form>
+
+      <h2 class="section-title" style="margin-top:18px;">Majoration électrique d'une année</h2>
+      <form method="post" class="inline-actions" style="align-items:end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="bonus">
+        <label class="field-stack slim"><span>Année</span><input class="in" type="number" name="annee" value="{{ annee_courante }}" style="width:100px;"></label>
+        <label class="field-stack slim"><span>Véhicule</span>
+          <select class="in" name="type_vehicule"><option value="">Tous</option>{% for code, lib in vehicules.items() %}<option value="{{ code }}">{{ lib }}</option>{% endfor %}</select></label>
+        <label class="field-stack slim"><span>%</span><input class="in" type="number" name="bonus_electrique_pct" value="20" min="0" max="100" style="width:80px;"></label>
+        <button class="btn" type="submit">Appliquer</button>
+      </form>
+    </section>
+  </div>
+
+  <section class="section-card">
+    <h2 class="section-title">Lignes saisies</h2>
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Année</th><th>Véhicule</th><th>CV</th><th>Tranche annuelle</th><th>Taux</th><th>Forfait</th><th>Électrique</th><th></th></tr></thead>
+      <tbody>
+      {% for l in lignes %}
+        <tr>
+          <td>{{ l.annee }}</td>
+          <td>{{ fk.libelle_vehicule(l.type_vehicule) }}</td>
+          <td>{{ l.puissance_fiscale }}</td>
+          <td>{{ l.km_de }} → {{ l.km_a if l.km_a is not none else '∞' }} km</td>
+          <td>{{ fk.format_taux(l.taux_millieme) }} €/km</td>
+          <td>{{ es.format_euros(l.forfait_centimes) }}</td>
+          <td>+{{ l.bonus_electrique_pct }} %</td>
+          <td>
+            <form method="post" action="{{ url_for('salaries.supprimer_ligne_bareme', ligne_id=l.id) }}" onsubmit="return confirm('Supprimer cette ligne de barème ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn ghost" type="submit">🗑</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8"><div class="quick-empty"><strong>Aucun barème saisi.</strong> Commence par l'année en cours.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}

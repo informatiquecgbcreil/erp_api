@@ -449,7 +449,15 @@ def _sql_tables_plus_recentes(src_sql: Path) -> str:
     dump de la PR #59). Le --clean du dump ne les touche pas ; leurs clés
     étrangères empêcheraient de supprimer les tables du dump, et leurs
     données n'appartiennent pas à l'état restauré. Les migrations les
-    recréent ensuite. Dump sans table métier reconnue : rien n'est supprimé."""
+    recréent ensuite. Dump sans table métier reconnue : rien n'est supprimé.
+
+    Les clés étrangères sont retirées d'abord, toutes : une clé ajoutée par
+    une version plus récente sur une table que le dump connaît (ex.
+    salarie.user_id → user) n'est pas supprimée par le --clean du dump et
+    l'empêcherait de supprimer la table visée (« cannot drop constraint
+    user_pkey … other objects depend on it »). Sans effet sur le résultat :
+    toutes les tables sont ensuite supprimées puis recréées par le dump avec
+    ses propres clés, et la transaction unique annule tout en cas d'erreur."""
     try:
         tables = _tables_du_dump(src_sql)
     except OSError:
@@ -458,7 +466,11 @@ def _sql_tables_plus_recentes(src_sql: Path) -> str:
         return ""
     liste = ", ".join("'" + nom.replace("'", "''") + "'" for nom in sorted(tables))
     return (
-        "DO $restauration$ DECLARE t text; BEGIN\n"
+        "DO $restauration$ DECLARE t text; c record; BEGIN\n"
+        "  FOR c IN SELECT conrelid::regclass AS tbl, conname FROM pg_constraint "
+        "WHERE contype = 'f' AND connamespace = 'public'::regnamespace LOOP\n"
+        "    EXECUTE format('ALTER TABLE %s DROP CONSTRAINT IF EXISTS %I', c.tbl, c.conname);\n"
+        "  END LOOP;\n"
         "  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
         f"AND tablename <> ALL (ARRAY[{liste}]) LOOP\n"
         "    EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE', t);\n"

@@ -2,7 +2,7 @@ from datetime import date
 
 
 from flask import (
-    render_template, request, redirect, url_for, flash, session
+    current_app, render_template, request, redirect, url_for, flash, session
 )
 from flask_login import login_required, current_user
 from app.rbac import require_perm
@@ -136,14 +136,52 @@ def dashboard_reset():
 # --------- Permissions ---------
 
 # --------- Dashboard ---------
+ESPACES_ACCUEIL = ("activites", "salarie")
+
+
+def _onglets_accueil():
+    """Onglets « Activités du centre » / « Espace salarié » de l'accueil.
+
+    L'espace salarié n'apparaît que pour qui a un espace (salarie:espace) ou
+    un rôle dans les circuits RH ; le dernier onglet choisi est retenu.
+    Une erreur dans l'espace salarié ne casse jamais l'accueil : on retombe
+    sur les activités.
+    """
+    from app.services.espace_salarie import build_espace_salarie
+    from app.services.modules import module_enabled
+
+    espace_salarie = None
+    if module_enabled("rh"):
+        try:
+            espace_salarie = build_espace_salarie(current_user)
+        except Exception:
+            current_app.logger.warning("Espace salarié indisponible sur l'accueil", exc_info=True)
+            espace_salarie = None
+    if not espace_salarie or not espace_salarie.get("visible"):
+        return None, "activites"
+    demande = (request.args.get("espace") or "").strip().lower()
+    if demande in ESPACES_ACCUEIL:
+        session["dashboard_espace"] = demande
+    actif = session.get("dashboard_espace") if session.get("dashboard_espace") in ESPACES_ACCUEIL else "activites"
+    equipe = espace_salarie.get("equipe") or {}
+    espace_salarie["badge"] = sum(int(equipe.get(k) or 0) for k in ("a_transmettre", "a_decider", "a_notifier"))
+    return espace_salarie, actif
+
+
 @bp.route("/dashboard")
 @login_required
 @require_perm("dashboard:view")
 def dashboard():
     from app.services.modules import CATALOG, enabled_modules
     prefs = load_dashboard_pref(current_user)
+    espace_salarie, espace_actif = _onglets_accueil()
+    if espace_actif == "salarie":
+        from app.services import espace_salarie as es
+        return render_template("dashboard_salarie.html", espace_salarie=espace_salarie,
+                               espace_actif=espace_actif, es=es)
     if enabled_modules() != set(CATALOG) and session.get("ui_mode", prefs.get("ui_mode", "simple")) != "expert":
-        return render_template("dashboard_modules.html", poste_travail=build_poste_travail(current_user))
+        return render_template("dashboard_modules.html", poste_travail=build_poste_travail(current_user),
+                               espace_salarie=espace_salarie, espace_actif=espace_actif)
     raw_period = (request.args.get("period") or "").strip().lower()
     try:
         days = int(request.args.get("days") or 90)
@@ -173,6 +211,8 @@ def dashboard():
     except Exception:
         # L'accueil doit s'afficher même si le poste de travail échoue.
         ctx["poste_travail"] = None
+    ctx["espace_salarie"] = espace_salarie
+    ctx["espace_actif"] = espace_actif
     return render_template("dashboard.html", **ctx)
 
 

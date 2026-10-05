@@ -637,6 +637,7 @@
                   {% if can('questionnaires:view') %}
                     <a class="pill {% if ep.startswith('questionnaires.') %}active{% endif %}" href="{{ url_for('questionnaires.index') }}">Questionnaires</a>
                   {% endif %}
+                  {% include "_nav_espace_salarie.html" %}
                   {% if can('admin:users') or can('admin:rbac') or can('controle:view') %}
                     <div class="nav-more-heading">Administration</div>
                     {% if can('admin:users') %}
@@ -762,6 +763,7 @@
                   {% if can('rh:view') %}
                     <a class="pill {% if ep == 'main.rh' %}active{% endif %}" href="{{ url_for('main.rh') }}">Équipe salariée</a>
                   {% endif %}
+                  {% include "_nav_espace_salarie.html" %}
                   {% if can('dons:view') %}
                     <a class="pill {% if ep in ('main.dons_registre', 'main.don_recu') %}active{% endif %}" href="{{ url_for('main.dons_registre') }}">Dons &amp; reçus fiscaux</a>
                   {% endif %}
@@ -877,6 +879,7 @@
                     <a class="pill {% if ep.startswith('salles.bilan') %}active{% endif %}" href="{{ url_for('salles.bilan') }}">📊 Bilan d'occupation</a>
                     <a class="pill {% if ep.startswith('salles.') and ep != 'salles.disponibilite' %}active{% endif %}" href="{{ url_for('salles.index') }}">🏢 Salles et espaces</a>
                   {% endif %}
+                  {% include "_nav_espace_salarie.html" %}
                 </div>
               </details>
             </div>
@@ -992,6 +995,7 @@
         'veille': 'Finances',
         'questionnaires': 'Bilans & exports',
         'admin': 'Administration',
+        'salaries': 'Espace salarié',
         'auth': 'Connexion',
         'setup': 'Initialisation',
         'launcher': 'Portail'
@@ -1015,6 +1019,7 @@
         'partenaires': 'partenaires:view',
         'veille': 'veille:view',
         'questionnaires': 'questionnaires:view',
+        'salaries': 'salarie:espace',
         'admin': 'admin:users'
       } %}
       {% set role_code = (current_user.role_codes[0] if current_user.role_codes else '') %}
@@ -1049,6 +1054,7 @@
           'inventaire_materiel': 'inventaire_materiel.list_items',
           'partenaires': 'partenaires.index',
           'veille': 'veille.index',
+          'salaries': 'salaries.espace',
           'admin': 'admin.users'
         } %}
         {% set module_hub = safe_url_for(module_hubs.get(endpoint_module, 'invalide.endpoint'), fallback='') %}

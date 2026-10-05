@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🚗 Mes frais kilométriques</h1>
+      <p class="page-subtitle">{{ salarie.nom_complet }} · calcul au barème officiel, sur la distance cumulée de l'année.</p>
+    </div>
+  </div>
+  {{ m.sous_menu('km') }}
+
+  <div class="es-kpis">
+    <div class="es-kpi"><strong>{{ resume.nb }}</strong><span>Notes en {{ annee }}</span></div>
+    <div class="es-kpi"><strong>{{ resume.km }} km</strong><span>Parcourus en {{ annee }}</span></div>
+    <div class="es-kpi" data-tone="ok"><strong>{{ es.format_euros(resume.montant) }}</strong><span>À rembourser en {{ annee }}</span></div>
+  </div>
+
+  <section class="section-card">
+    <h2 class="section-title">➕ Nouveau trajet</h2>
+    {% if not combinaisons %}
+      <div class="quick-empty"><strong>Aucun barème kilométrique n'est encore saisi.</strong>
+        Demande à la comptabilité de le renseigner{% if can('frais_km:baremes') %} — ou <a href="{{ url_for('salaries.baremes_km') }}">saisis-le maintenant</a>{% endif %}.</div>
+    {% else %}
+    <form method="post" action="{{ url_for('salaries.mes_frais_km') }}" class="stack" style="gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-4" style="align-items:end;">
+        <label class="field-stack"><span>Date du trajet</span>
+          <input class="in" type="date" name="date_trajet" value="{{ saisie.date_trajet }}" required
+                 data-agenda-jour="lien-km" data-agenda-url="{{ url_for('salaries.agenda_du_jour') }}"></label>
+        <label class="field-stack"><span>Véhicule</span>
+          <select class="in" name="type_vehicule" required>
+            {% for code in combinaisons %}<option value="{{ code }}" {% if saisie.type_vehicule == code %}selected{% endif %}>{{ vehicules.get(code, code) }}</option>{% endfor %}
+          </select></label>
+        <label class="field-stack"><span>Puissance (CV)</span>
+          <select class="in" name="puissance_fiscale" required>
+            {% for code, puissances in combinaisons.items() %}
+              <optgroup label="{{ vehicules.get(code, code) }}">
+                {% for cv in puissances %}<option value="{{ cv }}" {% if saisie.puissance_fiscale|string == cv|string and saisie.type_vehicule == code %}selected{% endif %}>{{ cv }} CV</option>{% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select></label>
+        <label class="field-stack"><span>Distance aller-retour (km)</span><input class="in" name="distance_km" inputmode="numeric" value="{{ saisie.distance_km or '' }}" required></label>
+      </div>
+      <div class="form-grid-2">
+        <label class="field-stack"><span>Motif</span><input class="in" name="motif" value="{{ saisie.motif or '' }}" placeholder="Ex : atelier numérique à la médiathèque" required></label>
+        <label class="field-stack"><span>Pour quelle activité ? <small class="muted">(ton agenda ce jour-là)</small></span>
+          <select class="in" name="lien" id="lien-km">
+            <option value="">— Rien de particulier —</option>
+            {% for e in suggestions %}<option value="{{ e.cle }}" {% if saisie.lien == e.cle %}selected{% endif %}>{{ e.titre }}{% if e.horaire %} · {{ e.horaire }}{% endif %}</option>{% endfor %}
+          </select></label>
+      </div>
+      <label><input type="checkbox" name="electrique" value="1" {% if saisie.electrique == '1' %}checked{% endif %}> Véhicule électrique</label>
+      <div><button class="btn" type="submit">Calculer le montant</button></div>
+    </form>
+    {% endif %}
+
+    {% if apercu %}
+      {% set c = apercu.calcul %}{% set f = apercu.champs %}
+      <div class="section-card compact" style="margin-top:12px;border-left:4px solid #16a34a;">
+        <h3 style="margin-top:0;">Montant : {{ es.format_euros(c.montant_centimes) }}</h3>
+        <p class="muted" style="margin:0 0 8px;">
+          {{ f.distance_km }} km · barème {{ c.annee_bareme }} ({{ fk.libelle_vehicule(f.type_vehicule) }} {{ f.puissance_fiscale }} CV) ·
+          {{ fk.format_taux(c.ligne.taux_millieme) }} €/km{% if c.ligne.forfait_centimes %} + forfait annuel {{ es.format_euros(c.ligne.forfait_centimes) }}{% endif %}{% if f.electrique and c.ligne.bonus_electrique_pct %} · majoration électrique {{ c.ligne.bonus_electrique_pct }} %{% endif %}.
+          Déjà parcouru cette année avec ce véhicule : {{ c.cumul_avant }} km.
+        </p>
+        {% if c.bareme_anterieur %}<p class="status-badge status-warning">Le barème {{ f.date_trajet.year }} n'est pas encore saisi : celui de {{ c.annee_bareme }} s'applique.</p>{% endif %}
+        <form method="post" action="{{ url_for('salaries.enregistrer_frais_km') }}" enctype="multipart/form-data" class="stack" style="gap:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% for nom in ('date_trajet', 'type_vehicule', 'puissance_fiscale', 'distance_km', 'motif', 'lien') %}
+            <input type="hidden" name="{{ nom }}" value="{{ saisie.get(nom, '') }}">
+          {% endfor %}
+          <input type="hidden" name="electrique" value="{{ '1' if f.electrique else '' }}">
+          <label class="field-stack"><span>Justificatif <small class="muted">(facultatif : PDF ou photo, 10 Mo max)</small></span><input class="in" type="file" name="justificatif" accept=".pdf,.jpg,.jpeg,.png,.heic,.webp"></label>
+          {{ m.signature("Je certifie ce déplacement : signe", je_signe=True) }}
+          <div><button class="btn ok" type="submit">Signer et enregistrer la note</button></div>
+        </form>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="section-card">
+    <div class="inline-actions" style="justify-content:space-between;">
+      <h2 class="section-title" style="margin:0;">Mes notes {{ annee }}</h2>
+      <form method="get" class="inline-actions"><input class="in" type="number" name="annee" value="{{ annee }}" style="width:100px;"><button class="btn" type="submit">Voir</button></form>
+    </div>
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Date</th><th>Motif</th><th>Véhicule</th><th>Km</th><th>Montant</th><th>Suivi</th></tr></thead>
+      <tbody>
+      {% for n in notes %}
+        <tr>
+          <td>{{ n.date_trajet.strftime('%d/%m/%Y') }}</td>
+          <td>{{ n.motif }}{% set lien = es.libelle_lien(n) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}</td>
+          <td>{{ fk.libelle_vehicule(n.type_vehicule) }} {{ n.puissance_fiscale }} CV{% if n.electrique %} ⚡{% endif %}</td>
+          <td>{{ n.distance_km }}</td>
+          <td><strong>{{ es.format_euros(n.montant_centimes) }}</strong></td>
+          <td>
+            {% if n.depense_id %}<span class="status-badge status-success">Passée en dépense</span>{% else %}<span class="status-badge status-info">Signée</span>{% endif %}
+            {% if n.justificatif_chemin %}<a class="mini-link" href="{{ url_for('salaries.justificatif_frais_km', note_id=n.id) }}">📎 justificatif</a>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">Aucune note pour {{ annee }}.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts_extra %}<script src="{{ url_for('static', filename='js/signature-rh.js') }}"></script>{% endblock %}

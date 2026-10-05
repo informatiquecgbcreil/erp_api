@@ -320,6 +320,12 @@ if "ma_colonne" not in cols:
   `python -c "from alembic.script import ScriptDirectory; from alembic.config import Config; print(ScriptDirectory.from_config(Config('migrations/alembic.ini')).get_heads())"`
   → une seule valeur. Deux têtes = créer une révision de fusion (il en
   existe déjà une dans l'historique : `32d3e4f5a6b7`).
+- Une sauvegarde PostgreSQL ancienne se restaure par-dessus le schéma
+  actuel : `app/services/sauvegarde.py` retire d'abord toutes les clés
+  étrangères (dans la transaction de la restauration), sinon une clé
+  ajoutée depuis sur une table existante bloquerait le `--clean` du dump.
+  Après toute migration qui ajoute une clé étrangère, faire tourner
+  `tests/test_restauration_schema.py` **sur PostgreSQL**.
 - Les migrations s'appliquent au démarrage du service : une migration qui
   plante empêche l'application de démarrer. Les tests les exécutent toutes
   (la fixture `app` de `tests/conftest.py` migre une base neuve) : si
@@ -378,6 +384,22 @@ sur SA page de signature (`/kiosk/signer/<jeton>`).
   (bootstrap RBAC) pour être accordée automatiquement aux rôles voulus sur
   une production existante — sinon personne ne l'a et la fonctionnalité
   est morte à la mise à jour.
+
+### 7.6 bis Salaires : étanchéité de l'accès
+
+- Les profils salariaux (`profil_salarial`) ne se lisent qu'avec la
+  permission `salaires:gerer` (direction) ; chaque salarié voit le sien.
+- **Cette permission ne se donne ni ne se retire que par quelqu'un qui l'a
+  déjà** (garde-fou dans `app/admin/routes.py`, tous les chemins : création
+  de compte, changement de rôle, permissions d'un rôle, suppression de
+  rôle). Sans lui, quiconque gère les droits — l'admin technique compris —
+  pourrait s'ouvrir les salaires de l'équipe. Testé dans
+  `tests/test_espace_salarie.py`.
+- Limite assumée : une personne qui a la main sur le serveur ou la base
+  peut toujours lire les tables. L'étanchéité porte sur l'application.
+- L'historique RH signé (heures, récupérations, frais km, documents) est
+  rattaché à la fiche salarié : une fiche avec historique ne se supprime
+  pas, on renseigne sa date de sortie.
 
 ### 7.7 Le flux agenda est une feuille de temps officielle
 

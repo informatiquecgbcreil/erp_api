@@ -1,10 +1,15 @@
-"""Module RH minimal — réservé à la direction (permissions rh:view / rh:edit).
+"""Module RH — réservé à la direction (permissions rh:view / rh:edit).
 
 Salariés du centre : la direction affecte chaque salarié à son secteur et à
 son poste dans le secteur. Nourrit le SENACS (emplois / ETP) et la masse
 salariale. Peut être alimenté par import CSV/Excel depuis un outil RH externe
 (la colonne « référence » sert de clé de rapprochement : réimporter met à
 jour au lieu de dupliquer).
+
+Chaque fiche se relie au compte de la personne (espace salarié : heures sup,
+récupérations, frais km, documents). La page affiche en direct le solde
+d'heures et les frais km de chacun ; les liens évidents (même nom des deux
+côtés) se font tout seuls.
 """
 from app.utils import spreadsheet_csv as csv
 import io
@@ -15,7 +20,8 @@ from flask_login import login_required
 
 from app.rbac import require_perm, can
 from app.extensions import db
-from app.models import RecupRhSnapshot, Salarie, SENACS_TYPES_CONTRAT, SENACS_TYPES_CONTRAT_DICT
+from app.models import Salarie, User, SENACS_TYPES_CONTRAT, SENACS_TYPES_CONTRAT_DICT
+from app.services import espace_salarie as es
 from app.services.audit import journaliser
 
 from app.main.common import bp
@@ -54,43 +60,31 @@ def _remplir_salarie(salarie: Salarie, form) -> None:
     salarie.commentaire = (form.get("commentaire") or "").strip() or None
 
 
-def _salaire_annuel(salarie: Salarie, snapshot: RecupRhSnapshot | None) -> float:
-    """Valeur RH saisie manuellement, sinon estimation issue de Recup."""
-    if salarie.salaire_brut_charge is not None:
-        return float(salarie.salaire_brut_charge)
-    if snapshot is not None:
-        return float(snapshot.annual_loaded_cost_eur(salarie.etp) or 0)
-    return 0.0
-
-
 def stats_rh(annee: int) -> dict:
-    """Effectif, ETP et masse salariale des salariés actifs sur l'exercice."""
+    """Effectif, ETP et masse salariale des salariés actifs, plus l'espace salarié en direct."""
     salaries = Salarie.query.order_by(Salarie.nom.asc(), Salarie.prenom.asc()).all()
     actifs = [s for s in salaries if s.actif_sur(annee)]
-    recup_snapshots = {
-        snapshot.salarie_id: snapshot
-        for snapshot in RecupRhSnapshot.query.filter_by(year=annee).all()
-    }
     par_secteur: dict[str, dict] = {}
     for s in actifs:
         sec = (s.secteur or "Non affecté").strip() or "Non affecté"
         d = par_secteur.setdefault(sec, {"nb": 0, "etp": 0.0, "masse": 0.0})
         d["nb"] += 1
         d["etp"] = round(d["etp"] + float(s.etp or 0), 2)
-        d["masse"] = round(d["masse"] + _salaire_annuel(s, recup_snapshots.get(s.id)), 2)
+        d["masse"] = round(d["masse"] + float(s.salaire_brut_charge or 0), 2)
+    frais_km = es.frais_km_par_salarie(annee)
     return {
         "salaries": salaries,
         "actifs": actifs,
         "sortis": [s for s in salaries if not s.actif_sur(annee)],
         "nb_actifs": len(actifs),
         "total_etp": round(sum(float(s.etp or 0) for s in actifs), 2),
-        "masse_salariale": round(sum(_salaire_annuel(s, recup_snapshots.get(s.id)) for s in actifs), 2),
+        "masse_salariale": round(sum(float(s.salaire_brut_charge or 0) for s in actifs), 2),
         "non_affectes": sum(1 for s in actifs if not (s.secteur or "").strip()),
         "par_secteur": dict(sorted(par_secteur.items(), key=lambda kv: -kv[1]["etp"])),
-        "recup_snapshots": recup_snapshots,
-        "recup_count": len(recup_snapshots),
-        "recup_mileage_cents": sum(s.mileage_amount_cents for s in recup_snapshots.values()),
-        "recup_last_sync": max((s.synced_at for s in recup_snapshots.values()), default=None),
+        "soldes": es.soldes_par_salarie(),
+        "frais_km": frais_km,
+        "frais_km_total": sum(v["montant"] for v in frais_km.values()),
+        "sans_compte": sum(1 for s in actifs if not s.user_id),
     }
 
 
@@ -106,9 +100,13 @@ def _annee_demandee() -> int:
 @require_perm("rh:view")
 def rh():
     annee = _annee_demandee()
+    if can("rh:edit"):
+        # Les liens évidents (même nom côté fiche et côté compte) se font seuls.
+        bilan = es.lier_automatiquement()
+        if bilan["liees"]:
+            noms = ", ".join(f.nom_complet for f, _ in bilan["liees"])
+            flash(f"Comptes reliés automatiquement à leur fiche : {noms}.", "success")
     stats = stats_rh(annee)
-    from app.services.recup_rh import recup_configure
-
     return render_template(
         "rh.html",
         stats=stats,
@@ -116,38 +114,35 @@ def rh():
         secteurs=current_app.config.get("SECTEURS", []) or [],
         types_contrat=SENACS_TYPES_CONTRAT,
         can_edit=can("rh:edit"),
-        recup_configured=recup_configure(),
+        comptes_libres=es.comptes_disponibles() if can("rh:edit") else [],
+        es=es,
     )
 
 
-@bp.route("/rh/recup/sync", methods=["POST"])
+@bp.route("/rh/salaries/<int:salarie_id>/compte", methods=["POST"])
 @login_required
 @require_perm("rh:edit")
-def rh_recup_sync():
-    from app.services.recup_rh import RecupRhError, recup_configure, synchroniser_rh
-
-    try:
-        annee = int(request.form.get("annee") or date.today().year)
-    except (TypeError, ValueError):
-        annee = date.today().year
-    if not recup_configure():
-        flash("L'intégration Récup n'est pas configurée (RECUP_BASE_URL / RECUP_TOKEN).", "warning")
-        return redirect(url_for("main.rh", annee=annee))
-    try:
-        resume = synchroniser_rh(annee)
-        journaliser("rh.recup_sync", cible="salaries", details=resume)
-        flash(
-            f"Synchronisation Récup réussie : {resume['created']} salarié(s) créé(s), "
-            f"{resume['updated']} mis à jour, {resume['ignored']} ignoré(s).",
-            "success",
-        )
-    except RecupRhError as exc:
-        current_app.logger.warning("Échec de la synchronisation RH Récup : %s", exc)
-        flash(f"La synchronisation Récup a échoué : {exc}", "danger")
-    except Exception as exc:
-        current_app.logger.exception("Échec inattendu de la synchronisation RH Récup")
-        flash(f"La synchronisation Récup a échoué : {exc}", "danger")
-    return redirect(url_for("main.rh", annee=annee))
+def rh_salarie_compte(salarie_id: int):
+    """Relier (ou délier) la fiche au compte de connexion de la personne."""
+    salarie = db.get_or_404(Salarie, salarie_id)
+    user_id = request.form.get("user_id", type=int)
+    if not user_id:
+        ancien = salarie.user_id
+        salarie.user_id = None
+        db.session.commit()
+        journaliser("rh.compte_delie", cible=f"salarie#{salarie.id}", details={"user_id": ancien})
+        flash(f"Fiche « {salarie.nom_complet} » déliée de son compte.", "success")
+        return redirect(url_for("main.rh"))
+    user = db.get_or_404(User, user_id)
+    deja = Salarie.query.filter(Salarie.user_id == user.id, Salarie.id != salarie.id).first()
+    if deja is not None:
+        flash(f"Ce compte est déjà relié à la fiche « {deja.nom_complet} ».", "danger")
+        return redirect(url_for("main.rh"))
+    salarie.user_id = user.id
+    db.session.commit()
+    journaliser("rh.compte_lie", cible=f"salarie#{salarie.id}", details={"user_id": user.id, "mode": "manuel"})
+    flash(f"Fiche « {salarie.nom_complet} » reliée au compte {user.email}.", "success")
+    return redirect(url_for("main.rh"))
 
 
 @bp.route("/rh/salaries", methods=["POST"])
@@ -164,7 +159,9 @@ def rh_salarie_create():
     db.session.commit()
     journaliser("rh.salarie_create", cible=f"salarie#{salarie.id}",
                 details={"nom": salarie.nom, "secteur": salarie.secteur, "poste": salarie.poste})
-    flash(f"Salarié·e « {salarie.prenom or ''} {salarie.nom} » enregistré·e.", "success")
+    es.lier_automatiquement()
+    flash(f"Salarié·e « {salarie.prenom or ''} {salarie.nom} » enregistré·e."
+          + (" Relié·e à son compte." if salarie.user_id else ""), "success")
     return redirect(url_for("main.rh"))
 
 
@@ -188,8 +185,17 @@ def rh_salarie_update(salarie_id: int):
 @login_required
 @require_perm("rh:edit")
 def rh_salarie_supprimer(salarie_id: int):
+    from app.models import (DemandeRecuperation, DocumentRh, FraisKilometrique, HeureSupplementaire,
+                            ProfilSalarial)
+
     salarie = db.get_or_404(Salarie, salarie_id)
     nom = f"{salarie.prenom or ''} {salarie.nom}".strip()
+    # Un historique signé (heures, récupérations, frais, documents) ne se jette pas.
+    for modele in (HeureSupplementaire, DemandeRecuperation, FraisKilometrique, ProfilSalarial, DocumentRh):
+        if modele.query.filter_by(salarie_id=salarie.id).first() is not None:
+            flash(f"La fiche « {nom} » a un historique (heures, récupérations, frais, documents ou profil "
+                  "salarial) : elle ne peut pas être supprimée. Renseigne plutôt sa date de sortie.", "danger")
+            return redirect(url_for("main.rh"))
     db.session.delete(salarie)
     db.session.commit()
     journaliser("rh.salarie_suppr", cible=f"salarie#{salarie_id}", details={"nom": nom})
@@ -271,6 +277,7 @@ def rh_import():
 
     db.session.commit()
     journaliser("rh.import", cible="salaries", details={"crees": crees, "maj": maj, "ignores": ignores})
+    es.lier_automatiquement()
     flash(f"Import terminé : {crees} salarié(s) créé(s), {maj} mis à jour, {ignores} ligne(s) ignorée(s).", "success")
     return redirect(url_for("main.rh"))
 
@@ -294,7 +301,7 @@ def rh_export_xlsx():
         ws.append([
             s.nom, s.prenom or "", s.poste or "", s.secteur or "",
             s.contrat_label, s.etp,
-            _salaire_annuel(s, stats["recup_snapshots"].get(s.id)) or "",
+            s.salaire_brut_charge if s.salaire_brut_charge is not None else "",
             s.date_entree.strftime("%d/%m/%Y") if s.date_entree else "",
             s.date_sortie.strftime("%d/%m/%Y") if s.date_sortie else "",
             s.source_ref or "",

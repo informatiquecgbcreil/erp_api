@@ -206,11 +206,6 @@ class Config:
     PORTAIL_BASE_URL = os.environ.get("PORTAIL_BASE_URL", "")
     PORTAIL_TOKEN = os.environ.get("PORTAIL_TOKEN", "")
 
-    # --- Recup (integration REST vers le module RH) -------------------------
-    # L'ERP tire un instantane annuel en lecture seule. Auth par x-api-token.
-    RECUP_BASE_URL = os.environ.get("RECUP_BASE_URL", "")
-    RECUP_TOKEN = os.environ.get("RECUP_TOKEN", "")
-
     # --- Cartographie / géocodage (Base Adresse Nationale) -------------------
     # Géocodage des adresses participants via l'API publique et gratuite de
     # l'État (https://api-adresse.data.gouv.fr) : aucune clé requise. On ne

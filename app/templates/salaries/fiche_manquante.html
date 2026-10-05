@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🧑‍💼 Mon espace salarié</h1>
+      <p class="page-subtitle">Heures supplémentaires, récupérations, frais kilométriques et documents.</p>
+    </div>
+  </div>
+  <section class="section-card">
+    <h2 class="section-title">Ta fiche salarié n'est pas encore reliée à ton compte</h2>
+    <p>L'application relie toute seule un compte à une fiche quand le nom est identique des deux côtés
+       (« {{ current_user.nom }} » ici). Ce n'est pas le cas pour toi : soit ta fiche n'existe pas encore,
+       soit elle est écrite autrement, soit plusieurs personnes portent le même nom.</p>
+    <p><strong>Ce qu'il faut faire :</strong> demande à la direction de relier ton compte à ta fiche depuis
+       <em>Ressources → Équipe salariée</em> (colonne « Compte »). C'est l'affaire d'un clic.</p>
+    {% if can('rh:edit') %}
+      <p><a class="btn ok" href="{{ url_for('main.rh') }}">Ouvrir la page Équipe salariée</a></p>
+    {% endif %}
+    <p class="muted" style="font-size:.85rem;">En attendant, tu peux déjà consulter <a href="{{ url_for('salaries.documents') }}">les documents qu'on t'a partagés</a>.</p>
+  </section>
+</div>
+{% endblock %}

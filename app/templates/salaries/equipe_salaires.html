@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🔒 Profils salariaux</h1>
+      <p class="page-subtitle">Confidentiel : visible uniquement par qui gère les salaires. Le salarié voit le sien.</p>
+    </div>
+  </div>
+  {{ m.sous_menu('equipe_salaires') }}
+  <section class="section-card">
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Salarié</th><th>Secteur</th><th>ETP</th><th>Hors charges</th><th>Chargé</th><th>Coût annuel estimé</th><th></th></tr></thead>
+      <tbody>
+      {% for s in salaries %}
+        {% set p = profils.get(s.id) %}
+        <tr>
+          <td><strong>{{ s.nom_complet }}</strong>{% if s.date_sortie %}<div class="es-lien">sorti·e le {{ s.date_sortie.strftime('%d/%m/%Y') }}</div>{% endif %}</td>
+          <td>{{ s.secteur or '—' }}</td>
+          <td>{{ '%g'|format(s.etp) }}</td>
+          <td>{{ es.format_euros(p.taux_horaire_brut_centimes) if p else '—' }}</td>
+          <td>{{ es.format_euros(p.taux_horaire_charge_centimes) if p else '—' }}</td>
+          <td>{% set est = p.cout_annuel_estime(s.etp) if p else none %}{{ es.format_euros((est * 100)|round|int) if est is not none else '—' }}</td>
+          <td><a class="btn" href="{{ url_for('salaries.profil_salarial', salarie_id=s.id) }}">{{ 'Modifier' if p else 'Renseigner' }}</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7"><div class="quick-empty"><strong>Aucune fiche salarié.</strong> Crée les fiches dans Équipe salariée.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}

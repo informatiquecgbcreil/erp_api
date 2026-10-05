@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">⚙️ Types de documents du coffre-fort</h1>
+      <p class="page-subtitle">Chaque type fixe les formats de fichier acceptés.</p>
+    </div>
+    <div class="hero-actions no-print"><a class="btn" href="{{ url_for('salaries.documents') }}">← Documents</a></div>
+  </div>
+  <section class="section-card">
+    <form method="post" class="form-grid-4" style="align-items:end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-stack"><span>Code</span><input class="in" name="code" placeholder="fiche_paie" required></label>
+      <label class="field-stack"><span>Libellé</span><input class="in" name="libelle" placeholder="Fiche de paie" required></label>
+      <label class="field-stack"><span>Extensions</span><input class="in" name="extensions" placeholder="pdf,jpg,png" required></label>
+      <div><button class="btn ok" type="submit">Enregistrer</button></div>
+    </form>
+    <p class="muted" style="font-size:.8rem;">Un code déjà existant est mis à jour.</p>
+  </section>
+  <section class="section-card">
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Code</th><th>Libellé</th><th>Extensions</th><th></th></tr></thead>
+      <tbody>
+      {% for t in items %}
+        <tr><td><code>{{ t.code }}</code></td><td>{{ t.libelle }}</td><td>{{ t.extensions }}</td>
+          <td>{% if t.id not in utilises %}
+            <form method="post" action="{{ url_for('salaries.supprimer_type_document', type_id=t.id) }}" onsubmit="return confirm('Supprimer ce type ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost" type="submit">🗑</button></form>
+          {% else %}<span class="muted">utilisé</span>{% endif %}</td></tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">Aucun type.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}

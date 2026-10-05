@@ -1,0 +1,19 @@
+{# Liens de l'espace salarié dans les menus « Plus » / « Ressources ». #}
+{% if can('salarie:espace') or can('recup:transmettre') or can('recup:decider') or can('frais_km:suivi') or can('salaires:gerer') %}
+  <div class="nav-more-heading">Espace salarié</div>
+  {% if can('salarie:espace') %}
+    <a class="pill" href="{{ url_for('main.dashboard', espace='salarie') }}">🧑‍💼 Mon espace salarié</a>
+    <a class="pill {% if ep in ('salaries.mes_recuperations', 'salaries.demande_detail') %}active{% endif %}" href="{{ url_for('salaries.mes_recuperations') }}">🕒 Heures sup &amp; récupérations</a>
+    <a class="pill {% if ep == 'salaries.mes_frais_km' %}active{% endif %}" href="{{ url_for('salaries.mes_frais_km') }}">🚗 Frais kilométriques</a>
+    <a class="pill {% if ep.startswith('salaries.document') or ep == 'salaries.deposer_document' %}active{% endif %}" href="{{ url_for('salaries.documents') }}">🗄️ Mes documents</a>
+  {% endif %}
+  {% if can('recup:transmettre') or can('recup:decider') %}
+    <a class="pill {% if ep == 'salaries.equipe_recuperations' %}active{% endif %}" href="{{ url_for('salaries.equipe_recuperations') }}">📥 Demandes de récupération</a>
+  {% endif %}
+  {% if can('frais_km:suivi') %}
+    <a class="pill {% if ep == 'salaries.equipe_frais_km' %}active{% endif %}" href="{{ url_for('salaries.equipe_frais_km') }}">🧾 Frais km de l'équipe</a>
+  {% endif %}
+  {% if can('salaires:gerer') %}
+    <a class="pill {% if ep.startswith('salaries.equipe_salaires') or ep == 'salaries.profil_salarial' %}active{% endif %}" href="{{ url_for('salaries.equipe_salaires') }}">🔒 Profils salariaux</a>
+  {% endif %}
+{% endif %}

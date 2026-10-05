@@ -1,0 +1,143 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🕒 Mes heures sup et récupérations</h1>
+      <p class="page-subtitle">{{ salarie.nom_complet }}{% if salarie.secteur %} · {{ salarie.secteur }}{% endif %}</p>
+    </div>
+  </div>
+  {{ m.sous_menu('recup') }}
+
+  <div class="es-kpis">
+    <div class="es-kpi" data-tone="{{ 'danger' if resume.solde < 0 else 'ok' }}">
+      <strong>{{ es.format_minutes(resume.solde) }}</strong><span>Mon solde à récupérer</span>
+    </div>
+    <div class="es-kpi"><strong>{{ es.format_minutes(resume.credit_annee) }}</strong><span>Heures sup cette année</span></div>
+    <div class="es-kpi"><strong>{{ es.format_minutes(resume.pris_annee) }}</strong><span>Récupérées cette année</span></div>
+    <div class="es-kpi" data-tone="{{ 'warn' if resume.en_attente else '' }}"><strong>{{ es.format_minutes(resume.en_attente) }}</strong><span>Demandées, en attente de décision</span></div>
+  </div>
+  {% if resume.solde < 0 %}
+    <p class="muted" style="margin-top:-4px;">Solde négatif : tu as récupéré par avance. Les prochaines heures sup le combleront.</p>
+  {% endif %}
+
+  <div class="es-grid">
+    <section class="section-card">
+      <h2 class="section-title">➕ Déclarer des heures supplémentaires</h2>
+      <form method="post" action="{{ url_for('salaries.declarer_heures') }}" class="stack" style="gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid-2">
+          <label class="field-stack"><span>Le</span>
+            <input class="in" type="date" name="date_travail" value="{{ jour.isoformat() }}" max="{{ jour.today().isoformat() }}" required
+                   data-agenda-jour="lien-heures" data-agenda-url="{{ url_for('salaries.agenda_du_jour') }}"></label>
+          <label class="field-stack"><span>Durée</span><input class="in" name="duree" placeholder="1h30 ou 1,5" required></label>
+        </div>
+        <label class="field-stack"><span>C'était pour… <small class="muted">(ton agenda de ce jour-là)</small></span>
+          <select class="in" name="lien" id="lien-heures">
+            <option value="">— Rien de particulier —</option>
+            {% for e in suggestions %}<option value="{{ e.cle }}">{{ e.titre }}{% if e.horaire %} · {{ e.horaire }}{% endif %}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field-stack"><span>Précision</span><input class="in" name="motif" placeholder="Ex : réunion de quartier qui a débordé"></label>
+        <div><button class="btn ok" type="submit">Enregistrer</button></div>
+        <p class="muted" style="font-size:.8rem;margin:0;">Pas de validation : les heures sont créditées tout de suite. La direction les voit et peut les retirer, avec justification.</p>
+      </form>
+    </section>
+
+    <section class="section-card">
+      <h2 class="section-title">🌴 Demander une récupération</h2>
+      <form method="post" action="{{ url_for('salaries.demander_recuperation') }}" class="stack" style="gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid-2">
+          <label class="field-stack"><span>Le</span><input class="in" type="date" name="date_recuperation" required></label>
+          <label class="field-stack"><span>Durée</span><input class="in" name="duree" placeholder="3h30" required></label>
+        </div>
+        <label class="field-stack"><span>Motif <small class="muted">(facultatif)</small></span><input class="in" name="motif"></label>
+        {{ m.signature("Signe pour envoyer tout de suite (sinon : brouillon)") }}
+        <div><button class="btn ok" type="submit">Créer la demande</button></div>
+      </form>
+    </section>
+  </div>
+
+  <section class="section-card">
+    <h2 class="section-title">Mes demandes en cours</h2>
+    {% if en_cours %}
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Jour</th><th>Durée</th><th>Motif</th><th>État</th><th>Prochaine étape</th><th></th></tr></thead>
+      <tbody>
+      {% for d in en_cours %}
+        <tr>
+          <td><a href="{{ url_for('salaries.demande_detail', demande_id=d.id) }}">{{ d.date_recuperation.strftime('%d/%m/%Y') }}</a></td>
+          <td>{{ es.format_minutes(d.minutes) }}</td>
+          <td>{{ d.motif or '—' }}</td>
+          <td>{{ m.statut(d, es) }}</td>
+          <td class="muted">{{ es.prochaine_etape(d) }}</td>
+          <td class="es-actions-ligne">
+            {% if d.statut == 'brouillon' %}
+              <details><summary>✍️ Signer et envoyer</summary>
+                <form method="post" action="{{ url_for('salaries.envoyer_demande', demande_id=d.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  {{ m.signature() }}
+                  <button class="btn ok" type="submit">Envoyer</button>
+                </form>
+              </details>
+            {% endif %}
+            <form method="post" action="{{ url_for('salaries.annuler_demande', demande_id=d.id) }}" onsubmit="return confirm('Annuler cette demande ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn ghost" type="submit">Annuler</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+      <div class="quick-empty"><strong>Aucune demande en cours.</strong></div>
+    {% endif %}
+  </section>
+
+  <div class="es-grid">
+    <section class="section-card">
+      <h2 class="section-title">Mes heures sup déclarées</h2>
+      <div class="tablewrap clean"><table>
+        <thead><tr><th>Le</th><th>Durée</th><th>Pour</th></tr></thead>
+        <tbody>
+        {% for h in heures %}
+          <tr>
+            <td>{{ h.date_travail.strftime('%d/%m/%Y') }}</td>
+            <td {% if h.minutes < 0 %}style="color:var(--danger,#dc2626);"{% endif %}>{{ es.format_minutes(h.minutes) }}</td>
+            <td>
+              {% if h.est_ajustement %}<strong>{{ 'Retrait par toi-même' if h.par_interesse else 'Retrait par la direction' }}</strong>{% if h.commentaire_direction %} : {{ h.commentaire_direction }}{% endif %}
+              {% else %}{{ h.motif or '' }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="muted">Aucune heure supplémentaire déclarée.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="section-card">
+      <h2 class="section-title">Historique des demandes</h2>
+      <div class="tablewrap clean"><table>
+        <thead><tr><th>Jour</th><th>Durée</th><th>Décision</th></tr></thead>
+        <tbody>
+        {% for d in terminees %}
+          <tr>
+            <td><a href="{{ url_for('salaries.demande_detail', demande_id=d.id) }}">{{ d.date_recuperation.strftime('%d/%m/%Y') }}</a></td>
+            <td>{{ es.format_minutes(d.minutes) }}</td>
+            <td>{{ m.statut(d, es) }}{% if d.commentaire_direction %}<div class="es-lien">« {{ d.commentaire_direction }} »</div>{% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="muted">Rien pour l'instant.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts_extra %}<script src="{{ url_for('static', filename='js/signature-rh.js') }}"></script>{% endblock %}

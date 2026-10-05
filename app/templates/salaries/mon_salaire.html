@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">💶 Mon coût horaire</h1>
+      <p class="page-subtitle">Renseigné par la direction. Personne d'autre que toi et la direction ne voit ces montants.</p>
+    </div>
+  </div>
+  {{ m.sous_menu('salaire') }}
+  {% if not profil %}
+    <section class="section-card"><div class="quick-empty"><strong>Ton profil salarial n'est pas encore renseigné.</strong> La direction le complète ; le calculateur apparaîtra ici.</div></section>
+  {% else %}
+    <div class="es-kpis">
+      <div class="es-kpi"><strong>{{ es.format_euros(profil.taux_horaire_brut_centimes) }}</strong><span>Taux horaire hors charges</span></div>
+      <div class="es-kpi" data-tone="ok"><strong>{{ es.format_euros(profil.taux_horaire_charge_centimes) }}</strong><span>Coût horaire chargé</span></div>
+      <div class="es-kpi"><strong>{{ profil.semaines_travaillees }}</strong><span>Semaines travaillées par an</span></div>
+    </div>
+    {% include "salaries/_calculateur.html" %}
+  {% endif %}
+</div>
+{% endblock %}

@@ -137,6 +137,15 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     ("rh:view", "Voir le module RH (salariés, ETP, masse salariale)"),
     ("rh:edit", "Gérer les salariés (RH : créer, affecter, importer)"),
 
+    # Espace salarié (ex-application « Récup »)
+    ("salarie:espace", "Accéder à mon espace salarié (mes heures, récupérations, frais km, documents)"),
+    ("recup:transmettre", "Transmettre les demandes de récupération et notifier les décisions"),
+    ("recup:decider", "Décider des récupérations et ajuster les heures supplémentaires"),
+    ("frais_km:suivi", "Suivre les frais kilométriques de l’équipe et les passer en dépense"),
+    ("frais_km:baremes", "Gérer les barèmes kilométriques"),
+    ("salaires:gerer", "Gérer les profils salariaux (coûts horaires) — confidentiel"),
+    ("coffre:types", "Gérer les types de documents du coffre-fort"),
+
     # Glossaire (dico du social)
     ("glossaire:edit", "Modifier le glossaire (ajouter, corriger, importer des mots)"),
 
@@ -213,7 +222,12 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
             "inscriptions_annuelles:view",
             "salles:view",
             "locations:view",
-
+            # Espace salarié : l'admin technique est souvent aussi salarié ;
+            # il règle les barèmes km et les types du coffre-fort, mais ne
+            # voit ni les salaires ni les décisions de récupération.
+            "salarie:espace",
+            "frais_km:baremes",
+            "coffre:types",
         ],
     },
 
@@ -227,8 +241,11 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
 
     # Finance : pilotage métier ; ni salaires ni administration des comptes/droits.
     # Sinon le rôle pourrait s'attribuer lui-même les droits RH ou direction.
+    # Les frais kilométriques (suivi, barèmes) lui reviennent ; les décisions
+    # de récupération et le paramétrage du coffre-fort, non.
     "finance": {
-        "perms": [p for (p, _) in DEFAULT_PERMS if not p.startswith(("rh:", "admin:"))],
+        "perms": [p for (p, _) in DEFAULT_PERMS
+                  if not p.startswith(("rh:", "admin:", "salaires:", "recup:", "coffre:"))],
     },
 
     # Responsable secteur: "presque direction" MAIS borné au secteur (contrôlé dans les routes)
@@ -291,6 +308,9 @@ ROLE_TEMPLATES: dict[str, dict[str, Iterable[str]]] = {
 
             # Activité : suppression / restauration OK, mais purge NON (réservée direction/tech)
             "activite:delete", "activite:restore",
+
+            # Espace salarié (ses propres heures, récupérations, frais km, documents)
+            "salarie:espace",
         ],
     },
 }
@@ -317,6 +337,7 @@ ROLE_TEMPLATES["animateur"] = {
         # coût unitaire, qui montrent les montants des financeurs).
         "statsimpact:view",
         "salles:view", "partenaires:view", "quartiers:view",
+        "salarie:espace",
     ],
 }
 ROLE_TEMPLATES["accueil"] = {
@@ -337,6 +358,21 @@ ROLE_TEMPLATES["accueil"] = {
         "cotisations:view", "cotisations:edit", "caisse:view",
         "salles:view", "locations:view", "locations:edit",
         "partenaires:view", "quartiers:view",
+        "salarie:espace",
+    ],
+}
+# Assistant·e de direction : relais du circuit des récupérations. Transmet
+# les demandes à la direction et notifie les décisions, sans pouvoir
+# accepter ni refuser (c'était déjà la règle de l'application « Récup »).
+ROLE_TEMPLATES["assistant_direction"] = {
+    "label": "Assistant(e) de direction",
+    "perms": [
+        "dashboard:view",
+        "salarie:espace",
+        "recup:transmettre",
+        "participants:view", "participants:view_all",
+        "ateliers:view", "emargement:view",
+        "salles:view", "partenaires:view",
     ],
 }
 
@@ -348,6 +384,7 @@ ROLE_LABELS: dict[str, str] = {
     "responsable_secteur": "Responsable de secteur",
     "animateur": "Animateur / animatrice",
     "accueil": "Accueil",
+    "assistant_direction": "Assistant(e) de direction",
 }
 
 
@@ -391,6 +428,18 @@ PERMS_AUTO_GRANT = {
     # L'accueil tient le planning de location au quotidien.
     "locations:view": ("direction", "directrice", "finance", "responsable_secteur", "admin_tech"),
     "locations:edit": ("direction", "directrice", "finance", "responsable_secteur"),
+    # Espace salarié (intégration de « Récup ») : chaque membre de l'équipe
+    # accède à SES heures, récupérations, frais km et documents.
+    "salarie:espace": ("direction", "directrice", "finance", "responsable_secteur", "coordinateur",
+                       "animateur", "accueil", "secretaire", "admin_tech", "assistant_direction"),
+    "recup:transmettre": ("direction", "directrice", "assistant_direction"),
+    "recup:decider": ("direction", "directrice"),
+    "frais_km:suivi": ("direction", "directrice", "finance"),
+    "frais_km:baremes": ("direction", "directrice", "finance", "admin_tech"),
+    # Salaires : la direction seule. Personne d'autre ne peut se l'attribuer
+    # (garde-fou dans l'écran des droits, voir app/admin/routes.py).
+    "salaires:gerer": ("direction", "directrice"),
+    "coffre:types": ("direction", "directrice", "admin_tech"),
 }
 
 
@@ -413,6 +462,11 @@ def _category_from_code(code: str) -> str:
         "benevolat": "Bénévolat",
         "dons": "Dons & reçus fiscaux",
         "rh": "Ressources humaines",
+        "salarie": "Espace salarié",
+        "recup": "Heures sup et récupérations",
+        "frais_km": "Frais kilométriques",
+        "salaires": "Salaires (confidentiel)",
+        "coffre": "Coffre-fort documents",
         "glossaire": "Glossaire",
         "cotisations": "Adhésions & participation",
         "caisse": "Caisse",

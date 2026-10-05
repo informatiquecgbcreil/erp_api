@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🗄️ Mes documents</h1>
+      <p class="page-subtitle">Coffre-fort : chaque document n'est lisible que par la personne qui l'a déposé et celles qu'elle a choisies.</p>
+    </div>
+    <div class="hero-actions no-print">
+      <a class="btn ok" href="{{ url_for('salaries.deposer_document') }}">⬆ Déposer un document</a>
+      {% if can('coffre:types') %}<a class="btn" href="{{ url_for('salaries.types_documents') }}">⚙️ Types de documents</a>{% endif %}
+    </div>
+  </div>
+  {{ m.sous_menu('documents') }}
+
+  <form method="get" class="section-card compact inline-actions no-print" style="align-items:end;">
+    <label class="field-stack slim"><span>Type</span>
+      <select class="in" name="type_id"><option value="">Tous</option>
+        {% for t in types %}<option value="{{ t.id }}" {% if f_type == t.id %}selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
+      </select></label>
+    <label class="field-stack slim"><span>Déposé par</span>
+      <select class="in" name="depose_par"><option value="">Tout le monde</option>
+        {% for u in deposants %}<option value="{{ u.id }}" {% if f_depose_par == u.id %}selected{% endif %}>{{ u.nom }}</option>{% endfor %}
+      </select></label>
+    <label class="field-stack slim"><span>Du</span><input class="in" type="date" name="du" value="{{ du.isoformat() if du else '' }}"></label>
+    <label class="field-stack slim"><span>Au</span><input class="in" type="date" name="au" value="{{ au.isoformat() if au else '' }}"></label>
+    <button class="btn" type="submit">Filtrer</button>
+  </form>
+
+  <section class="section-card">
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Document</th><th>Type</th><th>Concerne</th><th>Déposé par</th><th>Le</th><th>Accès</th><th></th></tr></thead>
+      <tbody>
+      {% for d in items %}
+        <tr>
+          <td><a href="{{ url_for('salaries.telecharger_document', document_id=d.id) }}">📄 {{ d.nom_original }}</a>{% if d.note %}<div class="es-lien">{{ d.note }}</div>{% endif %}</td>
+          <td>{{ d.type_document.libelle }}</td>
+          <td>{{ d.salarie.nom_complet if d.salarie else '—' }}</td>
+          <td>{{ d.depose_par.nom if d.depose_par else '—' }}</td>
+          <td>{{ d.created_at.strftime('%d/%m/%Y') }}</td>
+          <td class="es-lien">{% if d.depose_par_user_id == current_user.id %}{{ d.acces|map(attribute='user')|map(attribute='nom')|join(', ') or 'Toi seul·e' }}{% else %}Partagé avec toi{% endif %}</td>
+          <td>
+            {% if d.depose_par_user_id == current_user.id %}
+            <form method="post" action="{{ url_for('salaries.supprimer_document', document_id=d.id) }}" onsubmit="return confirm('Retirer ce document du coffre-fort ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn ghost" type="submit">🗑</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7"><div class="quick-empty"><strong>Aucun document.</strong> Les documents qu'on te partage (fiches de paie, contrats…) apparaîtront ici.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}

@@ -303,6 +303,7 @@ def create_app():
     from app.veille_financements import bp as veille_bp
     from app.inscriptions_annuelles import bp as inscriptions_annuelles_bp
     from app.salles import bp as salles_bp
+    from app.salaries import bp as salaries_bp
 
     app.register_blueprint(setup_bp)
     app.register_blueprint(aide_bp)
@@ -330,6 +331,7 @@ def create_app():
     app.register_blueprint(veille_bp)
     app.register_blueprint(inscriptions_annuelles_bp)
     app.register_blueprint(salles_bp)
+    app.register_blueprint(salaries_bp)
 
     from app.services.modules import endpoint_module, module_enabled, can_manage_modules
 

@@ -1,0 +1,34 @@
+{# Calculateur de coût horaire : profil, calcul, saisie, es en contexte. #}
+<section class="section-card">
+  <h2 class="section-title">🧮 Calculateur</h2>
+  <p class="muted" style="margin-top:0;">Pour chiffrer une action : combien coûtent X heures, ou combien d'heures tient dans un budget.</p>
+  <form method="post" class="stack" style="gap:8px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="calculer">
+    <div class="inline-actions">
+      <label><input type="radio" name="mode" value="heures_vers_cout" {% if (saisie.get('mode') or 'heures_vers_cout') == 'heures_vers_cout' %}checked{% endif %}> Heures → coût</label>
+      <label><input type="radio" name="mode" value="cout_vers_heures" {% if saisie.get('mode') == 'cout_vers_heures' %}checked{% endif %}> Budget → heures</label>
+    </div>
+    <div class="form-grid-4" style="align-items:end;">
+      <label class="field-stack"><span>Total d'heures</span><input class="in" name="heures" value="{{ saisie.get('heures', '') }}" inputmode="decimal"></label>
+      <label class="field-stack"><span>ou heures / semaine</span><input class="in" name="heures_semaine" value="{{ saisie.get('heures_semaine', '') }}" inputmode="decimal"></label>
+      <label class="field-stack"><span>× semaines</span><input class="in" name="semaines" value="{{ saisie.get('semaines', '') }}" inputmode="decimal"></label>
+      <label class="field-stack"><span>Budget (€) — mode budget</span><input class="in" name="budget" value="{{ saisie.get('budget', '') }}" inputmode="decimal"></label>
+    </div>
+    <div><button class="btn" type="submit">Calculer</button></div>
+  </form>
+  {% if calcul %}
+    <div class="es-kpis" style="margin-top:12px;">
+      <div class="es-kpi"><strong>{{ ('%.2f'|format(calcul.heures))|replace('.', ',') }} h</strong><span>Heures{% if calcul.semaines_equivalentes %} · soit {{ calcul.semaines_equivalentes|string|replace('.', ',') }} semaines{% endif %}</span></div>
+      <div class="es-kpi"><strong>{{ es.format_euros(calcul.cout_brut) }}</strong><span>Coût hors charges</span></div>
+      <div class="es-kpi" data-tone="ok"><strong>{{ es.format_euros(calcul.cout_charge) }}</strong><span>Coût chargé</span></div>
+      <div class="es-kpi"><strong>{{ es.format_euros(calcul.charges) }}</strong><span>dont charges</span></div>
+    </div>
+    {% if calcul.detail %}
+      <div class="tablewrap clean"><table>
+        <thead><tr><th>Détail des charges (déjà incluses)</th><th>Par heure</th><th>Total</th></tr></thead>
+        <tbody>{% for c in calcul.detail %}<tr><td>{{ c.libelle }}</td><td>{{ es.format_euros(c.par_heure) }}</td><td>{{ es.format_euros(c.total) }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    {% endif %}
+  {% endif %}
+</section>
