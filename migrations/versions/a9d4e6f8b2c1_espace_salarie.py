@@ -252,5 +252,35 @@ def downgrade():
             op.drop_table(table)
     cols = {c["name"] for c in insp.get_columns("salarie")}
     if "user_id" in cols:
+        # L'index d'abord : sous SQLite, la table est recopiée avec ses index,
+        # et un index sur une colonne disparue ferait échouer la copie.
+        if "ix_salarie_user_id" in {i["name"] for i in insp.get_indexes("salarie")}:
+            op.drop_index("ix_salarie_user_id", table_name="salarie")
         with op.batch_alter_table("salarie") as batch:
             batch.drop_column("user_id")
+    # Remet le cache de l'ancienne synchronisation, vide, tel que l'attendent
+    # les révisions précédentes.
+    if not sa.inspect(bind).has_table("recup_rh_snapshot"):
+        op.create_table(
+            "recup_rh_snapshot",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("salarie_id", sa.Integer(), nullable=False),
+            sa.Column("year", sa.Integer(), nullable=False),
+            sa.Column("balance_minutes", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("overtime_minutes", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("approved_recovery_minutes", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("pending_recovery_minutes", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("mileage_expense_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("mileage_distance_km", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("mileage_amount_cents", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("hourly_unloaded_cents", sa.Integer(), nullable=True),
+            sa.Column("hourly_loaded_cents", sa.Integer(), nullable=True),
+            sa.Column("worked_weeks_per_year", sa.Integer(), nullable=True),
+            sa.Column("source_generated_at", sa.DateTime(), nullable=True),
+            sa.Column("synced_at", sa.DateTime(), nullable=False),
+            sa.ForeignKeyConstraint(["salarie_id"], ["salarie.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("salarie_id", "year", name="uq_recup_rh_snapshot_salarie_year"),
+        )
+        op.create_index("ix_recup_rh_snapshot_salarie_id", "recup_rh_snapshot", ["salarie_id"])
+        op.create_index("ix_recup_rh_snapshot_year", "recup_rh_snapshot", ["year"])

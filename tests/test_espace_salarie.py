@@ -43,10 +43,15 @@ def _client(app, email):
 
 
 def _fiche(app, nom, prenom, secteur=None, user_id=None, etp=1.0):
+    """Fiche bornée dans le temps : la base de test est partagée, et d'autres
+    tests comptent les salariés actifs d'années lointaines (2048, 2054…)."""
     with app.app_context():
         from app.extensions import db
         from app.models import Salarie
-        s = Salarie(nom=nom, prenom=prenom, secteur=secteur, user_id=user_id, etp=etp)
+        aujourd_hui = dt.date.today()
+        s = Salarie(nom=nom, prenom=prenom, secteur=secteur, user_id=user_id, etp=etp,
+                    date_entree=dt.date(aujourd_hui.year - 1, 1, 1),
+                    date_sortie=dt.date(aujourd_hui.year + 1, 12, 31))
         db.session.add(s)
         db.session.commit()
         return s.id
