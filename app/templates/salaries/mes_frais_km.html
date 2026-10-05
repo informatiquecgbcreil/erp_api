@@ -10,6 +10,7 @@
     </div>
   </div>
   {{ m.sous_menu('km') }}
+  <p class="no-print" style="margin:-4px 0 0;"><a class="btn" href="{{ url_for('salaries.etat_frais_km', salarie_id=salarie.id) }}">🧾 Mon état de frais du mois (imprimable)</a></p>
 
   <div class="es-kpis">
     <div class="es-kpi"><strong>{{ resume.nb }}</strong><span>Notes en {{ annee }}</span></div>

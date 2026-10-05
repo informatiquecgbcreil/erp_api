@@ -1045,6 +1045,26 @@ AIDE_PAGES: dict[str, dict] = {
             "Cochez les autres personnes autorisées. Personne d'autre n'y aura accès.",
         ],
     },
+    "salaries.exports_rh": {
+        "titre": "Les exports RH",
+        "resume": "Pour la paie mensuelle et les bilans : heures, récupérations et frais kilométriques, par salarié, par secteur, par période.",
+        "etapes": [
+            "Choisissez le mois (ou des dates), puis éventuellement des secteurs et des salariés.",
+            "« Télécharger le classeur Excel » donne la synthèse, les totaux par secteur et le détail de chaque ligne.",
+            "Les liens « relevé » et « état de frais » ouvrent les documents individuels, prêts à imprimer.",
+        ],
+        "astuce": "Ces exports ne contiennent jamais de coût horaire ni de salaire : ils peuvent partir au cabinet comptable.",
+    },
+    "salaries.releve": {
+        "titre": "Le relevé d'heures",
+        "resume": "Le solde au début du mois, chaque mouvement, et le solde à la fin : la pièce à joindre à la paie.",
+        "etapes": ["Changez de mois si besoin, puis Imprimer / PDF.", "Faites viser le relevé par le salarié et la direction."],
+    },
+    "salaries.etat_frais_km": {
+        "titre": "L'état de frais kilométriques",
+        "resume": "Les trajets du mois, le barème appliqué et le total à rembourser.",
+        "etapes": ["Changez de mois si besoin, puis Imprimer / PDF.", "Les cadres en bas servent aux visas (salarié, direction, comptabilité)."],
+    },
     "salaries.types_documents": {
         "titre": "Les types de documents",
         "resume": "Chaque type de document fixe les formats de fichier acceptés dans le coffre-fort.",

@@ -20,6 +20,7 @@
       {% if can('recup:transmettre') or can('recup:decider') %}<a class="btn" href="{{ url_for('salaries.equipe_recuperations') }}">📥 Demandes de récupération</a>{% endif %}
       {% if can('frais_km:suivi') %}<a class="btn" href="{{ url_for('salaries.equipe_frais_km', annee=annee) }}">🧾 Frais km</a>{% endif %}
       {% if can('salaires:gerer') %}<a class="btn" href="{{ url_for('salaries.equipe_salaires') }}">🔒 Profils salariaux</a>{% endif %}
+      <a class="btn" href="{{ url_for('salaries.exports_rh') }}">📤 Exports RH (paie)</a>
       <a class="btn" href="{{ url_for('main.rh_export_xlsx', annee=annee) }}">⬇ Export Excel</a>
       <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
     </div>

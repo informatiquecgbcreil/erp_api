@@ -132,6 +132,51 @@ def _lignes_rappels(seuil_jours: int | None, today: date) -> list[str]:
     ]
 
 
+def _lignes_rh_a_traiter(seuil_jours: int | None, today: date) -> list[str]:
+    """Demandes de récupération qui attendent depuis trop longtemps, décisions
+    pas encore notifiées au salarié."""
+    from datetime import datetime, timedelta
+    from app.models import DemandeRecuperation
+
+    attente = seuil_jours if seuil_jours is not None else 3
+    limite = datetime.combine(today - timedelta(days=attente), datetime.min.time())
+    lignes = []
+    for statut, quoi in (("soumise", "à transmettre"), ("transmise", "à décider")):
+        vieilles = DemandeRecuperation.query.filter(
+            DemandeRecuperation.statut == statut, DemandeRecuperation.updated_at <= limite).all()
+        for d in vieilles:
+            lignes.append(f"[{quoi}] {d.salarie.nom_complet} — récupération du "
+                          f"{d.date_recuperation.strftime('%d/%m/%Y')} (en attente depuis plus de {attente} j)")
+    a_notifier = DemandeRecuperation.query.filter(
+        DemandeRecuperation.statut.in_(("acceptee", "refusee")), DemandeRecuperation.notifiee_le.is_(None)).count()
+    if a_notifier:
+        lignes.append(f"[à notifier] {a_notifier} décision(s) pas encore notifiée(s) au salarié")
+    auto = DemandeRecuperation.query.filter(
+        DemandeRecuperation.decision_par_interesse.is_(True),
+        DemandeRecuperation.decidee_le >= datetime.combine(today - timedelta(days=7), datetime.min.time())).count()
+    if auto:
+        lignes.append(f"[contrôle] {auto} demande(s) décidée(s) par l'intéressé·e ces 7 derniers jours")
+    return lignes
+
+
+def _lignes_frais_km(seuil_jours: int | None, today: date) -> list[str]:
+    """Notes de frais km du mois en cours et notes pas encore passées en dépense."""
+    from app.models import FraisKilometrique
+    from app.services.espace_salarie import format_euros
+
+    debut = today.replace(day=1)
+    du_mois = FraisKilometrique.query.filter(FraisKilometrique.date_trajet >= debut).all()
+    a_imputer = FraisKilometrique.query.filter(FraisKilometrique.depense_id.is_(None)).all()
+    lignes = []
+    if du_mois:
+        lignes.append(f"{len(du_mois)} note(s) ce mois-ci, {sum(n.distance_km for n in du_mois)} km, "
+                      f"{format_euros(sum(n.montant_centimes for n in du_mois))}")
+    if a_imputer:
+        lignes.append(f"{len(a_imputer)} note(s) pas encore passée(s) en dépense, "
+                      f"{format_euros(sum(n.montant_centimes for n in a_imputer))}")
+    return lignes
+
+
 #: Registre des types : libellés pour l'écran de réglage + collecteur associé.
 TYPES_NOTIFICATION: dict[str, dict] = {
     "echeances_financeurs": {
@@ -161,6 +206,21 @@ TYPES_NOTIFICATION: dict[str, dict] = {
         "seuil_label": None,
         "seuil_defaut": None,
         "collecteur": _lignes_rappels,
+    },
+    "rh_a_traiter": {
+        "label": "Récupérations en souffrance",
+        "description": "Demandes de récupération bloquées (à transmettre, à décider) au-delà du délai, "
+                       "décisions non notifiées, décisions prises par l'intéressé·e.",
+        "seuil_label": "Délai avant alerte (jours d'attente)",
+        "seuil_defaut": 3,
+        "collecteur": _lignes_rh_a_traiter,
+    },
+    "frais_km": {
+        "label": "Frais kilométriques",
+        "description": "Notes du mois en cours et notes signées pas encore passées en dépense.",
+        "seuil_label": None,
+        "seuil_defaut": None,
+        "collecteur": _lignes_frais_km,
     },
 }
 

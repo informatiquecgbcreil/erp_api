@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<style>
+  .releve-signatures{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;}
+  .releve-signatures div{border:1px solid var(--border,#cbd5e1);border-radius:8px;min-height:90px;padding:8px;}
+  @media print{.page-shell{max-width:none;}}
+</style>
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🧾 Relevé d'heures — {{ r.salarie.nom_complet }}</h1>
+      <p class="page-subtitle">{{ r.salarie.poste or '' }}{% if r.salarie.secteur %} · {{ r.salarie.secteur }}{% endif %} · du {{ r.du.strftime('%d/%m/%Y') }} au {{ r.au.strftime('%d/%m/%Y') }}</p>
+    </div>
+    <div class="hero-actions no-print">
+      <form method="get" class="inline-actions"><input class="in" type="month" name="mois" value="{{ mois }}"><button class="btn" type="submit">Changer de mois</button></form>
+      <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <div class="es-kpis">
+    <div class="es-kpi"><strong>{{ es.format_minutes(r.solde_debut) }}</strong><span>Solde au {{ (r.du).strftime('%d/%m/%Y') }} (début)</span></div>
+    <div class="es-kpi" data-tone="{{ 'danger' if r.solde_fin < 0 else 'ok' }}"><strong>{{ es.format_minutes(r.solde_fin) }}</strong><span>Solde au {{ r.au.strftime('%d/%m/%Y') }} (fin)</span></div>
+    {% if r.frais_km %}<div class="es-kpi"><strong>{{ es.format_euros(r.frais_km|sum(attribute='montant_centimes')) }}</strong><span>Frais km de la période</span></div>{% endif %}
+  </div>
+
+  <section class="section-card">
+    <h2 class="section-title">Mouvements</h2>
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Date</th><th>Mouvement</th><th>Heures</th><th>Solde</th></tr></thead>
+      <tbody>
+        <tr class="muted"><td>—</td><td>Solde au début de la période</td><td></td><td>{{ es.format_minutes(r.solde_debut) }}</td></tr>
+        {% for mv in r.mouvements %}
+          <tr><td>{{ mv.date.strftime('%d/%m/%Y') }}</td><td>{{ mv.libelle }}</td>
+            <td>{{ ('+' if mv.minutes > 0 else '') ~ es.format_minutes(mv.minutes) }}</td><td>{{ es.format_minutes(mv.solde) }}</td></tr>
+        {% else %}
+          <tr><td colspan="4" class="muted">Aucun mouvement sur la période.</td></tr>
+        {% endfor %}
+        <tr><td>—</td><td><strong>Solde à la fin de la période</strong></td><td></td><td><strong>{{ es.format_minutes(r.solde_fin) }}</strong></td></tr>
+      </tbody>
+    </table></div>
+    {% if r.autres_demandes %}
+      <p class="es-lien">Autres demandes de la période (sans effet sur le solde) :
+        {% for d in r.autres_demandes %}{{ d.date_recuperation.strftime('%d/%m') }} {{ es.format_minutes(d.minutes) }} — {{ r.statuts.get(d.statut, {}).get('label', d.statut) }}{% if not loop.last %} ; {% endif %}{% endfor %}</p>
+    {% endif %}
+  </section>
+
+  {% if r.frais_km %}
+  <section class="section-card">
+    <h2 class="section-title">Frais kilométriques de la période</h2>
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Date</th><th>Motif</th><th>Km</th><th>Montant</th></tr></thead>
+      <tbody>{% for n in r.frais_km %}<tr><td>{{ n.date_trajet.strftime('%d/%m/%Y') }}</td><td>{{ n.motif }}</td><td>{{ n.distance_km }}</td><td>{{ es.format_euros(n.montant_centimes) }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+
+  <div class="releve-signatures">
+    <div><strong>Vu le salarié</strong><br><span class="muted">Date et signature</span></div>
+    <div><strong>Vu la direction</strong><br><span class="muted">Date et signature</span></div>
+  </div>
+  <p class="es-lien">Édité le {{ r.au.today().strftime('%d/%m/%Y') }}. Solde = heures supplémentaires (retraits déduits) − récupérations acceptées, à la date de chaque mouvement.</p>
+</div>
+{% endblock %}

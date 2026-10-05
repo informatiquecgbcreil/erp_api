@@ -627,6 +627,13 @@ def create_app():
 
         if notifications_actives():
             digest_quotidien_si_necessaire()
+        # E-mails de l'espace salarié restés en file (serveur de mail
+        # injoignable la veille) : nouvel essai une fois par jour.
+        try:
+            from app.services.courriels_rh import expedier_en_attente
+            expedier_en_attente()
+        except Exception:
+            app.logger.warning("Relance quotidienne des e-mails RH impossible", exc_info=True)
         return None
 
     # ------------------------------------------------------------------

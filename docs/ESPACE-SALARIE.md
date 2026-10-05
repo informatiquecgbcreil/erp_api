@@ -17,10 +17,12 @@ Le tout appartient au module **« Ressources humaines »**
 | Logique partagée (soldes, liens, signatures, compteurs) | `app/services/espace_salarie.py` |
 | Calcul au barème kilométrique | `app/services/frais_km.py` |
 | Modèles | `app/models.py`, section « ESPACE SALARIÉ » |
-| Migrations | `migrations/versions/a9d4e6f8b2c1_espace_salarie.py`, `b3f5a7c9d1e2_decision_par_interesse.py` |
+| Migrations | `migrations/versions/a9d4e6f8b2c1_espace_salarie.py`, `b3f5a7c9d1e2_decision_par_interesse.py`, `c4a6b8d0e2f3_courriels_et_secteur_rh.py` |
+| E-mails | `app/services/courriels_rh.py` (+ types « rh_a_traiter », « frais_km » dans `app/services/notifications.py`) |
+| Exports | `app/services/exports_rh.py`, `app/salaries/exports.py` |
 | Gabarits | `app/templates/salaries/`, `_espace_salarie.html`, `_dashboard_onglets.html` |
 | Cadres de signature | `app/static/js/signature-rh.js` |
-| Tests | `tests/test_espace_salarie.py` |
+| Tests | `tests/test_espace_salarie.py`, `tests/test_rh_courriels_exports.py` |
 
 ## Ce qui est rattaché à quoi
 
@@ -77,6 +79,68 @@ exactement `F(total)`, tranches et forfaits compris. Récup choisissait la
 tranche d'après la distance du seul trajet : juste sous 5 000 km par an,
 faux au-delà. Si le barème de l'année n'est pas saisi, le plus récent
 antérieur s'applique et la note l'indique (`annee_bareme`).
+
+## E-mails
+
+Deux niveaux, qui ne se remplacent pas :
+
+1. **Au fil de l'eau, à la personne concernée** (`courriels_rh.py`) :
+
+   | Événement | Destinataire |
+   |---|---|
+   | demande de récupération signée | l'assistant·e (droit `recup:transmettre` sans `recup:decider`) ; à défaut la direction |
+   | demande transmise | la direction (`recup:decider`) |
+   | décision prise | le salarié |
+   | heures sup retirées | le salarié |
+   | document partagé | chaque personne de la liste d'accès |
+
+   - L'e-mail est écrit dans la table `courriel_rh` **dans la transaction de
+     l'action**, puis envoyé juste après : action annulée = personne
+     prévenu ; serveur de mail absent ou en panne = action réussie, e-mail
+     en file.
+   - Réessais : à chaque action RH et une fois par jour (première requête),
+     au plus 5 fois ; un e-mail non parti sous 7 jours expire (il n'aurait
+     plus de sens). État de la file et bouton « Envoyer la file maintenant » :
+     Administration → Notifications.
+   - Jamais l'auteur de l'action, jamais de donnée sensible (pas de
+     commentaire de refus, pas de document, pas de montant de salaire) : un
+     fait et un lien. Le lien pointe vers l'adresse publique configurée
+     (`ERP_PUBLIC_BASE_URL`), donc vers le réseau du centre.
+   - Chacun peut couper ces e-mails : Accueil → Espace salarié → « Mes
+     e-mails » (table `preference_courriel_rh`) ; les badges restent.
+   - L'étape « notifier le salarié » signée par l'assistant·e est
+     **conservée** : l'e-mail prévient, la signature atteste.
+
+2. **Récapitulatifs** dans Administration → Notifications (même mécanique
+   que les autres types, rien d'actif par défaut) : « Récupérations en
+   souffrance » (demandes bloquées au-delà du délai, décisions non
+   notifiées, décisions par l'intéressé·e) et « Frais kilométriques »
+   (notes du mois, notes non passées en dépense).
+
+## Exports (paie mensuelle)
+
+Page « Exports RH » (menu de l'espace salarié, page RH). Période = un mois
+par défaut (ou du/au), filtres secteurs et salariés.
+
+- **Classeur Excel** : Synthèse (une ligne par salarié : solde début, heures
+  sup, retraits, récup prises, en attente, solde fin, frais km, non
+  imputés), Par secteur, Heures sup, Récupérations, Frais km, et en option
+  un onglet par salarié. Heures en décimal (3,5 h), montants en euros.
+- **Relevé individuel** (`/salarie/releve/<id>?mois=AAAA-MM`) : solde au
+  début, chaque mouvement avec le solde courant, solde à la fin, frais km,
+  cadres de visa. Imprimable en PDF depuis le navigateur.
+- **État de frais km mensuel** (`/salarie/frais-km/etat/<id>?mois=…`) :
+  trajets, barème, total, visas salarié / direction / comptabilité.
+
+Le **secteur** d'une ligne est figé à sa saisie (colonne `secteur` sur les
+heures, demandes et trajets) : un changement de secteur ne réimpute pas le
+passé. Un solde « au jour J » = heures sup datées ≤ J − récupérations
+acceptées datées ≤ J.
+
+Droits : classeur complet `rh:view` ; frais km seuls `frais_km:suivi` ;
+relevé : la personne, `rh:view` ou `recup:decider` ; état de frais : la
+personne, `frais_km:suivi` ou `rh:view`. **Aucun export ne contient de coût
+horaire ni de salaire.**
 
 ## Droits
 
