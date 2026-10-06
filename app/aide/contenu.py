@@ -963,22 +963,24 @@ AIDE_PAGES: dict[str, dict] = {
         "etapes": [
             "Déclarez les heures le jour où vous les faites, en choisissant l'activité de votre agenda si c'est le cas.",
             "Pour récupérer, créez une demande et signez-la dans le cadre : elle part à l'assistant·e de direction.",
-            "Suivez l'avancement dans « Mes demandes en cours » jusqu'à la décision de la direction.",
+            "Suivez l'avancement dans « Mes demandes en cours » : vous recevez un e-mail quand elle est transmise à la direction, refusée ou décidée.",
+            "L'assistant·e et la direction voient vos heures dès leur saisie et peuvent les corriger, toujours avec une justification que vous voyez ici et recevez par e-mail.",
         ],
         "astuce": "Le solde peut être négatif : vous avez récupéré par avance, les prochaines heures sup le combleront.",
     },
     "salaries.demande_detail": {
         "titre": "Le détail d'une demande de récupération",
-        "resume": "Toutes les étapes de la demande, avec qui a signé et quand.",
-        "etapes": ["Chaque étape signée affiche la signature dessinée.", "Le bouton Imprimer en fait une pièce justificative."],
+        "resume": "Toutes les étapes de la demande : qui a signé, qui a refusé et pourquoi, qui a pris connaissance de la décision.",
+        "etapes": ["Chaque étape signée affiche la signature dessinée ; la prise de connaissance par l'assistant·e n'est pas signée.", "Le bouton Imprimer en fait une pièce justificative."],
     },
     "salaries.equipe_recuperations": {
         "titre": "Les demandes de récupération de l'équipe",
-        "resume": "L'assistant·e transmet les demandes et informe les salariés ; la direction décide.",
+        "resume": "L'assistant·e transmet ou refuse les demandes, la direction décide, l'assistant·e prend connaissance de la décision. Les heures sup déclarées se voient en direct et se corrigent ici.",
         "etapes": [
             "Filtrez sur « À traiter » pour ne voir que ce qui attend une action.",
-            "Ouvrez l'action de la ligne (Transmettre, Décider, Notifier) et signez dans le cadre.",
-            "Un refus doit toujours être motivé : le salarié verra le commentaire.",
+            "Ouvrez l'action de la ligne (Transmettre ou refuser, Décider) et signez dans le cadre ; « Pris connaissance » se fait d'un clic.",
+            "Une justification n'est demandée qu'en cas de refus ou de correction d'heures : le salarié la voit et la reçoit par e-mail.",
+            "Pour corriger des heures sup, indiquez la durée à retenir (plus ou moins que la déclaration, 0 pour retirer) : la déclaration d'origine reste visible.",
         ],
         "astuce": "En l'absence de l'assistant·e, la direction peut décider directement une demande qui n'a pas été transmise.",
     },
@@ -1391,8 +1393,8 @@ NOTICE: list[dict] = [
                 "Votre compte doit être relié à votre fiche salarié. Le lien se fait tout seul quand le nom est identique des deux côtés ; sinon, la direction le fait en un clic depuis Équipe salariée.",
             ]),
             ("Heures supplémentaires et récupérations", [
-                "Les heures supplémentaires sont créditées dès leur déclaration. La direction peut retirer une déclaration, toujours avec une justification visible du salarié.",
-                "Une demande de récupération suit le circuit : signée par le salarié → transmise par l'assistant·e de direction → décidée par la direction → notifiée au salarié. Chaque étape est signée.",
+                "Les heures supplémentaires sont créditées dès leur déclaration. L'assistant·e et la direction les voient en direct et peuvent les corriger, en plus ou en moins, toujours avec une justification visible du salarié.",
+                "Une demande de récupération suit le circuit : signée par le salarié → transmise (ou refusée, avec justification) par l'assistant·e de direction → acceptée ou refusée (avec justification) par la direction → prise en compte par l'assistant·e. Le salarié est prévenu par e-mail à chaque étape.",
             ]),
             ("Frais kilométriques", [
                 "Le montant est calculé au barème officiel, sur la distance cumulée de l'année avec le véhicule. La note est signée et peut porter un justificatif.",

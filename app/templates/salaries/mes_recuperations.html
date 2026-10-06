@@ -43,7 +43,7 @@
         </label>
         <label class="field-stack"><span>Précision</span><input class="in" name="motif" placeholder="Ex : réunion de quartier qui a débordé"></label>
         <div><button class="btn ok" type="submit">Enregistrer</button></div>
-        <p class="muted" style="font-size:.8rem;margin:0;">Pas de validation : les heures sont créditées tout de suite. La direction les voit et peut les retirer, avec justification.</p>
+        <p class="muted" style="font-size:.8rem;margin:0;">Pas de validation : les heures sont créditées tout de suite. L'assistant·e et la direction les voient et peuvent les corriger (en plus ou en moins) avec une justification ; tu es prévenu·e par e-mail.</p>
       </form>
     </section>
 
@@ -108,9 +108,10 @@
         {% for h in heures %}
           <tr>
             <td>{{ h.date_travail.strftime('%d/%m/%Y') }}</td>
-            <td {% if h.minutes < 0 %}style="color:var(--danger,#dc2626);"{% endif %}>{{ es.format_minutes(h.minutes) }}</td>
+            <td {% if h.minutes < 0 %}style="color:var(--danger,#dc2626);"{% endif %}>{{ '+' if h.est_ajustement and h.minutes > 0 }}{{ es.format_minutes(h.minutes) }}</td>
             <td>
-              {% if h.est_ajustement %}<strong>{{ 'Retrait par toi-même' if h.par_interesse else 'Retrait par la direction' }}</strong>{% if h.commentaire_direction %} : {{ h.commentaire_direction }}{% endif %}
+              {% if h.est_ajustement %}<strong>{{ h.motif or 'Correction' }}</strong>
+                <div class="es-lien">par {{ 'toi-même' if h.par_interesse else (h.saisi_par.nom if h.saisi_par else 'la direction') }}{% if h.commentaire_direction %} : <em>{{ h.commentaire_direction }}</em>{% endif %}</div>
               {% else %}{{ h.motif or '' }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}{% endif %}
             </td>
           </tr>

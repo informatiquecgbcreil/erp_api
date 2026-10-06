@@ -7,8 +7,8 @@
     <div class="page-title-wrap">
       <h1 class="page-title">📥 Demandes de récupération de l'équipe</h1>
       <p class="page-subtitle">
-        {% if peut_transmettre and not peut_decider %}Tu transmets les demandes à la direction et tu informes les salariés de la décision.
-        {% elif peut_decider %}Tu décides des récupérations ; tu peux aussi décider sans attendre la transmission.
+        {% if peut_transmettre and not peut_decider %}Tu transmets les demandes à la direction ou tu les refuses (avec une justification), puis tu prends connaissance de la décision. Le salarié est prévenu par e-mail à chaque étape.
+        {% elif peut_decider %}Tu décides des récupérations ; tu peux aussi décider sans attendre la transmission. Le salarié et l'assistant·e sont prévenus par e-mail.
         {% endif %}
       </p>
     </div>
@@ -18,7 +18,7 @@
   <div class="es-kpis">
     {% if compteurs.a_transmettre is defined %}<a class="es-kpi" data-tone="{{ 'warn' if compteurs.a_transmettre else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='soumise') }}"><strong>{{ compteurs.a_transmettre }}</strong><span>À transmettre</span></a>{% endif %}
     {% if compteurs.a_decider is defined %}<a class="es-kpi" data-tone="{{ 'warn' if compteurs.a_decider else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='transmise') }}"><strong>{{ compteurs.a_decider }}</strong><span>À décider</span></a>{% endif %}
-    {% if compteurs.a_notifier is defined %}<a class="es-kpi" data-tone="{{ 'warn' if compteurs.a_notifier else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='a_traiter') }}"><strong>{{ compteurs.a_notifier }}</strong><span>Décisions à notifier</span></a>{% endif %}
+    {% if compteurs.a_notifier is defined %}<a class="es-kpi" data-tone="{{ 'warn' if compteurs.a_notifier else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='a_traiter') }}"><strong>{{ compteurs.a_notifier }}</strong><span>Décisions à prendre en compte</span></a>{% endif %}
     {% if compteurs.decisions_par_interesse %}<a class="es-kpi" data-tone="warn" href="{{ url_for('salaries.equipe_recuperations', statut='par_interesse') }}"><strong>{{ compteurs.decisions_par_interesse }}</strong><span>Décidées par l'intéressé·e cette année</span></a>{% endif %}
     {% if compteurs.heures_30j is defined %}<div class="es-kpi"><strong>{{ es.format_minutes(compteurs.heures_30j) }}</strong><span>Heures sup déclarées · 30 jours</span></div>{% endif %}
   </div>
@@ -57,12 +57,15 @@
           <td {% if solde < d.minutes and d.statut in ('soumise','transmise') %}style="color:var(--danger,#dc2626);" title="La demande dépasse le solde : récupération par avance"{% endif %}>{{ es.format_minutes(solde) }}</td>
           <td>{{ m.statut(d, es) }}</td>
           <td class="es-actions-ligne">
-            {% if d.statut == 'soumise' and peut_transmettre %}
-              <details><summary>✍️ Transmettre</summary>
-                <form method="post" action="{{ url_for('salaries.transmettre_demande', demande_id=d.id) }}">
+            {% if d.statut == 'soumise' and peut_transmettre and not peut_decider %}
+              <details><summary>✍️ Transmettre ou refuser</summary>
+                <form method="post" action="{{ url_for('salaries.transmettre_demande', demande_id=d.id) }}" class="stack" style="gap:6px;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  {{ m.signature("Signe pour transmettre à la direction") }}
-                  <button class="btn ok" type="submit">Transmettre</button>
+                  <label><input type="radio" name="decision" value="transmettre" checked> Transmettre à la direction</label>
+                  <label><input type="radio" name="decision" value="refuser"> Refuser</label>
+                  <input class="in" name="commentaire" placeholder="Justification (obligatoire si refus)">
+                  {{ m.signature("Signe ton choix") }}
+                  <button class="btn ok" type="submit">Valider</button>
                 </form>
               </details>
             {% endif %}
@@ -75,20 +78,17 @@
                   {% endif %}
                   <label><input type="radio" name="decision" value="accepter" checked> Accepter</label>
                   <label><input type="radio" name="decision" value="refuser"> Refuser</label>
-                  <input class="in" name="commentaire" placeholder="Commentaire (obligatoire si refus)">
+                  <input class="in" name="commentaire" placeholder="Justification (obligatoire si refus)">
                   {{ m.signature("Signe la décision") }}
                   <button class="btn ok" type="submit">Enregistrer la décision</button>
                 </form>
               </details>
             {% endif %}
             {% if d.statut in ('acceptee', 'refusee') and not d.notifiee_le and peut_transmettre %}
-              <details><summary>📣 Notifier</summary>
-                <form method="post" action="{{ url_for('salaries.notifier_demande', demande_id=d.id) }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  {{ m.signature("Signe pour attester que le salarié est informé") }}
-                  <button class="btn ok" type="submit">C'est fait</button>
-                </form>
-              </details>
+              <form method="post" action="{{ url_for('salaries.prendre_connaissance', demande_id=d.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn ok" type="submit" title="Le salarié a déjà reçu la décision par e-mail">✔ Pris connaissance</button>
+              </form>
             {% endif %}
           </td>
         </tr>
@@ -99,38 +99,46 @@
     </table></div>
   </section>
 
-  {% if peut_decider %}
   <section class="section-card">
     <h2 class="section-title">Heures sup déclarées ces 30 derniers jours</h2>
-    <p class="muted" style="margin-top:0;">Pour information : elles sont créditées sans validation. Tu peux retirer une déclaration, avec une justification que le salarié verra.</p>
+    <p class="muted" style="margin-top:0;">Créditées dès leur saisie. Tu peux corriger une déclaration dans un sens ou dans l'autre (0 = retirer), avec une justification : le salarié la voit et la reçoit par e-mail. La déclaration d'origine reste visible.</p>
     <div class="tablewrap clean"><table>
-      <thead><tr><th>Salarié</th><th>Le</th><th>Durée</th><th>Pour</th><th></th></tr></thead>
+      <thead><tr><th>Salarié</th><th>Le</th><th>Déclaré</th><th>En vigueur</th><th>Pour</th><th></th></tr></thead>
       <tbody>
       {% for h in heures_recentes %}
+        {% set en_vigueur = effectives.get(h.id, h.minutes) %}
         <tr>
           <td>{{ h.salarie.nom_complet }}</td>
           <td>{{ h.date_travail.strftime('%d/%m/%Y') }}</td>
           <td>{{ es.format_minutes(h.minutes) }}</td>
-          <td>{% if h.est_ajustement %}<em>Retrait : {{ h.commentaire_direction or '' }}</em>{% if h.par_interesse %} <span class="status-badge status-warning">⚠️ par l'intéressé·e</span>{% endif %}{% else %}{{ h.motif }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}{% endif %}</td>
+          <td>{% if en_vigueur != h.minutes %}<strong>{{ es.format_minutes(en_vigueur) }}</strong>{% else %}{{ es.format_minutes(en_vigueur) }}{% endif %}</td>
           <td>
-            {% if not h.est_ajustement and h.minutes > 0 %}
-            <details><summary>Retirer</summary>
-              <form method="post" action="{{ url_for('salaries.retirer_heures', heure_id=h.id) }}" class="inline-actions">
+            {{ h.motif or '' }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}
+            {% for c in corrections.get(h.id, []) %}
+              <div class="es-lien">✏️ {{ c.motif }} par {{ c.saisi_par.nom if c.saisi_par else '?' }} le {{ c.created_at.strftime('%d/%m/%Y') }} : <em>{{ c.commentaire_direction or '' }}</em>{% if c.par_interesse %} <span class="status-badge status-warning">⚠️ par l'intéressé·e</span>{% endif %}</div>
+            {% endfor %}
+          </td>
+          <td>
+            <details><summary>Corriger</summary>
+              <form method="post" action="{{ url_for('salaries.corriger_heures', heure_id=h.id) }}" class="stack" style="gap:6px;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input class="in" name="commentaire" placeholder="Justification" required>
-                <button class="btn danger" type="submit">Retirer</button>
+                {% if h.salarie.user_id == current_user.id %}
+                  <p class="status-badge status-warning" style="margin:0;">Ce sont tes propres heures : la correction sera marquée et tracée au journal.</p>
+                {% endif %}
+                <label class="field-stack slim"><span>Durée retenue (0 = retirer)</span>
+                  <input class="in" name="duree" value="{{ es.format_minutes(en_vigueur) }}" required></label>
+                <input class="in" name="commentaire" placeholder="Justification (obligatoire)" required>
+                <button class="btn" type="submit">Enregistrer la correction</button>
               </form>
             </details>
-            {% endif %}
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="muted">Aucune déclaration récente.</td></tr>
+        <tr><td colspan="6" class="muted">Aucune déclaration récente.</td></tr>
       {% endfor %}
       </tbody>
     </table></div>
   </section>
-  {% endif %}
 </div>
 {% endblock %}
 {% block scripts_extra %}<script src="{{ url_for('static', filename='js/signature-rh.js') }}"></script>{% endblock %}

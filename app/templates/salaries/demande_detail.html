@@ -20,29 +20,41 @@
   </div>
 
   <section class="section-card">
-    <h2 class="section-title">Parcours signé</h2>
+    <h2 class="section-title">Parcours</h2>
+    {% set refus_relais = d.statut == 'refusee' and d.refusee_par_relais %}
     {% set etapes = [
       ("Demande signée par le salarié", d.signature_salarie_id),
-      ("Transmise par l'assistant·e de direction", d.signature_transmission_id),
+      ("Refusée par l'assistant·e de direction" if refus_relais else "Transmise par l'assistant·e de direction", d.signature_transmission_id),
       ("Décision de la direction", d.signature_decision_id),
-      ("Décision notifiée au salarié", d.signature_notification_id),
     ] %}
     <div class="tablewrap clean"><table>
       <thead><tr><th>Étape</th><th>Par</th><th>Le</th><th>Signature</th></tr></thead>
       <tbody>
       {% for libelle, sig_id in etapes %}
         {% set sig = signatures.get(sig_id) if sig_id else none %}
+        {% if not (refus_relais and loop.index == 3) %}
         <tr>
           <td>{{ libelle }}</td>
           <td>{{ sig.signataire_nom if sig else '—' }}</td>
           <td>{{ sig.created_at.strftime('%d/%m/%Y %H:%M') if sig else '—' }}</td>
           <td>{% if sig and sig.chemin %}<img src="{{ url_for('salaries.signature_image', signature_id=sig.id) }}" alt="Signature de {{ sig.signataire_nom }}" style="max-height:60px;background:#fff;border:1px solid var(--border,#e3e6ef);border-radius:6px;">{% elif sig %}<span class="muted">Signée par case à cocher</span>{% else %}—{% endif %}</td>
         </tr>
+        {% endif %}
       {% endfor %}
+      {% if not refus_relais %}
+        {% set sig_ancienne = signatures.get(d.signature_notification_id) if d.signature_notification_id else none %}
+        <tr>
+          <td>Pris connaissance par l'assistant·e</td>
+          <td>{{ d.notifiee_par.nom if d.notifiee_par else '—' }}</td>
+          <td>{{ d.notifiee_le.strftime('%d/%m/%Y %H:%M') if d.notifiee_le else '—' }}</td>
+          <td>{% if sig_ancienne and sig_ancienne.chemin %}<img src="{{ url_for('salaries.signature_image', signature_id=sig_ancienne.id) }}" alt="Signature de {{ sig_ancienne.signataire_nom }}" style="max-height:60px;background:#fff;border:1px solid var(--border,#e3e6ef);border-radius:6px;">{% else %}<span class="muted">{{ 'Sans signature' if d.notifiee_le else '—' }}</span>{% endif %}</td>
+        </tr>
+      {% endif %}
       </tbody>
     </table></div>
+    <p class="muted" style="font-size:.85rem;">Le salarié est prévenu par e-mail à chaque étape : transmission, refus, décision.</p>
     {% if d.motif %}<p><strong>Motif :</strong> {{ d.motif }}</p>{% endif %}
-    {% if d.commentaire_direction %}<p><strong>Commentaire de la direction :</strong> {{ d.commentaire_direction }}</p>{% endif %}
+    {% if d.commentaire_direction %}<p><strong>{{ 'Justification du refus' if d.statut == 'refusee' else 'Commentaire' }}{% if d.statut == 'refusee' %} ({{ 'assistant·e' if d.refusee_par_relais else 'direction' }}){% endif %} :</strong> {{ d.commentaire_direction }}</p>{% endif %}
     {% if d.decision_par_interesse %}
       <p class="status-badge status-warning">⚠️ Décision prise par la personne qui a fait la demande. Elle est autorisée, mais signalée ici, dans le journal (action « rh.recup_auto_decision ») et sur l'accueil de la direction, pour rester contrôlable.</p>
     {% endif %}
@@ -56,7 +68,7 @@
       <h2 class="section-title">Heures sup récentes du salarié</h2>
       <ul style="margin:0;padding-left:18px;">
         {% for h in heures %}
-          <li>{{ h.date_travail.strftime('%d/%m/%Y') }} · {{ es.format_minutes(h.minutes) }} — {{ h.motif or '' }}{% set lien = es.libelle_lien(h) %}{% if lien %} <span class="es-lien">🔗 {{ lien }}</span>{% endif %}</li>
+          <li>{{ h.date_travail.strftime('%d/%m/%Y') }} · {{ es.format_minutes(h.minutes) }} — {{ h.motif or '' }}{% if h.est_ajustement and h.commentaire_direction %} : <em>{{ h.commentaire_direction }}</em>{% endif %}{% set lien = es.libelle_lien(h) %}{% if lien %} <span class="es-lien">🔗 {{ lien }}</span>{% endif %}</li>
         {% else %}<li class="muted">Aucune.</li>{% endfor %}
       </ul>
     </section>

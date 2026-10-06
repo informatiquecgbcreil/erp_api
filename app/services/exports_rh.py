@@ -27,7 +27,7 @@ from datetime import date, timedelta
 from io import BytesIO
 
 from app.extensions import db
-from app.services.espace_salarie import STATUTS_RECUP, format_euros, format_minutes, libelle_lien
+from app.services.espace_salarie import STATUTS_RECUP, format_euros, format_minutes, libelle_lien, statut_recup
 
 
 @dataclass
@@ -146,7 +146,8 @@ def synthese(f: Filtres) -> dict:
         ligne = {
             "salarie": s,
             "heures_sup": sum(x.minutes for x in h if not x.est_ajustement),
-            "retraits": -sum(x.minutes for x in h if x.est_ajustement),
+            # Corrections de l'équipe de direction, signées (+ ajout, − retrait).
+            "corrections": sum(x.minutes for x in h if x.est_ajustement),
             "recup_prises": sum(x.minutes for x in r if x.statut == "acceptee"),
             "recup_en_attente": sum(x.minutes for x in r if x.statut in ("soumise", "transmise")),
             "solde_debut": solde_au(s.id, veille) if f.recup else None,
@@ -164,7 +165,7 @@ def synthese(f: Filtres) -> dict:
 
     for x in lignes_h:
         d = par_secteur.setdefault(secteur_de(x), _total_vide())
-        d["heures_sup" if not x.est_ajustement else "retraits"] += abs(x.minutes)
+        d["heures_sup" if not x.est_ajustement else "corrections"] += x.minutes
     for x in lignes_r:
         if x.statut == "acceptee":
             par_secteur.setdefault(secteur_de(x), _total_vide())["recup_prises"] += x.minutes
@@ -178,7 +179,7 @@ def synthese(f: Filtres) -> dict:
 
 
 def _total_vide() -> dict:
-    return {"heures_sup": 0, "retraits": 0, "recup_prises": 0, "km_nb": 0, "km": 0, "km_montant": 0}
+    return {"heures_sup": 0, "corrections": 0, "recup_prises": 0, "km_nb": 0, "km": 0, "km_montant": 0}
 
 
 def releve(salarie, du: date, au: date) -> dict:
@@ -187,8 +188,8 @@ def releve(salarie, du: date, au: date) -> dict:
     debut = solde_au(salarie.id, du - timedelta(days=1))
     mouvements = []
     for h in heures(f):
-        libelle = (f"Retrait par {'toi-même' if h.par_interesse else 'la direction'} : "
-                   f"{h.commentaire_direction or ''}" if h.est_ajustement else f"Heures sup — {h.motif or ''}")
+        libelle = (f"{h.motif or 'Correction'} par {_auteur_correction(h)} : {h.commentaire_direction or ''}"
+                   if h.est_ajustement else f"Heures sup — {h.motif or ''}")
         lien = libelle_lien(h)
         mouvements.append({"date": h.date_travail, "libelle": libelle + (f" ({lien})" if lien else ""),
                            "minutes": h.minutes, "cle": (h.date_travail, 0, h.id)})
@@ -207,7 +208,13 @@ def releve(salarie, du: date, au: date) -> dict:
         m["solde"] = courant
     return {"salarie": salarie, "du": du, "au": au, "solde_debut": debut, "solde_fin": courant,
             "mouvements": mouvements, "autres_demandes": autres, "frais_km": frais_km(f),
-            "statuts": STATUTS_RECUP}
+            "statuts": STATUTS_RECUP, "statut_recup": statut_recup}
+
+
+def _auteur_correction(h) -> str:
+    if h.par_interesse:
+        return "l'intéressé·e"
+    return h.saisi_par.nom if h.saisi_par else "la direction"
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +280,7 @@ def classeur(f: Filtres) -> bytes:
 
     entetes = ["Salarié", "Secteur (fiche)"]
     if f.recup:
-        entetes += ["Solde au début (h)", "Heures sup (h)", "Retraits (h)", "Récup prises (h)",
+        entetes += ["Solde au début (h)", "Heures sup (h)", "Corrections (h)", "Récup prises (h)",
                     "Récup en attente (h)", "Solde à la fin (h)"]
     if f.km:
         entetes += ["Notes km", "Km", "Frais km (€)", "Dont non imputés (€)"]
@@ -281,7 +288,7 @@ def classeur(f: Filtres) -> bytes:
     for x in donnees["par_salarie"]:
         ligne = [x["salarie"].nom_complet, x["salarie"].secteur or ""]
         if f.recup:
-            ligne += [_heures_decimales(x[k]) for k in ("solde_debut", "heures_sup", "retraits", "recup_prises",
+            ligne += [_heures_decimales(x[k]) for k in ("solde_debut", "heures_sup", "corrections", "recup_prises",
                                                          "recup_en_attente", "solde_fin")]
         if f.km:
             ligne += [x["km_nb"], x["km"], _euros(x["km_montant"]), _euros(x["km_a_imputer"])]
@@ -296,13 +303,13 @@ def classeur(f: Filtres) -> bytes:
 
     entetes_s, lignes_s, formats_s = ["Secteur"], [], {}
     if f.recup:
-        entetes_s += ["Heures sup (h)", "Retraits (h)", "Récup prises (h)"]
+        entetes_s += ["Heures sup (h)", "Corrections (h)", "Récup prises (h)"]
     if f.km:
         entetes_s += ["Notes km", "Km", "Frais km (€)"]
     for secteur, t in donnees["par_secteur"].items():
         ligne = [secteur]
         if f.recup:
-            ligne += [_heures_decimales(t["heures_sup"]), _heures_decimales(t["retraits"]),
+            ligne += [_heures_decimales(t["heures_sup"]), _heures_decimales(t["corrections"]),
                       _heures_decimales(t["recup_prises"])]
         if f.km:
             ligne += [t["km_nb"], t["km"], _euros(t["km_montant"])]
@@ -315,16 +322,19 @@ def classeur(f: Filtres) -> bytes:
              "Secteur figé au moment de la saisie de chaque ligne.")
 
     if f.recup:
-        _feuille(wb, "Heures sup", ["Date", "Salarié", "Secteur", "Heures", "Nature", "Motif", "Activité liée"],
+        _feuille(wb, "Heures sup", ["Date", "Salarié", "Secteur", "Heures", "Nature", "Par", "Motif / justification",
+                                     "Activité liée"],
                  [[h.date_travail, h.salarie.nom_complet, h.secteur or "", _heures_decimales(h.minutes),
-                   ("Retrait (par l'intéressé·e)" if h.par_interesse else "Retrait") if h.est_ajustement else "Déclaration",
+                   (f"{h.motif or 'Correction'}" + (" (par l'intéressé·e)" if h.par_interesse else ""))
+                   if h.est_ajustement else "Déclaration",
+                   (h.saisi_par.nom if h.saisi_par else ""),
                    (h.commentaire_direction if h.est_ajustement else h.motif) or "", libelle_lien(h) or ""]
                   for h in donnees["heures"]],
-                 [12, 26, 16, 10, 22, 40, 36], {1: "DD/MM/YYYY", 4: FORMAT_H})
-        _feuille(wb, "Récupérations", ["Date", "Salarié", "Secteur", "Heures", "Statut", "Notifiée",
-                                        "Décidée par l'intéressé·e", "Motif", "Commentaire direction"],
+                 [12, 26, 16, 10, 26, 20, 40, 36], {1: "DD/MM/YYYY", 4: FORMAT_H})
+        _feuille(wb, "Récupérations", ["Date", "Salarié", "Secteur", "Heures", "Statut", "Pris connaissance",
+                                        "Décidée par l'intéressé·e", "Motif", "Justification / commentaire"],
                  [[d.date_recuperation, d.salarie.nom_complet, d.secteur or "", _heures_decimales(d.minutes),
-                   STATUTS_RECUP.get(d.statut, {}).get("label", d.statut), "oui" if d.notifiee_le else "non",
+                   statut_recup(d)["label"], "oui" if d.notifiee_le else "non",
                    "oui" if d.decision_par_interesse else "", d.motif or "", d.commentaire_direction or ""]
                   for d in donnees["recuperations"]],
                  [12, 26, 16, 10, 24, 10, 14, 30, 36], {1: "DD/MM/YYYY", 4: FORMAT_H})

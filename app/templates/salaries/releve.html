@@ -42,7 +42,7 @@
     </table></div>
     {% if r.autres_demandes %}
       <p class="es-lien">Autres demandes de la période (sans effet sur le solde) :
-        {% for d in r.autres_demandes %}{{ d.date_recuperation.strftime('%d/%m') }} {{ es.format_minutes(d.minutes) }} — {{ r.statuts.get(d.statut, {}).get('label', d.statut) }}{% if not loop.last %} ; {% endif %}{% endfor %}</p>
+        {% for d in r.autres_demandes %}{{ d.date_recuperation.strftime('%d/%m') }} {{ es.format_minutes(d.minutes) }} — {{ r.statut_recup(d).label }}{% if not loop.last %} ; {% endif %}{% endfor %}</p>
     {% endif %}
   </section>
 
@@ -60,6 +60,6 @@
     <div><strong>Vu le salarié</strong><br><span class="muted">Date et signature</span></div>
     <div><strong>Vu la direction</strong><br><span class="muted">Date et signature</span></div>
   </div>
-  <p class="es-lien">Édité le {{ r.au.today().strftime('%d/%m/%Y') }}. Solde = heures supplémentaires (retraits déduits) − récupérations acceptées, à la date de chaque mouvement.</p>
+  <p class="es-lien">Édité le {{ r.au.today().strftime('%d/%m/%Y') }}. Solde = heures supplémentaires (corrections comprises) − récupérations acceptées, à la date de chaque mouvement.</p>
 </div>
 {% endblock %}

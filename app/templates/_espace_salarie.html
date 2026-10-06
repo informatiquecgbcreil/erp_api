@@ -96,7 +96,7 @@
     {% endif %}
     {% if eq.a_notifier is defined %}
       <a class="esd-signal" data-tone="{{ 'warn' if eq.a_notifier else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='a_traiter') }}">
-        <span class="esd-signal__valeur">{{ eq.a_notifier }}</span><span class="esd-signal__label">Décision{{ 's' if eq.a_notifier > 1 }} à notifier</span><span class="esd-signal__detail">Le salarié doit être informé</span></a>
+        <span class="esd-signal__valeur">{{ eq.a_notifier }}</span><span class="esd-signal__label">Décision{{ 's' if eq.a_notifier > 1 }} à prendre en compte</span><span class="esd-signal__detail">Le salarié a reçu l'e-mail ; à toi d'en prendre connaissance</span></a>
     {% endif %}
     {% if eq.decisions_par_interesse %}
       <a class="esd-signal" data-tone="warn" href="{{ url_for('salaries.equipe_recuperations', statut='par_interesse') }}">

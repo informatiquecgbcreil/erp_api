@@ -17,7 +17,7 @@ Le tout appartient au module **« Ressources humaines »**
 | Logique partagée (soldes, liens, signatures, compteurs) | `app/services/espace_salarie.py` |
 | Calcul au barème kilométrique | `app/services/frais_km.py` |
 | Modèles | `app/models.py`, section « ESPACE SALARIÉ » |
-| Migrations | `migrations/versions/a9d4e6f8b2c1_espace_salarie.py`, `b3f5a7c9d1e2_decision_par_interesse.py`, `c4a6b8d0e2f3_courriels_et_secteur_rh.py` |
+| Migrations | `migrations/versions/a9d4e6f8b2c1_espace_salarie.py`, `b3f5a7c9d1e2_decision_par_interesse.py`, `c4a6b8d0e2f3_courriels_et_secteur_rh.py`, `d5b7c9e1f3a4_refus_par_relais.py` |
 | E-mails | `app/services/courriels_rh.py` (+ types « rh_a_traiter », « frais_km » dans `app/services/notifications.py`) |
 | Exports | `app/services/exports_rh.py`, `app/salaries/exports.py` |
 | Gabarits | `app/templates/salaries/`, `_espace_salarie.html`, `_dashboard_onglets.html` |
@@ -47,23 +47,43 @@ Le tout appartient au module **« Ressources humaines »**
 
 ## Circuit des récupérations
 
-`brouillon` → (salarié signe) `soumise` → (assistant·e signe) `transmise` →
-(direction signe) `acceptee` / `refusee` → (assistant·e signe) notification
-(`notifiee_le`). La direction peut décider depuis `soumise` (assistant·e
-absent·e). Refus motivé obligatoire. Le salarié peut annuler tant que rien
-n'est décidé. Solde = heures sup (ajustements négatifs compris) −
-récupérations **acceptées** ; il peut être négatif (récupération par avance).
+1. Le salarié déclare ses heures sup : créditées tout de suite, visibles
+   **en direct** par l'assistant·e et la direction (boîte « Demandes de
+   l'équipe », 30 derniers jours), qui peuvent les **corriger dans un sens
+   ou dans l'autre** (0 = retrait), justification obligatoire. La
+   déclaration d'origine n'est jamais modifiée : la correction est une ligne
+   d'ajustement (`est_ajustement`, `origine_id`) qui porte la différence avec
+   la durée en vigueur. Le salarié reçoit un e-mail avec la justification.
+2. Il demande une récupération : `brouillon` → (il signe) `soumise`.
+   L'assistant·e reçoit un e-mail.
+3. L'assistant·e signe et **transmet** (`transmise` : la direction reçoit un
+   e-mail, le salarié aussi) ou **refuse** avec une justification
+   (`refusee` + `refusee_par_relais` : le salarié reçoit un e-mail avec la
+   justification ; circuit terminé).
+4. La direction signe et **accepte**, ou **refuse** avec une justification.
+   Le salarié (avec la justification en cas de refus) et l'assistant·e
+   reçoivent un e-mail. La direction peut décider depuis `soumise`
+   (assistant·e absent·e).
+5. L'assistant·e marque la décision **« Pris connaissance »** (`notifiee_le`,
+   `notifiee_par_user_id`), d'un clic, sans signature : le salarié est déjà
+   prévenu par l'e-mail. (Les demandes plus anciennes peuvent porter une
+   signature de notification : elle reste affichée.)
+
+La justification n'est obligatoire qu'en cas de refus ou de correction. Le
+salarié peut annuler tant que rien n'est décidé. Solde = heures sup
+(corrections comprises) − récupérations **acceptées** ; il peut être négatif
+(récupération par avance).
 
 **Décider pour soi-même.** Tout le monde a un espace salarié, direction
-comprise : la direction peut donc décider de SA propre demande (et retirer
-des heures de SON solde). C'est permis — une petite structure n'a pas
+comprise : la direction peut donc décider de SA propre demande (et corriger
+SES propres heures). C'est permis — une petite structure n'a pas
 toujours d'autre décideur — mais jamais discret : la demande porte
 `decision_par_interesse` (badge « décidée par l'intéressé·e », filtre dédié
 dans la boîte de l'équipe, compteur annuel sur l'accueil de la direction) et
 le journal enregistre une action distincte (`rh.recup_auto_decision`,
-`rh.heures_retirees_par_interesse`). De quoi permettre un contrôle par le
-bureau ou le CA. L'assistant·e peut transmettre et notifier ses propres
-demandes (simple relais, sans pouvoir de décision).
+`rh.heures_corrigees_par_interesse`). De quoi permettre un contrôle par le
+bureau ou le CA. L'assistant·e peut transmettre ou refuser ses propres
+demandes et corriger ses propres heures : même marquage.
 
 Les compteurs « à traiter » sont calculés à partir des statuts : il n'y a pas
 de liste de tâches parallèle à maintenir (l'ancienne table `tasks` de Récup
@@ -89,9 +109,10 @@ Deux niveaux, qui ne se remplacent pas :
    | Événement | Destinataire |
    |---|---|
    | demande de récupération signée | l'assistant·e (droit `recup:transmettre` sans `recup:decider`) ; à défaut la direction |
-   | demande transmise | la direction (`recup:decider`) |
-   | décision prise | le salarié |
-   | heures sup retirées | le salarié |
+   | demande transmise | la direction (`recup:decider`) et le salarié |
+   | demande refusée par l'assistant·e | le salarié, avec la justification |
+   | décision de la direction | le salarié (avec la justification si refus) et l'assistant·e |
+   | heures sup corrigées ou retirées | le salarié, avec la justification |
    | document partagé | chaque personne de la liste d'accès |
 
    - L'e-mail est écrit dans la table `courriel_rh` **dans la transaction de
@@ -102,19 +123,21 @@ Deux niveaux, qui ne se remplacent pas :
      au plus 5 fois ; un e-mail non parti sous 7 jours expire (il n'aurait
      plus de sens). État de la file et bouton « Envoyer la file maintenant » :
      Administration → Notifications.
-   - Jamais l'auteur de l'action, jamais de donnée sensible (pas de
-     commentaire de refus, pas de document, pas de montant de salaire) : un
-     fait et un lien. Le lien pointe vers l'adresse publique configurée
-     (`ERP_PUBLIC_BASE_URL`), donc vers le réseau du centre.
+   - Jamais à l'auteur de l'action. Un fait, la justification quand il y en
+     a une (refus, correction : le salarié doit savoir pourquoi), et un
+     lien ; jamais de document ni de montant de salaire. Le lien pointe vers
+     l'adresse publique configurée (`ERP_PUBLIC_BASE_URL`), donc vers le
+     réseau du centre.
    - Chacun peut couper ces e-mails : Accueil → Espace salarié → « Mes
      e-mails » (table `preference_courriel_rh`) ; les badges restent.
-   - L'étape « notifier le salarié » signée par l'assistant·e est
-     **conservée** : l'e-mail prévient, la signature atteste.
+   - L'ancienne étape « notifier le salarié » signée par l'assistant·e est
+     devenue un simple **« Pris connaissance »** : c'est l'e-mail qui
+     prévient le salarié.
 
 2. **Récapitulatifs** dans Administration → Notifications (même mécanique
    que les autres types, rien d'actif par défaut) : « Récupérations en
-   souffrance » (demandes bloquées au-delà du délai, décisions non
-   notifiées, décisions par l'intéressé·e) et « Frais kilométriques »
+   souffrance » (demandes bloquées au-delà du délai, décisions dont
+   l'assistant·e n'a pas pris connaissance, décisions par l'intéressé·e) et « Frais kilométriques »
    (notes du mois, notes non passées en dépense).
 
 ## Exports (paie mensuelle)
@@ -123,7 +146,7 @@ Page « Exports RH » (menu de l'espace salarié, page RH). Période = un mois
 par défaut (ou du/au), filtres secteurs et salariés.
 
 - **Classeur Excel** : Synthèse (une ligne par salarié : solde début, heures
-  sup, retraits, récup prises, en attente, solde fin, frais km, non
+  sup, corrections signées (+ ajout, − retrait), récup prises, en attente, solde fin, frais km, non
   imputés), Par secteur, Heures sup, Récupérations, Frais km, et en option
   un onglet par salarié. Heures en décimal (3,5 h), montants en euros.
 - **Relevé individuel** (`/salarie/releve/<id>?mois=AAAA-MM`) : solde au
@@ -147,8 +170,8 @@ horaire ni de salaire.**
 | Permission | Rôle(s) par défaut | Ouvre |
 |---|---|---|
 | `salarie:espace` | toute l'équipe (y compris admin technique) | son propre espace |
-| `recup:transmettre` | assistant·e de direction, direction | transmettre, notifier |
-| `recup:decider` | direction | décider, retirer des heures sup |
+| `recup:transmettre` | assistant·e de direction, direction | transmettre ou refuser, prendre connaissance, corriger des heures sup |
+| `recup:decider` | direction | décider, corriger des heures sup |
 | `frais_km:suivi` | direction, finance | notes de l'équipe, passage en dépense (+ `depenses:create`) |
 | `frais_km:baremes` | direction, finance, admin technique | barèmes |
 | `salaires:gerer` | direction | profils salariaux — **ne se donne que par qui l'a** |

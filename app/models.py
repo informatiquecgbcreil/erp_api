@@ -3078,10 +3078,14 @@ class HeureSupplementaire(db.Model):
 
 
 class DemandeRecuperation(db.Model):
-    """Demande de récupération : salarié → assistant·e → direction → notification.
+    """Demande de récupération : salarié → assistant·e → direction → prise de connaissance.
 
-    Statuts : brouillon, soumise, transmise, acceptee, refusee, annulee. Une
-    décision notifiée garde son statut et reçoit ``notifiee_le``."""
+    Statuts : brouillon, soumise, transmise, acceptee, refusee, annulee.
+    L'assistant·e transmet à la direction ou refuse (``refusee_par_relais``) ;
+    la direction accepte ou refuse. Un refus est toujours justifié
+    (``commentaire_direction``, quel que soit l'auteur). Après la décision de
+    la direction, l'assistant·e marque « pris connaissance » (``notifiee_le``,
+    sans signature)."""
 
     __tablename__ = "demande_recuperation"
 
@@ -3102,6 +3106,8 @@ class DemandeRecuperation(db.Model):
     #: Décision prise par la personne elle-même (ex. la direction sur sa propre
     #: demande) : permise, mais toujours signalée et contrôlable.
     decision_par_interesse = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    #: Refus prononcé par l'assistant·e (premier niveau), sans passage en direction.
+    refusee_par_relais = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     notifiee_par_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     notifiee_le = db.Column(db.DateTime, nullable=True)
 
