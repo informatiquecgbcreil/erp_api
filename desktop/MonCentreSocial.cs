@@ -66,8 +66,14 @@ static class Program {
                         MessageBox.Show("Rien n'a été modifié.\n\nPour repartir d'une installation vierge, lancez « MonCentreSocial.exe --reset » en administrateur : l'installation actuelle sera mise de côté (renommée, rien n'est effacé), puis l'assistant s'ouvrira.", "Mon Centre Social", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 1;
                     }
+                    // L'avis du tunnel ne sert que si sa cible change : reprise d'une
+                    // ancienne installation, ou port kiosque réattribué. Après une
+                    // simple mise à jour, il faisait croire qu'il fallait refaire le tunnel.
+                    bool reprise = MigrationIncomplete(existing);
+                    string kioskAvant = existing.ContainsKey("kiosk_http_port") ? Convert.ToString(existing["kiosk_http_port"]) : "";
                     FinishInstallation(existing);
-                    if (TunnelNotice(existing).Length > 0) MessageBox.Show(TunnelNotice(existing), "Accès hors les murs", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    string kioskApres = existing.ContainsKey("kiosk_http_port") ? Convert.ToString(existing["kiosk_http_port"]) : "";
+                    if ((reprise || kioskAvant != kioskApres) && TunnelNotice(existing).Length > 0) MessageBox.Show(TunnelNotice(existing), "Accès hors les murs", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return 0;
                 }
                 using (var choice = new InstallationChoice()) {
