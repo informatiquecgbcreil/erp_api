@@ -2,7 +2,8 @@
 
 - les e-mails partent vers la bonne personne, jamais vers l'auteur de
   l'action ; un serveur absent ou en panne ne bloque rien (file + réessais) ;
-  chacun peut couper ses e-mails ; aucune donnée sensible dans le corps ;
+  chacun peut couper ses e-mails ; le salarié reçoit la justification d'un
+  refus ou d'une correction, jamais d'autre donnée sensible ;
 - le secteur d'une ligne est celui du moment de la saisie ;
 - le classeur Excel, le relevé et l'état de frais donnent les bons chiffres,
   aux bonnes personnes, sans jamais un coût horaire.
@@ -100,16 +101,55 @@ def test_le_circuit_previent_la_bonne_personne_a_chaque_etape(app, admin_client,
 
     assistant.post(f"/salarie/equipe/recuperations/{did}/transmettre", data={"signature_data": signature_tracee()})
     assert any("à décider" in m[1] for m in _pour(smtp, ADMIN_EMAIL))
+    transmise = _pour(smtp, email_sal)
+    assert len(transmise) == 1 and "transmise à la direction" in transmise[0][1]
 
+    recus_assistant = len(_pour(smtp, email_a))
     admin_client.post(f"/salarie/equipe/recuperations/{did}/decider", data={
-        "decision": "refuser", "commentaire": "Motif très confidentiel", "signature_data": signature_tracee()})
-    decision = _pour(smtp, email_sal)
+        "decision": "refuser", "commentaire": "Trop de monde absent ce jour-là", "signature_data": signature_tracee()})
+    decision = _pour(smtp, email_sal)[1:]
     assert len(decision) == 1 and "refusée" in decision[0][1]
-    assert "Motif très confidentiel" not in decision[0][2], "le commentaire se lit dans l'application"
+    assert "Trop de monde absent ce jour-là" in decision[0][2], "le salarié doit savoir pourquoi"
     assert f"/salarie/recuperations/demandes/{did}" in decision[0][2]
+    pour_assistant = _pour(smtp, email_a)[recus_assistant:]
+    assert len(pour_assistant) == 1 and "Décision" in pour_assistant[0][1]
+    assert "prendre connaissance" in pour_assistant[0][2]
     with app.app_context():
         from app.models import CourrielRh
         assert CourrielRh.query.filter_by(objet_id=did, envoye_le=None).count() == 0
+
+
+def test_refus_par_l_assistant_previent_le_salarie_pas_la_direction(app, admin_client, smtp):
+    client, sid, uid, email_sal = _salarie(app)
+    email_a, _ = _compte(app, f"Assist {_suf()}", "assistant_direction")
+    assistant = _client(app, email_a)
+    client.post("/salarie/recuperations/demandes", data={
+        "date_recuperation": dt.date.today().isoformat(), "duree": "2h", "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.models import DemandeRecuperation
+        did = DemandeRecuperation.query.filter_by(salarie_id=sid).one().id
+    direction_avant = len(_pour(smtp, ADMIN_EMAIL))
+    assistant.post(f"/salarie/equipe/recuperations/{did}/transmettre", data={
+        "decision": "refuser", "commentaire": "Déjà deux absents ce jour-là", "signature_data": signature_tracee()})
+    refus = _pour(smtp, email_sal)
+    assert len(refus) == 1 and "refusée" in refus[0][1]
+    assert "Déjà deux absents ce jour-là" in refus[0][2]
+    assert len(_pour(smtp, ADMIN_EMAIL)) == direction_avant, "la direction n'a rien à décider"
+
+
+def test_correction_d_heures_previent_avec_la_justification(app, smtp):
+    client, sid, uid, email_sal = _salarie(app)
+    email_a, _ = _compte(app, f"Assist {_suf()}", "assistant_direction")
+    assistant = _client(app, email_a)
+    client.post("/salarie/recuperations/heures", data={
+        "date_travail": dt.date.today().isoformat(), "duree": "2h", "motif": "réunion"})
+    with app.app_context():
+        from app.models import HeureSupplementaire
+        hid = HeureSupplementaire.query.filter_by(salarie_id=sid).one().id
+    assistant.post(f"/salarie/equipe/heures/{hid}/corriger", data={"duree": "2h30", "commentaire": "Rangement"})
+    courriel = _pour(smtp, email_sal)
+    assert len(courriel) == 1 and "corrigées" in courriel[0][1]
+    assert "2h00 → 2h30" in courriel[0][2] and "Rangement" in courriel[0][2]
 
 
 def test_desinscription_et_retrait_d_heures(app, admin_client, smtp):
@@ -268,8 +308,8 @@ def test_classeur_excel_chiffres_et_onglets(app, admin_client):
     synthese = list(wb["Synthèse"].iter_rows(min_row=4, values_only=True))
     assert len(synthese) == 1
     ligne = synthese[0]
-    # Solde début 1,5 h ; +5 h ; retrait 1 h ; récup 2 h ; solde fin 3,5 h ; 50 km ; 31,80 €.
-    assert ligne[2:8] == (1.5, 5.0, 1.0, 2.0, 0.0, 3.5)
+    # Solde début 1,5 h ; +5 h ; correction −1 h ; récup 2 h ; solde fin 3,5 h ; 50 km ; 31,80 €.
+    assert ligne[2:8] == (1.5, 5.0, -1.0, 2.0, 0.0, 3.5)
     assert ligne[8:12] == (2, 50, 31.8, 31.8)
     entetes = " ".join(str(c.value) for ws in wb.worksheets for c in ws[3] if c.value)
     assert "coût" not in entetes.lower() and "taux horaire" not in entetes.lower()

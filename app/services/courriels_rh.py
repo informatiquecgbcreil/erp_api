@@ -6,9 +6,11 @@ attend une réponse :
 
 - demande de récupération signée → l'assistant·e de direction (à défaut la
   direction) ;
-- demande transmise → la direction ;
-- décision prise → le salarié ;
-- heures sup retirées → le salarié ;
+- demande transmise → la direction, et le salarié (« transmise ») ;
+- demande refusée par l'assistant·e → le salarié, avec la justification ;
+- décision de la direction → le salarié (justification en cas de refus) et
+  l'assistant·e, qui doit en prendre connaissance ;
+- heures sup corrigées ou retirées → le salarié, avec la justification ;
 - document déposé dans le coffre-fort → chaque personne de la liste d'accès.
 
 Principes :
@@ -18,9 +20,9 @@ Principes :
 - un échec est réessayé (prochaine action RH, puis chaque jour) au plus
   ``MAX_TENTATIVES`` fois ; l'état de la file est visible dans
   Administration → Notifications ;
-- jamais de donnée sensible dans le corps (pas de salaire, pas de document,
-  pas de commentaire de refus : il se lit dans l'application) — un fait et
-  un lien ;
+- jamais de donnée sensible dans le corps (pas de salaire, pas de document) :
+  un fait, la justification d'un refus ou d'une correction (elle est
+  adressée à la personne concernée), et un lien ;
 - personne n'est prévenu de sa propre action, et chacun peut couper ces
   e-mails depuis son espace (les badges de l'accueil restent).
 """
@@ -223,37 +225,74 @@ def demande_soumise(demande, auteur) -> int:
 
 
 def demande_transmise(demande, auteur) -> int:
+    """Transmise par l'assistant·e : la direction décide, le salarié est informé."""
     nom = demande.salarie.nom_complet
-    return programmer(
+    n = programmer(
         "recup_transmise", comptes_avec("recup:decider"), auteur=auteur,
         sujet=f"Demande de récupération de {nom} à décider",
         corps=(f"Bonjour,\n\nLa demande de récupération de {nom} {_quand(demande)} "
                f"vous a été transmise et attend votre décision.\n\n"
                f"{_lien('salaries.equipe_recuperations', statut='transmise')}"),
         objet_type="demande_recuperation", objet_id=demande.id)
-
-
-def demande_decidee(demande, auteur) -> int:
-    decision = "acceptée" if demande.statut == "acceptee" else "refusée"
-    return programmer(
-        "recup_decidee", [demande.salarie.compte], auteur=auteur,
-        sujet=f"Ta demande de récupération est {decision}",
-        corps=(f"Bonjour,\n\nTa demande de récupération {_quand(demande)} a été {decision} "
-               f"par la direction.\nLe détail (et le commentaire éventuel) est dans ton espace salarié.\n\n"
+    n += programmer(
+        "recup_transmise_salarie", [demande.salarie.compte], auteur=auteur,
+        sujet="Ta demande de récupération est transmise à la direction",
+        corps=(f"Bonjour,\n\nTa demande de récupération {_quand(demande)} a été transmise à la direction, "
+               f"qui va l'accepter ou la refuser. Tu seras prévenu·e de sa décision.\n\n"
                f"{_lien('salaries.demande_detail', demande_id=demande.id)}"),
+        objet_type="demande_recuperation", objet_id=demande.id)
+    return n
+
+
+def _justification(demande) -> str:
+    return f"\nJustification : {demande.commentaire_direction}\n" if demande.commentaire_direction else ""
+
+
+def demande_refusee_relais(demande, auteur) -> int:
+    """Refus au premier niveau (assistant·e) : le salarié est informé, justification comprise."""
+    return programmer(
+        "recup_refusee_relais", [demande.salarie.compte], auteur=auteur,
+        sujet="Ta demande de récupération est refusée",
+        corps=(f"Bonjour,\n\nTa demande de récupération {_quand(demande)} a été refusée par "
+               f"{getattr(auteur, 'nom', 'l’assistant·e de direction')} (assistant·e de direction).\n"
+               f"{_justification(demande)}\n{_lien('salaries.demande_detail', demande_id=demande.id)}"),
         objet_type="demande_recuperation", objet_id=demande.id)
 
 
-def heures_retirees(ajustement, auteur) -> int:
+def demande_decidee(demande, auteur) -> int:
+    """Décision de la direction : le salarié et l'assistant·e sont prévenus."""
+    decision = "acceptée" if demande.statut == "acceptee" else "refusée"
+    nom = demande.salarie.nom_complet
+    n = programmer(
+        "recup_decidee", [demande.salarie.compte], auteur=auteur,
+        sujet=f"Ta demande de récupération est {decision}",
+        corps=(f"Bonjour,\n\nTa demande de récupération {_quand(demande)} a été {decision} "
+               f"par la direction.\n{_justification(demande)}\n"
+               f"{_lien('salaries.demande_detail', demande_id=demande.id)}"),
+        objet_type="demande_recuperation", objet_id=demande.id)
+    n += programmer(
+        "recup_decidee_relais", relais_recuperations(), auteur=auteur,
+        sujet=f"Décision sur la demande de récupération de {nom} : {decision}",
+        corps=(f"Bonjour,\n\nLa direction a {decision.replace('ée', 'é')} la demande de récupération de {nom} "
+               f"{_quand(demande)}. Le salarié a été prévenu ; il te reste à en prendre connaissance.\n\n"
+               f"{_lien('salaries.equipe_recuperations', statut='a_traiter')}"),
+        objet_type="demande_recuperation", objet_id=demande.id)
+    return n
+
+
+def heures_corrigees(correction, avant: int, apres: int, auteur) -> int:
+    """Déclaration corrigée (dans un sens ou dans l'autre) ou retirée : le salarié est informé."""
     from app.services.espace_salarie import format_minutes
+    jour = correction.date_travail.strftime("%d/%m/%Y")
+    quoi = (f"retirées ({format_minutes(avant)} déclarées)" if apres == 0
+            else f"corrigées : {format_minutes(avant)} → {format_minutes(apres)}")
     return programmer(
-        "heures_retirees", [ajustement.salarie.compte], auteur=auteur,
-        sujet="Des heures supplémentaires ont été retirées de ton solde",
-        corps=(f"Bonjour,\n\n{format_minutes(-ajustement.minutes)} déclarées le "
-               f"{ajustement.date_travail.strftime('%d/%m/%Y')} ont été retirées de ton solde par la direction.\n"
-               f"La justification est visible dans ton espace salarié.\n\n"
-               f"{_lien('salaries.mes_recuperations')}"),
-        objet_type="heure_supplementaire", objet_id=ajustement.id)
+        "heures_corrigees", [correction.salarie.compte], auteur=auteur,
+        sujet="Tes heures supplémentaires ont été " + ("retirées" if apres == 0 else "corrigées"),
+        corps=(f"Bonjour,\n\nTes heures supplémentaires du {jour} ont été {quoi} par "
+               f"{getattr(auteur, 'nom', 'la direction')}.\n"
+               f"Justification : {correction.commentaire_direction}\n\n{_lien('salaries.mes_recuperations')}"),
+        objet_type="heure_supplementaire", objet_id=correction.id)
 
 
 def document_depose(document, auteur) -> int:

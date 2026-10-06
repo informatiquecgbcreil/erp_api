@@ -2,7 +2,8 @@
 
 Parcours réels par le client HTTP, avec les rôles réels :
 - liens automatiques compte ↔ fiche salarié ;
-- circuit signé des récupérations (salarié → assistant·e → direction → notification) ;
+- circuit signé des récupérations (salarié → assistant·e, qui transmet ou refuse →
+  direction → prise de connaissance) et corrections d'heures dans les deux sens ;
 - frais kilométriques au barème (tranche par cumul annuel), passage en dépense ;
 - confidentialité des salaires, y compris face à l'administrateur technique ;
 - coffre-fort de documents (liste d'accès stricte) ;
@@ -174,7 +175,7 @@ def test_circuit_complet_signe_et_solde(app, admin_client):
         did = demande.id
 
     # L'assistant·e transmet mais ne peut pas décider.
-    email_a, _ = _compte(app, f"Assist {_suffixe()}", "assistant_direction")
+    email_a, uid_a = _compte(app, f"Assist {_suffixe()}", "assistant_direction")
     assistant = _client(app, email_a)
     assert assistant.post(f"/salarie/equipe/recuperations/{did}/decider",
                           data={"decision": "accepter", "signature_data": signature_tracee()}).status_code == 403
@@ -191,15 +192,17 @@ def test_circuit_complet_signe_et_solde(app, admin_client):
         assert db.session.get(DemandeRecuperation, did).statut == "transmise"
     admin_client.post(f"/salarie/equipe/recuperations/{did}/decider",
                       data={"decision": "accepter", "signature_data": signature_tracee()})
-    assistant.post(f"/salarie/equipe/recuperations/{did}/notifier", data={"signature_data": signature_tracee()})
+    # L'assistant·e prend connaissance de la décision : un clic, sans signature.
+    assert assistant.post(f"/salarie/equipe/recuperations/{did}/pris-connaissance").status_code == 302
 
     with app.app_context():
         from app.extensions import db
         from app.models import DemandeRecuperation
         from app.services.espace_salarie import solde_minutes
         d = db.session.get(DemandeRecuperation, did)
-        assert d.statut == "acceptee" and d.notifiee_le is not None
-        assert all([d.signature_transmission_id, d.signature_decision_id, d.signature_notification_id])
+        assert d.statut == "acceptee" and d.notifiee_le is not None and d.notifiee_par_user_id == uid_a
+        assert all([d.signature_transmission_id, d.signature_decision_id])
+        assert d.signature_notification_id is None and not d.refusee_par_relais
         assert solde_minutes(sid) == 120  # 5 h créditées − 3 h récupérées
         sig_id = d.signature_salarie_id
 
@@ -229,6 +232,139 @@ def test_direction_retire_des_heures_avec_justification(app, admin_client):
         assert HeureSupplementaire.query.filter_by(origine_id=hid).count() == 1
         assert solde_minutes(sid) == 0
     assert "Déjà payées" in client.get("/salarie/recuperations").get_data(as_text=True)
+
+
+def test_l_assistant_refuse_avec_justification_et_le_circuit_s_arrete(app, admin_client):
+    client, sid, _ = _salarie_connecte(app)
+    client.post("/salarie/recuperations/demandes", data={
+        "date_recuperation": dt.date.today().isoformat(), "duree": "1h", "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.models import DemandeRecuperation
+        did = DemandeRecuperation.query.filter_by(salarie_id=sid).one().id
+    email_a, uid_a = _compte(app, f"Assist {_suffixe()}", "assistant_direction")
+    assistant = _client(app, email_a)
+    page = assistant.get("/salarie/equipe/recuperations").get_data(as_text=True)
+    assert "Transmettre ou refuser" in page
+
+    # Refus sans justification : rien ne bouge.
+    assistant.post(f"/salarie/equipe/recuperations/{did}/transmettre",
+                   data={"decision": "refuser", "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.extensions import db
+        from app.models import DemandeRecuperation
+        assert db.session.get(DemandeRecuperation, did).statut == "soumise"
+    assistant.post(f"/salarie/equipe/recuperations/{did}/transmettre",
+                   data={"decision": "refuser", "commentaire": "Accueil sans personne ce jour-là",
+                         "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.extensions import db
+        from app.models import DemandeRecuperation
+        d = db.session.get(DemandeRecuperation, did)
+        assert d.statut == "refusee" and d.refusee_par_relais and d.signature_transmission_id
+        assert d.commentaire_direction == "Accueil sans personne ce jour-là"
+        assert d.decidee_par_user_id == uid_a and d.notifiee_le is not None  # rien à « prendre en compte »
+        assert d.transmise_le is None and d.signature_decision_id is None
+
+    # Le circuit s'arrête : la direction ne décide plus, l'assistant·e n'a rien à prendre en compte.
+    admin_client.post(f"/salarie/equipe/recuperations/{did}/decider",
+                      data={"decision": "accepter", "signature_data": signature_tracee()})
+    assistant.post(f"/salarie/equipe/recuperations/{did}/pris-connaissance")
+    with app.app_context():
+        from app.extensions import db
+        from app.models import DemandeRecuperation
+        assert db.session.get(DemandeRecuperation, did).statut == "refusee"
+    mes = client.get("/salarie/recuperations").get_data(as_text=True).replace("&#39;", "'")
+    assert "Refusée par l'assistant·e" in mes and "Accueil sans personne" in mes
+    detail = client.get(f"/salarie/recuperations/demandes/{did}").get_data(as_text=True).replace("&#39;", "'")
+    assert "Refusée par l'assistant·e de direction" in detail and "Justification du refus" in detail
+    assert "Pris connaissance" not in detail
+
+
+def test_pris_connaissance_seulement_apres_une_decision_et_une_fois(app, admin_client):
+    client, sid, _ = _salarie_connecte(app)
+    client.post("/salarie/recuperations/demandes", data={
+        "date_recuperation": dt.date.today().isoformat(), "duree": "1h", "signature_data": signature_tracee()})
+    with app.app_context():
+        from app.models import DemandeRecuperation
+        did = DemandeRecuperation.query.filter_by(salarie_id=sid).one().id
+    email_a, uid_a = _compte(app, f"Assist {_suffixe()}", "assistant_direction")
+    assistant = _client(app, email_a)
+    collegue, _, _ = _salarie_connecte(app)
+    assert collegue.post(f"/salarie/equipe/recuperations/{did}/pris-connaissance").status_code == 403
+    assistant.post(f"/salarie/equipe/recuperations/{did}/pris-connaissance")  # pas encore décidée
+    with app.app_context():
+        from app.extensions import db
+        from app.models import DemandeRecuperation
+        assert db.session.get(DemandeRecuperation, did).notifiee_le is None
+    admin_client.post(f"/salarie/equipe/recuperations/{did}/decider",
+                      data={"decision": "accepter", "signature_data": signature_tracee()})
+    page = assistant.get("/salarie/equipe/recuperations?statut=a_traiter").get_data(as_text=True)
+    assert f"/salarie/equipe/recuperations/{did}/pris-connaissance" in page
+    assistant.post(f"/salarie/equipe/recuperations/{did}/pris-connaissance")
+    with app.app_context():
+        from app.extensions import db
+        from app.models import AuditLog, DemandeRecuperation
+        d = db.session.get(DemandeRecuperation, did)
+        premiere = d.notifiee_le
+        assert premiere is not None and d.notifiee_par_user_id == uid_a
+        assert AuditLog.query.filter_by(action="rh.recup_pris_connaissance",
+                                        cible=f"demande_recuperation#{did}").count() == 1
+    admin_client.post(f"/salarie/equipe/recuperations/{did}/pris-connaissance")  # déjà fait
+    with app.app_context():
+        from app.extensions import db
+        from app.models import DemandeRecuperation
+        assert db.session.get(DemandeRecuperation, did).notifiee_le == premiere
+    detail = client.get(f"/salarie/recuperations/demandes/{did}").get_data(as_text=True)
+    assert "Pris connaissance par l" in detail and "Sans signature" in detail
+
+
+def test_l_assistant_voit_et_corrige_les_heures_dans_les_deux_sens(app):
+    client, sid, _ = _salarie_connecte(app)
+    client.post("/salarie/recuperations/heures", data={
+        "date_travail": dt.date.today().isoformat(), "duree": "2h", "motif": "Fête de quartier"})
+    with app.app_context():
+        from app.models import HeureSupplementaire
+        hid = HeureSupplementaire.query.filter_by(salarie_id=sid).one().id
+    email_a, _ = _compte(app, f"Assist {_suffixe()}", "assistant_direction")
+    assistant = _client(app, email_a)
+    page = assistant.get("/salarie/equipe/recuperations").get_data(as_text=True)
+    assert f"/salarie/equipe/heures/{hid}/corriger" in page, "visible en direct par l'assistant·e"
+
+    def solde_et_lignes():
+        with app.app_context():
+            from app.models import HeureSupplementaire
+            from app.services.espace_salarie import solde_minutes
+            return solde_minutes(sid), HeureSupplementaire.query.filter_by(origine_id=hid).count()
+
+    url = f"/salarie/equipe/heures/{hid}/corriger"
+    assistant.post(url, data={"duree": "3h", "commentaire": ""})  # justification obligatoire
+    assistant.post(url, data={"duree": "2h", "commentaire": "Rien"})  # inchangé
+    assistant.post(url, data={"duree": "-1", "commentaire": "Négatif"})  # impossible
+    assert solde_et_lignes() == (120, 0)
+    assistant.post(url, data={"duree": "3h", "commentaire": "Rangement oublié"})  # à la hausse
+    assert solde_et_lignes() == (180, 1)
+    assistant.post(url, data={"duree": "1h30", "commentaire": "Départ à 20 h, pas 21 h"})  # à la baisse
+    assert solde_et_lignes() == (90, 2)
+    with app.app_context():
+        from app.extensions import db
+        from app.models import HeureSupplementaire
+        from app.services.espace_salarie import minutes_effectives
+        origine = db.session.get(HeureSupplementaire, hid)
+        assert origine.minutes == 120, "la déclaration d'origine n'est jamais modifiée"
+        assert minutes_effectives(origine) == 90
+        deltas = [h.minutes for h in HeureSupplementaire.query.filter_by(origine_id=hid)
+                  .order_by(HeureSupplementaire.id).all()]
+        assert deltas == [60, -90]
+    page = assistant.get("/salarie/equipe/recuperations").get_data(as_text=True)
+    assert "Correction 3h00 → 1h30" in page and "1h30" in page
+    mes = client.get("/salarie/recuperations").get_data(as_text=True)
+    assert "Rangement oublié" in mes and "Départ à 20 h, pas 21 h" in mes
+
+    # Une collègue sans rôle d'équipe de direction : 403.
+    collegue, _, _ = _salarie_connecte(app)
+    assert collegue.post(url, data={"duree": "8h", "commentaire": "Moi aussi"}).status_code == 403
+    assert collegue.get("/salarie/equipe/recuperations").status_code == 403
+    assert solde_et_lignes() == (90, 2)
 
 
 def test_une_demande_decidee_ne_s_annule_plus(app, admin_client):
@@ -483,7 +619,7 @@ def test_toutes_les_pages_s_affichent(app, admin_client):
     with app.app_context():
         from app.models import DemandeRecuperation
         did = DemandeRecuperation.query.filter_by(salarie_id=sid).one().id
-    email_a, _ = _compte(app, f"Assist {_suffixe()}", "assistant_direction")
+    email_a, uid_a = _compte(app, f"Assist {_suffixe()}", "assistant_direction")
     assistant = _client(app, email_a)
     sans_fiche = _client(app, _compte(app, f"Sansfiche {_suffixe()}", "accueil")[0])
 
@@ -563,7 +699,7 @@ def test_la_direction_peut_decider_sa_propre_demande_mais_c_est_signale(app, adm
         assert HeureSupplementaire.query.filter_by(origine_id=hid).one().par_interesse
         actions = {a.action for a in AuditLog.query.filter(AuditLog.cible.in_(
             [f"demande_recuperation#{did}", f"salarie#{sid}"])).all()}
-        assert {"rh.recup_auto_decision", "rh.heures_retirees_par_interesse"} <= actions
+        assert {"rh.recup_auto_decision", "rh.heures_corrigees_par_interesse"} <= actions
 
     detail = admin_client.get(f"/salarie/recuperations/demandes/{did}").get_data(as_text=True)
     assert "Décision prise par la personne qui a fait la demande" in detail

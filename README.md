@@ -120,7 +120,7 @@ Voir [`docs/inscriptions-annuelles.md`](docs/inscriptions-annuelles.md).
 ### Espace salarié et ressources humaines
 
 - Accueil à deux onglets : « Activités du centre » et « Espace salarié ».
-- Heures supplémentaires et récupérations, circuit signé : salarié → assistant·e de direction → direction → notification.
+- Heures supplémentaires et récupérations, circuit signé : salarié → assistant·e de direction (transmet ou refuse) → direction (accepte ou refuse) → prise de connaissance ; e-mail au salarié à chaque étape, heures corrigeables avec justification.
 - Frais kilométriques au barème officiel (tranches calculées sur la distance annuelle), justificatifs, passage en dépense sur une ligne de financement.
 - Profils salariaux confidentiels (coûts horaires, calculateur) et report dans la masse salariale.
 - Coffre-fort de documents (fiches de paie, contrats) à liste d'accès stricte.

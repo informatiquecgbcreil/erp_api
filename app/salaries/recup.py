@@ -1,13 +1,20 @@
 """Heures supplémentaires et récupérations.
 
-Circuit (inchangé depuis « Récup ») :
-salarié — déclare ses heures sup (crédit) ; demande une récupération
-(brouillon), la signe et l'envoie → « soumise » ;
-assistant·e de direction — transmet en signant → « transmise » (simple
-relais : ni accord ni refus) ;
-direction — accepte ou refuse en signant (refus motivé obligatoire), y
-compris directement depuis « soumise » quand l'assistant·e est absent·e ;
-assistant·e — informe le salarié en signant (``notifiee_le``).
+Circuit :
+salarié — déclare ses heures sup (crédit), que l'assistant·e et la direction
+voient aussitôt et peuvent corriger dans un sens ou dans l'autre
+(justification obligatoire) ; demande une récupération (brouillon), la signe
+et l'envoie → « soumise » ;
+assistant·e de direction — transmet en signant → « transmise », ou refuse en
+signant avec une justification → « refusee » (``refusee_par_relais``) ;
+direction — accepte, ou refuse avec une justification, en signant, y compris
+directement depuis « soumise » quand l'assistant·e est absent·e ;
+assistant·e — prend connaissance de la décision (``notifiee_le``, sans
+signature : le salarié a déjà reçu l'e-mail).
+
+Le salarié est prévenu par e-mail à chaque étape (transmise, refusée,
+décidée, heures corrigées) ; la justification n'est demandée qu'en cas de
+refus ou de correction.
 
 Le solde peut devenir négatif (récupération prise par avance). Seules les
 récupérations ACCEPTÉES décomptent.
@@ -247,19 +254,33 @@ def equipe_recuperations():
         q = q.filter(DemandeRecuperation.date_recuperation >= date(date.today().year, 1, 1))
     demandes = q.order_by(DemandeRecuperation.created_at.desc()).limit(500).all()
 
-    heures_recentes = []
-    if can("recup:decider"):
-        heures_recentes = (HeureSupplementaire.query
-                           .filter(HeureSupplementaire.created_at >= utcnow() - timedelta(days=30))
-                           .order_by(HeureSupplementaire.created_at.desc()).limit(100).all())
+    # Déclarations des 30 derniers jours, visibles « en direct » par
+    # l'assistant·e comme par la direction, avec leur durée en vigueur.
+    heures_recentes = (HeureSupplementaire.query
+                       .filter(HeureSupplementaire.created_at >= utcnow() - timedelta(days=30),
+                               HeureSupplementaire.est_ajustement.is_(False))
+                       .order_by(HeureSupplementaire.created_at.desc()).limit(100).all())
     salaries = Salarie.query.order_by(Salarie.nom.asc(), Salarie.prenom.asc()).all()
     return render_template(
         "salaries/equipe_recuperations.html",
         demandes=demandes, soldes=es.soldes_par_salarie(), salaries=salaries,
-        heures_recentes=heures_recentes, compteurs=es.a_traiter_equipe(current_user),
+        heures_recentes=heures_recentes, effectives=es.corrections_de(heures_recentes),
+        corrections=_corrections_par_origine(heures_recentes),
+        compteurs=es.a_traiter_equipe(current_user),
         f_salarie=f_salarie, f_statut=f_statut or "", f_periode=f_periode, es=es,
         peut_transmettre=can("recup:transmettre"), peut_decider=can("recup:decider"),
     )
+
+
+def _corrections_par_origine(origines) -> dict[int, list[HeureSupplementaire]]:
+    ids = [h.id for h in origines]
+    if not ids:
+        return {}
+    resultat: dict[int, list[HeureSupplementaire]] = {}
+    for c in (HeureSupplementaire.query.filter(HeureSupplementaire.origine_id.in_(ids))
+              .order_by(HeureSupplementaire.created_at.asc(), HeureSupplementaire.id.asc()).all()):
+        resultat.setdefault(c.origine_id, []).append(c)
+    return resultat
 
 
 def _signer_etape(demande, contexte: str):
@@ -271,23 +292,51 @@ def _signer_etape(demande, contexte: str):
 @login_required
 @require_perm("recup:transmettre")
 def transmettre_demande(demande_id: int):
+    """Premier niveau (assistant·e) : transmettre à la direction, ou refuser
+    avec une justification. Dans les deux cas l'étape est signée et le
+    salarié est prévenu."""
     demande = db.get_or_404(DemandeRecuperation, demande_id)
     if demande.statut != "soumise":
         return erreur("Cette demande n'attend pas de transmission.", _url_equipe())
+    refus = request.form.get("decision") == "refuser"
+    commentaire = (request.form.get("commentaire") or "").strip()
+    if refus and not commentaire:
+        return erreur("Un refus doit être justifié : écris la raison.", _url_equipe())
     try:
-        sig = _signer_etape(demande, "recup_transmission")
+        sig = _signer_etape(demande, "recup_refus_relais" if refus else "recup_transmission")
     except ValueError as exc:
         db.session.rollback()
         return erreur(str(exc), _url_equipe())
     demande.signature_transmission_id = sig.id
-    demande.statut = "transmise"
-    demande.transmise_par_user_id = current_user.id
-    demande.transmise_le = utcnow()
-    courriels_rh.demande_transmise(demande, current_user)
+    if refus:
+        maintenant = utcnow()
+        demande.statut = "refusee"
+        # Un refus au premier niveau par quelqu'un qui a aussi le pouvoir de
+        # décider (direction) est affiché comme un refus de la direction.
+        demande.refusee_par_relais = not can("recup:decider")
+        demande.commentaire_direction = commentaire
+        demande.decidee_par_user_id = current_user.id
+        demande.decidee_le = maintenant
+        # L'assistant·e a pris la décision : il·elle en a forcément connaissance.
+        demande.notifiee_par_user_id = current_user.id
+        demande.notifiee_le = maintenant
+        demande.decision_par_interesse = es.est_l_interesse(demande, current_user)
+        courriels_rh.demande_refusee_relais(demande, current_user)
+    else:
+        demande.statut = "transmise"
+        demande.transmise_par_user_id = current_user.id
+        demande.transmise_le = utcnow()
+        courriels_rh.demande_transmise(demande, current_user)
     db.session.commit()
     courriels_rh.expedier_en_attente()
-    journaliser("rh.recup_transmise", cible=f"demande_recuperation#{demande.id}")
-    flash("Demande transmise à la direction.", "success")
+    if refus:
+        journaliser("rh.recup_auto_decision" if demande.decision_par_interesse else "rh.recup_refus_relais",
+                    cible=f"demande_recuperation#{demande.id}",
+                    details={"decision": "refusee", "niveau": "assistant", "par_l_interesse": demande.decision_par_interesse})
+        flash("Demande refusée ; le salarié est prévenu avec ta justification.", "success")
+    else:
+        journaliser("rh.recup_transmise", cible=f"demande_recuperation#{demande.id}")
+        flash("Demande transmise à la direction ; le salarié est prévenu.", "success")
     return retour(_url_equipe())
 
 
@@ -295,13 +344,16 @@ def transmettre_demande(demande_id: int):
 @login_required
 @require_perm("recup:decider")
 def decider_demande(demande_id: int):
+    """Direction : accepter (sans justification) ou refuser (justification
+    obligatoire). Elle peut décider sans attendre la transmission (absence de
+    l'assistant·e). Le salarié et l'assistant·e sont prévenus."""
     demande = db.get_or_404(DemandeRecuperation, demande_id)
     if demande.statut not in es.EN_ATTENTE:
         return erreur("Cette demande n'attend pas de décision.", _url_equipe())
     accord = request.form.get("decision") == "accepter"
     commentaire = (request.form.get("commentaire") or "").strip()
     if not accord and not commentaire:
-        return erreur("Un refus doit être motivé : écris la raison.", _url_equipe())
+        return erreur("Un refus doit être justifié : écris la raison.", _url_equipe())
     try:
         sig = _signer_etape(demande, "recup_decision")
     except ValueError as exc:
@@ -330,54 +382,79 @@ def decider_demande(demande_id: int):
     return retour(_url_equipe())
 
 
-@bp.route("/equipe/recuperations/<int:demande_id>/notifier", methods=["POST"])
+@bp.route("/equipe/recuperations/<int:demande_id>/pris-connaissance", methods=["POST"])
 @login_required
 @require_perm("recup:transmettre")
-def notifier_demande(demande_id: int):
+def prendre_connaissance(demande_id: int):
+    """L'assistant·e atteste avoir pris connaissance de la décision (sans
+    signature : le salarié a déjà été prévenu par e-mail)."""
     demande = db.get_or_404(DemandeRecuperation, demande_id)
     if demande.statut not in es.DECIDEES or demande.notifiee_le:
-        return erreur("Rien à notifier pour cette demande.", _url_equipe())
-    try:
-        sig = _signer_etape(demande, "recup_notification")
-    except ValueError as exc:
-        db.session.rollback()
-        return erreur(str(exc), _url_equipe())
-    demande.signature_notification_id = sig.id
+        return erreur("Rien à prendre en compte pour cette demande.", _url_equipe())
     demande.notifiee_par_user_id = current_user.id
     demande.notifiee_le = utcnow()
     db.session.commit()
-    journaliser("rh.recup_notifiee", cible=f"demande_recuperation#{demande.id}")
-    flash("Décision notifiée au salarié.", "success")
+    journaliser("rh.recup_pris_connaissance", cible=f"demande_recuperation#{demande.id}")
+    flash("Décision prise en compte.", "success")
     return retour(_url_equipe())
+
+
+@bp.route("/equipe/heures/<int:heure_id>/corriger", methods=["POST"])
+@login_required
+@require_perm("salarie:espace")
+def corriger_heures(heure_id: int):
+    """L'assistant·e ou la direction corrige une déclaration d'heures sup,
+    dans un sens ou dans l'autre (0 = retrait), justification obligatoire."""
+    return _corriger(heure_id, request.form.get("duree") or "0")
 
 
 @bp.route("/equipe/heures/<int:heure_id>/retirer", methods=["POST"])
 @login_required
-@require_perm("recup:decider")
+@require_perm("salarie:espace")
 def retirer_heures(heure_id: int):
-    """La direction retire une déclaration par un ajustement négatif motivé."""
+    """Retrait = correction à zéro."""
+    return _corriger(heure_id, "0")
+
+
+def _corriger(heure_id: int, duree_brute: str):
+    """La déclaration d'origine n'est jamais modifiée : la correction est une
+    ligne d'ajustement (la différence avec la durée en vigueur), visible du
+    salarié, qui est prévenu avec la justification."""
+    if not _equipe():
+        abort(403)
     origine = db.get_or_404(HeureSupplementaire, heure_id)
     if origine.est_ajustement or origine.minutes <= 0:
         abort(400)
-    if HeureSupplementaire.query.filter_by(origine_id=origine.id).first() is not None:
-        return erreur("Ces heures ont déjà été retirées.", _url_equipe())
     commentaire = (request.form.get("commentaire") or "").strip()
     if not commentaire:
-        return erreur("Retirer des heures demande une justification.", _url_equipe())
-    ajustement = HeureSupplementaire(
+        return erreur("Corriger ou retirer des heures demande une justification.", _url_equipe())
+    try:
+        apres = es.parse_heures(duree_brute)
+    except ValueError as exc:
+        return erreur(str(exc), _url_equipe())
+    if apres < 0:
+        return erreur("La durée corrigée ne peut pas être négative.", _url_equipe())
+    avant = es.minutes_effectives(origine)
+    if apres == avant:
+        return erreur("La durée est inchangée : rien à corriger.", _url_equipe())
+    # Corriger ses propres heures reste possible, mais marqué et tracé.
+    par_interesse = bool(origine.salarie.user_id and origine.salarie.user_id == current_user.id)
+    correction = HeureSupplementaire(
         salarie_id=origine.salarie_id, saisi_par_user_id=current_user.id, date_travail=origine.date_travail,
-        minutes=-origine.minutes, motif="Retrait par la direction", est_ajustement=True,
-        origine_id=origine.id, commentaire_direction=commentaire, secteur=origine.secteur,
-        par_interesse=bool(origine.salarie.user_id and origine.salarie.user_id == current_user.id),
+        minutes=apres - avant, est_ajustement=True, origine_id=origine.id, secteur=origine.secteur,
+        motif=("Retrait" if apres == 0 else f"Correction {es.format_minutes(avant)} → {es.format_minutes(apres)}"),
+        commentaire_direction=commentaire, par_interesse=par_interesse,
     )
-    db.session.add(ajustement)
+    db.session.add(correction)
     db.session.flush()
-    courriels_rh.heures_retirees(ajustement, current_user)
+    courriels_rh.heures_corrigees(correction, avant, apres, current_user)
     db.session.commit()
     courriels_rh.expedier_en_attente()
-    journaliser("rh.heures_retirees_par_interesse" if ajustement.par_interesse else "rh.heures_retirees",
+    journaliser("rh.heures_corrigees_par_interesse" if par_interesse else "rh.heures_corrigees",
                 cible=f"salarie#{origine.salarie_id}",
-                details={"heure_sup_id": origine.id, "minutes": origine.minutes, "commentaire": commentaire,
-                         "par_l_interesse": ajustement.par_interesse})
-    flash(f"{es.format_minutes(origine.minutes)} retirées du solde, avec ta justification.", "success")
+                details={"heure_sup_id": origine.id, "avant": avant, "apres": apres, "commentaire": commentaire,
+                         "par_l_interesse": par_interesse})
+    flash(("Heures retirées" if apres == 0 else
+           f"Heures corrigées : {es.format_minutes(avant)} → {es.format_minutes(apres)}")
+          + " ; le salarié est prévenu avec ta justification.", "success")
     return retour(_url_equipe())

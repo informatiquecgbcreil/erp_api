@@ -47,10 +47,13 @@ DECIDEES = ("acceptee", "refusee")
 
 
 def statut_recup(demande) -> dict:
-    """Libellé affiché : une décision notifiée devient « Terminée »."""
+    """Libellé affiché, en précisant qui a refusé."""
     meta = dict(STATUTS_RECUP.get(demande.statut, {"label": demande.statut, "icon": "ℹ️", "tone": "muted"}))
-    if demande.statut in DECIDEES and demande.notifiee_le:
-        meta["label"] = ("Acceptée" if demande.statut == "acceptee" else "Refusée") + " · notifiée"
+    if demande.statut == "refusee":
+        meta["label"] = "Refusée par l'assistant·e" if getattr(demande, "refusee_par_relais", False) \
+            else "Refusée par la direction"
+    elif demande.statut == "acceptee":
+        meta["label"] = "Acceptée par la direction"
     return meta
 
 
@@ -65,12 +68,31 @@ def prochaine_etape(demande) -> str:
     if s == "brouillon":
         return "À signer et envoyer"
     if s == "soumise":
-        return "Assistant·e : transmettre à la direction"
+        return "Assistant·e : transmettre à la direction ou refuser"
     if s == "transmise":
-        return "Direction : décider"
+        return "Direction : accepter ou refuser"
     if s in DECIDEES and not demande.notifiee_le:
-        return "Assistant·e : informer le salarié"
+        return "Assistant·e : prendre connaissance de la décision"
     return "Terminé"
+
+
+def minutes_effectives(origine) -> int:
+    """Valeur actuelle d'une déclaration d'heures sup, corrections comprises."""
+    from app.models import HeureSupplementaire
+    corrections = db.session.query(db.func.coalesce(db.func.sum(HeureSupplementaire.minutes), 0)).filter(
+        HeureSupplementaire.origine_id == origine.id).scalar()
+    return int(origine.minutes) + int(corrections or 0)
+
+
+def corrections_de(origines) -> dict[int, int]:
+    """{id de déclaration: valeur actuelle} pour une liste de déclarations (une requête)."""
+    from app.models import HeureSupplementaire
+    ids = [h.id for h in origines if not h.est_ajustement]
+    if not ids:
+        return {}
+    deltas = dict(db.session.query(HeureSupplementaire.origine_id, db.func.sum(HeureSupplementaire.minutes))
+                  .filter(HeureSupplementaire.origine_id.in_(ids)).group_by(HeureSupplementaire.origine_id).all())
+    return {h.id: int(h.minutes) + int(deltas.get(h.id) or 0) for h in origines if not h.est_ajustement}
 
 
 # ---------------------------------------------------------------------------
@@ -439,17 +461,19 @@ def a_traiter_equipe(user) -> dict[str, Any]:
     res: dict[str, Any] = {}
     if _peut(user, "recup:transmettre") or _peut(user, "recup:decider"):
         res["a_transmettre"] = DemandeRecuperation.query.filter_by(statut="soumise").count()
+        # Décisions de la direction dont l'assistant·e n'a pas encore pris connaissance.
         res["a_notifier"] = DemandeRecuperation.query.filter(
             DemandeRecuperation.statut.in_(DECIDEES), DemandeRecuperation.notifiee_le.is_(None)).count()
+        # Heures sup déclarées : visibles en direct par l'assistant·e et la direction.
+        res["heures_30j"] = _somme(HeureSupplementaire.minutes,
+                                   HeureSupplementaire.created_at >= utcnow() - timedelta(days=30),
+                                   HeureSupplementaire.est_ajustement.is_(False))
     if _peut(user, "recup:decider"):
         res["a_decider"] = DemandeRecuperation.query.filter_by(statut="transmise").count()
         debut_annee = datetime(date.today().year, 1, 1)
         res["decisions_par_interesse"] = DemandeRecuperation.query.filter(
             DemandeRecuperation.decision_par_interesse.is_(True),
             DemandeRecuperation.decidee_le >= debut_annee).count()
-        res["heures_30j"] = _somme(HeureSupplementaire.minutes,
-                                   HeureSupplementaire.created_at >= utcnow() - timedelta(days=30),
-                                   HeureSupplementaire.est_ajustement.is_(False))
     if _peut(user, "frais_km:suivi"):
         debut_mois = date.today().replace(day=1)
         res["km_mois_nb"] = FraisKilometrique.query.filter(FraisKilometrique.date_trajet >= debut_mois).count()

@@ -134,7 +134,7 @@ def _lignes_rappels(seuil_jours: int | None, today: date) -> list[str]:
 
 def _lignes_rh_a_traiter(seuil_jours: int | None, today: date) -> list[str]:
     """Demandes de récupération qui attendent depuis trop longtemps, décisions
-    pas encore notifiées au salarié."""
+    dont l'assistant·e n'a pas encore pris connaissance."""
     from datetime import datetime, timedelta
     from app.models import DemandeRecuperation
 
@@ -150,7 +150,8 @@ def _lignes_rh_a_traiter(seuil_jours: int | None, today: date) -> list[str]:
     a_notifier = DemandeRecuperation.query.filter(
         DemandeRecuperation.statut.in_(("acceptee", "refusee")), DemandeRecuperation.notifiee_le.is_(None)).count()
     if a_notifier:
-        lignes.append(f"[à notifier] {a_notifier} décision(s) pas encore notifiée(s) au salarié")
+        lignes.append(f"[à prendre en compte] {a_notifier} décision(s) dont l'assistant·e n'a pas encore "
+                      "pris connaissance")
     auto = DemandeRecuperation.query.filter(
         DemandeRecuperation.decision_par_interesse.is_(True),
         DemandeRecuperation.decidee_le >= datetime.combine(today - timedelta(days=7), datetime.min.time())).count()
@@ -210,7 +211,7 @@ TYPES_NOTIFICATION: dict[str, dict] = {
     "rh_a_traiter": {
         "label": "Récupérations en souffrance",
         "description": "Demandes de récupération bloquées (à transmettre, à décider) au-delà du délai, "
-                       "décisions non notifiées, décisions prises par l'intéressé·e.",
+                       "décisions pas encore prises en compte, décisions prises par l'intéressé·e.",
         "seuil_label": "Délai avant alerte (jours d'attente)",
         "seuil_defaut": 3,
         "collecteur": _lignes_rh_a_traiter,
