@@ -885,11 +885,33 @@ def notifications():
         flash("Réglages des notifications enregistrés ✅", "success")
         return redirect(url_for("admin.notifications"))
 
+    from app.services.courriels_rh import etat_file
+    from app.services.instance_settings import resolve_mail_settings
+    smtp = resolve_mail_settings(current_app.config)
     return render_template(
         "admin_notifications.html",
         reglages=reglages_effectifs(),
         frequences=FREQUENCES,
+        file_rh=etat_file(),
+        smtp_configure=bool(smtp.get("host") and smtp.get("sender")),
     )
+
+
+@bp.route("/notifications/courriels-rh/relancer", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def notifications_relancer_rh():
+    """Remet en file les e-mails RH abandonnés puis tente l'envoi."""
+    from app.services.courriels_rh import expedier_en_attente, relancer_abandonnes
+    remis = relancer_abandonnes()
+    bilan = expedier_en_attente(limite=200)
+    journaliser("notifications.relance_rh", details={"remis": remis, **{k: v for k, v in bilan.items()}})
+    if not bilan["smtp"]:
+        flash("Le serveur de mail n'est pas configuré : les e-mails restent en file.", "warning")
+    else:
+        flash(f"E-mails RH : {bilan['envoyes']} envoyé(s), {bilan['echecs']} échec(s).",
+              "success" if not bilan["echecs"] else "warning")
+    return redirect(url_for("admin.notifications"))
 
 
 @bp.route("/notifications/apercu", methods=["POST"])

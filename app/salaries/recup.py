@@ -22,6 +22,7 @@ from flask_login import current_user, login_required
 from app.extensions import db
 from app.models import DemandeRecuperation, HeureSupplementaire, Salarie
 from app.rbac import can, require_perm
+from app.services import courriels_rh
 from app.services import espace_salarie as es
 from app.services.audit import journaliser
 from app.utils.dates import utcnow
@@ -91,7 +92,7 @@ def declarer_heures(salarie):
         return erreur("Précise pour quoi (un mot suffit), ou choisis l'activité dans ton agenda.", _url_mes())
     ligne = HeureSupplementaire(
         salarie_id=salarie.id, saisi_par_user_id=current_user.id, date_travail=jour,
-        minutes=minutes, motif=motif, session_id=session_id, creneau_id=creneau_id,
+        minutes=minutes, motif=motif, session_id=session_id, creneau_id=creneau_id, secteur=salarie.secteur,
     )
     db.session.add(ligne)
     db.session.commit()
@@ -118,6 +119,7 @@ def demander_recuperation(salarie):
     demande = DemandeRecuperation(
         salarie_id=salarie.id, demandeur_user_id=current_user.id, date_recuperation=jour,
         minutes=minutes, motif=(request.form.get("motif") or "").strip(), statut="brouillon",
+        secteur=salarie.secteur,
     )
     db.session.add(demande)
     db.session.flush()
@@ -133,7 +135,9 @@ def demander_recuperation(salarie):
         demande.signature_salarie_id = sig.id
         demande.statut = "soumise"
         message = "Demande signée et envoyée à l'assistant·e de direction."
+        courriels_rh.demande_soumise(demande, current_user)
     db.session.commit()
+    courriels_rh.expedier_en_attente()
     journaliser("rh.recup_demande", cible=f"demande_recuperation#{demande.id}",
                 details={"minutes": minutes, "date": jour.isoformat(), "statut": demande.statut})
     flash(message, "success")
@@ -164,7 +168,9 @@ def envoyer_demande(salarie, demande_id: int):
         return erreur(str(exc), _url_mes())
     demande.signature_salarie_id = sig.id
     demande.statut = "soumise"
+    courriels_rh.demande_soumise(demande, current_user)
     db.session.commit()
+    courriels_rh.expedier_en_attente()
     journaliser("rh.recup_soumise", cible=f"demande_recuperation#{demande.id}")
     flash("Demande signée et envoyée.", "success")
     return redirect(_url_mes())
@@ -277,7 +283,9 @@ def transmettre_demande(demande_id: int):
     demande.statut = "transmise"
     demande.transmise_par_user_id = current_user.id
     demande.transmise_le = utcnow()
+    courriels_rh.demande_transmise(demande, current_user)
     db.session.commit()
+    courriels_rh.expedier_en_attente()
     journaliser("rh.recup_transmise", cible=f"demande_recuperation#{demande.id}")
     flash("Demande transmise à la direction.", "success")
     return retour(_url_equipe())
@@ -308,7 +316,9 @@ def decider_demande(demande_id: int):
     # d'autre décideur), mais n'est jamais discret : la demande est marquée,
     # le journal a une action dédiée, l'accueil de la direction la compte.
     demande.decision_par_interesse = es.est_l_interesse(demande, current_user)
+    courriels_rh.demande_decidee(demande, current_user)
     db.session.commit()
+    courriels_rh.expedier_en_attente()
     journaliser("rh.recup_auto_decision" if demande.decision_par_interesse else "rh.recup_decision",
                 cible=f"demande_recuperation#{demande.id}",
                 details={"decision": demande.statut, "sans_transmission": demande.transmise_le is None,
@@ -357,11 +367,14 @@ def retirer_heures(heure_id: int):
     ajustement = HeureSupplementaire(
         salarie_id=origine.salarie_id, saisi_par_user_id=current_user.id, date_travail=origine.date_travail,
         minutes=-origine.minutes, motif="Retrait par la direction", est_ajustement=True,
-        origine_id=origine.id, commentaire_direction=commentaire,
+        origine_id=origine.id, commentaire_direction=commentaire, secteur=origine.secteur,
         par_interesse=bool(origine.salarie.user_id and origine.salarie.user_id == current_user.id),
     )
     db.session.add(ajustement)
+    db.session.flush()
+    courriels_rh.heures_retirees(ajustement, current_user)
     db.session.commit()
+    courriels_rh.expedier_en_attente()
     journaliser("rh.heures_retirees_par_interesse" if ajustement.par_interesse else "rh.heures_retirees",
                 cible=f"salarie#{origine.salarie_id}",
                 details={"heure_sup_id": origine.id, "minutes": origine.minutes, "commentaire": commentaire,

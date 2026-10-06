@@ -6,8 +6,9 @@
     <h1>Notifications automatiques</h1>
     <p class="muted">
       Un <strong>récapitulatif e-mail</strong> (au plus un par jour et par destinataire),
-      jamais un e-mail par événement. Rien n'est actif tant que vous ne l'avez pas coché.
+      pas un e-mail par événement. Rien n'est actif tant que vous ne l'avez pas coché.
       Si un jour il n'y a rien à signaler, <strong>aucun e-mail ne part</strong>.
+      (Seuls les e-mails personnels de l'espace salarié, décrits plus bas, partent au fil de l'eau.)
     </p>
 
     <form method="post" data-no-scroll-restore>
@@ -63,6 +64,31 @@
       </div>
 
       <button class="btn" type="submit" data-pending-text="Enregistrement…">💾 Enregistrer les réglages</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>E-mails de l'espace salarié</h2>
+    <p class="muted">
+      Envoyés au fil de l'eau à la personne concernée (demande à transmettre, à décider, décision,
+      heures retirées, document partagé). Toujours actifs ; chacun peut les couper depuis son espace.
+      Ils passent par une file : un serveur de mail absent ne bloque jamais une action.
+    </p>
+    {% if not smtp_configure %}
+      <p class="status-badge status-warning">Serveur de mail non configuré : les e-mails attendent dans la file et partiront dès qu'il le sera.</p>
+    {% endif %}
+    <ul>
+      <li><strong>{{ file_rh.en_attente }}</strong> en attente d'envoi</li>
+      <li><strong>{{ file_rh.envoyes_30j }}</strong> envoyé(s) ces 30 derniers jours</li>
+      <li><strong>{{ file_rh.abandonnes }}</strong> abandonné(s) après plusieurs échecs</li>
+    </ul>
+    {% if file_rh.derniers_echecs %}
+      <p class="muted" style="font-size:12px;">Dernières erreurs :
+        {% for c in file_rh.derniers_echecs %}<br>• {{ c.created_at.strftime('%d/%m %H:%M') }} — {{ c.derniere_erreur }}{% endfor %}</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin.notifications_relancer_rh') }}" data-no-scroll-restore>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit" data-pending-text="Envoi…">🔁 Envoyer la file maintenant</button>
     </form>
   </div>
 

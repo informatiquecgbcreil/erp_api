@@ -138,6 +138,7 @@ def enregistrer_frais_km(salarie):
         annee=champs["date_trajet"].year, annee_bareme=calcul.annee_bareme,
         type_vehicule=champs["type_vehicule"], puissance_fiscale=champs["puissance_fiscale"],
         electrique=champs["electrique"], distance_km=champs["distance_km"], cumul_km_avant=calcul.cumul_avant,
+        secteur=salarie.secteur,
         motif=champs["motif"], montant_centimes=calcul.montant_centimes,
         taux_millieme=calcul.ligne.taux_millieme, forfait_centimes=calcul.ligne.forfait_centimes,
         bonus_electrique_pct=calcul.ligne.bonus_electrique_pct if champs["electrique"] else 0,

@@ -21,6 +21,22 @@ def espace():
     return redirect(url_for("main.dashboard", espace="salarie"))
 
 
+@bp.route("/preferences/courriels", methods=["POST"])
+@login_required
+@require_perm("salarie:espace")
+def preference_courriels():
+    """Couper ou rétablir les e-mails de l'espace salarié (badges de l'accueil inchangés)."""
+    from flask import flash
+    from app.services.audit import journaliser
+    from app.services.courriels_rh import changer_preference
+    actif = request.form.get("actif") == "1"
+    changer_preference(current_user, actif)
+    journaliser("rh.preference_courriels", details={"actif": actif})
+    flash("Tu recevras les e-mails de l'espace salarié." if actif
+          else "Plus d'e-mails de l'espace salarié : les badges de l'accueil restent là.", "success")
+    return redirect(url_for("main.dashboard", espace="salarie"))
+
+
 @bp.route("/agenda-du-jour")
 @login_required
 @require_perm("salarie:espace")

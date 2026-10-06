@@ -10,6 +10,7 @@
     </div>
   </div>
   {{ m.sous_menu('recup') }}
+  <p class="no-print" style="margin:-4px 0 0;"><a class="btn" href="{{ url_for('salaries.releve', salarie_id=salarie.id) }}">🧾 Mon relevé du mois (imprimable)</a></p>
 
   <div class="es-kpis">
     <div class="es-kpi" data-tone="{{ 'danger' if resume.solde < 0 else 'ok' }}">

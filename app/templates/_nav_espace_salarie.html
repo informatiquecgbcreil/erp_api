@@ -13,6 +13,9 @@
   {% if can('frais_km:suivi') %}
     <a class="pill {% if ep == 'salaries.equipe_frais_km' %}active{% endif %}" href="{{ url_for('salaries.equipe_frais_km') }}">🧾 Frais km de l'équipe</a>
   {% endif %}
+  {% if can('rh:view') or can('frais_km:suivi') %}
+    <a class="pill {% if ep == 'salaries.exports_rh' %}active{% endif %}" href="{{ url_for('salaries.exports_rh') }}">📤 Exports RH</a>
+  {% endif %}
   {% if can('salaires:gerer') %}
     <a class="pill {% if ep.startswith('salaries.equipe_salaires') or ep == 'salaries.profil_salarial' %}active{% endif %}" href="{{ url_for('salaries.equipe_salaires') }}">🔒 Profils salariaux</a>
   {% endif %}

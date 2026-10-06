@@ -3057,6 +3057,9 @@ class HeureSupplementaire(db.Model):
     date_travail = db.Column(db.Date, nullable=False, index=True)
     minutes = db.Column(db.Integer, nullable=False)
     motif = db.Column(db.Text, nullable=False, default="")
+    #: Secteur du salarié AU MOMENT de la saisie : un changement de secteur
+    #: ultérieur ne réimpute pas les heures passées (exports, bilans).
+    secteur = db.Column(db.String(80), nullable=True, index=True)
     est_ajustement = db.Column(db.Boolean, nullable=False, default=False)
     origine_id = db.Column(db.Integer, db.ForeignKey("heure_supplementaire.id"), nullable=True, index=True)
     commentaire_direction = db.Column(db.Text, nullable=True)
@@ -3088,6 +3091,7 @@ class DemandeRecuperation(db.Model):
     date_recuperation = db.Column(db.Date, nullable=False, index=True)
     minutes = db.Column(db.Integer, nullable=False)
     motif = db.Column(db.Text, nullable=False, default="")
+    secteur = db.Column(db.String(80), nullable=True, index=True)  # figé à la demande
     statut = db.Column(db.String(20), nullable=False, default="brouillon", index=True)
     commentaire_direction = db.Column(db.Text, nullable=True)
 
@@ -3158,6 +3162,7 @@ class FraisKilometrique(db.Model):
     puissance_fiscale = db.Column(db.Integer, nullable=False)
     electrique = db.Column(db.Boolean, nullable=False, default=False)
     distance_km = db.Column(db.Integer, nullable=False)
+    secteur = db.Column(db.String(80), nullable=True, index=True)  # figé au trajet
     cumul_km_avant = db.Column(db.Integer, nullable=False, default=0)
     motif = db.Column(db.String(500), nullable=False)
     montant_centimes = db.Column(db.Integer, nullable=False)
@@ -3265,6 +3270,43 @@ class DocumentRhAcces(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
 
     user = db.relationship("User")
+
+
+class CourrielRh(db.Model):
+    """File d'envoi des e-mails de l'espace salarié.
+
+    Chaque e-mail est d'abord écrit ici (dans la transaction de l'action),
+    puis envoyé juste après. Un échec (serveur de mail absent ou injoignable)
+    ne bloque jamais l'action : l'e-mail reste en file et est réessayé
+    (prochaine action RH, puis chaque jour), au plus ``MAX_TENTATIVES`` fois.
+    Le contenu ne porte jamais de donnée sensible (montant de salaire,
+    document) : un fait et un lien."""
+
+    __tablename__ = "courriel_rh"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
+    destinataire = db.Column(db.String(255), nullable=False)
+    evenement = db.Column(db.String(60), nullable=False, index=True)
+    sujet = db.Column(db.String(255), nullable=False)
+    corps = db.Column(db.Text, nullable=False)
+    objet_type = db.Column(db.String(40), nullable=True)
+    objet_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    envoye_le = db.Column(db.DateTime, nullable=True, index=True)
+    tentatives = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    derniere_erreur = db.Column(db.String(500), nullable=True)
+
+
+class PreferenceCourrielRh(db.Model):
+    """Une personne peut couper les e-mails de l'espace salarié (actifs par défaut)."""
+
+    __tablename__ = "preference_courriel_rh"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    actif = db.Column(db.Boolean, nullable=False, default=True)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 # ---------- GLOSSAIRE : personnalisations locales ----------

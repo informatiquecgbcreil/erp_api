@@ -491,4 +491,6 @@ def build_espace_salarie(user) -> dict[str, Any]:
         )
     ctx["equipe"] = a_traiter_equipe(user)
     ctx["visible"] = bool(ctx["espace"] or ctx["equipe"])
+    from app.services.courriels_rh import courriels_actifs_pour
+    ctx["courriels_actifs"] = courriels_actifs_pour(user)
     return ctx

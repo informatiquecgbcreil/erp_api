@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<style>
+  .releve-signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:18px;}
+  .releve-signatures div{border:1px solid var(--border,#cbd5e1);border-radius:8px;min-height:90px;padding:8px;}
+</style>
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">🚗 État de frais kilométriques — {{ salarie.nom_complet }}</h1>
+      <p class="page-subtitle">{{ salarie.poste or '' }}{% if salarie.secteur %} · {{ salarie.secteur }}{% endif %} · du {{ du.strftime('%d/%m/%Y') }} au {{ au.strftime('%d/%m/%Y') }}</p>
+    </div>
+    <div class="hero-actions no-print">
+      <form method="get" class="inline-actions"><input class="in" type="month" name="mois" value="{{ mois }}"><button class="btn" type="submit">Changer de mois</button></form>
+      <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+  <section class="section-card">
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Date</th><th>Motif</th><th>Véhicule</th><th>Km</th><th>Barème</th><th>Montant</th><th>Signée le</th><th>Dépense</th></tr></thead>
+      <tbody>
+      {% for n in notes %}
+        <tr>
+          <td>{{ n.date_trajet.strftime('%d/%m/%Y') }}</td>
+          <td>{{ n.motif }}{% set lien = es.libelle_lien(n) %}{% if lien %}<div class="es-lien">{{ lien }}</div>{% endif %}</td>
+          <td>{{ fk.libelle_vehicule(n.type_vehicule) }} {{ n.puissance_fiscale }} CV{% if n.electrique %} ⚡{% endif %}</td>
+          <td>{{ n.distance_km }}</td>
+          <td>{{ n.annee_bareme }} · {{ fk.format_taux(n.taux_millieme) }} €/km{% if n.bonus_electrique_pct %} +{{ n.bonus_electrique_pct }} %{% endif %}</td>
+          <td><strong>{{ es.format_euros(n.montant_centimes) }}</strong></td>
+          <td>{{ n.signee_le.strftime('%d/%m/%Y') if n.signee_le else '—' }}</td>
+          <td>{{ ('n° ' ~ n.depense_id) if n.depense_id else 'à imputer' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="muted">Aucun trajet sur la période.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if notes %}<tfoot><tr><td colspan="3"><strong>Total</strong></td><td><strong>{{ km }}</strong></td><td></td><td><strong>{{ es.format_euros(total) }}</strong></td><td colspan="2"></td></tr></tfoot>{% endif %}
+    </table></div>
+    <p class="es-lien">Montants calculés au barème sur la distance cumulée de l'année ; chaque note a été signée par le salarié dans l'application.</p>
+  </section>
+  <div class="releve-signatures">
+    <div><strong>Le salarié</strong><br><span class="muted">Date et signature</span></div>
+    <div><strong>La direction</strong><br><span class="muted">Bon pour paiement</span></div>
+    <div><strong>La comptabilité</strong><br><span class="muted">Payé le</span></div>
+  </div>
+</div>
+{% endblock %}

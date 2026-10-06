@@ -106,7 +106,11 @@ def deposer_document():
     )
     document.acces = [DocumentRhAcces(user_id=uid) for uid in sorted(valides)]
     db.session.add(document)
+    db.session.flush()
+    from app.services import courriels_rh
+    courriels_rh.document_depose(document, current_user)
     db.session.commit()
+    courriels_rh.expedier_en_attente()
     journaliser("rh.document_depose", cible=f"document_rh#{document.id}",
                 details={"type": type_doc.code, "lecteurs": len(valides)})
     flash("Document déposé dans le coffre-fort.", "success")

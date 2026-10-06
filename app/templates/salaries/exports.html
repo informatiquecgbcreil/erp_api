@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+{% import "salaries/_macros.html" as m with context %}
+{% block body %}
+{{ m.styles() }}
+<div class="page-shell wide-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">📤 Exports RH</h1>
+      <p class="page-subtitle">Pour la paie et les bilans : choisis la période (un mois par défaut), les secteurs, les salariés. Jamais de coût horaire ni de salaire dans ces exports.</p>
+    </div>
+  </div>
+  {{ m.sous_menu('exports') }}
+
+  <form method="get" class="section-card stack no-print" style="gap:10px;">
+    <div class="form-grid-4" style="align-items:end;">
+      <label class="field-stack"><span>Mois</span><input class="in" type="month" name="mois" value="{{ mois }}"></label>
+      <label class="field-stack"><span>ou du</span><input class="in" type="date" name="du" value="{{ args.get('du', '') }}"></label>
+      <label class="field-stack"><span>au</span><input class="in" type="date" name="au" value="{{ args.get('au', '') }}"></label>
+      <div class="es-lien">Du/au, s'ils sont remplis, priment sur le mois.</div>
+    </div>
+    <div class="form-grid-2">
+      <label class="field-stack"><span>Secteurs <small class="muted">(aucun = tous)</small></span>
+        <select class="in" name="secteur" multiple size="5">
+          {% for s in secteurs %}<option value="{{ s }}" {% if s in f.secteurs %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select></label>
+      <label class="field-stack"><span>Salariés <small class="muted">(aucun = tous)</small></span>
+        <select class="in" name="salarie_id" multiple size="5">
+          {% for s in salaries %}<option value="{{ s.id }}" {% if s.id in f.salarie_ids %}selected{% endif %}>{{ s.nom_complet }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <div class="inline-actions">
+      {% if voir_recup %}<label><input type="checkbox" name="contenu" value="recup" {% if f.recup %}checked{% endif %}> Heures sup et récupérations</label>{% endif %}
+      {% if voir_km %}<label><input type="checkbox" name="contenu" value="km" {% if f.km %}checked{% endif %}> Frais kilométriques</label>{% endif %}
+      <label><input type="checkbox" name="par_salarie" value="1" {% if f.onglet_par_salarie %}checked{% endif %}> Un onglet par salarié dans le classeur</label>
+    </div>
+    <div class="inline-actions">
+      <button class="btn" type="submit">Afficher</button>
+      <button class="btn ok" type="submit" formaction="{{ url_for('salaries.exports_rh_classeur') }}">⬇ Télécharger le classeur Excel</button>
+    </div>
+  </form>
+
+  <section class="section-card">
+    <h2 class="section-title">Synthèse {{ f.libelle_periode }}{% if f.secteurs %} · {{ f.secteurs|join(', ') }}{% endif %}</h2>
+    <div class="tablewrap clean"><table>
+      <thead><tr>
+        <th>Salarié</th><th>Secteur</th>
+        {% if f.recup %}<th>Solde début</th><th>Heures sup</th><th>Retraits</th><th>Récup prises</th><th>En attente</th><th>Solde fin</th>{% endif %}
+        {% if f.km %}<th>Frais km</th><th>Non imputés</th>{% endif %}
+        <th class="no-print">Documents</th>
+      </tr></thead>
+      <tbody>
+      {% for x in donnees.par_salarie %}
+        <tr>
+          <td><strong>{{ x.salarie.nom_complet }}</strong></td>
+          <td>{{ x.salarie.secteur or '—' }}</td>
+          {% if f.recup %}
+            <td>{{ es.format_minutes(x.solde_debut) }}</td><td>{{ es.format_minutes(x.heures_sup) }}</td>
+            <td>{{ es.format_minutes(x.retraits) if x.retraits else '—' }}</td><td>{{ es.format_minutes(x.recup_prises) }}</td>
+            <td>{{ es.format_minutes(x.recup_en_attente) if x.recup_en_attente else '—' }}</td>
+            <td><strong {% if x.solde_fin < 0 %}style="color:var(--danger,#dc2626);"{% endif %}>{{ es.format_minutes(x.solde_fin) }}</strong></td>
+          {% endif %}
+          {% if f.km %}<td>{{ es.format_euros(x.km_montant) }}<div class="es-lien">{{ x.km }} km · {{ x.km_nb }} note{{ 's' if x.km_nb > 1 }}</div></td>
+            <td>{{ es.format_euros(x.km_a_imputer) if x.km_a_imputer else '—' }}</td>{% endif %}
+          <td class="no-print">
+            {% if f.recup %}<a class="mini-link" href="{{ url_for('salaries.releve', salarie_id=x.salarie.id, du=f.du.isoformat(), au=f.au.isoformat()) }}">🧾 relevé</a>{% endif %}
+            {% if f.km and x.km_nb %}<a class="mini-link" href="{{ url_for('salaries.etat_frais_km', salarie_id=x.salarie.id, du=f.du.isoformat(), au=f.au.isoformat()) }}">🚗 état de frais</a>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="12"><div class="quick-empty"><strong>Personne dans ce filtre.</strong></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+
+  {% if donnees.par_secteur %}
+  <section class="section-card">
+    <h2 class="section-title">Par secteur</h2>
+    <p class="muted" style="margin-top:0;">Chaque ligne compte dans le secteur du salarié au moment où elle a été saisie.</p>
+    <div class="tablewrap clean"><table>
+      <thead><tr><th>Secteur</th>{% if f.recup %}<th>Heures sup</th><th>Retraits</th><th>Récup prises</th>{% endif %}{% if f.km %}<th>Km</th><th>Frais km</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for secteur, t in donnees.par_secteur.items() %}
+        <tr><td><strong>{{ secteur }}</strong></td>
+          {% if f.recup %}<td>{{ es.format_minutes(t.heures_sup) }}</td><td>{{ es.format_minutes(t.retraits) if t.retraits else '—' }}</td><td>{{ es.format_minutes(t.recup_prises) }}</td>{% endif %}
+          {% if f.km %}<td>{{ t.km }}</td><td>{{ es.format_euros(t.km_montant) }}</td>{% endif %}</tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
