@@ -330,10 +330,12 @@ static class Program {
     }
     /// Audit 6.2 : un programme qui écoute sur UNE adresse précise (VPN,
     /// Tailscale, seconde carte) laissait le port « libre » vu de 127.0.0.1.
+    /// TCP seulement : nos services n'écoutent qu'en TCP (PostgreSQL, Waitress,
+    /// Caddy sans HTTP/3). Le serveur DNS de Windows Server garde des milliers
+    /// de ports UDP tirés au hasard (socket pool), 55432 compris : les compter
+    /// bloquait une mise à jour pour un conflit qui n'existe pas.
     internal static bool PortInUse(int port) {
-        var g = IPGlobalProperties.GetIPGlobalProperties();
-        foreach (var e in g.GetActiveTcpListeners()) if (e.Port == port) return true;
-        foreach (var e in g.GetActiveUdpListeners()) if (e.Port == port) return true;
+        foreach (var e in IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners()) if (e.Port == port) return true;
         return false;
     }
     internal static int FreePort(int start) {

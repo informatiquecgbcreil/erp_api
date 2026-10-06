@@ -185,6 +185,10 @@ static class SystemSmoke {
             Check(Program.PortInUse(port), "Port occupé sur toutes les adresses non détecté");
             Check(Program.FreePort(port) != port, "FreePort propose un port déjà occupé");
         } finally { other.Stop(); }
+        // Un port UDP (socket pool du serveur DNS) ne gêne aucun service TCP.
+        int libre = Program.FreePort(port + 1);
+        using (var udp = new System.Net.Sockets.UdpClient(new IPEndPoint(IPAddress.Any, libre)))
+            Check(!Program.PortInUse(libre), "Un port pris en UDP seulement est vu comme occupé");
         Console.WriteLine("PORTS_OCCUPES_DETECTES_OK");
     }
     /// Audit 6.5 : sauvegarde quotidienne faite au démarrage, vérifiée ; puis

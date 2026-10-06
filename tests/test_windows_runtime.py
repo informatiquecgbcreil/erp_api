@@ -1,7 +1,25 @@
 """Contrats du reverse-proxy Windows pour l'accès kiosque mobile."""
 
+from pathlib import Path
+
 from desktop import runtime
 import pytest
+
+
+def test_ports_controles_en_tcp_seulement(tmp_path):
+    """Le serveur DNS de Windows Server garde des milliers de ports UDP tirés
+    au hasard (socket pool), dont parfois 55432, celui de la base : la mise à
+    jour s'arrêtait sur « port occupé » alors que PostgreSQL n'écoute qu'en
+    TCP. Le contrôle ignore l'UDP, ce qui suppose qu'aucun de nos services ne
+    l'utilise (Caddy sans HTTP/3)."""
+    source = (Path(__file__).resolve().parents[1] / "desktop" / "MonCentreSocial.cs").read_text(encoding="utf-8")
+    debut = source.index("internal static bool PortInUse(")
+    corps = source[debut:source.index("\n    }\n", debut)]
+    assert "GetActiveTcpListeners" in corps and "Udp" not in corps
+    (tmp_path / "runtime").mkdir()
+    caddyfile = runtime.write_caddy({"hostname": "centre-social", "https_port": 8443,
+                                     "kiosk_http_port": 8080, "web_port": 18080}, tmp_path)
+    assert "protocols h1 h2\n" in caddyfile.read_text(encoding="utf-8")
 
 
 def test_caddy_expose_seulement_le_kiosque_sur_le_port_mobile(tmp_path):
