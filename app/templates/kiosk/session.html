@@ -169,8 +169,8 @@
   const newBlock = document.getElementById('newParticipant');
   const cancelNew = document.getElementById('cancelNew');
 
-  const highlightId = {{ (highlight or 'null')|tojson }};
-  const highlightLabel = {{ (highlight_label or 'null')|tojson }};
+  const highlightId = {{ highlight|tojson }};
+  const highlightLabel = {{ highlight_label|tojson }};
   if(highlightId && highlightLabel){
     pid.value = highlightId;
     chosen.textContent = highlightLabel;
