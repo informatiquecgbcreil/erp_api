@@ -34,6 +34,7 @@ from app.models import (
 
 from . import bp
 from app.activite.services.docx_utils import generate_individuel_mensuel_docx
+from app.services.programme_public import label_date_fr
 from app.services.quartiers import normalize_quartier_for_ville
 from app.utils.limiteur import Limiteur
 
@@ -209,7 +210,7 @@ def _session_label(s: SessionActivite):
     secteur = s.secteur
     nom = atelier.nom if atelier else "Atelier"
     if s.session_type == "COLLECTIF":
-        d = s.date_session.isoformat() if s.date_session else ""
+        d = label_date_fr(s.date_session) if s.date_session else ""
         h = ""
         if s.heure_debut:
             h = s.heure_debut
@@ -217,7 +218,7 @@ def _session_label(s: SessionActivite):
                 h += f"-{s.heure_fin}"
         return f"{secteur} — {nom} — {d} {h}".strip()
     else:
-        d = s.rdv_date.isoformat() if s.rdv_date else ""
+        d = label_date_fr(s.rdv_date) if s.rdv_date else ""
         h = ""
         if s.rdv_debut:
             h = s.rdv_debut

@@ -122,6 +122,46 @@ def test_page_session_rouages_intacts(client, session_kiosk):
         assert hook in page, f"rouage manquant : {hook}"
 
 
+def test_page_session_sans_personne_preselectionnee(client, session_kiosk):
+    """Sans « highlight », le champ « Personne sélectionnée » doit rester vide :
+    la chaîne "null" (vraie en JS) s'affichait comme nom choisi."""
+    page = client.get(f"/kiosk/session/{session_kiosk['token']}").get_data(as_text=True)
+    assert "const highlightId = null;" in page
+    assert "const highlightLabel = null;" in page
+    assert 'const highlightLabel = "null"' not in page
+
+
+@pytest.mark.parametrize("session_type", ["COLLECTIF", "INDIVIDUEL_MENSUEL"])
+def test_libelle_seance_date_en_francais(app, client, session_type):
+    """Le titre de la séance affiche une date lisible, pas « 2026-10-09 »."""
+    suffixe = uuid.uuid4().hex[:8]
+    jour = date(2026, 10, 9)
+    with app.app_context():
+        from app.extensions import db
+        from app.models import AtelierActivite, SessionActivite
+
+        atelier = AtelierActivite(nom=f"Atelier date {suffixe}", secteur="Numérique")
+        db.session.add(atelier)
+        db.session.flush()
+        s = SessionActivite(
+            atelier_id=atelier.id, secteur="Numérique", session_type=session_type,
+            kiosk_open=True, kiosk_opened_at=utcnow(),
+            kiosk_pin=f"{int(suffixe[:4], 16) % 10000:04d}", kiosk_token=f"tokdate{suffixe}",
+        )
+        if session_type == "COLLECTIF":
+            s.date_session, s.heure_debut, s.heure_fin = jour, "14:00", "16:00"
+        else:
+            s.rdv_date, s.rdv_debut, s.rdv_fin = jour, "10:00", "11:00"
+        db.session.add(s)
+        db.session.commit()
+        token = s.kiosk_token
+
+    for url in (f"/kiosk/session/{token}", f"/kiosk/session/{token}/feedback"):
+        page = client.get(url).get_data(as_text=True)
+        assert "vendredi 9 octobre 2026" in page, url
+        assert "2026-10-09" not in page, url
+
+
 def test_creation_participant_au_kiosque(app, client, session_kiosk):
     nom = f"KioskNew{uuid.uuid4().hex[:6]}"
     r = client.post(
