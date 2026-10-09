@@ -2,7 +2,12 @@
 
 ## Installation Windows avec assistant
 
-La distribution Windows s'installe avec **Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe**.
+La distribution Windows s'installe avec **Mon-Centre-Social-1.0.0-rc2-Setup-x64.exe**
+(version actuelle, fixée dans `desktop/installer.iss`). Il est construit et recetté
+sur Windows Server par le workflow
+[`.github/workflows/windows-installer.yml`](.github/workflows/windows-installer.yml),
+qui le publie comme artefact `Mon-Centre-Social-Windows-x64` (avec son empreinte
+SHA-256, conservé 30 jours).
 Python, PostgreSQL, HTTPS et les bibliothèques sont inclus ; aucune commande
 PowerShell ni configuration manuelle du PATH. L'assistant choisit les modules,
 crée le compte direction et le dossier confidentiel. Un service Windows et une
@@ -151,7 +156,7 @@ Technologies principales :
 - Flask-WTF.
 - Waitress pour un démarrage simple en environnement serveur.
 - SQLite par défaut en local.
-- PostgreSQL recommandé en production ou en multi-utilisateur.
+- PostgreSQL recommandé en production ou en multi-utilisateur (pilote psycopg 3).
 - Pytest pour les tests.
 
 Points techniques importants :
@@ -191,8 +196,8 @@ Points techniques importants :
 ### 1. Cloner le dépôt
 
 ```bash
-git clone <url-du-depot>
-cd juin
+git clone https://github.com/informatiquecgbcreil/erp_api.git
+cd erp_api
 ```
 
 ### 2. Créer un environnement virtuel
@@ -230,7 +235,13 @@ python -m pip install -r requirements-dev.txt
 
 En développement, l'application peut démarrer avec sa configuration par défaut et une base SQLite locale.
 
-Pour une configuration plus propre, créez un fichier `.env` local ou exportez les variables dans votre shell. Le fichier `.env` est ignoré par Git.
+Pour une configuration plus propre, partez du modèle commenté `.env.example` fourni avec le dépôt (ou exportez les variables dans votre shell). Le fichier `.env` est ignoré par Git.
+
+```bash
+cp .env.example .env      # Windows : copy .env.example .env
+```
+
+Les scripts `start_linux.sh` et `start_windows.bat` font cette copie d'eux-mêmes si `.env` est absent.
 
 Exemple minimal de `.env` local :
 
@@ -251,7 +262,7 @@ ERP_HOST=127.0.0.1
 ERP_PORT=8000
 ```
 
-> Remarque : les scripts `start_linux.sh` et `start_windows.bat` tentent de copier `.env.example` si `.env` est absent. Si aucun `.env.example` n'est présent dans votre copie du dépôt, créez simplement `.env` manuellement ou exportez les variables dans l'environnement.
+Une URL `postgresql://` sans pilote explicite est utilisée avec psycopg 3 (`psycopg[binary]`, déclaré dans `requirements.txt`) : `config.py` la convertit en `postgresql+psycopg://`.
 
 ### 5. Démarrer l'application
 
@@ -479,22 +490,24 @@ Ils couvrent notamment :
 - exports ;
 - journalisation des erreurs et avertissements.
 
-Commande locale :
+Commande locale (base SQLite jetable) :
 
 ```bash
 python -m pytest
 ```
 
-La CI GitHub Actions lance automatiquement les tests sur :
-
-- `push` ;
-- `pull_request`.
-
-La CI installe Python 3.13, installe `requirements-dev.txt`, puis exécute :
+La même suite sur PostgreSQL : les bases de travail sont dérivées de l'URL, créées puis supprimées ; la base nommée dans l'URL n'est jamais touchée (voir `tests/conftest.py`) :
 
 ```bash
-python -m pytest
+TESTS_DATABASE_URL=postgresql+psycopg://user:motdepasse@localhost:5432/erp python -m pytest
 ```
+
+Les tests de fumée navigateur demandent Chromium (`python -m playwright install chromium`) ; sans lui, ils se sautent proprement.
+
+Deux workflows GitHub Actions :
+
+- [`.github/workflows/tests.yml`](.github/workflows/tests.yml), à chaque `push` et `pull_request`, sous Python 3.13 : la suite sur **SQLite** (avec le test de fumée navigateur et le banc ACME Pebble du certificat reconnu), puis la même suite sur **PostgreSQL 16 et 18**, le moteur de production ;
+- [`.github/workflows/windows-installer.yml`](.github/workflows/windows-installer.yml) : construction de l'installateur Windows et recette sur Windows Server (installation, service, HTTPS, reprise d'une ancienne base, mise à jour, désinstallation), quand `desktop/`, `app/`, `migrations/`, `config.py` ou `requirements.txt` changent.
 
 ---
 
@@ -782,11 +795,16 @@ app/
   insertion/                  # parcours insertion, certifications, référentiels
   pedagogie/                  # logique pédagogique
   previsionnel/               # budget prévisionnel et référentiels
+  salaries/                   # espace salarié : heures sup, récupérations, frais km, coffre RH
   templates/                  # templates Jinja
   services/                   # services métier partagés
   utils/                      # helpers partagés
 
+desktop/                      # distribution Windows : installateur, service, recettes
+
 docs/
+  PASSATION.md                # reprise / passation, procédures d'urgence
+  GUIDE-WINDOWS.md            # installation, reprise, sauvegarde avec l'installateur
   navigation/                 # notes UX/navigation/responsive
   pedagogie/                  # notes pédagogie
 
@@ -893,25 +911,19 @@ Procédure recommandée :
 
 ## Pistes d'évolution
 
+Déjà réalisé depuis la première version de cette liste : `.env.example` versionné, page Administration → Santé du système, journalisation applicative (`erreurs.log`) à la place des sorties console, limitation des tentatives de connexion (`app/services/connexion_securite.py`) et des demandes de réinitialisation de mot de passe (`app/auth/routes.py`), restauration des archives zip protégée contre le « zip-slip », page des parcours par métier, assistant de bilan financeur et écrans de qualité des données.
+
 Évolutions à faible effort et fort impact :
 
-- ajouter un `.env.example` versionné ;
-- ajouter une page d'administration système ;
-- remplacer les sorties console techniques par du logging propre ;
-- ajouter un rate limiting sur connexion et reset password ;
-- durcir la restauration des archives zip ;
-- ajouter une page d'aide par parcours métier ;
-- ajouter des états vides pédagogiques ;
+- ajouter des états vides pédagogiques là où il en manque ;
 - automatiser quelques captures responsive.
 
 Évolutions moyen terme :
 
-- audit log métier transverse ;
-- assistant de préparation de bilan financeur ;
-- assistant qualité de données ;
+- étendre le journal d'audit (`app/services/audit.py`, aujourd'hui centré sur les actions sensibles) en journal métier transverse ;
 - refactor progressif des gros modules routes vers services ;
 - exports PDF financeurs ;
-- tests navigateur end-to-end.
+- étendre les tests de fumée navigateur (Playwright) en vrais parcours de bout en bout.
 
 Évolutions long terme :
 
