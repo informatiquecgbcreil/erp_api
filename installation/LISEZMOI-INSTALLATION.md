@@ -1,6 +1,6 @@
 # Installer Mon Centre Social
 
-Utilisez **Mon-Centre-Social-1.0.0-rc1-Setup-x64.exe**.
+Utilisez **Mon-Centre-Social-1.0.0-rc2-Setup-x64.exe**.
 
 L assistant Windows installe tous les composants sans PowerShell ni modification
 manuelle du PATH. Le dossier confidentiel est reserve a la direction / DSI.
