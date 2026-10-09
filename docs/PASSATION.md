@@ -653,10 +653,10 @@ python -m pytest          # ~2 020 tests, base SQLite jetable
 TESTS_DATABASE_URL=postgresql+psycopg://user:motdepasse@localhost:5432/erp python -m pytest
 ```
 
-Compter **une dizaine de minutes** par passage (en CI, sur `main`, début
-octobre 2026 : ~12 min sur SQLite, 8 à 13 min sur PostgreSQL ; davantage
-sur un petit poste). Quelques tests se sautent s'il manque Chromium
-(Playwright) ou Pebble (certificat reconnu).
+Compter **10 à 20 minutes** par passage (début octobre 2026 : en CI sur
+`main`, ~12 min sur SQLite et 8 à 13 min sur PostgreSQL ; 18 min mesurées
+sur un poste Linux à 4 cœurs, SQLite). Une vingtaine de tests se sautent
+s'il manque Chromium (Playwright) ou Pebble (certificat reconnu).
 
 - **CI `.github/workflows/tests.yml`**, à chaque push et pull request, trois
   jobs : **SQLite** (avec le test de fumée navigateur et le banc ACME
