@@ -127,15 +127,15 @@ def test_script_de_repliage_servi(app, admin_client):
 
 
 def test_fenetres_masquees_sans_bootstrap(app, admin_client):
-    """Le gabarit charge Bootstrap depuis un CDN : sans Internet, les
-    fenêtres (une note rapide par participant) restaient affichées en pleine
-    page. Le remplaçant local doit être servi et prévoir de les masquer."""
+    """Le script Bootstrap est servi en local, mais pas sa feuille de style :
+    les fenêtres (une note rapide par participant) restaient affichées en
+    pleine page. Le gabarit les masque lui-même, avec ou sans Bootstrap."""
     tag = uuid.uuid4().hex[:6]
     sid = _seance(app, nom=f"Atelier{tag}", secteur=f"Num{tag}")
 
     body = admin_client.get(f"/activite/session/{sid}/emargement").get_data(as_text=True)
     assert "js/emargement-ui.js" in body
-    assert ".sans-bootstrap .modal{ display:none; }" in body
+    assert ".modal{ display:none; }" in body
 
     script = admin_client.get("/static/js/emargement-ui.js").get_data(as_text=True)
     # Prend la main uniquement si Bootstrap est absent
