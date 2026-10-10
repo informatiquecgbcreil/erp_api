@@ -164,6 +164,9 @@
   /* Liseré discret sur la ligne : on la repère en descendant la liste,
      sans que la page vire au sapin de Noël. */
   .ligne-sans-signature > td:first-child{ box-shadow: inset 3px 0 0 rgba(245,158,11,.75); }
+  /* Statut de la ligne : lisible en entier (« Absent excusé »), même quand
+     le tableau est serré. */
+  .statut-ligne{ min-width:9.5em; }
 
   @media (prefers-color-scheme: dark){
     .sig-etat--ok{ color:#86efac; }
@@ -536,7 +539,7 @@
                     <input type="hidden" name="conso_period_end" value="{{ conso_period_end_value or '' }}">
                     <input type="hidden" name="action" value="update_presence_type">
                     <input type="hidden" name="presence_id" value="{{ pr.id }}">
-                    <select class="in" name="presence_type" onchange="this.form.submit()" style="font-size:.8rem; padding:2px 6px;" aria-label="Statut de présence de {{ nom_complet }}">
+                    <select class="in statut-ligne" name="presence_type" onchange="this.form.submit()" style="font-size:.8rem; padding:2px 6px;" aria-label="Statut de présence de {{ nom_complet }}">
                       <option value="present" {% if pr.presence_type == 'present' %}selected{% endif %}>Présent</option>
                       <option value="retard" {% if pr.presence_type == 'retard' %}selected{% endif %}>Retard</option>
                       <option value="absent_excuse" {% if pr.presence_type == 'absent_excuse' %}selected{% endif %}>Absent excusé</option>
