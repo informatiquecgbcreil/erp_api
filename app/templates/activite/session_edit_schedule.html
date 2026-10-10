@@ -1,5 +1,7 @@
 {% extends 'layout.html' %}
 
+{% block title %}Corriger la séance — {{ atelier.nom }}{% endblock %}
+
 {% block body %}
   <div class="stack">
     <div class="card">
@@ -11,24 +13,24 @@
 
         {% if session.session_type == 'INDIVIDUEL_MENSUEL' %}
           <div class="grid" style="grid-template-columns:1fr 1fr 1fr; gap:12px;">
-            <div><label>Date RDV</label><input class="in" type="date" name="rdv_date" value="{{ session.rdv_date }}" required></div>
-            <div><label>Heure début</label><input class="in" type="text" name="rdv_debut" value="{{ session.rdv_debut or '' }}" placeholder="09:00"></div>
-            <div><label>Heure fin</label><input class="in" type="text" name="rdv_fin" value="{{ session.rdv_fin or '' }}" placeholder="09:45"></div>
+            <div><label for="correction-rdv-date">Date RDV</label><input class="in" type="date" id="correction-rdv-date" name="rdv_date" value="{{ session.rdv_date }}" required></div>
+            <div><label for="correction-rdv-debut">Heure début</label><input class="in" type="text" id="correction-rdv-debut" name="rdv_debut" value="{{ session.rdv_debut or '' }}" placeholder="09:00"></div>
+            <div><label for="correction-rdv-fin">Heure fin</label><input class="in" type="text" id="correction-rdv-fin" name="rdv_fin" value="{{ session.rdv_fin or '' }}" placeholder="09:45"></div>
           </div>
         {% else %}
           <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr; gap:12px;">
-            <div><label>Date session</label><input class="in" type="date" name="date_session" value="{{ session.date_session }}" required></div>
-            <div><label>Heure début</label><input class="in" type="text" name="heure_debut" value="{{ session.heure_debut or '' }}" placeholder="14:00"></div>
-            <div><label>Heure fin</label><input class="in" type="text" name="heure_fin" value="{{ session.heure_fin or '' }}" placeholder="16:00"></div>
-            <div><label>Capacité</label><input class="in" type="number" name="capacite" value="{{ session.capacite if session.capacite is not none else (atelier.capacite_defaut or '') }}" min="0"></div>
+            <div><label for="correction-date">Date session</label><input class="in" type="date" id="correction-date" name="date_session" value="{{ session.date_session }}" required></div>
+            <div><label for="correction-debut">Heure début</label><input class="in" type="text" id="correction-debut" name="heure_debut" value="{{ session.heure_debut or '' }}" placeholder="14:00"></div>
+            <div><label for="correction-fin">Heure fin</label><input class="in" type="text" id="correction-fin" name="heure_fin" value="{{ session.heure_fin or '' }}" placeholder="16:00"></div>
+            <div><label for="correction-capacite">Capacité</label><input class="in" type="number" id="correction-capacite" name="capacite" value="{{ session.capacite if session.capacite is not none else (atelier.capacite_defaut or '') }}" min="0"></div>
           </div>
         {% endif %}
 
         <div class="spacer"></div>
         {% if secteurs_imputation|default([])|length > 1 %}
           <div class="field-stack" style="margin-top:10px;">
-            <label>Secteur d'imputation</label>
-            <select class="in" name="secteur_impute">
+            <label for="correction-secteur">Secteur d'imputation</label>
+            <select class="in" id="correction-secteur" name="secteur_impute">
               {% for s_lbl in secteurs_imputation %}
                 <option value="{{ s_lbl }}" {% if s_lbl == session.secteur %}selected{% endif %}>
                   {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
@@ -42,10 +44,9 @@
           </div>
         {% endif %}
 
-        <label>Raison de modification (obligatoire)</label>
           <div style="margin-top:10px;">
-            <label>Salle</label>
-            <select class="in" name="espace_id">
+            <label for="correction-salle">Salle</label>
+            <select class="in" id="correction-salle" name="espace_id">
               <option value="">— Hors les murs / aucune salle —</option>
               {% for salle in salles_occupables() %}
                 <option value="{{ salle.id }}" {% if session.espace_id == salle.id %}selected{% endif %}>
@@ -55,7 +56,9 @@
             </select>
             <div class="muted">Déplacer la séance libère l'ancienne salle et occupe la nouvelle.</div>
           </div>
-        <textarea class="in" name="edit_reason" rows="3" placeholder="Ex: erreur de saisie constatée après émargement, session déplacée suite à fermeture du site..." required></textarea>
+        {#- L'étiquette suit la salle : elle se trouvait avant, séparée de son champ. -#}
+        <label for="correction-raison" style="margin-top:10px;">Raison de modification (obligatoire)</label>
+        <textarea class="in" id="correction-raison" name="edit_reason" rows="3" placeholder="Ex: erreur de saisie constatée après émargement, session déplacée suite à fermeture du site..." required></textarea>
 
         <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:10px;">
           <button class="btn" type="submit">Enregistrer la correction</button>
@@ -92,7 +95,7 @@
           </tbody>
         </table>
       </div>
-      <div class="responsive-card-list" aria-label="Historique des corrections (vue compacte)">
+      <div class="responsive-card-list" role="group" aria-label="Historique des corrections (vue compacte)">
         {% for e in edits %}
           <article class="responsive-card">
             <header class="responsive-card__head">

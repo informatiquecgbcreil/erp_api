@@ -34,7 +34,7 @@
           <a class="btn" href="{{ url_for('activite.participants') }}" title="Personnes inscrites ou présentes dans les activités de ce secteur. L'annuaire complet est dans Publics → Tous les participants.">Participants du secteur (activité)</a>
           <a class="btn" href="{{ url_for('activite.saisie_grille') }}" title="Rattraper les feuilles d'émargement papier : un mois entier en cases à cocher.">🗓️ Saisie en grille</a>
           <a class="btn" href="{{ url_for('activite.emargements_attente') }}" title="Les séances passées sans présence saisie, avec relance des animateurs.">⏳ Émargements en attente</a>
-          <a class="btn" href="{{ url_for('main.mon_agenda') }}" title="Abonne Google Agenda / Apple Calendrier à tes séances : elles s'y ajoutent automatiquement.">📅 Mon agenda (synchro)</a>
+          <a class="btn" href="{{ url_for('main.mon_agenda') }}" title="Abonnez Google Agenda / Apple Calendrier à vos séances : elles s'y ajoutent automatiquement.">📅 Mon agenda (synchro)</a>
           <a class="btn ok" href="{{ url_for('activite.atelier_new', secteur=secteur or None) }}">Ajouter un atelier</a>
           <details class="nav-more">
             <summary class="btn">Options avancées</summary>
@@ -137,7 +137,7 @@
           </tbody>
         </table>
       </div>
-      <div class="responsive-card-list" aria-label="Liste des ateliers (vue compacte)">
+      <div class="responsive-card-list" role="group" aria-label="Liste des ateliers (vue compacte)">
         {% for a in ateliers %}
         <article class="ui-record responsive-card">
           <header class="responsive-card__head">

@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}Passeport — {{ participant.prenom }} {{ participant.nom }}{% endblock %}
 {% block body %}
 
 {# ---------------------------------------
@@ -247,7 +248,7 @@
         <div class="hart-sol"></div>
       </div>
       {% if not hart_evaluations %}
-        <p class="muted" style="margin-top:8px;">{{ participant.prenom }} n'a pas encore posé le pied sur l'escalier : pose l'évaluation de première venue ci-dessous. 👇</p>
+        <p class="muted" style="margin-top:8px;">{{ participant.prenom }} n'a pas encore posé le pied sur l'escalier : posez l'évaluation de première venue ci-dessous. 👇</p>
       {% endif %}
       <p class="muted" style="font-size:12px; margin-top:6px;">L'échelle de Hart est une <strong>évaluation humaine</strong> guidée par les présences (proposée à la première venue puis toutes les 5 séances) — pas un calcul automatique.</p>
 
@@ -261,7 +262,7 @@
                 {% for ev in hart_evaluations | reverse %}
                   <tr>
                     <td>{{ ev.date_evaluation.strftime('%d/%m/%Y') }}</td>
-                    <td><span class="status-badge" style="background: {{ hart_couleurs.get(ev.niveau, '#888') }}; color:#fff;">{{ ev.niveau }}</span></td>
+                    <td><span class="status-badge" style="background: {{ hart_couleurs.get(ev.niveau, '#cbd5e1') }}; color:#000;">{{ ev.niveau }}</span></td>
                     <td>{{ ev.type_label }}</td>
                     <td>{% if ev.temoignage %}<em>« {{ ev.temoignage }} »</em>{% else %}—{% endif %}</td>
                     <td class="muted">{{ ev.remarque_pro or '—' }}</td>
@@ -337,7 +338,7 @@
   <div class="card tabpanel" data-panel="evaluate">
     <h2 style="margin-top:0;">✅ Évaluer (hors session ou rattachée)</h2>
     <div class="muted" style="margin-top:-6px;">
-      Astuce : rattache une session si tu veux retrouver l’évaluation dans l’historique “comme si”.
+      Astuce : rattachez une session si vous voulez retrouver l’évaluation dans l’historique “comme si”.
     </div>
     <div class="spacer"></div>
 
@@ -507,13 +508,13 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="secteur" value="{{ sec }}">
 
-          <label>Note</label>
-          <textarea class="in" name="contenu" rows="3" required placeholder="Observation, progression, témoignage..."></textarea>
+          <label for="note-contenu">Note</label>
+          <textarea class="in" id="note-contenu" name="contenu" rows="3" required placeholder="Observation, progression, témoignage..."></textarea>
 
           <div class="spacer"></div>
 
-          <label>Catégorie</label>
-          <select class="in" name="categorie">
+          <label for="note-categorie">Catégorie</label>
+          <select class="in" id="note-categorie" name="categorie">
             {% for cat, label in note_categories.items() %}
               <option value="{{ cat }}">{{ label }}</option>
             {% endfor %}
@@ -529,8 +530,8 @@
           <input type="hidden" name="secteur" value="{{ sec }}">
           <input type="hidden" name="tab" value="notes">
           <div>
-            <label>Filtre catégorie</label>
-            <select class="in" name="categorie">
+            <label for="notes-filtre-categorie">Filtrer par catégorie</label>
+            <select class="in" id="notes-filtre-categorie" name="categorie">
               <option value="">Toutes</option>
               {% for cat,nb in notes_by_cat.items() %}
                 <option value="{{ cat }}" {% if selected_categorie==cat %}selected{% endif %}>
@@ -561,12 +562,12 @@
                     action="{{ url_for('pedagogie.participant_passeport_note_update', participant_id=participant.id, note_id=n.id) }}?tab=notes">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="row" style="gap:8px;flex-wrap:wrap;">
-                  <select class="in" name="categorie" style="max-width:190px;">
+                  <select class="in" name="categorie" style="max-width:190px;" aria-label="Catégorie de la note">
                     {% for cat, label in note_categories.items() %}
                       <option value="{{ cat }}" {% if n.categorie==cat %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                   </select>
-                  <input class="in" name="contenu" value="{{ n.contenu }}">
+                  <input class="in" name="contenu" value="{{ n.contenu }}" aria-label="Texte de la note">
                   <button class="btn" type="submit">Mettre à jour</button>
                 </div>
               </form>
@@ -612,24 +613,24 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="secteur" value="{{ sec }}">
 
-          <label>Titre (optionnel)</label>
-          <input class="in" name="titre" placeholder="Ex : Attestation, photo, CV, ...">
+          <label for="document-titre">Titre (optionnel)</label>
+          <input class="in" id="document-titre" name="titre" placeholder="Ex : Attestation, photo, CV, ...">
 
           <div class="spacer"></div>
 
-          <label>Catégorie</label>
-          <select class="in" name="categorie">
+          <label for="document-categorie">Catégorie</label>
+          <select class="in" id="document-categorie" name="categorie">
             <option value="atelier">Atelier</option>
             <option value="temoignage">Témoignage</option>
           </select>
 
           <div class="spacer"></div>
 
-          <label>Fichier</label>
-          <input class="in" type="file" name="file" required>
+          <label for="document-fichier">Fichier</label>
+          <input class="in" type="file" id="document-fichier" name="file" required>
 
           <div class="spacer"></div>
-          <button class="btn ok" type="submit">Uploader</button>
+          <button class="btn ok" type="submit">Déposer le document</button>
         </form>
       </div>
 

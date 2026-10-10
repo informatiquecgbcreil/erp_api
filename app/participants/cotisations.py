@@ -121,7 +121,7 @@ def cotisation_creer(participant_id: int):
 
     if type_cotisation == "adhesion_familiale":
         if not participant.foyer_id:
-            flash("Rapproche d'abord cette personne d'un foyer pour une adhésion familiale (ou choisis l'adhésion individuelle).", "warning")
+            flash("Rapprochez d'abord cette personne d'un foyer pour une adhésion familiale (ou choisissez l'adhésion individuelle).", "warning")
             return redirect(url_for("participants.synthese_participant", participant_id=participant.id))
         if cotisation_existante(annee_scolaire=annee, type_cotisation=type_cotisation, foyer_id=participant.foyer_id):
             flash(f"Une adhésion familiale {libelle_annee_scolaire(annee)} existe déjà pour ce foyer.", "info")
@@ -147,7 +147,7 @@ def cotisation_creer(participant_id: int):
             created_by_user_id=getattr(current_user, "id", None),
         )
     if tarif is None:
-        flash("Aucun tarif défini pour cette année scolaire : le montant dû est à 0 €, à corriger ci-dessous (ou définis d'abord le barème).", "warning")
+        flash("Aucun tarif défini pour cette année scolaire : le montant dû est à 0 €, à corriger ci-dessous (ou définissez d'abord le barème).", "warning")
     db.session.add(c)
     db.session.commit()
     flash("Cotisation créée.", "success")

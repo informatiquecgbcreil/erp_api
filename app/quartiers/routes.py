@@ -174,14 +174,14 @@ def fusionner():
     if selection:
         ids = [int(valeur) for valeur in selection if valeur.isdigit()]
         if len(ids) != 2 or cible_id not in ids:
-            flash("Coche exactement deux quartiers et choisis celui à conserver.", "danger")
+            flash("Cochez exactement deux quartiers et choisissez celui à conserver.", "danger")
             return redirect(url_for("quartiers.index"))
         source_id = next(identifiant for identifiant in ids if identifiant != cible_id)
 
     source = db.session.get(Quartier, source_id)
     cible = db.session.get(Quartier, cible_id)
     if source is None or cible is None:
-        flash("Choisis le quartier à absorber et celui qui le remplace.", "danger")
+        flash("Choisissez le quartier à absorber et celui qui le remplace.", "danger")
         return redirect(url_for("quartiers.index"))
     if source.id == cible.id:
         flash("Un quartier ne peut pas se fusionner avec lui-même.", "warning")
@@ -243,11 +243,11 @@ def villes_fusionner():
     source = (request.form.get("source") or "").strip()
     if selection:
         if len(selection) != 2 or cible not in selection:
-            flash("Coche exactement deux villes et choisis celle à conserver.", "danger")
+            flash("Cochez exactement deux villes et choisissez celle à conserver.", "danger")
             return redirect(url_for("quartiers.villes"))
         source = next(ville for ville in selection if ville != cible)
     if not source or not cible:
-        flash("Indique l'écriture à corriger et celle à conserver.", "danger")
+        flash("Indiquez l'écriture à corriger et celle à conserver.", "danger")
         return redirect(url_for("quartiers.villes"))
     if source == cible:
         flash("Ces deux écritures sont identiques.", "warning")

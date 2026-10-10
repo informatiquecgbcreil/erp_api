@@ -217,7 +217,7 @@ def index():
         alerts.append({
             'level': 'info',
             'title': 'Aucun apprentissage de séance explicite',
-            'text': "Commence par choisir une séance, puis indique ce qui est travaillé aujourd’hui.",
+            'text': "Commencez par choisir une séance, puis indiquez ce qui est travaillé aujourd’hui.",
         })
     if stats['observations'] == 0:
         alerts.append({
@@ -272,7 +272,7 @@ def parcours_pedagogique():
             titre = (request.form.get('titre') or '').strip()
             description = (request.form.get('description') or '').strip() or None
             if len(titre) < 3:
-                flash('Indique ce qui est travaillé pendant cette séance.', 'warning')
+                flash('Indiquez ce qui est travaillé pendant cette séance.', 'warning')
             elif Objectif.query.filter_by(session_id=session.id, titre=titre).first():
                 flash('Cet apprentissage est déjà rattaché à cette séance.', 'info')
             else:
@@ -449,7 +449,7 @@ def referentiels_list():
                 details = ", ".join(f"{count} {label}" for label, count in blocking.items())
                 flash(
                     f"Impossible de supprimer le référentiel « {ref.nom} » : il est encore utilisé ({details}). "
-                    "Retire d'abord ses compétences des évaluations, modules, ateliers, sessions, projets ou objectifs concernés.",
+                    "Retirez d'abord ses compétences des évaluations, modules, ateliers, sessions, projets ou objectifs concernés.",
                     "danger",
                 )
                 return redirect(url_for("pedagogie.referentiels_list"))
@@ -544,7 +544,7 @@ def referentiels_edit(referentiel_id: int):
                 details = ", ".join(f"{count} {label}" for label, count in blocking.items())
                 flash(
                     f"Impossible de supprimer la compétence « {comp.code} - {comp.nom} » : elle est encore utilisée ({details}). "
-                    "Retire-la d'abord des évaluations, modules, ateliers, sessions ou objectifs concernés.",
+                    "Retirez-la d'abord des évaluations, modules, ateliers, sessions ou objectifs concernés.",
                     "danger",
                 )
                 return redirect(url_for("pedagogie.referentiels_edit", referentiel_id=referentiel.id))

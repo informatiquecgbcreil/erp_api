@@ -931,7 +931,7 @@ def test_suppression_refusee_quand_une_fiche_en_depend(admin_client, app, atelie
     r = admin_client.post(
         f"/inscriptions-annuelles/{inscription_id}/supprimer", follow_redirects=True
     )
-    assert "annule-le plutôt" in r.data.decode("utf-8")
+    assert "annulez-le plutôt" in r.data.decode("utf-8")
     with app.app_context():
         from app.extensions import db
         from app.models import InscriptionAnnuelle

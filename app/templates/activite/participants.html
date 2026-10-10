@@ -38,7 +38,7 @@
     </div>
     <form method="get" style="margin-top:12px;" data-filter-summary="true">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
-        <input class="in" name="q" placeholder="Rechercher un participant" value="{{ q }}" style="min-width:260px;">
+        <input class="in" name="q" placeholder="Rechercher un participant" aria-label="Rechercher un participant : nom, prénom, e-mail ou téléphone" value="{{ q }}" style="min-width:260px;">
         <button class="btn ok" type="submit">Rechercher</button>
         {% if q %}<a class="btn" href="{{ url_for('activite.participants') }}">Réinitialiser la recherche</a>{% endif %}
       </div>
@@ -108,7 +108,7 @@
         </tbody>
       </table>
     </div>
-    <div class="responsive-card-list" aria-label="Participants du secteur (vue compacte)">
+    <div class="responsive-card-list" role="group" aria-label="Participants du secteur (vue compacte)">
       {% for p in participants %}
         {% set st = stats_map.get(p.id, {}) %}
         <article class="ui-record responsive-card">

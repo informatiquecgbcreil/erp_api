@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Synthèse — {{ participant.prenom }} {{ participant.nom }}{% endblock %}
 {% block body %}
 <style>
   .person-page { gap:16px; }
@@ -120,7 +121,7 @@
       <article class="person-signal">
         <h3>Qualité fiche</h3>
         <div class="big">{{ quality_score.ok }}/{{ quality_score.total }}</div>
-        <div class="person-progress" aria-label="Qualité fiche"><span style="width:{{ quality_score.percent }}%;"></span></div>
+        <div class="person-progress" role="progressbar" aria-label="Qualité de la fiche" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ quality_score.percent }}" aria-valuetext="{{ quality_score.ok }} sur {{ quality_score.total }}"><span style="width:{{ quality_score.percent }}%;"></span></div>
         <p>{% if quality_score.missing %}Manque : {{ quality_score.missing|join(', ') }}{% else %}Informations clés complétées.{% endif %}</p>
       </article>
     </div>

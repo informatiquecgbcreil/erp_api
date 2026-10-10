@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Modifier le quartier — {{ quartier.nom }}{% endblock %}
 {% block head_extra %}
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
 {% endblock %}
@@ -20,12 +21,21 @@
   <div class="card">
     <form method="post" class="stack" style="gap:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="inline" style="gap:10px; flex-wrap:wrap;">
-        <input class="in" name="ville" value="{{ quartier.ville }}" required style="min-width:180px;">
-        <input class="in" name="nom" value="{{ quartier.nom }}" required style="min-width:220px;">
-        <input class="in" name="qpv" list="qpv-connus" value="{{ quartier.qpv or '' }}"
-               placeholder="QPV de rattachement (facultatif)" style="min-width:230px;">
-        <label class="inline" style="gap:6px; align-items:center;">
+      <div class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field-stack">
+          <label for="quartier-ville">Ville</label>
+          <input class="in" id="quartier-ville" name="ville" value="{{ quartier.ville }}" required style="min-width:180px;">
+        </div>
+        <div class="field-stack">
+          <label for="quartier-nom">Quartier</label>
+          <input class="in" id="quartier-nom" name="nom" value="{{ quartier.nom }}" required style="min-width:220px;">
+        </div>
+        <div class="field-stack">
+          <label for="quartier-qpv">QPV de rattachement</label>
+          <input class="in" id="quartier-qpv" name="qpv" list="qpv-connus" value="{{ quartier.qpv or '' }}"
+                 placeholder="QPV de rattachement (facultatif)" style="min-width:230px;">
+        </div>
+        <label class="inline" style="gap:6px; align-items:center; flex-direction:row; min-height:40px;">
           <input type="checkbox" name="is_qpv" value="1" {% if quartier.is_qpv %}checked{% endif %}>
           <span>QPV</span>
         </label>
@@ -39,10 +49,10 @@
         se fait tout seul dans les bilans. Il n'y a plus à écrire « (QPV …) »
         dans le nom du quartier pour que les exports le retrouvent.
       </p>
-      <textarea class="in" name="description" rows="4" placeholder="Description (optionnel)">{{ quartier.description or "" }}</textarea>
+      <textarea class="in" name="description" rows="4" placeholder="Description (optionnel)" aria-label="Description du quartier (optionnel)">{{ quartier.description or "" }}</textarea>
 
       <div>
-        <label class="muted">Position sur la carte des habitants</label>
+        <strong class="muted" style="display:block; font-size:13px;">Position sur la carte des habitants</strong>
         <p class="muted" style="font-size:13px; margin:4px 0 8px 0;">
           Cliquez sur la carte pour placer ce quartier (ou déplacez le repère). C'est ici que sa bulle
           s'affichera. Laissez vide pour laisser le bouton « 🧭 Placer les quartiers » le positionner automatiquement.

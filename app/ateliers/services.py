@@ -114,8 +114,8 @@ def read_presence_ateliers() -> List[Dict]:
         raise RuntimeError(
             f"Table 'participants' introuvable dans presence.db. Chemin utilisé: {path}. "
             f"Tables trouvées: {tables}. "
-            "Astuce: vérifie que tu as copié le BON fichier presence.db dans app_gestion/instance/ "
-            "(ou définis la variable d'environnement PRESENCE_DB_PATH vers le bon chemin)."
+            "Astuce : vérifiez que vous avez copié le BON fichier presence.db dans app_gestion/instance/ "
+            "(ou définissez la variable d'environnement PRESENCE_DB_PATH vers le bon chemin)."
         )
     conn = sqlite3.connect(path)
     c = conn.cursor()

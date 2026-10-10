@@ -4,7 +4,7 @@
   <div class="stack">
     <div class="page-head">
       <h1 style="margin:0;">Compétences et suivi · objectifs</h1>
-      <p class="muted" style="margin:6px 0 0 0;">Crée rapidement une chaîne d'objectifs ou ouvre les options avancées pour les cas particuliers.</p>
+      <p class="muted" style="margin:6px 0 0 0;">Créez rapidement une chaîne d'objectifs ou ouvrez les options avancées pour les cas particuliers.</p>
       <p class="muted" style="margin:6px 0 0 0;">
         Un objectif déjà utilisé dans une séance n’est plus supprimable : il reste conservé pour préserver l’historique pédagogique.
       </p>
@@ -24,12 +24,12 @@
 
         <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
           <div>
-            <label>Intitulé de départ</label>
-            <input class="in" name="titre_base" placeholder="Ex. Gagner en autonomie numérique" required>
+            <label for="assistant-titre-base">Intitulé de départ</label>
+            <input class="in" id="assistant-titre-base" name="titre_base" placeholder="Ex. Gagner en autonomie numérique" required>
           </div>
           <div>
-            <label>Projet</label>
-            <select class="in" name="projet_id" required>
+            <label for="assistant-projet-id">Projet</label>
+            <select class="in" id="assistant-projet-id" name="projet_id" required>
               <option value="">—</option>
               {% for p in projets %}
                 <option value="{{ p.id }}">{{ p.secteur }} · {{ p.nom }}</option>
@@ -37,8 +37,8 @@
             </select>
           </div>
           <div>
-            <label>Atelier</label>
-            <select class="in" name="atelier_id" required>
+            <label for="assistant-atelier-id">Atelier</label>
+            <select class="in" id="assistant-atelier-id" name="atelier_id" required>
               <option value="">—</option>
               {% for a in ateliers %}
                 <option value="{{ a.id }}">{{ a.secteur }} · {{ a.nom }}</option>
@@ -46,8 +46,8 @@
             </select>
           </div>
           <div>
-            <label>Module pédagogique</label>
-            <select class="in" name="module_id" required>
+            <label for="assistant-module-id">Module pédagogique</label>
+            <select class="in" id="assistant-module-id" name="module_id" required>
               <option value="">—</option>
               {% for m in modules %}
                 <option value="{{ m.id }}">{{ m.nom }}</option>
@@ -64,13 +64,13 @@
 
     <details class="card">
       <summary><strong>Mode avancé · créer un objectif précis</strong></summary>
-      <p class="muted" style="margin-top:10px;">Utilise ce formulaire seulement si l'assistant rapide ne suffit pas.</p>
+      <p class="muted" style="margin-top:10px;">Utilisez ce formulaire seulement si l'assistant rapide ne suffit pas.</p>
       <form method="post" class="stack" id="objectifForm">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="create_objectif">
 
         <div>
-          <label>Type d'objectif</label>
+          <label for="objType">Type d'objectif</label>
           <select class="in" name="type" id="objType" required>
             <option value="">Choisir…</option>
             <option value="general">Objectif général (OG)</option>
@@ -81,18 +81,18 @@
 
         <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
           <div>
-            <label>Titre</label>
-            <input class="in" name="titre" required>
+            <label for="objectif-titre">Titre</label>
+            <input class="in" id="objectif-titre" name="titre" required>
           </div>
           <div>
-            <label>Seuil de validation (%)</label>
-            <input class="in" type="number" name="seuil_validation" min="0" max="100" step="1" value="60">
+            <label for="objectif-seuil-validation">Seuil de validation (%)</label>
+            <input class="in" type="number" id="objectif-seuil-validation" name="seuil_validation" min="0" max="100" step="1" value="60">
           </div>
         </div>
 
         <div id="fieldProjet" style="display:none;">
-          <label>Projet associé</label>
-          <select class="in" name="projet_id">
+          <label for="objectif-projet-id">Projet associé</label>
+          <select class="in" id="objectif-projet-id" name="projet_id">
             <option value="">—</option>
             {% for p in projets %}
               <option value="{{ p.id }}">{{ p.secteur }} · {{ p.nom }}</option>
@@ -101,8 +101,8 @@
         </div>
 
         <div id="fieldAtelier" style="display:none;">
-          <label>Atelier associé</label>
-          <select class="in" name="atelier_id">
+          <label for="objectif-atelier-id">Atelier associé</label>
+          <select class="in" id="objectif-atelier-id" name="atelier_id">
             <option value="">—</option>
             {% for a in ateliers %}
               <option value="{{ a.id }}">{{ a.secteur }} · {{ a.nom }}</option>
@@ -111,8 +111,8 @@
         </div>
 
         <div id="fieldModule" style="display:none;">
-          <label>Module pédagogique associé</label>
-          <select class="in" name="module_id">
+          <label for="objectif-module-id">Module pédagogique associé</label>
+          <select class="in" id="objectif-module-id" name="module_id">
             <option value="">—</option>
             {% for m in modules %}
               <option value="{{ m.id }}">{{ m.nom }}</option>
@@ -122,8 +122,8 @@
         </div>
 
         <div id="fieldSession" style="display:none;">
-          <label>Séance liée (optionnel)</label>
-          <select class="in" name="session_id">
+          <label for="objectif-session-id">Séance liée (optionnel)</label>
+          <select class="in" id="objectif-session-id" name="session_id">
             <option value="">—</option>
             {% for s in sessions %}
               <option value="{{ s.id }}">{{ s.date_session }} {{ s.heure_debut or '' }} · {{ s.atelier.nom if s.atelier else ('Atelier #' ~ s.atelier_id) }}</option>
@@ -133,10 +133,10 @@
 
         <details>
           <summary>Informations complémentaires</summary>
-          <label>Description</label>
-          <textarea class="in" name="description" rows="2"></textarea>
-          <label>Objectif parent (si besoin)</label>
-          <select class="in" name="parent_id">
+          <label for="objectif-description">Description</label>
+          <textarea class="in" id="objectif-description" name="description" rows="2"></textarea>
+          <label for="objectif-parent-id">Objectif parent (si besoin)</label>
+          <select class="in" id="objectif-parent-id" name="parent_id">
             <option value="">Aucun</option>
             {% for obj in parent_options %}
               <option value="{{ obj.id }}">{{ obj.titre }} ({{ obj.type }})</option>
@@ -150,7 +150,7 @@
 
     <div class="card">
       <h2 style="margin-top:0;">Objectifs existants</h2>
-      <p class="muted">Retrouve ici les objectifs déjà créés pour les projets, ateliers ou modules.</p>
+      <p class="muted">Retrouvez ici les objectifs déjà créés pour les projets, ateliers ou modules.</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>Type</th><th>Titre</th><th>Rattachement</th><th>Parent</th><th></th></tr></thead>

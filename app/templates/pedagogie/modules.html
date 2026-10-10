@@ -3,12 +3,12 @@
 <div class="stack">
   <div class="page-head">
     <h1 style="margin:0;">Compétences et suivi · modules</h1>
-    <p class="muted" style="margin:6px 0 0 0;">Prépare des modules réutilisables pour gagner du temps lors des séances et des évaluations.</p>
+    <p class="muted" style="margin:6px 0 0 0;">Préparez des modules réutilisables pour gagner du temps lors des séances et des évaluations.</p>
   </div>
 
   <div class="ux-callout">
     <div class="ux-callout__title">Conseil</div>
-    <div class="ux-callout__text">Commence par créer un module simple avec un nom clair, puis ajoute seulement les compétences vraiment utiles. Tu pourras l'enrichir ensuite.</div>
+    <div class="ux-callout__text">Commencez par créer un module simple avec un nom clair, puis ajoutez seulement les compétences vraiment utiles. Vous pourrez l'enrichir ensuite.</div>
   </div>
 
   <div class="grid two">
@@ -18,17 +18,17 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="create_module">
         <div>
-          <label>Nom du module</label>
-          <input class="in" name="nom" required placeholder="Ex. Premiers pas sur ordinateur">
+          <label for="module-nom">Nom du module</label>
+          <input class="in" id="module-nom" name="nom" required placeholder="Ex. Premiers pas sur ordinateur">
         </div>
         <div>
-          <label>Description</label>
-          <textarea class="in" name="description" rows="2" placeholder="À quoi sert ce module ? Pour quel atelier ?"></textarea>
+          <label for="module-description">Description</label>
+          <textarea class="in" id="module-description" name="description" rows="2" placeholder="À quoi sert ce module ? Pour quel atelier ?"></textarea>
         </div>
 
         <details open>
           <summary><strong>Choisir les compétences du module</strong></summary>
-          <div class="muted" style="margin:8px 0 12px 0;">Coche uniquement les compétences qui vont souvent ensemble.</div>
+          <div class="muted" style="margin:8px 0 12px 0;">Cochez uniquement les compétences qui vont souvent ensemble.</div>
           {% for ref in referentiels %}
             <div class="card" style="background:var(--surface-soft); margin-bottom:10px;">
               <strong>{{ ref.nom }}</strong>
@@ -49,7 +49,7 @@
 
     <div class="card">
       <h2 style="margin-top:0;">Modules existants</h2>
-      <p class="muted">Retrouve ici les modules déjà prêts à être réutilisés.</p>
+      <p class="muted">Retrouvez ici les modules déjà prêts à être réutilisés.</p>
       <div class="stack" style="gap:10px;">
         {% for mod in modules %}
           <div class="card" style="background:var(--surface-soft);">

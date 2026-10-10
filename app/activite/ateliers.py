@@ -124,7 +124,7 @@ def atelier_new():
     if request.method == "POST":
         nom = (request.form.get("nom") or "").strip()
         if not nom or not secteur:
-            flash("Le nom de l'activité est obligatoire." if secteur else "Choisis le secteur de l'activité.", "danger")
+            flash("Le nom de l'activité est obligatoire." if secteur else "Choisissez le secteur de l'activité.", "danger")
             referentiels = _load_referentiels()
             return render_template(
                 "activite/atelier_form.html",
@@ -208,7 +208,7 @@ def atelier_edit(atelier_id: int):
     secteur = _user_secteur()
     atelier = db.get_or_404(AtelierActivite, atelier_id)
     if atelier.is_deleted:
-        flash("Cet atelier est dans la corbeille. Restaure-le pour le modifier.", "warning")
+        flash("Cet atelier est dans la corbeille. Restaurez-le pour le modifier.", "warning")
         return redirect(url_for("activite.index", corbeille=1))
     from app.activite.helpers import _atelier_est_accessible, _available_secteur_labels
     if not _atelier_est_accessible(atelier):
@@ -452,14 +452,14 @@ def atelier_dupliquer(atelier_id: int):
     if not _can_access_activity_secteur(atelier.secteur):
         return _deny_activity_access()
     if atelier.is_deleted:
-        flash("Cet atelier est dans la corbeille : restaure-le avant de le dupliquer.", "warning")
+        flash("Cet atelier est dans la corbeille : restaurez-le avant de le dupliquer.", "warning")
         return redirect(url_for("activite.index", corbeille=1))
 
     copie = dupliquer_atelier(atelier)
     db.session.commit()
     flash(
         "Copie créée avec le même paramétrage (sans les séances ni les présences). "
-        "Renomme-la, et déclare la continuité statistique si c'est la suite du même atelier.",
+        "Renommez-la, et déclarez la continuité statistique si c'est la suite du même atelier.",
         "success",
     )
     return redirect(url_for("activite.atelier_edit", atelier_id=copie.id))
@@ -559,7 +559,7 @@ def sessions_actions(atelier_id: int):
     ] if ids else []
 
     if not seances:
-        flash("Coche d'abord au moins une séance dans la liste.", "warning")
+        flash("Cochez d'abord au moins une séance dans la liste.", "warning")
         return redirect(retour)
 
     if action == "export_csat_sessions":
@@ -620,7 +620,7 @@ def sessions_actions(atelier_id: int):
     if action == "restaurer":
         require_perm("activite:restore")(lambda: None)()
         if atelier.is_deleted:
-            flash("Restaure d'abord l'atelier.", "warning")
+            flash("Restaurez d'abord l'atelier.", "warning")
             return redirect(url_for("activite.index", corbeille=1))
         touchees = [s for s in seances if s.is_deleted]
         for s in touchees:
@@ -641,7 +641,7 @@ def sessions_actions(atelier_id: int):
         # « — Aucune salle » est une réponse valable : hors les murs, sortie,
         # visite. On la distingue d'un champ laissé vide par mégarde.
         if brut == "":
-            flash("Choisis une salle (ou « Aucune ») avant de valider.", "warning")
+            flash("Choisissez une salle (ou « Aucune ») avant de valider.", "warning")
             return redirect(retour)
         # « 0 » est le code de « aucune salle » : il doit devenir NULL, pas
         # une clé étrangère qui vaut zéro.
@@ -713,7 +713,7 @@ def session_restore(session_id: int):
     if not _can_access_activity_secteur(s.secteur):
         return _deny_activity_access()
     if atelier.is_deleted:
-        flash("Restaure d'abord l'atelier.", "warning")
+        flash("Restaurez d'abord l'atelier.", "warning")
         return redirect(url_for("activite.index", corbeille=1))
 
     if not s.is_deleted:
@@ -740,7 +740,7 @@ def session_purge(session_id: int):
         return _deny_activity_access()
 
     if not _is_admin_global() and not s.is_deleted:
-        flash("Place d'abord la séance dans la corbeille avant suppression définitive.", "warning")
+        flash("Placez d'abord la séance dans la corbeille avant suppression définitive.", "warning")
         return redirect(url_for("activite.sessions", atelier_id=atelier.id))
 
     presences = PresenceActivite.query.filter_by(session_id=s.id).all()

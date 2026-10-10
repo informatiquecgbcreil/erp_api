@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}{{ 'Modifier le modèle d’émargement' if row else 'Nouveau modèle d’émargement' }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="breadcrumb">
@@ -16,18 +17,18 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="grid" style="grid-template-columns:1.3fr 1fr; gap:12px;">
         <div>
-          <label>Libellé</label>
-          <input class="in" type="text" name="label" value="{{ values.label if values else '' }}" required>
+          <label for="modele-libelle">Libellé</label>
+          <input class="in" type="text" id="modele-libelle" name="label" value="{{ values.label if values else '' }}" required>
         </div>
         <div>
-          <label>Ordre d’affichage</label>
-          <input class="in" type="number" name="sort_order" value="{{ values.sort_order if values else '100' }}" min="0">
+          <label for="modele-ordre">Ordre d’affichage</label>
+          <input class="in" type="number" id="modele-ordre" name="sort_order" value="{{ values.sort_order if values else '100' }}" min="0">
         </div>
       </div>
       <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
         <div>
-          <label>Secteur</label>
-          <select class="in" name="secteur">
+          <label for="modele-secteur">Secteur</label>
+          <select class="in" id="modele-secteur" name="secteur">
             {% for secteur in secteurs %}
               <option value="{{ secteur }}" {% if (values.secteur if values else '') == secteur %}selected{% endif %}>{{ secteur }}</option>
             {% endfor %}
@@ -35,8 +36,8 @@
           </select>
         </div>
         <div>
-          <label>Moteur</label>
-          <select class="in" name="engine">
+          <label for="modele-moteur">Moteur</label>
+          <select class="in" id="modele-moteur" name="engine">
             {% for engine_key, meta in engine_registry.items() %}
               <option value="{{ engine_key }}" {% if (values.engine if values else '') == engine_key %}selected{% endif %}>{{ meta.label }} — {{ 'Collectif' if meta.session_family == 'COLLECTIF' else 'Individuel mensuel' }}</option>
             {% endfor %}
@@ -44,8 +45,8 @@
         </div>
       </div>
       <div>
-        <label>Description</label>
-        <textarea class="in" name="description" rows="3">{{ values.description if values else '' }}</textarea>
+        <label for="modele-description">Description</label>
+        <textarea class="in" id="modele-description" name="description" rows="3">{{ values.description if values else '' }}</textarea>
       </div>
       <label style="display:flex;align-items:center;gap:8px;">
         <input type="checkbox" name="is_active" value="1" {% if (values.is_active if values is not none else '1') %}checked{% endif %}>

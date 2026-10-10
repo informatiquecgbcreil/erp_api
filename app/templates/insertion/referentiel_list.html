@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}{{ meta.title }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="breadcrumb">
@@ -17,8 +18,8 @@
   <div class="card">
     <form method="get" class="filters-grid" style="grid-template-columns:2fr auto auto auto;">
       <div>
-        <label class="muted">Recherche</label>
-        <input class="in" type="text" name="q" value="{{ q }}" placeholder="Libellé ou code">
+        <label for="referentiel-q" class="muted">Recherche</label>
+        <input class="in" type="text" id="referentiel-q" name="q" value="{{ q }}" placeholder="Libellé ou code">
       </div>
       <div style="display:flex;align-items:end;">
         <label style="display:flex;gap:8px;align-items:center;margin:0;">
@@ -75,7 +76,7 @@
           </tbody>
         </table>
       </div>
-      <div class="responsive-card-list" aria-label="Valeurs du référentiel (vue compacte)">
+      <div class="responsive-card-list" role="group" aria-label="Valeurs du référentiel (vue compacte)">
         {% for row in rows %}
         <article class="responsive-card">
           <header class="responsive-card__head">

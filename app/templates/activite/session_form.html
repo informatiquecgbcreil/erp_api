@@ -1,6 +1,8 @@
 {% extends 'layout.html' %}
 {% import "_ux_helpers.html" as ux %}
 
+{% block title %}Nouvelle séance — {{ atelier.nom }}{% endblock %}
+
 {% block body %}
   <div class="stack">
     <div class="form-card reading-width">
@@ -18,8 +20,8 @@
         <div class="filters-grid">
           <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
           <div class="field-stack">
-            <label>Projet {{ ux.tooltip('Permet de limiter la liste des modules à ceux autorisés pour le projet sélectionné.') }}</label>
-            <select class="in" name="projet_id" onchange="this.form.submit()">
+            <label for="seance-projet">Projet {{ ux.tooltip('Permet de limiter la liste des modules à ceux autorisés pour le projet sélectionné.') }}</label>
+            <select class="in" id="seance-projet" name="projet_id" onchange="this.form.submit()">
               <option value="">Tous les projets rattachés</option>
               {% for p in projets_atelier|default([]) %}
                 <option value="{{ p.id }}" {% if projet_id == p.id %}selected{% endif %}>{{ p.nom }}</option>
@@ -34,13 +36,13 @@
 
         {% if atelier.type_atelier == 'INDIVIDUEL_MENSUEL' %}
           <div class="form-grid-3">
-            <div><label>Date du rendez-vous</label><input class="in" type="date" name="rdv_date" value="{{ date_prefill|default('') }}" required></div>
-            <div><label>Heure de début</label><input class="in" type="text" name="rdv_debut" placeholder="09:00"></div>
-            <div><label>Heure de fin</label><input class="in" type="text" name="rdv_fin" placeholder="09:45"></div>
+            <div><label for="seance-rdv-date">Date du rendez-vous</label><input class="in" type="date" id="seance-rdv-date" name="rdv_date" value="{{ date_prefill|default('') }}" required></div>
+            <div><label for="seance-rdv-debut">Heure de début</label><input class="in" type="text" id="seance-rdv-debut" name="rdv_debut" placeholder="09:00"></div>
+            <div><label for="seance-rdv-fin">Heure de fin</label><input class="in" type="text" id="seance-rdv-fin" name="rdv_fin" placeholder="09:45"></div>
           </div>
           <div style="margin-top:10px;">
-            <label>Salle {{ ux.tooltip("Pré-remplie avec la salle de référence de l'atelier. La séance bloque alors le planning automatiquement. Change-la ponctuellement pour une sortie, une salle occupée ou un atelier hors les murs.") }}</label>
-            <select class="in" name="espace_id">
+            <label for="seance-salle">Salle {{ ux.tooltip("Pré-remplie avec la salle de référence de l'atelier. La séance bloque alors le planning automatiquement. Changez-la ponctuellement pour une sortie, une salle occupée ou un atelier hors les murs.") }}</label>
+            <select class="in" id="seance-salle" name="espace_id">
               <option value="">— Hors les murs / aucune salle —</option>
               {% for salle in salles_occupables() %}
                 <option value="{{ salle.id }}"
@@ -52,14 +54,14 @@
           </div>
         {% else %}
           <div class="form-grid-4">
-            <div><label>Date de la séance</label><input class="in" type="date" name="date_session" value="{{ date_prefill|default('') }}" required></div>
-            <div><label>Heure de début</label><input class="in" type="text" name="heure_debut" placeholder="14:00"></div>
-            <div><label>Heure de fin</label><input class="in" type="text" name="heure_fin" placeholder="16:00"></div>
-            <div><label>Capacité {{ ux.tooltip('Nombre maximal de participants attendus pour cette séance.') }}</label><input class="in" type="number" name="capacite" value="{{ atelier.capacite_defaut or '' }}" min="0"></div>
+            <div><label for="seance-date">Date de la séance</label><input class="in" type="date" id="seance-date" name="date_session" value="{{ date_prefill|default('') }}" required></div>
+            <div><label for="seance-debut">Heure de début</label><input class="in" type="text" id="seance-debut" name="heure_debut" placeholder="14:00"></div>
+            <div><label for="seance-fin">Heure de fin</label><input class="in" type="text" id="seance-fin" name="heure_fin" placeholder="16:00"></div>
+            <div><label for="seance-capacite">Capacité {{ ux.tooltip('Nombre maximal de participants attendus pour cette séance.') }}</label><input class="in" type="number" id="seance-capacite" name="capacite" value="{{ atelier.capacite_defaut or '' }}" min="0"></div>
           </div>
           <div style="margin-top:10px;">
-            <label>Salle {{ ux.tooltip("Pré-remplie avec la salle de référence de l'atelier. La séance bloque alors le planning automatiquement. Change-la ponctuellement pour une sortie, une salle occupée ou un atelier hors les murs.") }}</label>
-            <select class="in" name="espace_id">
+            <label for="seance-salle">Salle {{ ux.tooltip("Pré-remplie avec la salle de référence de l'atelier. La séance bloque alors le planning automatiquement. Changez-la ponctuellement pour une sortie, une salle occupée ou un atelier hors les murs.") }}</label>
+            <select class="in" id="seance-salle" name="espace_id">
               <option value="">— Hors les murs / aucune salle —</option>
               {% for salle in salles_occupables() %}
                 <option value="{{ salle.id }}"
@@ -73,8 +75,8 @@
 
         {% if secteurs_imputation|default([])|length > 1 %}
           <div class="field-stack" style="margin-top:10px;">
-            <label>Secteur d'imputation {{ ux.tooltip("Secteur dont les statistiques compteront cette séance et ses présences. Par défaut celui de l'atelier ; choisissez-en un autre quand vous animez pour un autre secteur.") }}</label>
-            <select class="in" name="secteur_impute">
+            <label for="seance-secteur">Secteur d'imputation {{ ux.tooltip("Secteur dont les statistiques compteront cette séance et ses présences. Par défaut celui de l'atelier ; choisissez-en un autre quand vous animez pour un autre secteur.") }}</label>
+            <select class="in" id="seance-secteur" name="secteur_impute">
               {% for s_lbl in secteurs_imputation %}
                 <option value="{{ s_lbl }}" {% if s_lbl == (secteur_impute_choisi or atelier.secteur) %}selected{% endif %}>
                   {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
@@ -82,7 +84,7 @@
               {% endfor %}
             </select>
             <div class="muted" style="font-size:13px;">
-              La séance reste visible ici comme dans le secteur choisi ; seules les statistiques changent de côté.
+              La séance reste visible ici comme dans le secteur choisi, et accessible aux deux secteurs ; seules les statistiques changent de côté.
             </div>
           </div>
         {% endif %}
@@ -92,26 +94,9 @@
           <span>🎉 Séance événementielle (fête de quartier, temps fort, sortie…) — comptée à part dans le volet événementiel du SENACS</span>
         </label>
 
-        {% if secteurs_imputation|default([])|length > 1 %}
-          <div class="field-stack" style="margin-top:12px;">
-            <label>Secteur d'imputation {{ ux.tooltip("Secteur pour lequel cette séance est animée : c'est lui qui la compte dans ses statistiques (séances, présences, heures). Par défaut, le secteur de l'atelier.") }}</label>
-            <select class="in" name="secteur_impute">
-              {% for s_lbl in secteurs_imputation %}
-                <option value="{{ s_lbl }}" {% if s_lbl == (secteur_impute_choisi or atelier.secteur) %}selected{% endif %}>
-                  {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
-                </option>
-              {% endfor %}
-            </select>
-            <div class="muted" style="font-size:.85rem;">
-              Si tu animes pour un autre secteur, choisis-le ici : la séance et ses présences compteront
-              dans <strong>ses</strong> statistiques, pas dans les tiennes. Elle reste accessible aux deux secteurs.
-            </div>
-          </div>
-        {% endif %}
-
 <div class="section-card compact" style="margin-top:12px;">
   <h2 style="margin-top:0;">Matériel utilisé</h2>
-  <div class="muted">Déclare uniquement le matériel réellement mobilisé pendant la séance. La consommation estimée sera calculée à partir du référentiel actif pour la date choisie.</div>
+  <div class="muted">Déclarez uniquement le matériel réellement mobilisé pendant la séance. La consommation estimée sera calculée à partir du référentiel actif pour la date choisie.</div>
   <div class="form-grid-3" style="margin-top:10px;">
     {% for m in materiels|default([]) %}
       <label class="field-stack" style="padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--surface);">
@@ -124,7 +109,7 @@
 
         <div class="spacer"></div>
         <div class="field-stack">
-          <label>Modules de la séance {{ ux.tooltip('Maintenez la touche Ctrl ou Cmd pour sélectionner plusieurs modules.') }}</label>
+          <label for="module_ids">Modules de la séance {{ ux.tooltip('Maintenez la touche Ctrl ou Cmd pour sélectionner plusieurs modules.') }}</label>
           <select class="in" id="module_ids" name="module_ids" multiple size="8">
             {% for mod in modules|default([]) %}
               <option value="{{ mod.id }}">{{ mod.nom }} ({{ mod.competences|length }} compétence{{ 's' if (mod.competences|length) > 1 else '' }})</option>

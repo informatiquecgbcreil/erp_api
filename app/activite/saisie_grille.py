@@ -137,7 +137,7 @@ def saisie_grille():
     if request.method == "POST":
         require_perm("emargement:edit")(lambda: None)()
         if atelier is None or not _atelier_est_accessible(atelier):
-            flash("Atelier introuvable ou hors de ta portée.", "danger")
+            flash("Atelier introuvable ou hors de votre portée.", "danger")
             return redirect(url_for("activite.saisie_grille", mois=mois_str))
 
         action = (request.form.get("action") or "").strip()
@@ -175,7 +175,7 @@ def saisie_grille():
                 if pid not in en_plus:
                     en_plus.append(pid)
             else:
-                flash("Choisis une personne dans la liste.", "warning")
+                flash("Choisissez une personne dans la liste.", "warning")
             return redirect(url_for(
                 "activite.saisie_grille", atelier_id=atelier.id, mois=mois_str,
                 plus=",".join(str(i) for i in en_plus),
@@ -335,7 +335,7 @@ def emargements_relancer():
         session_id = 0
     s = db.session.get(SessionActivite, session_id)
     if s is None or not _session_est_accessible(s):
-        flash("Séance introuvable ou hors de ta portée.", "danger")
+        flash("Séance introuvable ou hors de votre portée.", "danger")
         return redirect(url_for("activite.emargements_attente"))
     lien = url_for("activite.emargement", session_id=s.id)
     deja = SuiviRappel.query.filter(
@@ -383,7 +383,7 @@ def saisie_grille_imprimer():
         atelier_id = 0
     atelier = next((a for a in ateliers if a.id == atelier_id), None)
     if atelier is None:
-        flash("Choisis d'abord un atelier dans la grille.", "warning")
+        flash("Choisissez d'abord un atelier dans la grille.", "warning")
         return redirect(url_for("activite.saisie_grille", mois=f"{annee:04d}-{mois:02d}"))
 
     seances = _seances_du_mois(atelier.id, annee, mois)

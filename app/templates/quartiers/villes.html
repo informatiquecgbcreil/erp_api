@@ -110,6 +110,7 @@
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="source" value="{{ v.nom }}">
                   <input class="in" name="cible" list="villes-existantes" style="min-width:200px;"
+                         aria-label="Écriture à conserver pour {{ v.nom }}"
                          value="{{ v.forme_propre if v.a_normaliser else '' }}"
                          placeholder="Écriture à conserver">
                   <button class="btn" type="submit">Appliquer</button>

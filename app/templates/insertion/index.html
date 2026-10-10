@@ -3,7 +3,7 @@
 <div class="stack">
   <div class="page-head">
     <h1 style="margin:0;">Suivi insertion</h1>
-    <p class="muted" style="margin:6px 0 0 0;">Retrouve une personne, consulte son parcours et ouvre sa fiche d'accompagnement.</p>
+    <p class="muted" style="margin:6px 0 0 0;">Retrouvez une personne, consultez son parcours et ouvrez sa fiche d'accompagnement.</p>
   </div>
 
   <div class="ux-callout">
@@ -21,8 +21,8 @@
   <div class="card">
     <form method="get" class="filters-grid" style="grid-template-columns:2fr auto auto; gap:12px;">
       <div>
-        <label class="muted">Rechercher une personne</label>
-        <input class="in" type="text" name="q" value="{{ q }}" placeholder="Ex. Dupont, Amina, Creil, Rouher">
+        <label for="insertion-recherche-q" class="muted">Rechercher une personne</label>
+        <input class="in" type="text" id="insertion-recherche-q" name="q" value="{{ q }}" placeholder="Ex. Dupont, Amina, Creil, Rouher">
       </div>
       <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;">
         <button class="pill active" type="submit">Lancer la recherche</button>
@@ -40,7 +40,7 @@
 
   <div class="card">
     <div class="section-title" style="margin-bottom:6px;">Résultats</div>
-    <div class="muted" style="margin-bottom:10px;">Ouvre la fiche d'une personne pour voir son parcours, ses positionnements et ses certifications.</div>
+    <div class="muted" style="margin-bottom:10px;">Ouvrez la fiche d'une personne pour voir son parcours, ses positionnements et ses certifications.</div>
     {% if participants %}
       <div class="tablewrap clean">
         <table class="table">
@@ -68,7 +68,7 @@
           </tbody>
         </table>
       </div>
-      <div class="responsive-card-list" aria-label="Résultats insertion (vue compacte)">
+      <div class="responsive-card-list" role="group" aria-label="Résultats insertion (vue compacte)">
         {% for p in participants %}
         <article class="responsive-card">
           <header class="responsive-card__head">

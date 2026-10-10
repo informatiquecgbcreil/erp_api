@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Importer un annuaire de participants{% endblock %}
 {% block body %}
 <div class="stack">
 
@@ -20,7 +21,10 @@
       <h2>1. Choisir le fichier</h2>
       <form method="post" enctype="multipart/form-data" class="stack" style="gap:12px;" data-no-scroll-restore>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input class="in" type="file" name="fichier" accept=".xlsx" required>
+        <div>
+          <label for="import-fichier">Fichier Excel (.xlsx) à analyser</label>
+          <input class="in" type="file" id="import-fichier" name="fichier" accept=".xlsx" required>
+        </div>
         <div>
           <button class="btn" type="submit">Analyser (simulation, sans rien créer)</button>
         </div>

@@ -4,7 +4,7 @@
   <div class="stack">
     <div class="card">
       <h1 style="margin-top:0;">Référentiels pédagogiques</h1>
-      <p class="muted">Crée ici tes référentiels (PIX, Savoirs de base…) et gère la liste des compétences.</p>
+      <p class="muted">Créez ici vos référentiels (PIX, Savoirs de base…) et gérez la liste des compétences.</p>
       <div class="row" style="gap:10px; flex-wrap:wrap; margin-bottom:10px;">
         <a class="btn" href="{{ url_for('pedagogie.objectifs') }}">Gérer les objectifs</a>
       </div>
@@ -12,8 +12,8 @@
       <form method="post" class="inline" style="gap:10px; flex-wrap:wrap;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="create_referentiel">
-        <input class="in" type="text" name="nom" placeholder="Nom du référentiel" required>
-        <input class="in" type="text" name="description" placeholder="Description (optionnelle)">
+        <input class="in" type="text" name="nom" placeholder="Nom du référentiel" aria-label="Nom du référentiel" required>
+        <input class="in" type="text" name="description" placeholder="Description (optionnelle)" aria-label="Description du référentiel (optionnelle)">
         <button class="btn ok" type="submit">Créer</button>
       </form>
     </div>

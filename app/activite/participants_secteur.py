@@ -116,7 +116,7 @@ def attestations():
     if secteur and not _can_access_activity_secteur(secteur):
         return _deny_activity_access()
     if not secteur and not (_is_admin_global() or _has_all_secteurs_scope()):
-        flash("Aucun secteur n'est associe a votre compte pour generer des attestations.", "warning")
+        flash("Aucun secteur n'est associé à votre compte pour générer des attestations.", "warning")
         return redirect(url_for("activite.participants"))
 
     today = date.today()
@@ -138,7 +138,7 @@ def attestations():
 
     if request.method == "POST":
         if not selected_ids:
-            flash("Selectionnez au moins un participant.", "warning")
+            flash("Sélectionnez au moins un participant.", "warning")
         else:
             attestations_payload = _build_attestation_summaries(
                 selected_ids,

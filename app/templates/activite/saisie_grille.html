@@ -31,8 +31,8 @@
     <div class="page-title-wrap">
       <h1 class="ui-title page-title">🗓️ Saisie en grille</h1>
       <p class="ui-subtitle page-subtitle">
-        Pour rattraper les feuilles d'émargement papier : choisis un atelier et un mois,
-        coche les présents, enregistre. Les statistiques et bilans se mettent à jour tout seuls —
+        Pour rattraper les feuilles d'émargement papier : choisissez un atelier et un mois,
+        cochez les présents, enregistrez. Les statistiques et bilans se mettent à jour tout seuls —
         plus besoin de tableur.
       </p>
     </div>
@@ -100,7 +100,7 @@
                   {% endfor %}
                 </tr>
               {% else %}
-                <tr><td class="nom" colspan="{{ 1 + seances|length }}">Aucun habitué pour l'instant : ajoute une première personne ci-dessous, coche ses présences, enregistre — elle restera dans la grille.</td></tr>
+                <tr><td class="nom" colspan="{{ 1 + seances|length }}">Aucun habitué pour l'instant : ajoutez une première personne ci-dessous, cochez ses présences, enregistrez — elle restera dans la grille.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -114,7 +114,7 @@
     {% else %}
       <div class="quick-empty" style="margin:12px 0;">
         <strong>Aucune séance sur ce mois</strong>
-        Ajoute la ou les séances de la feuille papier ci-dessous : la grille apparaîtra.
+        Ajoutez la ou les séances de la feuille papier ci-dessous : la grille apparaîtra.
       </div>
     {% endif %}
 
@@ -125,16 +125,16 @@
         <input type="hidden" name="atelier_id" value="{{ atelier.id }}">
         <input type="hidden" name="mois" value="{{ mois_str }}">
         <div>
-          <label>Ajouter une séance (date de la feuille)</label>
-          <input class="in" type="date" name="date_session" required>
+          <label for="grille-seance-date">Ajouter une séance (date de la feuille)</label>
+          <input id="grille-seance-date" class="in" type="date" name="date_session" required>
         </div>
         <div>
-          <label>Début (optionnel)</label>
-          <input class="in" type="time" name="heure_debut">
+          <label for="grille-seance-debut">Début (optionnel)</label>
+          <input id="grille-seance-debut" class="in" type="time" name="heure_debut">
         </div>
         <div>
-          <label>Fin (optionnel)</label>
-          <input class="in" type="time" name="heure_fin">
+          <label for="grille-seance-fin">Fin (optionnel)</label>
+          <input id="grille-seance-fin" class="in" type="time" name="heure_fin">
         </div>
         <button class="btn" type="submit">➕ Créer la séance</button>
       </form>

@@ -793,7 +793,7 @@ def export_csat_csv():
     """
     f = _csat_filtres()
     if request.values.get("choix_seances") == "1" and not f["seances"]:
-        flash("Coche au moins une séance à exporter.", "warning")
+        flash("Cochez au moins une séance à exporter.", "warning")
         return redirect(url_for("participants.export_csat", du=f["du"], au=f["au"], secteur=f["secteur"] or None,
                                 atelier_id=f["ateliers"], excuses="1" if f["excuses"] else None))
     participants = _csat_participants(f).all()
@@ -1674,7 +1674,7 @@ def actions_groupees():
         require_participant(participant)
 
     if not membres:
-        flash("Coche d'abord au moins une personne dans la liste.", "warning")
+        flash("Cochez d'abord au moins une personne dans la liste.", "warning")
         return _retour_annuaire()
 
     from app.services.audit import journaliser
@@ -1684,7 +1684,7 @@ def actions_groupees():
             abort(403)
         keep_id = request.form.get("keep_id", type=int) or 0
         if len(membres) != 2 or keep_id not in {p.id for p in membres}:
-            flash("Coche exactement deux personnes et choisis la fiche à conserver.", "warning")
+            flash("Cochez exactement deux personnes et choisissez la fiche à conserver.", "warning")
             return _retour_annuaire()
         keep = next(p for p in membres if p.id == keep_id)
         victime = next(p for p in membres if p.id != keep_id)
@@ -1827,7 +1827,7 @@ def actions_groupees():
             headers={"Content-Disposition": "attachment; filename=selection-participants.csv"},
         )
 
-    flash("Choisis une action à appliquer à la sélection.", "warning")
+    flash("Choisissez une action à appliquer à la sélection.", "warning")
     return _retour_annuaire()
 
 

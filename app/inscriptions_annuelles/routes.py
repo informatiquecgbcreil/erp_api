@@ -467,7 +467,7 @@ def regulariser():
 
     fiches = [p for p in (db.session.get(Participant, i) for i in ids) if p is not None]
     if not fiches:
-        flash("Coche d'abord au moins une personne dans la liste.", "warning")
+        flash("Cochez d'abord au moins une personne dans la liste.", "warning")
         return redirect(retour)
     for participant in fiches:
         _refuser_participant_hors_perimetre(participant)
@@ -671,7 +671,7 @@ def supprimer(inscription_id: int):
     inscription = _charger(inscription_id)
     if inscription.participant_id:
         flash(
-            "Ce bulletin est rattaché à une fiche participant : annule-le plutôt "
+            "Ce bulletin est rattaché à une fiche participant : annulez-le plutôt "
             "que de le supprimer, pour garder la trace de l'inscription.",
             "err",
         )
@@ -681,7 +681,7 @@ def supprimer(inscription_id: int):
     if Encaissement.query.filter_by(inscription_annuelle_id=inscription.id).first():
         flash(
             "De l'argent a été reçu sur ce bulletin : il ne peut pas être supprimé (la caisse "
-            "perdrait la trace de l'encaissement). Annule plutôt l'inscription, et le règlement "
+            "perdrait la trace de l'encaissement). Annulez plutôt l'inscription, et le règlement "
             "par contre-passation si besoin.",
             "err",
         )

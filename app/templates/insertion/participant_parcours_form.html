@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}{{ 'Nouveau parcours insertion' if is_new else 'Modifier le parcours insertion' }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="breadcrumb">
@@ -16,44 +17,44 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="filters-grid" style="grid-template-columns:1fr 1fr;">
         <div>
-          <label class="muted">Dispositif</label>
-          <select class="in" name="dispositif_id">
+          <label for="parcours-dispositif-id" class="muted">Dispositif</label>
+          <select class="in" id="parcours-dispositif-id" name="dispositif_id">
             <option value="">Non renseigné</option>
             {% for ref in dispositifs %}<option value="{{ ref.id }}" {% if row.dispositif_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}
           </select>
         </div>
         <div>
-          <label class="muted">Prescripteur</label>
-          <select class="in" name="prescripteur_id">
+          <label for="parcours-prescripteur-id" class="muted">Prescripteur</label>
+          <select class="in" id="parcours-prescripteur-id" name="prescripteur_id">
             <option value="">Non renseigné</option>
             {% for ref in prescripteurs %}<option value="{{ ref.id }}" {% if row.prescripteur_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}
           </select>
         </div>
         <div>
-          <label class="muted">Type de titre de séjour</label>
-          <select class="in" name="titre_sejour_type_id">
+          <label for="parcours-titre-sejour-type-id" class="muted">Type de titre de séjour</label>
+          <select class="in" id="parcours-titre-sejour-type-id" name="titre_sejour_type_id">
             <option value="">Non renseigné</option>
             {% for ref in titres %}<option value="{{ ref.id }}" {% if row.titre_sejour_type_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}
           </select>
         </div>
         <div>
-          <label class="muted">Début du titre de séjour</label>
-          <input class="in" type="date" name="date_debut_titre_sejour" value="{{ row.date_debut_titre_sejour.isoformat() if row.date_debut_titre_sejour else '' }}">
+          <label for="parcours-date-debut-titre-sejour" class="muted">Début du titre de séjour</label>
+          <input class="in" type="date" id="parcours-date-debut-titre-sejour" name="date_debut_titre_sejour" value="{{ row.date_debut_titre_sejour.isoformat() if row.date_debut_titre_sejour else '' }}">
         </div>
         <div>
-          <label class="muted">Expiration du titre de séjour</label>
-          <input class="in" type="date" name="date_expiration_titre_sejour" value="{{ row.date_expiration_titre_sejour.isoformat() if row.date_expiration_titre_sejour else '' }}">
+          <label for="parcours-date-expiration-titre-sejour" class="muted">Expiration du titre de séjour</label>
+          <input class="in" type="date" id="parcours-date-expiration-titre-sejour" name="date_expiration_titre_sejour" value="{{ row.date_expiration_titre_sejour.isoformat() if row.date_expiration_titre_sejour else '' }}">
         </div>
         <div style="display:flex;align-items:end;">
           <label style="display:flex;gap:8px;align-items:center;margin:0;"><input type="checkbox" name="is_active" value="1" {% if row.is_active %}checked{% endif %}><span>Parcours actif</span></label>
         </div>
         <div>
-          <label class="muted">Date d’entrée</label>
-          <input class="in" type="date" name="date_entree" value="{{ row.date_entree.isoformat() if row.date_entree else '' }}">
+          <label for="parcours-date-entree" class="muted">Date d’entrée</label>
+          <input class="in" type="date" id="parcours-date-entree" name="date_entree" value="{{ row.date_entree.isoformat() if row.date_entree else '' }}">
         </div>
         <div>
-          <label class="muted">Date de sortie</label>
-          <input class="in" type="date" name="date_sortie" value="{{ row.date_sortie.isoformat() if row.date_sortie else '' }}">
+          <label for="parcours-date-sortie" class="muted">Date de sortie</label>
+          <input class="in" type="date" id="parcours-date-sortie" name="date_sortie" value="{{ row.date_sortie.isoformat() if row.date_sortie else '' }}">
         </div>
       </div>
       <div class="form-actions"><button class="pill active" type="submit">Enregistrer</button><a class="pill" href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">Annuler</a></div>

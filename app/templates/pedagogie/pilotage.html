@@ -3,15 +3,24 @@
 <div class="stack">
   <div class="card">
     <h1 style="margin-top:0;">Pilotage objectifs (RA/PAG)</h1>
-    <form method="get" class="inline" style="gap:8px; flex-wrap:wrap;">
-      <select class="in" name="projet_id">
-        <option value="">Tous projets</option>
-        {% for p in projets %}
-          <option value="{{ p.id }}" {% if projet_id == p.id %}selected{% endif %}>{{ p.nom }}</option>
-        {% endfor %}
-      </select>
-      <input class="in" type="date" name="start_date" value="{{ start_date or '' }}">
-      <input class="in" type="date" name="end_date" value="{{ end_date or '' }}">
+    <form method="get" class="inline" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="field-stack">
+        <label for="pilotage-projet">Projet</label>
+        <select class="in" id="pilotage-projet" name="projet_id">
+          <option value="">Tous projets</option>
+          {% for p in projets %}
+            <option value="{{ p.id }}" {% if projet_id == p.id %}selected{% endif %}>{{ p.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-stack">
+        <label for="pilotage-du">Du</label>
+        <input class="in" type="date" id="pilotage-du" name="start_date" value="{{ start_date or '' }}">
+      </div>
+      <div class="field-stack">
+        <label for="pilotage-au">Au</label>
+        <input class="in" type="date" id="pilotage-au" name="end_date" value="{{ end_date or '' }}">
+      </div>
       <button class="btn ok" type="submit">Calculer</button>
       <a class="btn" href="{{ url_for('pedagogie.export_ra_csv', projet_id=projet_id, start_date=start_date, end_date=end_date) }}">Exporter CSV RA</a>
     </form>
