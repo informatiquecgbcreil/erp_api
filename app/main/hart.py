@@ -114,7 +114,7 @@ def hart_evaluer(participant_id: int):
     except Exception:
         niveau = 0
     if niveau not in hart_service.HART_NIVEAUX_DICT:
-        flash("Choisis un niveau valide (1 à 8) sur l'échelle de Hart.", "danger")
+        flash("Choisissez un niveau valide (1 à 8) sur l'échelle de Hart.", "danger")
         return redirect(request.form.get("next") or url_for("main.hart_collectif"))
 
     type_evaluation = (request.form.get("type_evaluation") or "suivi").strip()

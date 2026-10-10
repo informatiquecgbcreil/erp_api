@@ -363,7 +363,7 @@
     <div class="ui-header__main page-header">
       <div class="page-title-wrap">
         <h1 class="ui-title page-title">Tableau de bord</h1>
-        <p class="ui-subtitle page-subtitle">Commence par une action rapide, puis reprends les éléments du jour sur {{ period_label }}.</p>
+        <p class="ui-subtitle page-subtitle">Commencez par une action rapide, puis reprenez les éléments du jour sur {{ period_label }}.</p>
       </div>
       {% if ui_simplified %}
       <div class="dashboard-toolbar">
@@ -646,7 +646,7 @@
     <div class="ui-section-head section-head">
       <div>
         <h2 style="margin:0;">Mes actions rapides</h2>
-        <div class="muted">Les raccourcis les plus utiles pour ton quotidien.</div>
+        <div class="muted">Les raccourcis les plus utiles pour votre quotidien.</div>
       </div>
       <div class="ui-actions inline-actions">
         <a class="btn" href="{{ url_for('main.dashboard_customize') }}">Personnaliser mon accueil</a>
@@ -668,7 +668,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="quick-empty"><strong>Aucune action rapide</strong>Choisis tes raccourcis depuis “Personnaliser mon accueil”.</div>
+      <div class="quick-empty"><strong>Aucune action rapide</strong>Choisissez vos raccourcis depuis “Personnaliser mon accueil”.</div>
     {% endif %}
   </section>
   {% endif %}
@@ -724,7 +724,7 @@
         <div class="ui-section-head section-head">
           <div>
             <h2 style="margin:0;">À vérifier</h2>
-            <div class="muted">Les points qui demandent ton attention rapidement.</div>
+            <div class="muted">Les points qui demandent votre attention rapidement.</div>
           </div>
         </div>
         {% if alerts and alerts|length %}
@@ -793,7 +793,7 @@
             <p class="muted" style="margin-top:0;">Comparaison entre le montant engagé et le disponible.</p>
             <div class="chart-shell"><canvas id="chartBudget" height="190"></canvas></div>
             <div class="chart-meta" data-chart-meta="chartBudget"></div>
-            <div class="chart-fallback-note muted">Clique sur une part, une barre ou un point pour ouvrir le détail filtré.</div>
+            <div class="chart-fallback-note muted">Cliquez sur une part, une barre ou un point pour ouvrir le détail filtré.</div>
           </div>
           <div class="ui-card card chart-card">
             <div class="chart-card__head"><h2 style="margin-top:0;">Dépenses</h2></div>

@@ -6,12 +6,12 @@
   <div class="page-header">
     <div class="page-title-wrap">
       <h1 class="page-title">⬆ Déposer un document</h1>
-      <p class="page-subtitle">Tu choisis qui peut le lire. Personne d'autre n'y a accès, pas même la direction si tu ne la coches pas.</p>
+      <p class="page-subtitle">Vous choisissez qui peut le lire. Personne d'autre n'y a accès, pas même la direction si vous ne la cochez pas.</p>
     </div>
   </div>
   {{ m.sous_menu('documents') }}
   {% if not types %}
-    <section class="section-card"><div class="quick-empty"><strong>Aucun type de document n'est configuré.</strong> Demande à l'administrateur technique.</div></section>
+    <section class="section-card"><div class="quick-empty"><strong>Aucun type de document n'est configuré.</strong> Demandez à l'administrateur technique.</div></section>
   {% else %}
   <section class="section-card">
     <form method="post" enctype="multipart/form-data" class="stack" style="gap:10px;">
@@ -27,7 +27,7 @@
         </select></label>
       <label class="field-stack"><span>Note <small class="muted">(facultatif)</small></span><input class="in" name="note" maxlength="500"></label>
       <fieldset style="border:1px solid var(--border,#e3e6ef);border-radius:10px;padding:10px;">
-        <legend>Qui peut le lire, en plus de toi ?</legend>
+        <legend>Qui peut le lire, en plus de vous ?</legend>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px;">
           {% for u in comptes if u.id != current_user.id %}
             <label><input type="checkbox" name="acces" value="{{ u.id }}"> {{ u.nom }}</label>

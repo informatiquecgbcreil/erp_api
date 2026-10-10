@@ -26,7 +26,7 @@
           <td><a class="btn" href="{{ url_for('salaries.profil_salarial', salarie_id=s.id) }}">{{ 'Modifier' if p else 'Renseigner' }}</a></td>
         </tr>
       {% else %}
-        <tr><td colspan="7"><div class="quick-empty"><strong>Aucune fiche salarié.</strong> Crée les fiches dans Équipe salariée.</div></td></tr>
+        <tr><td colspan="7"><div class="quick-empty"><strong>Aucune fiche salarié.</strong> Créez les fiches dans Équipe salariée.</div></td></tr>
       {% endfor %}
       </tbody>
     </table></div>

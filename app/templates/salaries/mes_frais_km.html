@@ -22,7 +22,7 @@
     <h2 class="section-title">➕ Nouveau trajet</h2>
     {% if not combinaisons %}
       <div class="quick-empty"><strong>Aucun barème kilométrique n'est encore saisi.</strong>
-        Demande à la comptabilité de le renseigner{% if can('frais_km:baremes') %} — ou <a href="{{ url_for('salaries.baremes_km') }}">saisis-le maintenant</a>{% endif %}.</div>
+        Demandez à la comptabilité de le renseigner{% if can('frais_km:baremes') %} — ou <a href="{{ url_for('salaries.baremes_km') }}">saisissez-le maintenant</a>{% endif %}.</div>
     {% else %}
     <form method="post" action="{{ url_for('salaries.mes_frais_km') }}" class="stack" style="gap:8px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -46,7 +46,7 @@
       </div>
       <div class="form-grid-2">
         <label class="field-stack"><span>Motif</span><input class="in" name="motif" value="{{ saisie.motif or '' }}" placeholder="Ex : atelier numérique à la médiathèque" required></label>
-        <label class="field-stack"><span>Pour quelle activité ? <small class="muted">(ton agenda ce jour-là)</small></span>
+        <label class="field-stack"><span>Pour quelle activité ? <small class="muted">(votre agenda ce jour-là)</small></span>
           <select class="in" name="lien" id="lien-km">
             <option value="">— Rien de particulier —</option>
             {% for e in suggestions %}<option value="{{ e.cle }}" {% if saisie.lien == e.cle %}selected{% endif %}>{{ e.titre }}{% if e.horaire %} · {{ e.horaire }}{% endif %}</option>{% endfor %}
@@ -74,7 +74,7 @@
           {% endfor %}
           <input type="hidden" name="electrique" value="{{ '1' if f.electrique else '' }}">
           <label class="field-stack"><span>Justificatif <small class="muted">(facultatif : PDF ou photo, 10 Mo max)</small></span><input class="in" type="file" name="justificatif" accept=".pdf,.jpg,.jpeg,.png,.heic,.webp"></label>
-          {{ m.signature("Je certifie ce déplacement : signe", je_signe=True) }}
+          {{ m.signature("Je certifie ce déplacement : signez", je_signe=True) }}
           <div><button class="btn ok" type="submit">Signer et enregistrer la note</button></div>
         </form>
       </div>
@@ -84,7 +84,7 @@
   <section class="section-card">
     <div class="inline-actions" style="justify-content:space-between;">
       <h2 class="section-title" style="margin:0;">Mes notes {{ annee }}</h2>
-      <form method="get" class="inline-actions"><input class="in" type="number" name="annee" value="{{ annee }}" style="width:100px;"><button class="btn" type="submit">Voir</button></form>
+      <form method="get" class="inline-actions"><input class="in" type="number" name="annee" value="{{ annee }}" style="width:100px;" aria-label="Année des notes à afficher"><button class="btn" type="submit">Voir</button></form>
     </div>
     <div class="tablewrap clean"><table>
       <thead><tr><th>Date</th><th>Motif</th><th>Véhicule</th><th>Km</th><th>Montant</th><th>Suivi</th></tr></thead>

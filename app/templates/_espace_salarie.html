@@ -28,14 +28,14 @@
   <h1>🧑‍💼 Espace salarié</h1>
   <p class="muted" style="margin:0;">
     {% if es_ctx.salarie %}{{ es_ctx.salarie.nom_complet }}{% if es_ctx.salarie.poste %} · {{ es_ctx.salarie.poste }}{% endif %}{% if es_ctx.salarie.secteur %} · {{ es_ctx.salarie.secteur }}{% endif %}
-    {% else %}Tes heures, tes récupérations, tes frais et tes documents, au même endroit.{% endif %}
+    {% else %}Vos heures, vos récupérations, vos frais et vos documents, au même endroit.{% endif %}
   </p>
 
   {% if es_ctx.espace and not es_ctx.salarie %}
     <div class="section-card compact" style="margin-top:12px;">
-      <strong>Ta fiche salarié n'est pas encore reliée à ton compte.</strong>
-      <span class="muted">La direction peut la relier en un clic depuis Équipe salariée. Tes documents partagés restent accessibles.</span>
-      {% if can('rh:edit') %}<a class="mini-link" href="{{ url_for('main.rh') }}">Ouvrir Équipe salariée</a>{% endif %}
+      <strong>Votre fiche salarié n'est pas encore reliée à votre compte.</strong>
+      <span class="muted">La direction peut la relier en un clic depuis Équipe salariée. Vos documents partagés restent accessibles.</span>
+      {% if can('rh:edit') %}<a class="mini-link" href="{{ url_for('main.rh') }}" style="text-decoration:underline;">Ouvrir Équipe salariée</a>{% endif %}
     </div>
   {% endif %}
 
@@ -76,7 +76,7 @@
         <a class="esd-carte" href="{{ url_for('salaries.mon_salaire') }}"><span class="esd-carte__icone">💶</span><span class="esd-carte__label">Mon coût horaire</span><span class="esd-carte__desc">{% if es_ctx.profil %}Calculer le coût d'une action.{% else %}Pas encore renseigné par la direction.{% endif %}</span></a>
       {% endif %}
       <a class="esd-carte" href="{{ url_for('salaries.documents') }}"><span class="esd-carte__icone">🗄️</span><span class="esd-carte__label">Mes documents</span><span class="esd-carte__desc">Fiches de paie, contrats, attestations.</span></a>
-      <a class="esd-carte" href="{{ url_for('salaries.deposer_document') }}"><span class="esd-carte__icone">⬆</span><span class="esd-carte__label">Déposer un document</span><span class="esd-carte__desc">Tu choisis qui peut le lire.</span></a>
+      <a class="esd-carte" href="{{ url_for('salaries.deposer_document') }}"><span class="esd-carte__icone">⬆</span><span class="esd-carte__label">Déposer un document</span><span class="esd-carte__desc">Vous choisissez qui peut le lire.</span></a>
     </div>
   {% endif %}
 </section>
@@ -96,7 +96,7 @@
     {% endif %}
     {% if eq.a_notifier is defined %}
       <a class="esd-signal" data-tone="{{ 'warn' if eq.a_notifier else 'ok' }}" href="{{ url_for('salaries.equipe_recuperations', statut='a_traiter') }}">
-        <span class="esd-signal__valeur">{{ eq.a_notifier }}</span><span class="esd-signal__label">Décision{{ 's' if eq.a_notifier > 1 }} à prendre en compte</span><span class="esd-signal__detail">Le salarié a reçu l'e-mail ; à toi d'en prendre connaissance</span></a>
+        <span class="esd-signal__valeur">{{ eq.a_notifier }}</span><span class="esd-signal__label">Décision{{ 's' if eq.a_notifier > 1 }} à prendre en compte</span><span class="esd-signal__detail">Le salarié a reçu l'e-mail ; à vous d'en prendre connaissance</span></a>
     {% endif %}
     {% if eq.decisions_par_interesse %}
       <a class="esd-signal" data-tone="warn" href="{{ url_for('salaries.equipe_recuperations', statut='par_interesse') }}">
@@ -158,8 +158,8 @@
   <form method="post" action="{{ url_for('salaries.preference_courriels') }}" class="inline-actions" style="justify-content:space-between;align-items:center;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <span>📧 <strong>Mes e-mails</strong> —
-      {% if es_ctx.courriels_actifs %}tu es prévenu·e par e-mail quand une demande te concerne ou qu'on te partage un document.
-      {% else %}tu ne reçois plus d'e-mails de l'espace salarié (les badges de l'accueil restent).{% endif %}</span>
+      {% if es_ctx.courriels_actifs %}vous êtes prévenu·e par e-mail quand une demande vous concerne ou qu'on vous partage un document.
+      {% else %}vous ne recevez plus d'e-mails de l'espace salarié (les badges de l'accueil restent).{% endif %}</span>
     <input type="hidden" name="actif" value="{{ '0' if es_ctx.courriels_actifs else '1' }}">
     <button class="btn ghost" type="submit">{{ 'Ne plus recevoir' if es_ctx.courriels_actifs else 'Recevoir à nouveau' }}</button>
   </form>

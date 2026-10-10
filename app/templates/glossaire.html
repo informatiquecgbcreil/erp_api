@@ -19,6 +19,7 @@
     padding:12px 14px; background:var(--panel, #fff);
     position:relative;
   }
+  .terme-carte dl{ margin:0; }
   .terme-carte dt{ font-weight:700; margin-bottom:4px; padding-right:30px; }
   .terme-carte dd{ margin:0; font-size:.9rem; line-height:1.45; opacity:.85; }
   .terme-carte .dans-app{
@@ -37,6 +38,8 @@
     border:none; background:none; cursor:pointer; font-size:.95rem; opacity:.5;
   }
   .terme-edit-toggle:hover{ opacity:1; }
+  /* Le bouton ✏️ fait 44 px de haut (cible tactile) : la définition passe dessous. */
+  .terme-carte:has(> .terme-edit-toggle) dt{ min-height:40px; padding-right:50px; }
   .terme-edit-form{ margin-top:10px; border-top:1px dashed var(--border, #e3e6ef); padding-top:10px; }
   .terme-edit-form label{ display:block; font-size:.78rem; font-weight:600; margin:6px 0 2px; }
   .terme-edit-form input, .terme-edit-form textarea{
@@ -93,11 +96,12 @@
         <p class="muted" style="max-width:70ch;">
           Fichier Excel avec une ligne d'en-tête : <strong>Terme</strong> | <strong>Définition</strong> |
           Catégorie | Dans l'application. Un mot déjà présent est mis à jour, un nouveau est ajouté.
-          Astuce : <a href="{{ url_for('main.glossaire_export') }}">exporte le glossaire actuel</a>, modifie-le, puis réimporte-le.
+          Astuce : <a href="{{ url_for('main.glossaire_export') }}">exportez le glossaire actuel</a>, modifiez-le, puis réimportez-le.
         </p>
         <form method="post" action="{{ url_for('main.glossaire_import') }}" enctype="multipart/form-data" class="ui-actions inline-actions">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="file" name="fichier" accept=".xlsx" required>
+          <label for="glossaire-import-fichier" class="sr-only">Fichier Excel du glossaire (XLSX)</label>
+          <input type="file" id="glossaire-import-fichier" name="fichier" accept=".xlsx" required>
           <button class="btn primary" type="submit">Importer</button>
         </form>
       </div>
@@ -111,11 +115,15 @@
   </div>
 
   {% for cat in glossaire %}
+    {% set cat_loop_index = loop.index %}
     <section class="glossaire-cat" data-glossaire-cat>
       <h2>{{ cat.icone }} {{ cat.categorie }}</h2>
-      <dl class="glossaire-grille">
+      {# Une liste de définitions par carte : le bouton et le formulaire de
+         modification restent hors du <dl>, qui ne doit contenir que dt/dd. #}
+      <div class="glossaire-grille">
         {% for t in cat.termes %}
           <div class="terme-carte" data-terme="{{ (t.terme ~ ' ' ~ t.definition ~ ' ' ~ (t.dans_app or ''))|lower }}">
+            <dl>
             <dt>
               {{ t.terme }}
               {% if t.origine == 'perso' %}<span class="terme-badge terme-badge--perso" title="Mot ajouté par la structure">ajouté</span>
@@ -125,21 +133,23 @@
               {{ t.definition }}
               {% if t.dans_app %}<span class="dans-app">🖥️ Dans l'application : {{ t.dans_app }}</span>{% endif %}
             </dd>
+            </dl>
             {% if peut_editer %}
-              <button type="button" class="terme-edit-toggle no-print" title="Modifier ce mot"
+              <button type="button" class="terme-edit-toggle no-print" title="Modifier ce mot" aria-label="Modifier « {{ t.terme }} »"
                       onclick="this.parentElement.querySelector('.terme-edit-form').hidden ^= true;">✏️</button>
               <div class="terme-edit-form no-print" hidden>
                 <form method="post" action="{{ url_for('main.glossaire_enregistrer') }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="terme_original" value="{{ t.terme }}">
-                  <label>Mot</label>
-                  <input name="terme" value="{{ t.terme }}" required maxlength="180">
-                  <label>Définition</label>
-                  <textarea name="definition" rows="4" required>{{ t.definition }}</textarea>
-                  <label>Catégorie</label>
-                  <input name="categorie" value="{{ cat.categorie }}" list="glossaire-categories">
-                  <label>Dans l'application (optionnel)</label>
-                  <input name="dans_app" value="{{ t.dans_app or '' }}">
+                  {% set gid = 'terme-' ~ loop.index ~ '-' ~ cat_loop_index %}
+                  <label for="{{ gid }}-mot">Mot</label>
+                  <input id="{{ gid }}-mot" name="terme" value="{{ t.terme }}" required maxlength="180">
+                  <label for="{{ gid }}-def">Définition</label>
+                  <textarea id="{{ gid }}-def" name="definition" rows="4" required>{{ t.definition }}</textarea>
+                  <label for="{{ gid }}-cat">Catégorie</label>
+                  <input id="{{ gid }}-cat" name="categorie" value="{{ cat.categorie }}" list="glossaire-categories">
+                  <label for="{{ gid }}-app">Dans l'application (optionnel)</label>
+                  <input id="{{ gid }}-app" name="dans_app" value="{{ t.dans_app or '' }}">
                   <div class="actions">
                     <button class="btn primary" type="submit">Enregistrer</button>
                   </div>
@@ -162,13 +172,13 @@
             {% endif %}
           </div>
         {% endfor %}
-      </dl>
+      </div>
     </section>
   {% endfor %}
 
   <div class="quick-empty glossaire-vide" id="glossaire-vide">
     <strong>Aucun terme trouvé</strong>
-    Essaie un autre mot, ou parcours les catégories ci-dessus.
+    Essayez un autre mot, ou parcourez les catégories ci-dessus.
   </div>
 
   {% if peut_editer and masques %}

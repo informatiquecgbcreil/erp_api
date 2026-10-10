@@ -6,7 +6,7 @@
   <div class="page-header">
     <div class="page-title-wrap">
       <h1 class="page-title">🧾 Frais kilométriques de l'équipe</h1>
-      <p class="page-subtitle">Notes signées par les salariés. Passe-les en dépense pour les imputer sur un financement.</p>
+      <p class="page-subtitle">Notes signées par les salariés. Passez-les en dépense pour les imputer sur un financement.</p>
     </div>
     <div class="hero-actions no-print">
       {% if can('frais_km:baremes') %}<a class="btn" href="{{ url_for('salaries.baremes_km') }}">📐 Barèmes</a>{% endif %}
@@ -64,7 +64,7 @@
               <details class="no-print"><summary>Passer en dépense</summary>
                 <form method="post" action="{{ url_for('salaries.frais_km_en_depense', note_id=n.id) }}" class="stack" style="gap:6px;min-width:260px;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <select class="in" name="ligne_budget_id">
+                  <select class="in" name="ligne_budget_id" aria-label="Ligne de charge à imputer">
                     {% for l in lignes %}
                       <option value="{{ l.id }}" {% if suggestions.get(n.id) == l.id %}selected{% endif %}>{{ l.source_sub.nom }} {{ l.source_sub.annee_exercice }} — {{ l.compte }} {{ l.libelle }}</option>
                     {% endfor %}
@@ -81,7 +81,7 @@
       {% endfor %}
       </tbody>
     </table></div>
-    {% if peut_depense %}<p class="muted" style="font-size:.8rem;">La ligne proposée est celle qui colle le mieux : même exercice, secteur du salarié, compte 625 (déplacements). Vérifie avant de valider.</p>{% endif %}
+    {% if peut_depense %}<p class="muted" style="font-size:.8rem;">La ligne proposée est celle qui colle le mieux : même exercice, secteur du salarié, compte 625 (déplacements). Vérifiez avant de valider.</p>{% endif %}
   </section>
 </div>
 {% endblock %}

@@ -22,8 +22,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="table" value="{{ a.table }}"><input type="hidden" name="colonne" value="{{ a.colonne }}">
             <input type="hidden" name="ligne_id" value="{{ a.ligne_id }}">
-            <input class="in" name="montant" size="8" required placeholder="montant réel">
-            <input class="in" name="motif" required minlength="3" maxlength="255" placeholder="motif">
+            <input class="in" name="montant" size="8" required placeholder="montant réel" aria-label="Montant réel — {{ a.libelle }} n° {{ a.ligne_id }}">
+            <input class="in" name="motif" required minlength="3" maxlength="255" placeholder="motif" aria-label="Motif de la correction — {{ a.libelle }} n° {{ a.ligne_id }}">
             <button class="btn" type="submit">Corriger</button>
           </form>
         </td>{% endif %}

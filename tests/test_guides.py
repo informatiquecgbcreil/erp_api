@@ -101,5 +101,5 @@ def test_demarrage_refuse_sans_les_droits(app):
     """admin_tech n'a pas participants:edit : le guide accueillir lui est refusé."""
     c = _login_role(app, "gd-refus@example.org", "admin_tech")
     r = c.post("/guides/accueillir/demarrer", follow_redirects=True)
-    assert "pas disponible avec tes droits" in r.get_data(as_text=True)
+    assert "pas disponible avec vos droits" in r.get_data(as_text=True)
     assert "guide-bandeau" not in c.get("/dashboard").get_data(as_text=True)

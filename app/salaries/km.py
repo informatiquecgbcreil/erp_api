@@ -32,24 +32,24 @@ def _lire_formulaire(form) -> dict:
     """Champs du trajet ; lève ValueError avec un message lisible."""
     jour = es.parse_date(form.get("date_trajet"))
     if jour is None:
-        raise ValueError("Indique la date du trajet.")
+        raise ValueError("Indiquez la date du trajet.")
     if jour > date.today():
         raise ValueError("Le trajet ne peut pas être dans le futur.")
     type_vehicule = (form.get("type_vehicule") or "").strip()
     if type_vehicule not in fk.TYPES_VEHICULE:
-        raise ValueError("Choisis le type de véhicule.")
+        raise ValueError("Choisissez le type de véhicule.")
     try:
         puissance = int(form.get("puissance_fiscale") or 0)
         distance = int(round(float((form.get("distance_km") or "0").replace(",", "."))))
     except ValueError:
         raise ValueError("Puissance ou distance illisible.") from None
     if puissance <= 0:
-        raise ValueError("Indique la puissance fiscale (CV).")
+        raise ValueError("Indiquez la puissance fiscale (CV).")
     if distance <= 0:
         raise ValueError("La distance doit être d'au moins 1 km.")
     motif = (form.get("motif") or "").strip()
     if not motif:
-        raise ValueError("Indique le motif du déplacement.")
+        raise ValueError("Indiquez le motif du déplacement.")
     return {
         "date_trajet": jour, "type_vehicule": type_vehicule, "puissance_fiscale": puissance,
         "distance_km": distance, "electrique": form.get("electrique") == "1", "motif": motif[:500],
@@ -114,7 +114,7 @@ def enregistrer_frais_km(salarie):
     signature_data = (request.form.get("signature_data") or "").strip()
     je_signe = request.form.get("je_signe") == "1"
     if not signature_data and not je_signe:
-        return erreur("Signe la note (ou coche « je signe » si le cadre ne fonctionne pas).", _url_mes())
+        return erreur("Signez la note (ou cochez « je signe » si le cadre ne fonctionne pas).", _url_mes())
 
     justificatif = request.files.get("justificatif")
     chemin_justif = nom_justif = None
@@ -255,7 +255,7 @@ def frais_km_en_depense(note_id: int):
         return erreur("Cette note est déjà passée en dépense.", url)
     ligne = db.session.get(LigneBudget, request.form.get("ligne_budget_id", type=int) or 0)
     if ligne is None or getattr(ligne, "nature", "charge") != "charge" or ligne.source_sub is None:
-        return erreur("Choisis une ligne de charge d'un financement.", url)
+        return erreur("Choisissez une ligne de charge d'un financement.", url)
     if not can_see_secteur(ligne.source_sub.secteur):
         abort(403)
     montant = round(note.montant_centimes / 100, 2)
@@ -363,7 +363,7 @@ def _ajouter_ligne():
 def _dupliquer_bareme():
     source, cible = _entier("annee_source"), _entier("annee_cible")
     if source == cible:
-        raise ValueError("Choisis deux années différentes.")
+        raise ValueError("Choisissez deux années différentes.")
     type_vehicule = (request.form.get("type_vehicule") or "").strip() or None
     bonus = _entier("bonus_electrique_pct", obligatoire=False)
     q = BaremeKilometrique.query.filter_by(annee=source)

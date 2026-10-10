@@ -57,13 +57,13 @@ def calculer(profil: ProfilSalarial, form) -> dict:
 
     if mode == "cout_vers_heures":
         if budget is None:
-            raise ValueError("Indique le budget disponible (en €).")
+            raise ValueError("Indiquez le budget disponible (en €).")
         if not charge:
             raise ValueError("Le coût horaire chargé n'est pas renseigné.")
         heures = (budget * 100 / charge).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     elif heures is None:
         if hebdo is None or semaines is None:
-            raise ValueError("Indique un total d'heures, ou des heures par semaine et un nombre de semaines.")
+            raise ValueError("Indiquez un total d'heures, ou des heures par semaine et un nombre de semaines.")
         heures = hebdo * semaines
     if heures <= 0:
         raise ValueError("Le nombre d'heures doit être positif.")

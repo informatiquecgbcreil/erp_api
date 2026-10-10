@@ -22,8 +22,8 @@
     <div class="page-title-wrap">
       <h1 class="ui-title page-title">🧭 Guides pas à pas</h1>
       <p class="ui-subtitle page-subtitle">
-        Un guide t'accompagne à travers les pages normales de l'application, dans le bon ordre,
-        avec une explication à chaque étape. Tu peux le quitter et le reprendre quand tu veux.
+        Un guide vous accompagne à travers les pages normales de l'application, dans le bon ordre,
+        avec une explication à chaque étape. Vous pouvez le quitter et le reprendre quand vous voulez.
       </p>
     </div>
     <div class="ui-actions inline-actions">
@@ -42,7 +42,7 @@
             <span class="guide-carte__nb">{{ g.nb_etapes }} étapes</span>
             <form method="post" action="{{ url_for('main.guide_demarrer', key=g.key) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn primary" type="submit">Démarrer</button>
+              <button class="btn primary" type="submit" aria-label="Démarrer le guide « {{ g.titre }} »">Démarrer</button>
             </form>
           </div>
         </article>
@@ -51,7 +51,7 @@
   {% else %}
     <div class="quick-empty" style="margin-top:14px;">
       <strong>Aucun guide disponible</strong>
-      Les guides correspondant à tes droits apparaîtront ici.
+      Les guides correspondant à vos droits apparaîtront ici.
     </div>
   {% endif %}
 </div>

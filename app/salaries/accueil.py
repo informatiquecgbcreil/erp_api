@@ -32,7 +32,7 @@ def preference_courriels():
     actif = request.form.get("actif") == "1"
     changer_preference(current_user, actif)
     journaliser("rh.preference_courriels", details={"actif": actif})
-    flash("Tu recevras les e-mails de l'espace salarié." if actif
+    flash("Vous recevrez les e-mails de l'espace salarié." if actif
           else "Plus d'e-mails de l'espace salarié : les badges de l'accueil restent là.", "success")
     return redirect(url_for("main.dashboard", espace="salarie"))
 

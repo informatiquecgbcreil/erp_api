@@ -316,7 +316,7 @@ def controle():
             if used_count:
                 flash(
                     f"Impossible de supprimer ce référentiel : il est utilisé par {used_count} séance(s). "
-                    "Désactive-le ou ajoute une date de fin pour conserver l'historique.",
+                    "Désactivez-le ou ajoutez une date de fin pour conserver l'historique.",
                     "danger",
                 )
                 return redirect(url_for("main.controle"))

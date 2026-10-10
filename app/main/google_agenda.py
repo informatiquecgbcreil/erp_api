@@ -41,7 +41,7 @@ def google_agenda_retour():
 
     uid = ga.verifier_etat(request.args.get("state") or "")
     if uid is None or uid != current_user.id:
-        flash("Retour Google invalide ou expiré : recommence la connexion depuis cette page.", "danger")
+        flash("Retour Google invalide ou expiré : recommencez la connexion depuis cette page.", "danger")
         return redirect(url_for("main.mon_agenda"))
 
     code = request.args.get("code") or ""
@@ -59,7 +59,7 @@ def google_agenda_retour():
     ga.lancer_synchro_arriere_plan(current_app._get_current_object(), complet=True)
     flash(
         f"Compte Google « {compte.google_email or 'connecté'} » relié : un calendrier dédié "
-        "a été créé dans ton Google Agenda et tes séances s'y remplissent (quelques instants). "
+        "a été créé dans votre Google Agenda et vos séances s'y remplissent (quelques instants). "
         "Ensuite, chaque création ou modification est poussée immédiatement.",
         "success",
     )
@@ -75,7 +75,7 @@ def google_agenda_resynchroniser():
         flash("Aucun compte Google connecté.", "warning")
         return redirect(url_for("main.mon_agenda"))
     ga.lancer_synchro_arriere_plan(current_app._get_current_object(), complet=True)
-    flash("Resynchronisation lancée en arrière-plan : ton Google Agenda sera à jour dans quelques instants.", "success")
+    flash("Resynchronisation lancée en arrière-plan : votre Google Agenda sera à jour dans quelques instants.", "success")
     return redirect(url_for("main.mon_agenda"))
 
 

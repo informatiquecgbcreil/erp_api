@@ -46,7 +46,7 @@
 
     <section class="section-card">
       <h2 class="section-title">Recopier un barème d'une année sur l'autre</h2>
-      <p class="muted" style="margin-top:0;">Le barème n'est pas toujours revalorisé : recopie-le, puis corrige les lignes qui changent.</p>
+      <p class="muted" style="margin-top:0;">Le barème n'est pas toujours revalorisé : recopiez-le, puis corrigez les lignes qui changent.</p>
       <form method="post" class="stack" style="gap:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="dupliquer">
@@ -96,7 +96,7 @@
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="8"><div class="quick-empty"><strong>Aucun barème saisi.</strong> Commence par l'année en cours.</div></td></tr>
+        <tr><td colspan="8"><div class="quick-empty"><strong>Aucun barème saisi.</strong> Commencez par l'année en cours.</div></td></tr>
       {% endfor %}
       </tbody>
     </table></div>

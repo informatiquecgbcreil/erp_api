@@ -148,7 +148,7 @@ def aller_creer_seance():
     jour = _parse_date(request.args.get("date"))
     atelier = db.session.get(AtelierActivite, atelier_id) if atelier_id else None
     if atelier is None or atelier.is_deleted or not _atelier_est_accessible(atelier):
-        flash("Atelier introuvable ou hors de ta portée.", "danger")
+        flash("Atelier introuvable ou hors de votre portée.", "danger")
         return redirect(url_for("main.mon_agenda_calendrier"))
     return redirect(url_for(
         "activite.session_new",
@@ -253,7 +253,7 @@ def mon_agenda_creneau_creer():
     if repetitions:
         flash(f"Créneau « {titre} » ajouté ({repetitions + 1} occurrences hebdomadaires).", "success")
     else:
-        flash(f"Créneau « {titre} » ajouté à ton agenda.", "success")
+        flash(f"Créneau « {titre} » ajouté à votre agenda.", "success")
     return _retour_apres_creneau(champs["date_creneau"])
 
 
@@ -301,7 +301,7 @@ def mon_agenda_export():
     du = _parse_date(request.args.get("du"))
     au = _parse_date(request.args.get("au"))
     if du is None or au is None or du > au:
-        flash("Choisis une période valide (date de début puis date de fin).", "danger")
+        flash("Choisissez une période valide (date de début puis date de fin).", "danger")
         return redirect(url_for("main.mon_agenda"))
     if (au - du).days > 400:
         flash("La période d'export est limitée à 400 jours.", "danger")
@@ -324,7 +324,7 @@ def mon_agenda_export():
 @require_perm("emargement:view")
 def mon_agenda_regenerer():
     regenerer_token(current_user)
-    flash("Nouveau lien généré : l'ancien ne fonctionne plus. Mets à jour ton agenda avec le nouveau lien.", "success")
+    flash("Nouveau lien généré : l'ancien ne fonctionne plus. Mettez à jour votre agenda avec le nouveau lien.", "success")
     return redirect(url_for("main.mon_agenda"))
 
 

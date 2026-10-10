@@ -63,8 +63,8 @@
     <form method="post" action="{{ url_for('main.purge_rgpd_reglages') }}" class="inline-actions" style="flex-wrap:wrap; gap:12px; align-items:flex-end;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-stack" style="max-width:240px;">
-        <label>Anonymiser après (années d'inactivité)</label>
-        <input class="in" type="number" name="annees" min="1" max="10" value="{{ annees }}" required>
+        <label for="purge-annees">Anonymiser après (années d'inactivité)</label>
+        <input class="in" type="number" id="purge-annees" name="annees" min="1" max="10" value="{{ annees }}" required>
       </div>
       <label style="display:inline-flex; align-items:center; gap:8px; padding-bottom:8px;">
         <input type="checkbox" name="auto" value="1" {% if purge_auto %}checked{% endif %}>
@@ -85,8 +85,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% for nom, regle in regles_conservation.items() %}
         <div class="field-stack" style="max-width:260px;">
-          <label>{{ regle[3] }} ({{ regle[2] }})</label>
-          <input class="in" type="number" name="{{ nom }}" min="0" max="{{ regle[1] }}" value="{{ conservation[nom] }}" required>
+          <label for="conservation-{{ nom }}">{{ regle[3] }} ({{ regle[2] }})</label>
+          <input class="in" type="number" id="conservation-{{ nom }}" name="{{ nom }}" min="0" max="{{ regle[1] }}" value="{{ conservation[nom] }}" required>
         </div>
       {% endfor %}
       <button class="btn ok" type="submit">Enregistrer les durées</button>

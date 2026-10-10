@@ -13,7 +13,7 @@
       <p class="page-subtitle">{{ salarie.poste or '' }}{% if salarie.secteur %} · {{ salarie.secteur }}{% endif %} · du {{ du.strftime('%d/%m/%Y') }} au {{ au.strftime('%d/%m/%Y') }}</p>
     </div>
     <div class="hero-actions no-print">
-      <form method="get" class="inline-actions"><input class="in" type="month" name="mois" value="{{ mois }}"><button class="btn" type="submit">Changer de mois</button></form>
+      <form method="get" class="inline-actions"><input class="in" type="month" name="mois" value="{{ mois }}" aria-label="Mois de l'état de frais"><button class="btn" type="submit">Changer de mois</button></form>
       <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
     </div>
   </div>

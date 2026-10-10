@@ -149,7 +149,7 @@ def glossaire_import():
 
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
-        flash("Choisis un fichier XLSX à importer.", "danger")
+        flash("Choisissez un fichier XLSX à importer.", "danger")
         return redirect(url_for("main.glossaire"))
     try:
         from openpyxl import load_workbook
@@ -252,7 +252,7 @@ def glossaire_export():
 def guide_demarrer(key: str):
     g = GUIDES.get(key)
     if not g or not _user_can_any(current_user, g.get("perm_any")):
-        flash("Ce guide n'est pas disponible avec tes droits.", "danger")
+        flash("Ce guide n'est pas disponible avec vos droits.", "danger")
         return redirect(url_for("main.guides_liste"))
     url = demarrer_guide(key)
     flash(f"Guide « {g['titre']} » démarré : suis le bandeau en haut de page.", "success")
@@ -265,7 +265,7 @@ def guide_suivant():
     url = avancer_guide(+1)
     if guide_actif_ctx() is None:
         # Dernière étape franchie : le guide est terminé.
-        flash("Guide terminé, bravo ! Tu peux le relancer quand tu veux depuis la page Guides.", "success")
+        flash("Guide terminé, bravo ! Vous pouvez le relancer quand vous voulez depuis la page Guides.", "success")
         return _retour()
     # Étape suivante : on y va si elle a une page cible, sinon on reste ici.
     return redirect(url) if url else _retour()
@@ -282,5 +282,5 @@ def guide_precedent():
 @login_required
 def guide_quitter():
     quitter_guide()
-    flash("Guide quitté. Tu peux le reprendre depuis la page Guides.", "info")
+    flash("Guide quitté. Vous pouvez le reprendre depuis la page Guides.", "info")
     return _retour()

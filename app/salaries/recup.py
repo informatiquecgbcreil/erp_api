@@ -84,7 +84,7 @@ def mes_recuperations(salarie):
 def declarer_heures(salarie):
     jour = es.parse_date(request.form.get("date_travail"))
     if jour is None:
-        return erreur("Indique la date à laquelle tu as fait ces heures.", _url_mes())
+        return erreur("Indiquez la date à laquelle vous avez fait ces heures.", _url_mes())
     if jour > date.today() + timedelta(days=1):
         return erreur("On ne déclare pas d'heures supplémentaires à l'avance.", _url_mes())
     try:
@@ -96,7 +96,7 @@ def declarer_heures(salarie):
         return erreur(str(exc), _url_mes())
     motif = (request.form.get("motif") or "").strip()
     if not motif and not (session_id or creneau_id):
-        return erreur("Précise pour quoi (un mot suffit), ou choisis l'activité dans ton agenda.", _url_mes())
+        return erreur("Précisez pour quoi (un mot suffit), ou choisissez l'activité dans votre agenda.", _url_mes())
     ligne = HeureSupplementaire(
         salarie_id=salarie.id, saisi_par_user_id=current_user.id, date_travail=jour,
         minutes=minutes, motif=motif, session_id=session_id, creneau_id=creneau_id, secteur=salarie.secteur,
@@ -116,7 +116,7 @@ def declarer_heures(salarie):
 def demander_recuperation(salarie):
     jour = es.parse_date(request.form.get("date_recuperation"))
     if jour is None:
-        return erreur("Indique le jour où tu veux récupérer.", _url_mes())
+        return erreur("Indiquez le jour où vous voulez récupérer.", _url_mes())
     try:
         minutes = es.parse_heures(request.form.get("duree"))
         if minutes <= 0:
@@ -130,7 +130,7 @@ def demander_recuperation(salarie):
     )
     db.session.add(demande)
     db.session.flush()
-    message = "Demande créée en brouillon : signe-la pour l'envoyer."
+    message = "Demande créée en brouillon : signez-la pour l'envoyer."
     if request.form.get("signature_data"):
         try:
             sig = es.enregistrer_signature(request.form.get("signature_data"), contexte="recup_soumission",
@@ -190,7 +190,7 @@ def envoyer_demande(salarie, demande_id: int):
 def annuler_demande(salarie, demande_id: int):
     demande = _ma_demande(salarie, demande_id)
     if demande.statut not in es.EN_COURS:
-        flash("Une demande déjà décidée ne s'annule plus ici : vois avec la direction.", "warning")
+        flash("Une demande déjà décidée ne s'annule plus ici : voyez avec la direction.", "warning")
         return redirect(_url_mes())
     demande.statut = "annulee"
     db.session.commit()
@@ -301,7 +301,7 @@ def transmettre_demande(demande_id: int):
     refus = request.form.get("decision") == "refuser"
     commentaire = (request.form.get("commentaire") or "").strip()
     if refus and not commentaire:
-        return erreur("Un refus doit être justifié : écris la raison.", _url_equipe())
+        return erreur("Un refus doit être justifié : écrivez la raison.", _url_equipe())
     try:
         sig = _signer_etape(demande, "recup_refus_relais" if refus else "recup_transmission")
     except ValueError as exc:
@@ -333,7 +333,7 @@ def transmettre_demande(demande_id: int):
         journaliser("rh.recup_auto_decision" if demande.decision_par_interesse else "rh.recup_refus_relais",
                     cible=f"demande_recuperation#{demande.id}",
                     details={"decision": "refusee", "niveau": "assistant", "par_l_interesse": demande.decision_par_interesse})
-        flash("Demande refusée ; le salarié est prévenu avec ta justification.", "success")
+        flash("Demande refusée ; le salarié est prévenu avec votre justification.", "success")
     else:
         journaliser("rh.recup_transmise", cible=f"demande_recuperation#{demande.id}")
         flash("Demande transmise à la direction ; le salarié est prévenu.", "success")
@@ -353,7 +353,7 @@ def decider_demande(demande_id: int):
     accord = request.form.get("decision") == "accepter"
     commentaire = (request.form.get("commentaire") or "").strip()
     if not accord and not commentaire:
-        return erreur("Un refus doit être justifié : écris la raison.", _url_equipe())
+        return erreur("Un refus doit être justifié : écrivez la raison.", _url_equipe())
     try:
         sig = _signer_etape(demande, "recup_decision")
     except ValueError as exc:
@@ -377,7 +377,7 @@ def decider_demande(demande_id: int):
                          "par_l_interesse": demande.decision_par_interesse})
     message = "Récupération acceptée." if accord else "Récupération refusée."
     if demande.decision_par_interesse:
-        message += " C'est ta propre demande : elle est marquée « décidée par l'intéressé·e » et tracée au journal."
+        message += " C'est votre propre demande : elle est marquée « décidée par l'intéressé·e » et tracée au journal."
     flash(message, "warning" if demande.decision_par_interesse else "success")
     return retour(_url_equipe())
 
@@ -456,5 +456,5 @@ def _corriger(heure_id: int, duree_brute: str):
                          "par_l_interesse": par_interesse})
     flash(("Heures retirées" if apres == 0 else
            f"Heures corrigées : {es.format_minutes(avant)} → {es.format_minutes(apres)}")
-          + " ; le salarié est prévenu avec ta justification.", "success")
+          + " ; le salarié est prévenu avec votre justification.", "success")
     return retour(_url_equipe())

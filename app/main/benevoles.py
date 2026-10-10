@@ -89,7 +89,7 @@ def benevolat_heures_create():
         participant_id = 0
     participant = db.session.get(Participant, participant_id)
     if participant is None:
-        flash("Choisis un bénévole dans la liste (recherche par nom).", "danger")
+        flash("Choisissez un bénévole dans la liste (recherche par nom).", "danger")
         return redirect(url_for("main.benevolat"))
     require_participant(participant)
 

@@ -76,10 +76,10 @@ def deposer_document():
     url = url_for("salaries.deposer_document")
     type_doc = db.session.get(TypeDocumentRh, request.form.get("type_id", type=int) or 0)
     if type_doc is None:
-        return erreur("Choisis le type de document.", url)
+        return erreur("Choisissez le type de document.", url)
     fichier = request.files.get("fichier")
     if fichier is None or not fichier.filename:
-        return erreur("Choisis un fichier.", url)
+        return erreur("Choisissez un fichier.", url)
     extension = fichier.filename.rsplit(".", 1)[-1].lower() if "." in fichier.filename else ""
     if extension not in type_doc.liste_extensions:
         return erreur(f"« {type_doc.libelle} » accepte : {', '.join(type_doc.liste_extensions)}.", url)
