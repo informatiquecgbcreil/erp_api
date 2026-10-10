@@ -418,7 +418,7 @@ def test_occupation_de_seance_non_supprimable_a_la_main(admin_client, app, batim
     reponse = admin_client.post(
         f"/salles/occupation/{occ_id}/supprimer", follow_redirects=True
     )
-    assert "modifie-la à sa source" in reponse.get_data(as_text=True)
+    assert "modifiez-la à sa source" in reponse.get_data(as_text=True)
 
     with app.app_context():
         assert db.session.get(Occupation, occ_id) is not None

@@ -1,10 +1,11 @@
 {% extends "layout.html" %}
+{% block title %}Test des droits (RBAC){% endblock %}
 {% block body %}
 <div class="container mt-4">
 
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
     <div>
-      <h2 class="mb-1">RBAC Test</h2>
+      <h1 class="mb-1">Test des droits (RBAC)</h1>
       <div class="text-muted small">Diagnostic des rôles et permissions effectifs (utilisateur connecté).</div>
     </div>
     <div class="text-end">
@@ -42,7 +43,7 @@
 
           <div class="small text-muted mt-3">Astuce</div>
           <div class="small">
-            Si tu vois des <span class="badge bg-danger">REFUS</span> alors que tu penses avoir le droit,
+            Si vous voyez des <span class="badge bg-danger">REFUS</span> alors que vous pensez avoir le droit,
             c'est soit une permission manquante, soit un filtre "secteur" dans la route.
           </div>
         </div>

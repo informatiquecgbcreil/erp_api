@@ -11,13 +11,13 @@
       <a class="btn" href="{{ url_for('admin.sante_systeme') }}">🩺 Santé du système</a>
     </div>
     <form method="get" class="inline" style="gap:8px; margin-top:10px;">
-      <label class="muted">Action</label>
-      <select class="in" name="action" onchange="this.form.submit()">
+      <label class="muted" for="journal_action">Action</label>
+      <select class="in" id="journal_action" name="action" onchange="this.form.submit()">
         <option value="">Toutes</option>
         {% for a in actions %}<option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>{% endfor %}
       </select>
-      <label class="muted">Cible</label>
-      <input class="in" name="cible" value="{{ cible or '' }}" placeholder="ex : subvention#12">
+      <label class="muted" for="journal_cible">Cible</label>
+      <input class="in" id="journal_cible" name="cible" value="{{ cible or '' }}" placeholder="ex : subvention#12">
       <button class="btn" type="submit">Filtrer</button>
     </form>
   </div>

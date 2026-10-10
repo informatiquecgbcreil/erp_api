@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Assistant de premier démarrage{% endblock %}
 {% block body %}
 <div class="card" style="max-width:860px; margin:0 auto;">
   <h1>Assistant de premier démarrage</h1>
@@ -10,65 +11,65 @@
     <h3 style="margin-bottom:0;">1) Identité</h3>
     <div class="row">
       <div>
-        <label>Nom de l’application</label>
-        <input class="in" name="app_name" placeholder="Ex: Gestion Association" required>
+        <label for="setup_app_name">Nom de l’application</label>
+        <input id="setup_app_name" class="in" name="app_name" placeholder="Ex: Gestion Association" required>
       </div>
       <div>
-        <label>Nom de votre structure</label>
-        <input class="in" name="organization_name" placeholder="Ex: Association Exemple" required>
+        <label for="setup_organization_name">Nom de votre structure</label>
+        <input id="setup_organization_name" class="in" name="organization_name" placeholder="Ex: Association Exemple" required>
       </div>
     </div>
 
     <h3 style="margin-bottom:0;">2) Compte administrateur</h3>
     <div class="row">
       <div>
-        <label>Nom de l’administrateur</label>
-        <input class="in" name="admin_name" placeholder="Ex: Madame Dupont" required>
+        <label for="setup_admin_name">Nom de l’administrateur</label>
+        <input id="setup_admin_name" class="in" name="admin_name" placeholder="Ex: Madame Dupont" required>
       </div>
       <div>
-        <label>Email administrateur</label>
-        <input class="in" type="email" name="admin_email" placeholder="admin@association.fr" required>
+        <label for="setup_admin_email">Email administrateur</label>
+        <input id="setup_admin_email" class="in" type="email" name="admin_email" placeholder="admin@association.fr" required>
       </div>
     </div>
 
     <div>
-      <label>Mot de passe administrateur (12 caractères minimum)</label>
-      <input class="in" type="password" name="admin_password" minlength="12" autocomplete="new-password" required>
+      <label for="setup_admin_password">Mot de passe administrateur (12 caractères minimum)</label>
+      <input id="setup_admin_password" class="in" type="password" name="admin_password" minlength="12" autocomplete="new-password" required>
     </div>
 
     <h3 style="margin-bottom:0;">3) URL publique de l'application</h3>
     <p class="muted" style="margin-top:0;">Utilisée dans les emails (réinitialisation mot de passe). Exemple: <code>http://192.168.1.42:8000</code>.</p>
     <div>
-      <label>URL publique (optionnel, recommandé en réseau local)</label>
-      <input class="in" name="public_base_url" placeholder="http://192.168.1.42:8000">
+      <label for="setup_public_base_url">URL publique (optionnel, recommandé en réseau local)</label>
+      <input id="setup_public_base_url" class="in" name="public_base_url" placeholder="http://192.168.1.42:8000">
     </div>
 
     <h3 style="margin-bottom:0;">4) Email SMTP (optionnel mais recommandé)</h3>
     <p class="muted" style="margin-top:0;">Permet d’envoyer les emails de récupération de mot de passe.</p>
     <div class="row">
       <div>
-        <label>Serveur SMTP</label>
-        <input class="in" name="smtp_host" placeholder="smtp.votre-domaine.fr">
+        <label for="setup_smtp_host">Serveur SMTP</label>
+        <input id="setup_smtp_host" class="in" name="smtp_host" placeholder="smtp.votre-domaine.fr">
       </div>
       <div>
-        <label>Port SMTP</label>
-        <input class="in" type="number" name="smtp_port" placeholder="587" min="1" max="65535">
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label>Utilisateur SMTP (optionnel)</label>
-        <input class="in" name="smtp_username" placeholder="no-reply@association.fr">
-      </div>
-      <div>
-        <label>Mot de passe SMTP (optionnel)</label>
-        <input class="in" type="password" name="smtp_password" autocomplete="new-password">
+        <label for="setup_smtp_port">Port SMTP</label>
+        <input id="setup_smtp_port" class="in" type="number" name="smtp_port" placeholder="587" min="1" max="65535">
       </div>
     </div>
     <div class="row">
       <div>
-        <label>Adresse expéditeur</label>
-        <input class="in" type="email" name="smtp_sender" placeholder="no-reply@association.fr">
+        <label for="setup_smtp_username">Utilisateur SMTP (optionnel)</label>
+        <input id="setup_smtp_username" class="in" name="smtp_username" placeholder="no-reply@association.fr">
+      </div>
+      <div>
+        <label for="setup_smtp_password">Mot de passe SMTP (optionnel)</label>
+        <input id="setup_smtp_password" class="in" type="password" name="smtp_password" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="setup_smtp_sender">Adresse expéditeur</label>
+        <input id="setup_smtp_sender" class="in" type="email" name="smtp_sender" placeholder="no-reply@association.fr">
       </div>
       <div style="display:flex; align-items:flex-end;">
         <label style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">

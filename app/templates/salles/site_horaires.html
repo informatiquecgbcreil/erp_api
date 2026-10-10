@@ -31,9 +31,11 @@
                   </label>
                 </td>
                 <td><input class="in" type="time" name="debut_{{ jour }}"
-                           value="{{ plage[0] if plage else '09:00' }}" style="width:130px;"></td>
+                           value="{{ plage[0] if plage else '09:00' }}" style="width:130px;"
+                           aria-label="Ouverture le {{ jour }}"></td>
                 <td><input class="in" type="time" name="fin_{{ jour }}"
-                           value="{{ plage[1] if plage else '18:00' }}" style="width:130px;"></td>
+                           value="{{ plage[1] if plage else '18:00' }}" style="width:130px;"
+                           aria-label="Fermeture le {{ jour }}"></td>
               </tr>
             {% endfor %}
           </tbody>

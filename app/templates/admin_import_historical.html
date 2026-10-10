@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Migration historique des présences{% endblock %}
 {% macro details(value, title='Données et provenance') %}
 <details class="details-card"><summary>{{ title }}</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:32rem;overflow:auto">{{ value|tojson(indent=2) }}</pre></details>
 {% endmacro %}
@@ -347,7 +348,7 @@
       <form method="post" action="{{ url_for('admin.historical_decisions', stage_id=stage_id) }}" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="digest" value="{{ plan.digest }}">
-        <input class="in" type="file" name="decisions_file" accept=".json,application/json" required>
+        <label class="field-stack"><span>Fichier de décisions (.json)</span><input class="in" type="file" name="decisions_file" accept=".json,application/json" required></label>
         <button class="btn" type="submit">Charger les décisions et refaire le dry-run</button>
       </form>
     </details>

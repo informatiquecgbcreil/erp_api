@@ -27,20 +27,20 @@
   <div class="card">
     <form method="get" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
       <div>
-        <label class="ui-label">Date</label>
-        <input class="in" type="date" name="jour" value="{{ jour.isoformat() }}">
+        <label for="dispo_jour" class="ui-label">Date</label>
+        <input id="dispo_jour" class="in" type="date" name="jour" value="{{ jour.isoformat() }}">
       </div>
       <div>
-        <label class="ui-label">De</label>
-        <input class="in" type="time" name="debut" value="{{ debut }}" style="width:120px;">
+        <label for="dispo_debut" class="ui-label">De</label>
+        <input id="dispo_debut" class="in" type="time" name="debut" value="{{ debut }}" style="width:120px;">
       </div>
       <div>
-        <label class="ui-label">À</label>
-        <input class="in" type="time" name="fin" value="{{ fin }}" style="width:120px;">
+        <label for="dispo_fin" class="ui-label">À</label>
+        <input id="dispo_fin" class="in" type="time" name="fin" value="{{ fin }}" style="width:120px;">
       </div>
       <div>
-        <label class="ui-label">Effectif</label>
-        <input class="in" name="effectif" inputmode="numeric" style="width:100px;"
+        <label for="dispo_effectif" class="ui-label">Effectif</label>
+        <input id="dispo_effectif" class="in" name="effectif" inputmode="numeric" style="width:100px;"
                value="{{ effectif or '' }}" placeholder="—">
       </div>
       <label class="inline" style="gap:7px; align-items:center; padding-bottom:8px;">
@@ -106,7 +106,7 @@
     <div class="card">
       <div class="ui-empty-state">
         <p class="muted">
-          Aucun espace occupable n'est enregistré. Commence par construire ton plan.
+          Aucun espace occupable n'est enregistré. Commencez par construire votre plan.
         </p>
         <a class="btn" href="{{ url_for('salles.index') }}">Aller au plan</a>
       </div>

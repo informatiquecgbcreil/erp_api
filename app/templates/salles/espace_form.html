@@ -16,14 +16,14 @@
       <h2>Identité</h2>
       <div class="stack" style="gap:10px;">
         <div>
-          <label class="ui-label">Nom *</label>
-          <input class="in" name="nom" required style="width:100%;"
+          <label for="esp_nom" class="ui-label">Nom *</label>
+          <input id="esp_nom" class="in" name="nom" required style="width:100%;"
                  value="{{ espace.nom if espace else '' }}" placeholder="Salle de cours 2">
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Nature</label>
-            <select class="in" name="type_espace" style="width:100%;">
+            <label for="esp_type_espace" class="ui-label">Nature</label>
+            <select id="esp_type_espace" class="in" name="type_espace" style="width:100%;">
               {% for code in types_espace %}
                 <option value="{{ code }}" {% if espace and espace.type_espace == code %}selected{% endif %}>
                   {{ types_espace_labels[code] }}
@@ -32,14 +32,14 @@
             </select>
           </div>
           <div style="width:130px;">
-            <label class="ui-label">Ordre</label>
-            <input class="in" name="ordre" inputmode="numeric" style="width:100%;"
+            <label for="esp_ordre" class="ui-label">Ordre</label>
+            <input id="esp_ordre" class="in" name="ordre" inputmode="numeric" style="width:100%;"
                    value="{{ espace.ordre if espace else 0 }}">
           </div>
         </div>
         <div>
-          <label class="ui-label">Situé dans</label>
-          <select class="in" name="parent_id" style="width:100%;">
+          <label for="esp_parent_id" class="ui-label">Situé dans</label>
+          <select id="esp_parent_id" class="in" name="parent_id" style="width:100%;">
             <option value="">— Directement dans le bâtiment —</option>
             {% for parent, profondeur in parents_possibles %}
               <option value="{{ parent.id }}"
@@ -67,7 +67,7 @@
           <span>
             <strong>Occupable</strong> — apparaît dans les plannings et peut recevoir
             une séance, une réunion ou une location.<br>
-            <span class="muted" style="font-size:.82rem;">Décoche pour les WC, vestiaires,
+            <span class="muted" style="font-size:.82rem;">Décochez pour les WC, vestiaires,
             locaux techniques et armoires : ils existent sur le plan sans encombrer l'interface.</span>
           </span>
         </label>
@@ -87,7 +87,7 @@
           <span>
             <strong>Point de stockage</strong> — proposé comme emplacement dans l'inventaire.<br>
             <span class="muted" style="font-size:.82rem;">Une salle peut l'être, une armoire aussi :
-            crée l'armoire comme un espace <em>à l'intérieur</em> de la salle, non occupable
+            créez l'armoire comme un espace <em>à l'intérieur</em> de la salle, non occupable
             mais en stockage.</span>
           </span>
         </label>
@@ -97,8 +97,8 @@
           <span><strong>🔒 Sécurisé</strong> — fermé à clé ou à code.</span>
         </label>
         <div>
-          <label class="ui-label">Qui détient la clé / le code</label>
-          <input class="in" name="detenteur_cle" style="width:100%;"
+          <label for="esp_detenteur_cle" class="ui-label">Qui détient la clé / le code</label>
+          <input id="esp_detenteur_cle" class="in" name="detenteur_cle" style="width:100%;"
                  value="{{ espace.detenteur_cle or '' if espace else '' }}"
                  placeholder="Référent, trousseau, boîte à clés…">
         </div>
@@ -110,14 +110,14 @@
       <div class="stack" style="gap:10px;">
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:180px;">
-            <label class="ui-label">Capacité d'usage</label>
-            <input class="in" name="capacite_usage" inputmode="numeric" style="width:100%;"
+            <label for="esp_capacite_usage" class="ui-label">Capacité d'usage</label>
+            <input id="esp_capacite_usage" class="in" name="capacite_usage" inputmode="numeric" style="width:100%;"
                    value="{{ espace.capacite_usage or '' if espace else '' }}">
             <p class="muted" style="margin:4px 0 0; font-size:.8rem;">Effectif confortable en conditions réelles.</p>
           </div>
           <div style="flex:1; min-width:180px;">
-            <label class="ui-label">Capacité réglementaire</label>
-            <input class="in" name="capacite_reglementaire" inputmode="numeric" style="width:100%;"
+            <label for="esp_capacite_reglementaire" class="ui-label">Capacité réglementaire</label>
+            <input id="esp_capacite_reglementaire" class="in" name="capacite_reglementaire" inputmode="numeric" style="width:100%;"
                    value="{{ espace.capacite_reglementaire or '' if espace else '' }}">
             <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
               Effectif maximal fixé par la commission de sécurité. Jamais dépassable.
@@ -126,13 +126,13 @@
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:150px;">
-            <label class="ui-label">Surface (m²)</label>
-            <input class="in" name="surface_m2" inputmode="decimal" style="width:100%;"
+            <label for="esp_surface_m2" class="ui-label">Surface (m²)</label>
+            <input id="esp_surface_m2" class="in" name="surface_m2" inputmode="decimal" style="width:100%;"
                    value="{{ espace.surface_m2 or '' if espace else '' }}">
           </div>
           <div style="flex:1; min-width:180px;">
-            <label class="ui-label">Battement entre deux créneaux (min)</label>
-            <input class="in" name="battement_minutes" inputmode="numeric" style="width:100%;"
+            <label for="esp_battement_minutes" class="ui-label">Battement entre deux créneaux (min)</label>
+            <input id="esp_battement_minutes" class="in" name="battement_minutes" inputmode="numeric" style="width:100%;"
                    value="{{ espace.battement_minutes if espace else 0 }}">
             <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
               Remise en état, ménage, aération. La salle ne sera pas proposée
@@ -145,24 +145,24 @@
           <span>Accessible aux personnes à mobilité réduite</span>
         </label>
         <div>
-          <label class="ui-label">Habilitation requise</label>
-          <input class="in" name="habilitation_requise" style="width:100%;"
+          <label for="esp_habilitation_requise" class="ui-label">Habilitation requise</label>
+          <input id="esp_habilitation_requise" class="in" name="habilitation_requise" style="width:100%;"
                  value="{{ espace.habilitation_requise or '' if espace else '' }}"
                  placeholder="Règles d'hygiène HACCP pour la cuisine professionnelle…">
         </div>
         <div>
-          <label class="ui-label">Équipements</label>
-          <textarea class="in" name="equipements" rows="2" style="width:100%;"
+          <label for="esp_equipements" class="ui-label">Équipements</label>
+          <textarea id="esp_equipements" class="in" name="equipements" rows="2" style="width:100%;"
             >{{ espace.equipements or '' if espace else '' }}</textarea>
         </div>
         <div>
-          <label class="ui-label">Valeur locative annuelle (€)</label>
-          <input class="in" name="valeur_locative_annuelle" inputmode="decimal" style="width:100%;"
+          <label for="esp_valeur_locative_annuelle" class="ui-label">Valeur locative annuelle (€)</label>
+          <input id="esp_valeur_locative_annuelle" class="in" name="valeur_locative_annuelle" inputmode="decimal" style="width:100%;"
                  value="{{ espace.valeur_locative_annuelle or '' if espace else '' }}">
         </div>
         <div>
-          <label class="ui-label">Notes</label>
-          <textarea class="in" name="notes" rows="2" style="width:100%;"
+          <label for="esp_notes" class="ui-label">Notes</label>
+          <textarea id="esp_notes" class="in" name="notes" rows="2" style="width:100%;"
             >{{ espace.notes or '' if espace else '' }}</textarea>
         </div>
         <label class="inline" style="gap:7px; align-items:center;">

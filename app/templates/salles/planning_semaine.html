@@ -78,7 +78,7 @@
       {% if sites|length > 1 %}
         <form method="get" style="display:inline;">
           <input type="hidden" name="semaine" value="{{ debut.isoformat() }}">
-          <select class="in" name="site_id" onchange="this.form.submit()">
+          <select class="in" name="site_id" onchange="this.form.submit()" aria-label="Site affiché">
             {% for s in sites %}
               <option value="{{ s.id }}" {% if s.id == site.id %}selected{% endif %}>{{ s.nom }}</option>
             {% endfor %}
@@ -108,7 +108,7 @@
 
     {% if not lignes %}
       <div class="ui-empty-state">
-        <p class="muted">Aucune salle occupable sur ce site. Coche « Occupable » sur tes espaces.</p>
+        <p class="muted">Aucune salle occupable sur ce site. Cochez « Occupable » sur vos espaces.</p>
         <a class="btn" href="{{ url_for('salles.index') }}">Aller au plan</a>
       </div>
     {% else %}
@@ -141,6 +141,7 @@
                     {% if can('salles:edit') %}
                       <a class="pl-ajout no-print"
                          title="Occuper {{ ligne.espace.nom }} le {{ cellule.jour.strftime('%d/%m') }}"
+                         aria-label="Occuper {{ ligne.espace.nom }} le {{ cellule.jour.strftime('%d/%m') }}"
                          href="{{ url_for('salles.occuper_form',
                                           espace_id=ligne.espace.id,
                                           jour=cellule.jour.isoformat(),
@@ -155,7 +156,7 @@
                         {%- if not ev.direct %} <em>({{ ev.occupation.espace.nom }})</em>{% endif %}
                         {%- if can('salles:edit') and ev.direct and not ev.occupation.pilotee %}
                           <a class="no-print" style="float:right; text-decoration:none; opacity:.5;"
-                             title="Lever cette occupation"
+                             title="Lever cette occupation" aria-label="Lever l'occupation « {{ ev.occupation.titre or ev.occupation.origine_label }} »"
                              href="#" onclick="event.preventDefault();
                                document.getElementById('lever-{{ ev.occupation.id }}').submit();">×</a>
                         {%- endif %}

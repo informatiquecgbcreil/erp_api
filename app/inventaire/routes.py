@@ -179,7 +179,7 @@ def facture_new():
         db.session.add(f)
         db.session.commit()
 
-        flash("Facture créée. Ajoute maintenant les lignes 👇", "success")
+        flash("Facture créée. Ajoutez maintenant les lignes 👇", "success")
         return redirect(url_for("inventaire.facture_detail", facture_id=f.id))
 
     # pour la vue : si responsable, on cache la saisie secteur
@@ -234,7 +234,7 @@ def facture_detail(facture_id):
             # - sinon : subvention technique "Hors subvention" (par secteur)
             if financement_type == "subvention":
                 if not sub_id:
-                    flash("Choisis une subvention OU passe en Fonds propres/Autre (aide terrain).", "danger")
+                    flash("Choisissez une subvention OU passez en Fonds propres/Autre (aide terrain).", "danger")
                     return redirect(url_for("inventaire.facture_detail", facture_id=f.id))
 
                 sub = db.get_or_404(Subvention, sub_id)
@@ -257,7 +257,7 @@ def facture_detail(facture_id):
                 ligne = get_ligne_a_ventiler(sub)
             else:
                 if not ligne_id:
-                    flash("Choisis une ligne budgétaire (ou coche 'À ventiler').", "danger")
+                    flash("Choisissez une ligne budgétaire (ou cochez « À ventiler »).", "danger")
                     return redirect(url_for("inventaire.facture_detail", facture_id=f.id))
                 ligne = db.get_or_404(LigneBudget, ligne_id)
                 if ligne.subvention_id != sub.id:
@@ -334,7 +334,7 @@ def facture_validate(facture_id):
         return redirect(url_for("inventaire.facture_detail", facture_id=f.id))
 
     if not f.lignes:
-        flash("Ajoute au moins une ligne avant de valider.", "danger")
+        flash("Ajoutez au moins une ligne avant de valider.", "danger")
         return redirect(url_for("inventaire.facture_detail", facture_id=f.id))
 
     # Blindage : un responsable ne peut valider que si toutes les lignes sont dans SON secteur

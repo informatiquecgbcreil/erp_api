@@ -7,7 +7,7 @@
       <div>
         <h1>👥 Preneurs</h1>
         <p class="muted" style="margin:0;">
-          Les structures et personnes qui occupent tes locaux. Distinct de
+          Les structures et personnes qui occupent vos locaux. Distinct de
           l'annuaire des partenaires : on loue à des gens qui n'en sont pas,
           et on a des partenaires à qui on ne loue rien.
         </p>
@@ -18,7 +18,7 @@
     </div>
     <form method="get" class="inline" style="gap:8px; margin-top:12px;">
       <input class="in" name="q" value="{{ recherche }}" placeholder="Rechercher un preneur…"
-             style="min-width:230px;">
+             style="min-width:230px;" aria-label="Rechercher un preneur">
       <button class="btn" type="submit">Chercher</button>
     </form>
   </div>
@@ -51,7 +51,8 @@
                 </td>
                 <td>
                   {% if can('locations:edit') %}
-                    <a class="btn" href="{{ url_for('salles.preneur_form', preneur_id=p.id) }}">✏️</a>
+                    <a class="btn" href="{{ url_for('salles.preneur_form', preneur_id=p.id) }}"
+                       title="Modifier « {{ p.nom }} »" aria-label="Modifier « {{ p.nom }} »">✏️</a>
                   {% endif %}
                 </td>
               </tr>

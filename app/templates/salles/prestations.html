@@ -29,7 +29,8 @@
                   <form method="post" action="{{ url_for('salles.prestation_supprimer', prestation_id=p.id) }}"
                         style="display:inline;" onsubmit="return confirm('Supprimer cette prestation ?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;">🗑️</button>
+                    <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;"
+                            title="Supprimer « {{ p.libelle }} »" aria-label="Supprimer « {{ p.libelle }} »">🗑️</button>
                   </form>
                 </td>
               </tr>
@@ -46,23 +47,23 @@
       <input type="hidden" name="cible" value="prestation">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         <div style="flex:1; min-width:190px;">
-          <label class="ui-label">Libellé *</label>
-          <input class="in" name="libelle" required style="width:100%;" placeholder="Vidéoprojecteur">
+          <label for="presta_libelle" class="ui-label">Libellé *</label>
+          <input id="presta_libelle" class="in" name="libelle" required style="width:100%;" placeholder="Vidéoprojecteur">
         </div>
         <div style="width:130px;">
-          <label class="ui-label">Montant (€)</label>
-          <input class="in" name="montant" inputmode="decimal" style="width:100%;">
+          <label for="presta_montant" class="ui-label">Montant (€)</label>
+          <input id="presta_montant" class="in" name="montant" inputmode="decimal" style="width:100%;">
         </div>
         <div style="min-width:170px;">
-          <label class="ui-label">Base</label>
-          <select class="in" name="unite" style="width:100%;">
+          <label for="presta_unite" class="ui-label">Base</label>
+          <select id="presta_unite" class="in" name="unite" style="width:100%;">
             {% for u in unites %}<option value="{{ u }}">{{ unites_labels[u] }}</option>{% endfor %}
           </select>
         </div>
         {% if materiel %}
           <div style="min-width:220px;">
-            <label class="ui-label">Matériel partagé concerné</label>
-            <select class="in" name="ressource_id" style="width:100%;">
+            <label for="presta_ressource_id" class="ui-label">Matériel partagé concerné</label>
+            <select id="presta_ressource_id" class="in" name="ressource_id" style="width:100%;">
               <option value="">— Aucun —</option>
               {% for m in materiel %}
                 <option value="{{ m.id }}">{{ m.nom }} (×{{ m.quantite }})</option>
@@ -78,8 +79,8 @@
         </p>
       {% endif %}
       <div>
-        <label class="ui-label">Description</label>
-        <input class="in" name="description" style="width:100%;">
+        <label for="presta_description" class="ui-label">Description</label>
+        <input id="presta_description" class="in" name="description" style="width:100%;">
       </div>
       <div><button class="btn ok" type="submit">➕ Ajouter la prestation</button></div>
     </form>
@@ -111,7 +112,8 @@
                   <form method="post" action="{{ url_for('salles.majoration_supprimer', majoration_id=m.id) }}"
                         style="display:inline;" onsubmit="return confirm('Supprimer cette majoration ?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;">🗑️</button>
+                    <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;"
+                            title="Supprimer « {{ m.libelle }} »" aria-label="Supprimer « {{ m.libelle }} »">🗑️</button>
                   </form>
                 </td>
               </tr>
@@ -128,29 +130,29 @@
       <input type="hidden" name="cible" value="majoration">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         <div style="flex:1; min-width:190px;">
-          <label class="ui-label">Libellé *</label>
-          <input class="in" name="libelle_majoration" required style="width:100%;"
+          <label for="presta_libelle_majoration" class="ui-label">Libellé *</label>
+          <input id="presta_libelle_majoration" class="in" name="libelle_majoration" required style="width:100%;"
                  placeholder="Ouverture en soirée">
         </div>
         <div style="min-width:210px;">
-          <label class="ui-label">Condition</label>
-          <select class="in" name="condition" style="width:100%;">
+          <label for="presta_condition" class="ui-label">Condition</label>
+          <select id="presta_condition" class="in" name="condition" style="width:100%;">
             {% for c in conditions %}<option value="{{ c }}">{{ conditions_labels[c] }}</option>{% endfor %}
           </select>
         </div>
         <div style="width:140px;">
-          <label class="ui-label">Seuil (soirée)</label>
-          <input class="in" type="time" name="seuil_heure" value="20:00" style="width:100%;">
+          <label for="presta_seuil_heure" class="ui-label">Seuil (soirée)</label>
+          <input id="presta_seuil_heure" class="in" type="time" name="seuil_heure" value="20:00" style="width:100%;">
         </div>
       </div>
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         <div style="width:150px;">
-          <label class="ui-label">Pourcentage (%)</label>
-          <input class="in" name="pourcentage" inputmode="decimal" style="width:100%;">
+          <label for="presta_pourcentage" class="ui-label">Pourcentage (%)</label>
+          <input id="presta_pourcentage" class="in" name="pourcentage" inputmode="decimal" style="width:100%;">
         </div>
         <div style="width:150px;">
-          <label class="ui-label">…ou montant (€)</label>
-          <input class="in" name="montant_fixe" inputmode="decimal" style="width:100%;">
+          <label for="presta_montant_fixe" class="ui-label">…ou montant (€)</label>
+          <input id="presta_montant_fixe" class="in" name="montant_fixe" inputmode="decimal" style="width:100%;">
         </div>
       </div>
       <div><button class="btn ok" type="submit">➕ Ajouter la majoration</button></div>

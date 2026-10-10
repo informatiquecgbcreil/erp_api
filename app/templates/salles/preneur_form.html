@@ -14,14 +14,14 @@
       <div class="stack" style="gap:10px;">
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:2; min-width:230px;">
-            <label class="ui-label">Nom *</label>
-            <input class="in" name="nom" required style="width:100%;"
+            <label for="preneur_nom" class="ui-label">Nom *</label>
+            <input id="preneur_nom" class="in" name="nom" required style="width:100%;"
                    value="{{ preneur.nom if preneur else '' }}"
                    placeholder="Association Gym Volontaire, M. Dupont…">
           </div>
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Catégorie</label>
-            <select class="in" name="categorie_id" style="width:100%;">
+            <label for="preneur_categorie_id" class="ui-label">Catégorie</label>
+            <select id="preneur_categorie_id" class="in" name="categorie_id" style="width:100%;">
               <option value="">— Non classé —</option>
               {% for c in categories %}
                 <option value="{{ c.id }}" {% if preneur and preneur.categorie_id == c.id %}selected{% endif %}>
@@ -36,47 +36,47 @@
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Contact</label>
-            <input class="in" name="contact_nom" style="width:100%;"
+            <label for="preneur_contact_nom" class="ui-label">Contact</label>
+            <input id="preneur_contact_nom" class="in" name="contact_nom" style="width:100%;"
                    value="{{ preneur.contact_nom or '' if preneur else '' }}">
           </div>
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Représentant légal (contrat)</label>
-            <input class="in" name="representant" style="width:100%;"
+            <label for="preneur_representant" class="ui-label">Représentant légal (contrat)</label>
+            <input id="preneur_representant" class="in" name="representant" style="width:100%;"
                    value="{{ preneur.representant or '' if preneur else '' }}">
           </div>
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Courriel</label>
-            <input class="in" type="email" name="email" style="width:100%;"
+            <label for="preneur_email" class="ui-label">Courriel</label>
+            <input id="preneur_email" class="in" type="email" name="email" style="width:100%;"
                    value="{{ preneur.email or '' if preneur else '' }}">
           </div>
           <div style="flex:1; min-width:170px;">
-            <label class="ui-label">Téléphone</label>
-            <input class="in" name="telephone" style="width:100%;"
+            <label for="preneur_telephone" class="ui-label">Téléphone</label>
+            <input id="preneur_telephone" class="in" name="telephone" style="width:100%;"
                    value="{{ preneur.telephone or '' if preneur else '' }}">
           </div>
           <div style="flex:1; min-width:170px;">
-            <label class="ui-label">SIRET</label>
-            <input class="in" name="siret" style="width:100%;"
+            <label for="preneur_siret" class="ui-label">SIRET</label>
+            <input id="preneur_siret" class="in" name="siret" style="width:100%;"
                    value="{{ preneur.siret or '' if preneur else '' }}">
           </div>
         </div>
         <div>
-          <label class="ui-label">Adresse</label>
-          <input class="in" name="adresse" style="width:100%;"
+          <label for="preneur_adresse" class="ui-label">Adresse</label>
+          <input id="preneur_adresse" class="in" name="adresse" style="width:100%;"
                  value="{{ preneur.adresse or '' if preneur else '' }}">
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="width:140px;">
-            <label class="ui-label">Code postal</label>
-            <input class="in" name="code_postal" style="width:100%;"
+            <label for="preneur_code_postal" class="ui-label">Code postal</label>
+            <input id="preneur_code_postal" class="in" name="code_postal" style="width:100%;"
                    value="{{ preneur.code_postal or '' if preneur else '' }}">
           </div>
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Ville</label>
-            <input class="in" name="ville" style="width:100%;"
+            <label for="preneur_ville" class="ui-label">Ville</label>
+            <input id="preneur_ville" class="in" name="ville" style="width:100%;"
                    value="{{ preneur.ville or '' if preneur else '' }}">
           </div>
         </div>
@@ -96,21 +96,21 @@
       </p>
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         <div style="flex:1; min-width:190px;">
-          <label class="ui-label">Valable jusqu'au</label>
-          <input class="in" type="date" name="assurance_rc_fin" style="width:100%;"
+          <label for="preneur_assurance_rc_fin" class="ui-label">Valable jusqu'au</label>
+          <input id="preneur_assurance_rc_fin" class="in" type="date" name="assurance_rc_fin" style="width:100%;"
                  value="{{ preneur.assurance_rc_fin.isoformat() if preneur and preneur.assurance_rc_fin else '' }}">
         </div>
         <div style="flex:2; min-width:220px;">
-          <label class="ui-label">Référence / compagnie</label>
-          <input class="in" name="assurance_reference" style="width:100%;"
+          <label for="preneur_assurance_reference" class="ui-label">Référence / compagnie</label>
+          <input id="preneur_assurance_reference" class="in" name="assurance_reference" style="width:100%;"
                  value="{{ preneur.assurance_reference or '' if preneur else '' }}">
         </div>
       </div>
     </div>
 
     <div class="card">
-      <label class="ui-label">Notes</label>
-      <textarea class="in" name="notes" rows="3" style="width:100%;"
+      <label for="preneur_notes" class="ui-label">Notes</label>
+      <textarea id="preneur_notes" class="in" name="notes" rows="3" style="width:100%;"
         >{{ preneur.notes or '' if preneur else '' }}</textarea>
     </div>
 

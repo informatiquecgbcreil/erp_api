@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% import "_ux_helpers.html" as ux %}
+{% block title %}Modifier le compte — {{ u.nom }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="page-hero-soft">
@@ -18,12 +19,12 @@
 
       <div class="form-grid-2">
         <div>
-          <label>Nom</label>
-          <input name="nom" value="{{ u.nom }}" required>
+          <label for="compte_nom">Nom</label>
+          <input id="compte_nom" name="nom" value="{{ u.nom }}" required>
         </div>
         <div>
-          <label>Adresse e-mail</label>
-          <input value="{{ u.email }}" disabled>
+          <label for="compte_email">Adresse e-mail</label>
+          <input id="compte_email" value="{{ u.email }}" disabled>
           <div class="muted" style="font-size:12px;">L'e-mail (identifiant de connexion) ne se modifie pas ici.</div>
         </div>
       </div>
@@ -32,21 +33,21 @@
 
       <div class="form-grid-2">
         <div>
-          <label>Rôle {{ ux.tooltip("Le rôle définit tout ce que le compte peut voir et faire.") }}</label>
+          <label for="compte_role">Rôle {{ ux.tooltip("Le rôle définit tout ce que le compte peut voir et faire.") }}</label>
           {% if peut_changer_role %}
-            <select name="role">
+            <select id="compte_role" name="role">
               {% for r in roles %}
                 <option value="{{ r.code }}" {% if r.code == current_role %}selected{% endif %}>{{ r.label or r.code }}</option>
               {% endfor %}
             </select>
           {% else %}
-            <input value="{{ current_role or '—' }}" disabled>
+            <input id="compte_role" value="{{ current_role or '—' }}" disabled>
             <div class="muted" style="font-size:12px;">Modification du rôle réservée à la gestion des droits.</div>
           {% endif %}
         </div>
         <div>
-          <label>Secteur assigné {{ ux.tooltip("Limite un responsable à son périmètre. Laisser vide pour un accès non restreint au secteur.") }}</label>
-          <select name="secteur_assigne">
+          <label for="compte_secteur">Secteur assigné {{ ux.tooltip("Limite un responsable à son périmètre. Laisser vide pour un accès non restreint au secteur.") }}</label>
+          <select id="compte_secteur" name="secteur_assigne">
             <option value="">—</option>
             {% for sec in secteurs %}
               <option value="{{ sec }}" {% if sec == u.secteur_assigne %}selected{% endif %}>{{ sec }}</option>
@@ -59,8 +60,8 @@
 
       <div class="field-stack">
         <div>
-          <label>Nouveau mot de passe {{ ux.tooltip("Laissez vide pour ne pas changer. Sinon, communiquez-le à l'utilisateur ; il pourra le changer ensuite.") }}</label>
-          <input name="password" type="password" minlength="12" autocomplete="new-password" placeholder="(laisser vide pour conserver le mot de passe actuel)">
+          <label for="compte_password">Nouveau mot de passe {{ ux.tooltip("Laissez vide pour ne pas changer. Sinon, communiquez-le à l'utilisateur ; il pourra le changer ensuite.") }}</label>
+          <input id="compte_password" name="password" type="password" minlength="12" autocomplete="new-password" placeholder="(laisser vide pour conserver le mot de passe actuel)">
           <div class="muted" style="font-size:12px;">12 caractères minimum. Utile pour dépanner un utilisateur qui ne reçoit pas l'e-mail de réinitialisation.</div>
         </div>
       </div>

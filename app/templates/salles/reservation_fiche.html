@@ -195,24 +195,24 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:175px;">
-            <label class="ui-label">Contrat signé le</label>
-            <input class="in" type="date" name="contrat_signe_le" style="width:100%;"
+            <label for="fiche_contrat_signe_le" class="ui-label">Contrat signé le</label>
+            <input id="fiche_contrat_signe_le" class="in" type="date" name="contrat_signe_le" style="width:100%;"
                    value="{{ r.contrat_signe_le.isoformat() if r.contrat_signe_le else '' }}">
           </div>
           <div style="flex:1; min-width:175px;">
-            <label class="ui-label">État des lieux d'entrée</label>
-            <input class="in" type="date" name="etat_lieux_entree_le" style="width:100%;"
+            <label for="fiche_etat_lieux_entree_le" class="ui-label">État des lieux d'entrée</label>
+            <input id="fiche_etat_lieux_entree_le" class="in" type="date" name="etat_lieux_entree_le" style="width:100%;"
                    value="{{ r.etat_lieux_entree_le.isoformat() if r.etat_lieux_entree_le else '' }}">
           </div>
           <div style="flex:1; min-width:175px;">
-            <label class="ui-label">État des lieux de sortie</label>
-            <input class="in" type="date" name="etat_lieux_sortie_le" style="width:100%;"
+            <label for="fiche_etat_lieux_sortie_le" class="ui-label">État des lieux de sortie</label>
+            <input id="fiche_etat_lieux_sortie_le" class="in" type="date" name="etat_lieux_sortie_le" style="width:100%;"
                    value="{{ r.etat_lieux_sortie_le.isoformat() if r.etat_lieux_sortie_le else '' }}">
           </div>
         </div>
         <div>
-          <label class="ui-label">Dégradations constatées</label>
-          <textarea class="in" name="degradations_constatees" rows="2" style="width:100%;"
+          <label for="fiche_degradations_constatees" class="ui-label">Dégradations constatées</label>
+          <textarea id="fiche_degradations_constatees" class="in" name="degradations_constatees" rows="2" style="width:100%;"
             >{{ r.degradations_constatees or '' }}</textarea>
           <p class="muted" style="margin:4px 0 0; font-size:.82rem;">
             Renseignées, elles rappellent de statuer sur le dépôt de garantie
@@ -230,8 +230,8 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:150px;">
-            <label class="ui-label">Caution (€)</label>
-            <input class="in" name="caution_montant" inputmode="decimal" style="width:100%;"
+            <label for="fiche_caution_montant" class="ui-label">Caution (€)</label>
+            <input id="fiche_caution_montant" class="in" name="caution_montant" inputmode="decimal" style="width:100%;"
                    value="{{ r.caution_montant or '' }}">
           </div>
           <label class="inline" style="gap:6px; align-items:center; padding-bottom:9px;">
@@ -239,15 +239,15 @@
             <span>Encaissée</span>
           </label>
           <div style="flex:1; min-width:170px;">
-            <label class="ui-label">Caution restituée le</label>
-            <input class="in" type="date" name="caution_restituee_le" style="width:100%;"
+            <label for="fiche_caution_restituee_le" class="ui-label">Caution restituée le</label>
+            <input id="fiche_caution_restituee_le" class="in" type="date" name="caution_restituee_le" style="width:100%;"
                    value="{{ r.caution_restituee_le.isoformat() if r.caution_restituee_le else '' }}">
           </div>
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:150px;">
-            <label class="ui-label">Acompte demandé (€)</label>
-            <input class="in" name="acompte_montant" inputmode="decimal" style="width:100%;"
+            <label for="fiche_acompte_montant" class="ui-label">Acompte demandé (€)</label>
+            <input id="fiche_acompte_montant" class="in" name="acompte_montant" inputmode="decimal" style="width:100%;"
                    value="{{ r.acompte_montant or '' }}">
           </div>
           <p class="muted" style="flex:2; min-width:230px; margin:0; font-size:.82rem;">
@@ -257,25 +257,25 @@
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:165px;">
-            <label class="ui-label">Clés remises le</label>
-            <input class="in" type="date" name="cles_remises_le" style="width:100%;"
+            <label for="fiche_cles_remises_le" class="ui-label">Clés remises le</label>
+            <input id="fiche_cles_remises_le" class="in" type="date" name="cles_remises_le" style="width:100%;"
                    value="{{ r.cles_remises_le.isoformat() if r.cles_remises_le else '' }}">
           </div>
           <div style="flex:1; min-width:165px;">
-            <label class="ui-label">Clés rendues le</label>
-            <input class="in" type="date" name="cles_rendues_le" style="width:100%;"
+            <label for="fiche_cles_rendues_le" class="ui-label">Clés rendues le</label>
+            <input id="fiche_cles_rendues_le" class="in" type="date" name="cles_rendues_le" style="width:100%;"
                    value="{{ r.cles_rendues_le.isoformat() if r.cles_rendues_le else '' }}">
           </div>
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
           <div style="flex:1; min-width:150px;">
-            <label class="ui-label">Prix imposé (€)</label>
-            <input class="in" name="montant_manuel" inputmode="decimal" style="width:100%;"
+            <label for="fiche_montant_manuel" class="ui-label">Prix imposé (€)</label>
+            <input id="fiche_montant_manuel" class="in" name="montant_manuel" inputmode="decimal" style="width:100%;"
                    value="{{ r.montant_manuel if r.montant_manuel is not none else '' }}">
           </div>
           <div style="flex:2; min-width:230px;">
-            <label class="ui-label">Motif de l'écart au barème *</label>
-            <input class="in" name="motif_montant_manuel" style="width:100%;"
+            <label for="fiche_motif_montant_manuel" class="ui-label">Motif de l'écart au barème *</label>
+            <input id="fiche_motif_montant_manuel" class="in" name="motif_montant_manuel" style="width:100%;"
                    value="{{ r.motif_montant_manuel or '' }}"
                    placeholder="Tarif négocié, situation particulière, geste commercial…">
           </div>
@@ -311,7 +311,8 @@
                           class="inline" style="gap:6px;" onsubmit="return confirm('Enregistrer une écriture inverse de ce règlement ?');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-                      <input class="in" name="motif" required minlength="3" maxlength="255" placeholder="Motif (obligatoire)">
+                      <input class="in" name="motif" required minlength="3" maxlength="255" placeholder="Motif (obligatoire)"
+                             aria-label="Motif de la contre-passation (obligatoire)">
                       <button class="btn" type="submit">Contre-passer</button>
                     </form>
                   </details>
@@ -325,15 +326,15 @@
       <form method="post" action="{{ url_for('salles.reservation_encaisser', reservation_id=r.id) }}" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-        <div><label class="ui-label">Montant (€)</label><input class="in" name="montant" inputmode="decimal" required
+        <div><label for="fiche_montant" class="ui-label">Montant (€)</label><input id="fiche_montant" class="in" name="montant" inputmode="decimal" required
              value="{{ '%.2f'|format(r.reste_du) if r.reste_du > 0 else '' }}"></div>
-        <div><label class="ui-label">Mode</label>
-          <select class="in" name="mode">
+        <div><label for="fiche_mode" class="ui-label">Mode</label>
+          <select id="fiche_mode" class="in" name="mode">
             <option value="virement">Virement</option><option value="cheque">Chèque</option>
             <option value="especes">Espèces</option><option value="carte">Carte bancaire</option><option value="autre">Autre</option>
           </select></div>
-        <div><label class="ui-label">Date</label><input class="in" type="date" name="date_encaissement" value="{{ aujourdhui.isoformat() }}"></div>
-        <div style="flex:1; min-width:160px;"><label class="ui-label">Note</label><input class="in" name="commentaire" maxlength="255" placeholder="n° de chèque, acompte…"></div>
+        <div><label for="fiche_date_encaissement" class="ui-label">Date</label><input id="fiche_date_encaissement" class="in" type="date" name="date_encaissement" value="{{ aujourdhui.isoformat() }}"></div>
+        <div style="flex:1; min-width:160px;"><label for="fiche_commentaire" class="ui-label">Note</label><input id="fiche_commentaire" class="in" name="commentaire" maxlength="255" placeholder="n° de chèque, acompte…"></div>
         <div><button class="btn ok" type="submit">💶 Enregistrer le règlement</button></div>
       </form>
     </div>
@@ -349,7 +350,8 @@
               <input type="hidden" name="statut" value="{{ code }}">
               {% if code == 'annulee' and r.facture_numero and not r.avoir_numero %}
                 <input class="in" name="motif" required minlength="3" maxlength="255"
-                       placeholder="Motif de l'avoir (facture {{ r.facture_numero }})">
+                       placeholder="Motif de l'avoir (facture {{ r.facture_numero }})"
+                       aria-label="Motif de l'avoir (facture {{ r.facture_numero }})">
               {% endif %}
               <button class="btn {% if code == 'confirmee' %}ok{% elif code == 'annulee' %}warn{% endif %}"
                       type="submit">{{ statuts_labels[code] }}</button>

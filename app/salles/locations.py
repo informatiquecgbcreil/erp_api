@@ -126,7 +126,7 @@ def categories_installer():
         ))
     db.session.commit()
     journaliser("salles.categories_depart", details={"nombre": len(CATEGORIES_DEPART)})
-    flash(f"{len(CATEGORIES_DEPART)} catégories créées. Retire celles qui ne te servent pas.", "success")
+    flash(f"{len(CATEGORIES_DEPART)} catégories créées. Retirez celles qui ne vous servent pas.", "success")
     return redirect(url_for("salles.categories"))
 
 
@@ -151,7 +151,7 @@ def categorie_supprimer(categorie_id: int):
     commit_delete(
         "cette catégorie",
         f"Catégorie « {libelle} » supprimée, avec ses tarifs.",
-        blocked_message=f"« {libelle} » est utilisée par des réservations : désactive-la plutôt.",
+        blocked_message=f"« {libelle} » est utilisée par des réservations : désactivez-la plutôt.",
     )
     return redirect(url_for("salles.categories"))
 
@@ -187,7 +187,7 @@ def tarifs():
             ))
             enregistres += 1
         if not (espace_id and categorie_id and enregistres):
-            flash("Choisis une salle, une catégorie et au moins un montant.", "danger")
+            flash("Choisissez une salle, une catégorie et au moins un montant.", "danger")
         else:
             db.session.commit()
             journaliser("salles.tarifs", details={"espace": espace_id, "lignes": enregistres})
@@ -286,7 +286,7 @@ def prestations():
                 flash("Une majoration sans pourcentage ni montant ne majore rien.", "danger")
             elif pourcentage and montant_fixe:
                 flash(
-                    "Choisis un pourcentage OU un montant fixe, pas les deux : "
+                    "Choisissez un pourcentage OU un montant fixe, pas les deux : "
                     "une règle qu'on ne sait pas dire en une phrase finit en litige.",
                     "danger",
                 )
@@ -483,9 +483,9 @@ def reservation_nouvelle():
 
         erreurs = []
         if preneur is None:
-            erreurs.append("Choisis un preneur.")
+            erreurs.append("Choisissez un preneur.")
         if espace is None:
-            erreurs.append("Choisis une salle.")
+            erreurs.append("Choisissez une salle.")
         if not titre:
             erreurs.append("L'intitulé est obligatoire.")
         if not date_debut:
@@ -926,7 +926,7 @@ def reservation_etat_lieux(reservation_id: int):
 
     if reservation.degradations_constatees and not reservation.caution_restituee_le:
         flash(
-            "Dégradations consignées : pense au sort du dépôt de garantie "
+            "Dégradations consignées : pensez au sort du dépôt de garantie "
             "avant de le restituer.",
             "warning",
         )
@@ -1077,7 +1077,7 @@ def bilan():
     site_id = request.args.get("site_id", type=int) or (sites[0].id if sites else None)
     site = Site.query.get(site_id) if site_id else None
     if site is None:
-        flash("Crée d'abord un site pour établir un bilan.", "warning")
+        flash("Créez d'abord un site pour établir un bilan.", "warning")
         return redirect(url_for("salles.index"))
 
     debut, fin = _periode_demandee()

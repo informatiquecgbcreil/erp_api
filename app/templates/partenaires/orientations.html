@@ -221,7 +221,7 @@
       {% elif current_filters.domaine %}
         <div class="empty-state">Aucun partenaire n'a encore cette compétence dans l'annuaire.</div>
       {% else %}
-        <div class="empty-state">Choisis un domaine dans les filtres pour voir les partenaires compétents.</div>
+        <div class="empty-state">Choisissez un domaine dans les filtres pour voir les partenaires compétents.</div>
       {% endif %}
     </aside>
   </div>
@@ -291,12 +291,12 @@
                 <td>
                   <form method="post" action="{{ url_for('partenaires.update_orientation_status', orientation_id=row.id) }}" class="stack" style="gap:6px; min-width:180px;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select class="in" name="statut">
+                    <select class="in" name="statut" aria-label="Nouveau statut de cette orientation">
                       {% for key,label in orientation_statuts.items() %}
                         <option value="{{ key }}" {% if row.statut == key %}selected{% endif %}>{{ label }}</option>
                       {% endfor %}
                     </select>
-                    <input class="in" type="date" name="suite_prevue" value="{{ row.suite_prevue or '' }}">
+                    <input class="in" type="date" name="suite_prevue" value="{{ row.suite_prevue or '' }}" aria-label="Date de la suite prévue">
                     <button class="btn" type="submit">Mettre à jour</button>
                   </form>
                   <form method="post" action="{{ url_for('partenaires.delete_orientation', orientation_id=row.id) }}" onsubmit="return confirm('Supprimer cette orientation ?');" style="margin-top:6px;">
