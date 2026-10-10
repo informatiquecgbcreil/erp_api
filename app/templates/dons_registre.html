@@ -68,7 +68,7 @@
         <thead><tr><th>N°</th><th>Date</th><th>Donateur</th><th>Montant</th><th>Forme</th><th>Mode</th><th>Statut</th><th></th></tr></thead>
         <tbody>
           {% for d in dons %}
-            <tr {% if d.est_annule %}style="opacity:.55;"{% endif %}>
+            <tr {% if d.est_annule %}style="opacity:.8;"{% endif %}>
               <td><strong>{{ d.numero }}</strong></td>
               <td>{{ d.date_don.strftime('%d/%m/%Y') if d.date_don else '—' }}</td>
               <td>{{ d.donateur_civilite or '' }} {{ d.donateur_prenom or '' }} <strong>{{ d.donateur_nom }}</strong>

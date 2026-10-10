@@ -57,7 +57,7 @@
                 <span class="montant">{{ "%.2f"|format(l.montant) }} €</span>
                 <form method="post" action="{{ url_for('main.tarif_ligne_supprimer', tarif_id=l.id, annee=annee) }}" onsubmit="return confirm('Supprimer cette ligne de tarif ?');" style="margin:0;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn" type="submit" style="padding:2px 7px; font-size:.8rem;">✕</button>
+                  <button class="btn" type="submit" style="padding:2px 7px; font-size:.8rem;" title="Supprimer cette ligne de tarif" aria-label="Supprimer le tarif de {{ "%.2f"|format(l.montant) }} € depuis le {{ l.date_debut.strftime('%d/%m/%Y') }}">✕</button>
                 </form>
               </div>
             </div>
@@ -69,12 +69,12 @@
         <form method="post" action="{{ url_for('main.tarif_ligne_creer', annee=annee) }}" class="tarif-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="type_tarif" value="{{ type_tarif }}">
-          <label>Montant (€)</label>
-          <input type="text" name="montant" placeholder="ex. 25,00" required>
-          <label>À partir du</label>
-          <input type="date" name="date_debut" value="{{ annee }}-09-01">
-          <label>Commentaire (optionnel)</label>
-          <input type="text" name="commentaire" placeholder="ex. tarif de fin d'année">
+          <label for="tarif-{{ type_tarif }}-montant">Montant (€)</label>
+          <input type="text" name="montant" id="tarif-{{ type_tarif }}-montant" placeholder="ex. 25,00" required>
+          <label for="tarif-{{ type_tarif }}-debut">À partir du</label>
+          <input type="date" name="date_debut" id="tarif-{{ type_tarif }}-debut" value="{{ annee }}-09-01">
+          <label for="tarif-{{ type_tarif }}-commentaire">Commentaire (optionnel)</label>
+          <input type="text" name="commentaire" id="tarif-{{ type_tarif }}-commentaire" placeholder="ex. tarif de fin d'année">
           <button class="btn primary" type="submit">➕ Ajouter ce tarif</button>
         </form>
       </div>

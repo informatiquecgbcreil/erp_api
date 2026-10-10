@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% import "_ux_helpers.html" as ux %}
+{% block title %}Projet — {{ projet.nom }}{% endblock %}
 {% block body %}
 <div class="monster-shell project-edit-shell wide-shell">
 
@@ -42,12 +43,12 @@
 
         <div class="form-grid-2">
           <div>
-            <label>Nom</label>
-            <input name="nom" value="{{ projet.nom }}" required>
+            <label for="projet-nom">Nom</label>
+            <input name="nom" id="projet-nom" value="{{ projet.nom }}" required>
           </div>
           <div>
-            <label>Description</label>
-            <textarea name="description" rows="7">{{ projet.description or "" }}</textarea>
+            <label for="projet-description">Description</label>
+            <textarea name="description" id="projet-description" rows="7">{{ projet.description or "" }}</textarea>
           </div>
         </div>
 
@@ -75,7 +76,8 @@
       <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="upload_cr">
-        <input type="file" name="cr_file" required>
+        <label for="projet-cr-fichier">Fichier du compte-rendu</label>
+        <input type="file" name="cr_file" id="projet-cr-fichier" required>
         <div class="spacer"></div>
         <button class="btn ok" type="submit">Importer le compte-rendu</button>
       </form>

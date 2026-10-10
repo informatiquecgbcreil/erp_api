@@ -40,7 +40,7 @@
   </section>
 
   {% if sans_secteur %}
-    <div class="quick-empty" style="margin-top:14px;"><strong>Aucun secteur associé à ton compte</strong>La vue des impayés est bornée au secteur ; contacte la direction pour l'attribution.</div>
+    <div class="quick-empty" style="margin-top:14px;"><strong>Aucun secteur associé à votre compte</strong>La vue des impayés est bornée au secteur ; contactez la direction pour l'attribution.</div>
   {% else %}
     <div class="impayes-total">
       <div class="carte"><div class="lib">Reste à recouvrer{% if secteur_filtre %} · {{ secteur_filtre }}{% endif %}</div><div class="val">{{ "%.2f"|format(total) }} €</div></div>

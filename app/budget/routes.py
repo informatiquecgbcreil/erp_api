@@ -180,7 +180,7 @@ def _validate_rows_capacity(rows: list[dict]) -> tuple[bool, str]:
             sub_name = ligne.source_sub.nom if getattr(ligne, "source_sub", None) else "Enveloppe inconnue"
             return False, (
                 f"Budget insuffisant sur {sub_name} — {ligne.compte} {ligne.libelle} : "
-                f"tu essaies d'imputer {amount:.2f} €, il reste {available:.2f} €."
+                f"vous essayez d'imputer {amount:.2f} €, il reste {available:.2f} €."
             )
     return True, ""
 
@@ -248,7 +248,7 @@ def _parse_creation_affectations(initial_line: LigneBudget, dep_amount: float):
             return None, "Une affectation de dépense doit pointer vers une ligne de charge."
         target_sub = target_line.source_sub
         if not target_sub or not can_see_secteur(target_sub.secteur):
-            return None, "Tu n'as pas accès à l'une des subventions utilisées dans la répartition."
+            return None, "Vous n'avez pas accès à l'une des subventions utilisées dans la répartition."
 
         rows.append({
             "source_type": "subvention",
@@ -472,7 +472,7 @@ def depense_edit(depense_id):
                     commentaire=(request.form.get("commentaire") or "").strip() or None,
                 )
                 if montant_aff > _line_available_for_affectation(target_line) + 0.01:
-                    flash(f"Budget insuffisant sur cette ligne : tu essaies d'imputer {montant_aff:.2f} €, il reste {_line_available_for_affectation(target_line):.2f} €.", "danger")
+                    flash(f"Budget insuffisant sur cette ligne : vous essayez d'imputer {montant_aff:.2f} €, il reste {_line_available_for_affectation(target_line):.2f} €.", "danger")
                     return redirect(url_for("budget.depense_edit", depense_id=dep.id))
                 if dep.ligne_budget_id is None:
                     dep.ligne_budget_id = target_line.id
@@ -613,7 +613,7 @@ def depense_dupliquer(depense_id):
     db.session.commit()
     flash(
         "Dépense reconduite au mois suivant, avec sa répartition entre financeurs. "
-        "Vérifie la date et le montant, puis ajoute le justificatif.",
+        "Vérifiez la date et le montant, puis ajoutez le justificatif.",
         "warning",
     )
     return redirect(url_for("budget.depense_edit", depense_id=copie.id))
@@ -723,7 +723,7 @@ def depenses_actions():
 
     depenses = [d for d in (db.session.get(Depense, i) for i in ids) if d is not None and depense_visible(d)]
     if not depenses:
-        flash("Coche d'abord au moins une dépense dans la liste.", "warning")
+        flash("Cochez d'abord au moins une dépense dans la liste.", "warning")
         return redirect(retour)
 
     if action == "reconduire":
@@ -732,7 +732,7 @@ def depenses_actions():
         db.session.commit()
         flash(
             f"{len(depenses)} dépense(s) reconduite(s) au mois suivant, avec leur répartition "
-            "entre financeurs. Vérifie les dates et les montants, puis ajoute les justificatifs.",
+            "entre financeurs. Vérifiez les dates et les montants, puis ajoutez les justificatifs.",
             "warning",
         )
         return redirect(retour)
@@ -740,7 +740,7 @@ def depenses_actions():
     if action == "imputer":
         ligne = db.session.get(LigneBudget, request.form.get("ligne_budget_id", type=int) or 0)
         if ligne is None:
-            flash("Choisis la ligne de financement avant de valider.", "danger")
+            flash("Choisissez la ligne de financement avant de valider.", "danger")
             return redirect(retour)
         if getattr(ligne, "nature", "charge") != "charge":
             flash("Une dépense s'impute sur une ligne de charge, pas sur un produit.", "danger")

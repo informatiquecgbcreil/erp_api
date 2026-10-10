@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Indicateurs — {{ projet.nom }}{% endblock %}
 {% block body %}
 <style>
   .indicator-page { gap: 18px; }
@@ -16,6 +17,10 @@
   .gauge-fill.is-bad { background: var(--danger, #dc2626); }
   .gauge-fill.is-none { background: color-mix(in srgb, var(--muted) 50%, transparent); }
   .gauge-meta { font-size:13px; white-space:nowrap; }
+  /* Intitulé de colonne sans champ associé (même aspect qu'une étiquette). */
+  .indicator-caption { font-size:13px; font-weight:700; color:var(--text); }
+  /* Badge « À voir » : orangé un peu foncé pour rester lisible sur son fond teinté. */
+  .indicator-page .ui-badge--warn { color: color-mix(in srgb, var(--warn) 82%, var(--text)); }
   @media (max-width: 720px) { .gauge-row { grid-template-columns: 1fr; } }
 </style>
 
@@ -216,31 +221,31 @@
             <input type="hidden" name="indicateur_id" value="{{ ind.id }}">
 
             <div class="ui-field">
-              <label>Libellé</label>
-              <input class="in" name="label" value="{{ ind.label }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
+              <label for="ind-{{ ind.id }}-label">Libellé</label>
+              <input class="in" name="label" id="ind-{{ ind.id }}-label" value="{{ ind.label }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
               <span class="ui-badge">{{ row.source_label }}{% if row.metric_label %} · {{ row.metric_label }}{% endif %}</span>
               <span class="muted indicator-source-code">{{ ind.code }}</span>
             </div>
 
             <div class="ui-field">
               {% if row.value_type == 'check' %}
-                <label>Validation</label>
+                <span class="indicator-caption">Validation</span>
                 <label class="ui-checkline"><input type="checkbox" name="checked" value="1" {% if row.checked %}checked{% endif %} {% if not can_edit_indicateurs %}disabled{% endif %}> Validé</label>
                 <span class="ui-badge ui-badge--{{ row.status }}">{{ 'OK' if row.checked else 'Non validé' }}</span>
               {% elif row.source == 'manual' %}
-                <label>Valeur</label>
-                <input class="in" name="manual_value" inputmode="decimal" value="{{ params.get('manual_value','') }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
-                <input class="in" name="unit" value="{{ params.get('unit','') }}" placeholder="Unité" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <label for="ind-{{ ind.id }}-valeur">Valeur</label>
+                <input class="in" name="manual_value" id="ind-{{ ind.id }}-valeur" inputmode="decimal" value="{{ params.get('manual_value','') }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <input class="in" name="unit" value="{{ params.get('unit','') }}" placeholder="Unité" aria-label="Unité" {% if not can_edit_indicateurs %}disabled{% endif %}>
                 {% if can_edit_indicateurs %}
-                  <input class="in" name="commentaire" placeholder="Commentaire (historisé)" style="margin-top:4px;">
+                  <input class="in" name="commentaire" placeholder="Commentaire (historisé)" aria-label="Commentaire (historisé)" style="margin-top:4px;">
                 {% endif %}
                 {% set dr = derniers_releves.get(ind.id) %}
                 {% if dr %}
                   <span class="muted" style="font-size:11px;">Dernier relevé : {{ dr.valeur }} · {{ dr.saisie_le.strftime('%d/%m/%Y') }}{% if dr.user %} · {{ dr.user.email }}{% endif %}</span>
                 {% endif %}
               {% else %}
-                <label>Statistique</label>
-                <select class="in" name="metric_code" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <label for="ind-{{ ind.id }}-statistique">Statistique</label>
+                <select class="in" name="metric_code" id="ind-{{ ind.id }}-statistique" {% if not can_edit_indicateurs %}disabled{% endif %}>
                   {% for group, metrics in indicator_metric_groups.items() %}
                     <optgroup label="{{ group }}">
                       {% for metric in metrics %}
@@ -254,16 +259,16 @@
 
             <div class="ui-field">
               {% if row.value_type == 'check' %}
-                <label>État</label>
+                <span class="indicator-caption">État</span>
                 <span class="muted">La coche validée est considérée comme atteinte.</span>
               {% else %}
-                <label>Objectif</label>
-                <select class="in" name="target_op" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <label for="ind-{{ ind.id }}-objectif">Objectif</label>
+                <select class="in" name="target_op" aria-label="Règle de l’objectif" {% if not can_edit_indicateurs %}disabled{% endif %}>
                   {% for key,label in target_op_choices.items() %}
                     <option value="{{ key }}" {% if row.target_op == key %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
-                <input class="in" name="target" inputmode="decimal" value="{{ params.get('target','') }}" placeholder="Objectif" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <input class="in" name="target" id="ind-{{ ind.id }}-objectif" inputmode="decimal" value="{{ params.get('target','') }}" placeholder="Objectif" {% if not can_edit_indicateurs %}disabled{% endif %}>
                 {% if row.status %}
                   <span class="ui-badge ui-badge--{{ row.status }}">
                     {% if row.status == 'ok' %}Atteint{% elif row.status == 'warn' %}À surveiller{% else %}Non atteint{% endif %}
@@ -274,14 +279,14 @@
 
             <div class="ui-field">
               {% if row.source == 'stats' %}
-                <label>Périmètre stats</label>
-                <select class="in" name="period" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <label for="ind-{{ ind.id }}-periode">Périmètre stats</label>
+                <select class="in" name="period" id="ind-{{ ind.id }}-periode" {% if not can_edit_indicateurs %}disabled{% endif %}>
                   {% set pval = params.get('period','context') %}
                   {% for key,label in period_choices.items() %}
                     <option value="{{ key }}" {% if pval == key %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
-                <select class="in" name="atelier_id" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <select class="in" name="atelier_id" aria-label="Atelier" {% if not can_edit_indicateurs %}disabled{% endif %}>
                   <option value="">Tous les ateliers liés</option>
                   {% for a in ateliers %}
                     {% if a.id in linked_ateliers %}
@@ -289,10 +294,10 @@
                     {% endif %}
                   {% endfor %}
                 </select>
-                <input class="in" type="date" name="start" value="{{ params.get('start','') or '' }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
-                <input class="in" type="date" name="end" value="{{ params.get('end','') or '' }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <input class="in" type="date" name="start" aria-label="Début" value="{{ params.get('start','') or '' }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
+                <input class="in" type="date" name="end" aria-label="Fin" value="{{ params.get('end','') or '' }}" {% if not can_edit_indicateurs %}disabled{% endif %}>
               {% else %}
-                <label>Source</label>
+                <span class="indicator-caption">Source</span>
                 <span class="muted">Saisie manuelle</span>
               {% endif %}
             </div>
@@ -314,7 +319,7 @@
           {% endif %}
         </article>
       {% else %}
-        <div class="ui-empty"><strong>Aucun indicateur n’est encore configuré.</strong>Crée un nombre manuel, une coche ou une statistique connectée pour commencer.</div>
+        <div class="ui-empty"><strong>Aucun indicateur n’est encore configuré.</strong>Créez un nombre manuel, une coche ou une statistique connectée pour commencer.</div>
       {% endfor %}
     </div>
   </section>

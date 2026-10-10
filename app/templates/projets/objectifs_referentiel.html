@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Objectifs sectoriels{% if secteur %} — {{ secteur }}{% endif %}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="card">
@@ -11,8 +12,8 @@
     </div>
     {% if secteurs|length > 1 %}
     <form method="get" class="inline" style="gap:8px; margin-top:8px;">
-      <label>Secteur :</label>
-      <select class="in" name="secteur" onchange="this.form.submit()">
+      <label for="objectifs-secteur">Secteur :</label>
+      <select class="in" name="secteur" id="objectifs-secteur" onchange="this.form.submit()">
         {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
       </select>
     </form>
@@ -26,10 +27,10 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="ajouter">
       <input type="hidden" name="secteur" value="{{ secteur }}">
-      <div class="field-stack"><label>Code</label><input class="in" name="code" placeholder="OS1" style="width:90px;" required></div>
-      <div class="field-stack grow-2"><label>Libellé</label><input class="in" name="libelle" placeholder="Comprendre" required></div>
-      <div class="field-stack"><label>Axe (optionnel)</label><input class="in" name="axe" placeholder="Transitions"></div>
-      <div class="field-stack"><label>Ordre</label><input class="in" type="number" name="ordre" value="0" style="width:80px;"></div>
+      <div class="field-stack"><label for="objectif-nouveau-code">Code</label><input class="in" name="code" id="objectif-nouveau-code" placeholder="OS1" style="width:90px;" required></div>
+      <div class="field-stack grow-2"><label for="objectif-nouveau-libelle">Libellé</label><input class="in" name="libelle" id="objectif-nouveau-libelle" placeholder="Comprendre" required></div>
+      <div class="field-stack"><label for="objectif-nouveau-axe">Axe (optionnel)</label><input class="in" name="axe" id="objectif-nouveau-axe" placeholder="Transitions"></div>
+      <div class="field-stack"><label for="objectif-nouveau-ordre">Ordre</label><input class="in" type="number" name="ordre" id="objectif-nouveau-ordre" value="0" style="width:80px;"></div>
       <button class="btn ok" type="submit">➕ Ajouter</button>
     </form>
   </div>
@@ -46,14 +47,14 @@
         <input type="hidden" name="action" value="modifier">
         <input type="hidden" name="id" value="{{ obj.id }}">
         <input type="hidden" name="secteur" value="{{ secteur }}">
-        <div class="field-stack"><label>Code</label><input class="in" name="code" value="{{ obj.code }}" style="width:90px;" {% if not peut_gerer %}disabled{% endif %}></div>
-        <div class="field-stack grow-2"><label>Libellé</label><input class="in" name="libelle" value="{{ obj.libelle }}" {% if not peut_gerer %}disabled{% endif %}></div>
-        <div class="field-stack"><label>Axe</label><input class="in" name="axe" value="{{ obj.axe or '' }}" {% if not peut_gerer %}disabled{% endif %}></div>
-        <div class="field-stack"><label>Ordre</label><input class="in" type="number" name="ordre" value="{{ obj.ordre }}" style="width:80px;" {% if not peut_gerer %}disabled{% endif %}></div>
+        <div class="field-stack"><label for="objectif-{{ obj.id }}-code">Code</label><input class="in" name="code" id="objectif-{{ obj.id }}-code" value="{{ obj.code }}" style="width:90px;" {% if not peut_gerer %}disabled{% endif %}></div>
+        <div class="field-stack grow-2"><label for="objectif-{{ obj.id }}-libelle">Libellé</label><input class="in" name="libelle" id="objectif-{{ obj.id }}-libelle" value="{{ obj.libelle }}" {% if not peut_gerer %}disabled{% endif %}></div>
+        <div class="field-stack"><label for="objectif-{{ obj.id }}-axe">Axe</label><input class="in" name="axe" id="objectif-{{ obj.id }}-axe" value="{{ obj.axe or '' }}" {% if not peut_gerer %}disabled{% endif %}></div>
+        <div class="field-stack"><label for="objectif-{{ obj.id }}-ordre">Ordre</label><input class="in" type="number" name="ordre" id="objectif-{{ obj.id }}-ordre" value="{{ obj.ordre }}" style="width:80px;" {% if not peut_gerer %}disabled{% endif %}></div>
         <label class="inline" style="gap:6px;"><input type="checkbox" name="actif" value="1" {% if obj.actif %}checked{% endif %} {% if not peut_gerer %}disabled{% endif %}> actif</label>
         {% if peut_gerer %}
-        <button class="btn" type="submit">💾</button>
-        <button class="btn danger" type="submit" name="action" value="supprimer" onclick="return confirm('Supprimer cet objectif ?');">🗑️</button>
+        <button class="btn" type="submit" title="Enregistrer" aria-label="Enregistrer l’objectif {{ obj.code }}">💾</button>
+        <button class="btn danger" type="submit" name="action" value="supprimer" onclick="return confirm('Supprimer cet objectif ?');" title="Supprimer" aria-label="Supprimer l’objectif {{ obj.code }}">🗑️</button>
         {% endif %}
       </form>
       {% endfor %}

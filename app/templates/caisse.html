@@ -90,15 +90,15 @@
   <div class="caisse-actions no-print">
     <div class="caisse-bloc">
       <h2>🔢 Compter la caisse (arrêté)</h2>
-      <div class="pourquoi">Compte TOUTES les espèces de la boîte (fond compris) et saisis le total :
+      <div class="pourquoi">Comptez TOUTES les espèces de la boîte (fond compris) et saisissez le total :
         l'application compare au théorique et trace l'écart éventuel.</div>
       <form method="post" action="{{ url_for('main.caisse_comptage') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-        <label>Total compté (€)</label>
-        <input type="text" name="montant_constate" placeholder="ex. 137,50" required>
-        <label>Commentaire (optionnel)</label>
-        <input type="text" name="commentaire" placeholder="ex. comptage du vendredi">
+        <label for="comptage-montant">Total compté (€)</label>
+        <input type="text" name="montant_constate" id="comptage-montant" placeholder="ex. 137,50" required>
+        <label for="comptage-commentaire">Commentaire (optionnel)</label>
+        <input type="text" name="commentaire" id="comptage-commentaire" placeholder="ex. comptage du vendredi">
         <div style="margin-top:10px;"><button class="btn primary" type="submit">✔ Enregistrer le comptage</button></div>
       </form>
     </div>
@@ -110,16 +110,16 @@
       <form method="post" action="{{ url_for('main.caisse_depot') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-        <label>Espèces déposées (€) — max {{ "%.2f"|format(etat.recette_deposable) }}</label>
-        <input type="text" name="montant_especes" placeholder="0,00">
-        <label>Chèques déposés (€) — {{ "%.2f"|format(etat.cheques_en_attente) }} en attente</label>
-        <input type="text" name="montant_cheques" placeholder="0,00">
-        <label>Nombre de chèques</label>
-        <input type="number" name="nb_cheques" min="0" placeholder="0">
-        <label>Date du dépôt</label>
-        <input type="date" name="date_depot" value="{{ today.isoformat() }}">
-        <label>Commentaire (optionnel)</label>
-        <input type="text" name="commentaire" placeholder="ex. remise n°12">
+        <label for="depot-especes">Espèces déposées (€) — max {{ "%.2f"|format(etat.recette_deposable) }}</label>
+        <input type="text" name="montant_especes" id="depot-especes" placeholder="0,00">
+        <label for="depot-cheques">Chèques déposés (€) — {{ "%.2f"|format(etat.cheques_en_attente) }} en attente</label>
+        <input type="text" name="montant_cheques" id="depot-cheques" placeholder="0,00">
+        <label for="depot-nb-cheques">Nombre de chèques</label>
+        <input type="number" name="nb_cheques" id="depot-nb-cheques" min="0" placeholder="0">
+        <label for="depot-date">Date du dépôt</label>
+        <input type="date" name="date_depot" id="depot-date" value="{{ today.isoformat() }}">
+        <label for="depot-commentaire">Commentaire (optionnel)</label>
+        <input type="text" name="commentaire" id="depot-commentaire" placeholder="ex. remise n°12">
         <div style="margin-top:10px;"><button class="btn primary" type="submit">🏦 Enregistrer le dépôt</button></div>
       </form>
     </div>
@@ -131,10 +131,10 @@
       <form method="post" action="{{ url_for('main.caisse_fond') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-        <label>Nouveau fond de caisse (€)</label>
-        <input type="text" name="montant" placeholder="ex. 50,00" required>
-        <label>Commentaire (optionnel)</label>
-        <input type="text" name="commentaire">
+        <label for="fond-montant">Nouveau fond de caisse (€)</label>
+        <input type="text" name="montant" id="fond-montant" placeholder="ex. 50,00" required>
+        <label for="fond-commentaire">Commentaire (optionnel)</label>
+        <input type="text" name="commentaire" id="fond-commentaire">
         <div style="margin-top:10px;"><button class="btn" type="submit">Enregistrer</button></div>
       </form>
     </div>
@@ -146,10 +146,10 @@
       <form method="post" action="{{ url_for('main.caisse_ajustement') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-        <label>Montant (€) — négatif si de l'argent est sorti</label>
-        <input type="text" name="montant" placeholder="ex. -12,40" required>
-        <label>Motif (obligatoire)</label>
-        <input type="text" name="motif" required minlength="3" maxlength="200">
+        <label for="ajustement-montant">Montant (€) — négatif si de l'argent est sorti</label>
+        <input type="text" name="montant" id="ajustement-montant" placeholder="ex. -12,40" required>
+        <label for="ajustement-motif">Motif (obligatoire)</label>
+        <input type="text" name="motif" id="ajustement-motif" required minlength="3" maxlength="200">
         <div style="margin-top:10px;"><button class="btn" type="submit">Enregistrer l'ajustement</button></div>
       </form>
     </div>

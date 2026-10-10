@@ -483,7 +483,7 @@ def _validate_line_capacity_for_new_affectations(line_amounts: dict[int, float])
             sub_name = ligne.source_sub.nom if getattr(ligne, "source_sub", None) else "Enveloppe inconnue"
             return False, (
                 f"Budget insuffisant sur {sub_name} — {ligne.compte} {ligne.libelle} : "
-                f"tu essaies d'imputer {amount:.2f} €, il reste {available:.2f} €."
+                f"vous essayez d'imputer {amount:.2f} €, il reste {available:.2f} €."
             )
     return True, ""
 
@@ -580,7 +580,7 @@ def _create_depense_from_simple_form(secteur: str, year: int):
         total_affecte = round(total_affecte + amount, 2)
 
     if not affectations:
-        flash("Ajoute au moins une source de financement pour cette dépense.", "danger")
+        flash("Ajoutez au moins une source de financement pour cette dépense.", "danger")
         return False, None
 
     if total_affecte > montant + 0.01:

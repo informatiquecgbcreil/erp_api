@@ -225,7 +225,7 @@ def projet_finance_action(projet_id):
             montant=float(dep.montant or 0.0),
         ))
         db.session.commit()
-        flash("Dépense rapide créée et imputée à 100% sur la ligne choisie. Tu peux affiner la répartition depuis la fiche dépense.", "success")
+        flash("Dépense rapide créée et imputée à 100% sur la ligne choisie. Vous pouvez affiner la répartition depuis la fiche dépense.", "success")
         return redirect(url_for("projets.projet_finance", projet_id=projet.id, year=year, tab="depenses"))
 
     abort(400)

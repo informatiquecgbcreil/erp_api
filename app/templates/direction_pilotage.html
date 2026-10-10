@@ -20,9 +20,9 @@
       </div>
       <div class="inline no-print director-toolbar" style="gap:8px;align-items:center;">
         <form method="get" class="inline" style="gap:8px;">
-          <input class="in" type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:110px;">
+          <input class="in" type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:110px;" aria-label="Année">
           {% if secteurs|length > 1 %}
-            <select class="in" name="secteur">
+            <select class="in" name="secteur" aria-label="Filtrer par secteur">
               <option value="">Tous secteurs</option>
               {% for s in secteurs %}<option value="{{ s }}" {% if s == selected_secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
             </select>

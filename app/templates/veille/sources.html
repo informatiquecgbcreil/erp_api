@@ -40,7 +40,7 @@
             <tr>
               <td>
                 <strong>{{ s.nom }}</strong>
-                {% if not s.actif %}<span class="badge" style="background:#9ca3af;color:#fff;margin-left:6px;">en pause</span>{% endif %}
+                {% if not s.actif %}<span class="badge" style="background:#4b5563;color:#fff;margin-left:6px;">en pause</span>{% endif %}
                 <div class="muted" style="font-size:12px; word-break:break-all;"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url[:80] }}{% if s.url|length > 80 %}…{% endif %}</a></div>
               </td>
               <td class="muted">{{ types_source.get(s.type_source, s.type_source) }}</td>
@@ -48,9 +48,9 @@
                 {% if s.derniere_verification %}
                   {{ s.derniere_verification.strftime("%d/%m/%Y %H:%M") }}<br>
                   {% if s.dernier_statut == 'ok' %}
-                    <span style="color:#16a34a;">✔ {{ s.dernier_message }}</span>
+                    <span style="color:var(--ok, #15803d);">✔ {{ s.dernier_message }}</span>
                   {% else %}
-                    <span style="color:#dc2626;" title="{{ s.dernier_message }}">✖ {{ (s.dernier_message or 'erreur')[:120] }}</span>
+                    <span style="color:var(--danger, #b91c1c);" title="{{ s.dernier_message }}">✖ {{ (s.dernier_message or 'erreur')[:120] }}</span>
                   {% endif %}
                 {% else %}
                   <span class="muted">jamais</span>
@@ -60,10 +60,10 @@
                 {% if can('veille:edit') %}
                 <form method="post" action="{{ url_for('veille.source_modifier', source_id=s.id) }}" class="stack" style="gap:4px;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input class="in" name="nom" value="{{ s.nom }}" placeholder="Nom">
-                  <input class="in" name="url" value="{{ s.url }}" placeholder="Adresse (URL ou flux)">
+                  <input class="in" name="nom" value="{{ s.nom }}" placeholder="Nom" aria-label="Nom de la source">
+                  <input class="in" name="url" value="{{ s.url }}" placeholder="Adresse (URL ou flux)" aria-label="Adresse de la source (URL ou flux)">
                   {% if s.type_source == 'aides_territoires' %}
-                    <input class="in" name="api_cle" value="" placeholder="{% if s.api_cle %}Clé API enregistrée ✔ (coller pour remplacer){% else %}Clé API Aides-territoires (obligatoire){% endif %}">
+                    <input class="in" name="api_cle" value="" aria-label="Clé API Aides-territoires" placeholder="{% if s.api_cle %}Clé API enregistrée ✔ (coller pour remplacer){% else %}Clé API Aides-territoires (obligatoire){% endif %}">
                   {% endif %}
                   <button class="btn" type="submit">Enregistrer</button>
                 </form>
@@ -99,9 +99,9 @@
     <form method="post" action="{{ url_for('veille.source_ajouter') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
-        <input class="in" name="nom" placeholder="Nom (ex : Fondation SNCF)" required style="min-width:220px;">
-        <input class="in" name="url" placeholder="Adresse de la page ou du flux" required style="min-width:320px;">
-        <select class="in" name="type_source">
+        <input class="in" name="nom" placeholder="Nom (ex : Fondation SNCF)" required style="min-width:220px;" aria-label="Nom de la nouvelle source">
+        <input class="in" name="url" placeholder="Adresse de la page ou du flux" required style="min-width:320px;" aria-label="Adresse de la page ou du flux">
+        <select class="in" name="type_source" aria-label="Type de source">
           {% for code, label in types_source.items() if code != 'aides_territoires' %}
             <option value="{{ code }}">{{ label }}</option>
           {% endfor %}

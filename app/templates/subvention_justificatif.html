@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Justificatif — {{ sub.nom }}{% endblock %}
 {% block body %}
 <style>@media print { .no-print { display:none !important; } }</style>
 <div class="page-shell wide-shell stack">
@@ -22,7 +23,7 @@
   {% if not lignes %}
     <div class="callout-soft">
       <strong>Aucun atelier rattaché à cette subvention.</strong>
-      Depuis le pilotage, rattache les ateliers financés (carte « Activités financées ») pour générer le justificatif.
+      Depuis le pilotage, rattachez les ateliers financés (carte « Activités financées ») pour générer le justificatif.
     </div>
   {% else %}
 
@@ -50,7 +51,7 @@
     </p>
     {% if total_pct > 100 %}
       <div class="callout-soft" style="border-color: color-mix(in srgb, var(--warn,#f59e0b) 55%, var(--border));">
-        ⚠ La somme des parts dépasse 100 % ({{ '%g'|format(total_pct) }} %) : vérifie les pourcentages des ateliers.
+        ⚠ La somme des parts dépasse 100 % ({{ '%g'|format(total_pct) }} %) : vérifiez les pourcentages des ateliers.
       </div>
     {% endif %}
   </section>

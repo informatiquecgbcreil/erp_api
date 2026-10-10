@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Modifier une charge — {{ charge.libelle }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="card">
@@ -8,33 +9,33 @@
     <div class="spacer"></div>
     <form method="post" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label>Libellé</label>
-      <input name="libelle" value="{{ charge.libelle }}" required>
+      <label for="charge-libelle">Libellé</label>
+      <input name="libelle" id="charge-libelle" value="{{ charge.libelle }}" required>
 
       <div class="row three">
         <div class="stack">
-          <label>Bloc</label>
-          <select name="bloc">
+          <label for="charge-bloc">Bloc</label>
+          <select name="bloc" id="charge-bloc">
             <option value="directe" {% if charge.bloc=='directe' %}selected{% endif %}>Directe</option>
             <option value="indirecte" {% if charge.bloc=='indirecte' %}selected{% endif %}>Indirecte</option>
           </select>
         </div>
         <div class="stack">
-          <label>Code plan</label>
-          <input name="code_plan" value="{{ charge.code_plan }}">
+          <label for="charge-code-plan">Code plan</label>
+          <input name="code_plan" id="charge-code-plan" value="{{ charge.code_plan }}">
         </div>
         <div class="stack">
-          <label>Prévisionnel (€)</label>
-          <input name="montant_previsionnel" type="number" step="0.01" value="{{ charge.montant_previsionnel or 0 }}">
+          <label for="charge-montant-previsionnel">Prévisionnel (€)</label>
+          <input name="montant_previsionnel" id="charge-montant-previsionnel" type="number" step="0.01" value="{{ charge.montant_previsionnel or 0 }}">
         </div>
         <div class="stack">
-          <label>Réel (€)</label>
-          <input name="montant_reel" type="number" step="0.01" value="{{ charge.montant_reel or 0 }}">
+          <label for="charge-montant-reel">Réel (€)</label>
+          <input name="montant_reel" id="charge-montant-reel" type="number" step="0.01" value="{{ charge.montant_reel or 0 }}">
         </div>
       </div>
 
-      <label>Commentaire</label>
-      <input name="commentaire" value="{{ charge.commentaire or '' }}">
+      <label for="charge-commentaire">Commentaire</label>
+      <input name="commentaire" id="charge-commentaire" value="{{ charge.commentaire or '' }}">
 
       <div class="row three">
         <button class="btn ok" type="submit">Enregistrer</button>

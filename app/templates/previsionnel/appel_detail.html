@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Budget d’appel à projet — {{ appel.nom }}{% endblock %}
 {% block body %}
 <div class="card">
   <div class="page-head">
@@ -38,7 +39,7 @@
   <h2>Étape 2 — Saisir la réponse du financeur</h2>
   <div class="quick-info" style="margin-bottom:12px;">
     Cette page sert à transformer une <strong>demande</strong> en <strong>subvention réelle</strong>.
-    C’est ici que tu notes ce qui a vraiment été accordé, reçu, refusé ou accordé partiellement.
+    C’est ici que vous notez ce qui a vraiment été accordé, reçu, refusé ou accordé partiellement.
     Les dépenses seront ensuite imputées sur cette enveloppe réelle, pas sur le rêve prévisionnel.
   </div>
 
@@ -56,7 +57,7 @@
     </div>
   {% else %}
     <div class="quick-info" style="margin-bottom:12px;">
-      Aucune subvention réelle n’est encore liée à ce dossier. Tu peux la créer dès que tu connais la réponse du financeur.
+      Aucune subvention réelle n’est encore liée à ce dossier. Vous pouvez la créer dès que vous connaissez la réponse du financeur.
     </div>
   {% endif %}
 
@@ -104,7 +105,7 @@
         Créer / mettre à jour les lignes imputables de la subvention
       </span>
       <span class="muted">
-        Les charges retenues dans la demande deviennent les lignes sur lesquelles tu pourras imputer les dépenses. Le montant attribué est réparti proportionnellement entre elles.
+        Les charges retenues dans la demande deviennent les lignes sur lesquelles vous pourrez imputer les dépenses. Le montant attribué est réparti proportionnellement entre elles.
       </span>
     </label>
 
@@ -137,9 +138,9 @@
         <td>{{ l.projet.nom if l.projet else 'Transversal' }}</td>
         <td>{{ '%.2f'|format(l.montant or 0) }} €</td>
         <td>{{ '%.2f'|format(usage.get('remaining', l.montant or 0)) }} €</td>
-        <td>{% if can_edit_budget %}<input class="in" style="max-width:140px" type="number" step="0.01" min="0" name="montant_{{ row.id }}" value="{{ row.montant_retenu or 0 }}">{% else %}{{ '%.2f'|format(row.montant_retenu or 0) }} €{% endif %}</td>
-        <td>{% if can_edit_budget %}<input class="in" style="max-width:90px" type="number" step="0.01" min="0" name="pct_{{ row.id }}" value="{{ row.pourcentage_retenu or '' }}">{% else %}{{ row.pourcentage_retenu or '' }}{% endif %}</td>
-        <td>{% if can_edit_budget %}<input class="in" name="commentaire_{{ row.id }}" value="{{ row.commentaire or '' }}">{% else %}{{ row.commentaire or '' }}{% endif %}</td>
+        <td>{% if can_edit_budget %}<input class="in" style="max-width:140px" type="number" step="0.01" min="0" name="montant_{{ row.id }}" value="{{ row.montant_retenu or 0 }}" aria-label="Montant retenu (€) — {{ l.libelle }}">{% else %}{{ '%.2f'|format(row.montant_retenu or 0) }} €{% endif %}</td>
+        <td>{% if can_edit_budget %}<input class="in" style="max-width:90px" type="number" step="0.01" min="0" name="pct_{{ row.id }}" value="{{ row.pourcentage_retenu or '' }}" aria-label="Pourcentage retenu — {{ l.libelle }}">{% else %}{{ row.pourcentage_retenu or '' }}{% endif %}</td>
+        <td>{% if can_edit_budget %}<input class="in" name="commentaire_{{ row.id }}" value="{{ row.commentaire or '' }}" aria-label="Commentaire — {{ l.libelle }}">{% else %}{{ row.commentaire or '' }}{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="9" class="muted">Aucune ligne retenue.</td></tr>
@@ -183,7 +184,7 @@
         {% set usage = line_usage_rows.get(l.id, {}) %}
         {% set remaining = usage.get('remaining', l.montant or 0) %}
         <tr>
-          <td><input type="checkbox" name="include_line" value="{{ l.id }}" {% if remaining <= 0 %}disabled{% endif %}></td>
+          <td><input type="checkbox" name="include_line" value="{{ l.id }}" aria-label="Inclure la ligne {{ l.compte }} — {{ l.libelle }}" {% if remaining <= 0 %}disabled{% endif %}></td>
           <td>{{ l.nature }}</td>
           <td>{{ l.compte }}</td>
           <td><strong>{{ l.libelle }}</strong>{% if usage.get('appels') %}<br><span class="muted">Déjà dans : {{ usage.get('appels') }}</span>{% endif %}</td>
@@ -191,8 +192,8 @@
           <td>{{ '%.2f'|format(l.montant or 0) }} €</td>
           <td>{{ '%.2f'|format(usage.get('used_elsewhere', 0)) }} €</td>
           <td><strong>{{ '%.2f'|format(remaining) }} €</strong></td>
-          <td><input class="in" style="max-width:90px" type="number" step="0.01" min="0" max="100" name="pct_{{ l.id }}" value="{% if remaining < (l.montant or 0) and (l.montant or 0) > 0 %}{{ '%.2f'|format((remaining / (l.montant or 1)) * 100) }}{% else %}100{% endif %}" {% if remaining <= 0 %}disabled{% endif %}></td>
-          <td><input class="in" style="max-width:140px" type="number" step="0.01" min="0" max="{{ remaining }}" name="montant_{{ l.id }}" placeholder="{{ '%.2f'|format(remaining) }}" {% if remaining <= 0 %}disabled{% endif %}></td>
+          <td><input class="in" style="max-width:90px" type="number" step="0.01" min="0" max="100" name="pct_{{ l.id }}" aria-label="Pourcentage retenu — {{ l.libelle }}" value="{% if remaining < (l.montant or 0) and (l.montant or 0) > 0 %}{{ '%.2f'|format((remaining / (l.montant or 1)) * 100) }}{% else %}100{% endif %}" {% if remaining <= 0 %}disabled{% endif %}></td>
+          <td><input class="in" style="max-width:140px" type="number" step="0.01" min="0" max="{{ remaining }}" name="montant_{{ l.id }}" aria-label="Montant retenu (€) — {{ l.libelle }}" placeholder="{{ '%.2f'|format(remaining) }}" {% if remaining <= 0 %}disabled{% endif %}></td>
         </tr>
       {% endfor %}
       </tbody>

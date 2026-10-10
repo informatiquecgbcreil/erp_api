@@ -65,18 +65,18 @@
       </div>
     </div>
 
-    {{ ux.helper('Utilise la recherche, l’exercice et les filtres pour éviter les listes interminables. Par défaut, seules les dépenses de la page courante sont affichées.') }}
+    {{ ux.helper('Utilisez la recherche, l’exercice et les filtres pour éviter les listes interminables. Par défaut, seules les dépenses de la page courante sont affichées.') }}
 
     <div class="spacer"></div>
     <form method="GET" class="expenses-toolbar" data-filter-summary="true">
       <div>
-        <label>Recherche</label>
-        <input name="q" value="{{ q or '' }}" placeholder="Libellé, fournisseur, référence, enveloppe...">
+        <label for="dep-filtre-q">Recherche</label>
+        <input name="q" id="dep-filtre-q" value="{{ q or '' }}" placeholder="Libellé, fournisseur, référence, enveloppe...">
       </div>
 
       <div>
-        <label>Exercice</label>
-        <select name="annee" onchange="this.form.submit()">
+        <label for="dep-filtre-annee">Exercice</label>
+        <select name="annee" id="dep-filtre-annee" onchange="this.form.submit()">
           <option value="">Tous</option>
           {% for y in years %}
             <option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}</option>
@@ -85,8 +85,8 @@
       </div>
 
       <div>
-        <label>Enveloppe</label>
-        <select name="subvention_id" onchange="this.form.submit()">
+        <label for="dep-filtre-enveloppe">Enveloppe</label>
+        <select name="subvention_id" id="dep-filtre-enveloppe" onchange="this.form.submit()">
           <option value="">Toutes</option>
           {% for s in subs %}
             <option value="{{ s.id }}" {% if selected_sub_id == s.id %}selected{% endif %}>
@@ -97,8 +97,8 @@
       </div>
 
       <div>
-        <label>Ligne</label>
-        <select name="ligne_budget_id" onchange="this.form.submit()" {% if not selected_sub_id %}disabled{% endif %}>
+        <label for="dep-filtre-ligne">Ligne</label>
+        <select name="ligne_budget_id" id="dep-filtre-ligne" onchange="this.form.submit()" {% if not selected_sub_id %}disabled{% endif %}>
           <option value="">Toutes</option>
           {% for l in lignes %}
             <option value="{{ l.id }}" {% if selected_ligne_id == l.id %}selected{% endif %}>
@@ -109,8 +109,8 @@
       </div>
 
       <div>
-        <label>Par page</label>
-        <select name="per_page" onchange="this.form.submit()">
+        <label for="dep-filtre-par-page">Par page</label>
+        <select name="per_page" id="dep-filtre-par-page" onchange="this.form.submit()">
           {% for n in [20, 50, 100, 200] %}
             <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
           {% endfor %}
@@ -128,7 +128,7 @@
     <div class="card-header">
       <div>
         <h2>Liste des dépenses</h2>
-        <p class="muted">Ouvre une dépense pour la modifier, vérifier ses affectations ou gérer ses justificatifs.</p>
+        <p class="muted">Ouvrez une dépense pour la modifier, vérifier ses affectations ou gérer ses justificatifs.</p>
       </div>
     </div>
 

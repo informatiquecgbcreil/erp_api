@@ -393,7 +393,7 @@ def test_ligne_non_choisie_refuse_l_imputation(admin_client, factures):
         "action": "imputer",
         "did": [str(factures["depenses"][0])],
     }, follow_redirects=True)
-    assert "Choisis la ligne de financement" in r.get_data(as_text=True)
+    assert "Choisissez la ligne de financement" in r.get_data(as_text=True)
 
 
 def test_coches_presentes_dans_la_liste_des_depenses(admin_client, factures):

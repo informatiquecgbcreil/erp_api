@@ -31,7 +31,7 @@
           <option value="{{ m.id }}">{{ m.nom }}{% if m.secteur %} — {{ m.secteur }}{% endif %}</option>
         {% endfor %}
       </select>
-      <span class="muted">Optionnel : ajoute automatiquement les lignes types du modèle.</span>
+      <span class="muted">Optionnel : les lignes types du modèle sont ajoutées automatiquement.</span>
     </label>
     <label class="field-stack">Nom
       <input class="in" type="text" name="nom" placeholder="Budget prévisionnel Numérique 2026">
@@ -41,14 +41,14 @@
     {% if categories_ref %}
     <div style="grid-column:1/-1; margin-top:12px;">
       <h3>Lignes types à intégrer dès la création</h3>
-      <p class="muted">Optionnel : coche les lignes fréquentes pour éviter de tout retaper ensuite. Les montants peuvent rester à 0 €.</p>
+      <p class="muted">Optionnel : cochez les lignes fréquentes pour éviter de tout retaper ensuite. Les montants peuvent rester à 0 €.</p>
       <div class="tablewrap clean" style="max-height:300px; overflow:auto;">
         <table class="table">
           <thead><tr><th></th><th>Nature</th><th>Compte</th><th>Catégorie</th><th>Montant défaut</th></tr></thead>
           <tbody>
             {% for c in categories_ref %}
             <tr>
-              <td><input type="checkbox" name="categorie_ref_id" value="{{ c.id }}"></td>
+              <td><input type="checkbox" name="categorie_ref_id" value="{{ c.id }}" aria-label="Intégrer la ligne {{ c.compte.code }} — {{ c.libelle }}"></td>
               <td>{{ 'Produit' if c.nature == 'produit' else 'Charge' }}</td>
               <td>{{ c.compte.code }} - {{ c.compte.libelle }}</td>
               <td><strong>{{ c.libelle }}</strong></td>

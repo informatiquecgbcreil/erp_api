@@ -19,20 +19,20 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-grid-2">
           <div class="field-stack grow-2">
-            <label>Nom du projet</label>
-            <input class="in" name="nom" required>
+            <label for="projet-nom">Nom du projet</label>
+            <input class="in" name="nom" id="projet-nom" required>
           </div>
 
           {% if not can('scope:all_secteurs') %}
             <div class="field-stack">
-              <label>Secteur</label>
-              <input class="in" value="{{ current_user.secteur_assigne }}" disabled>
+              <label for="projet-secteur">Secteur</label>
+              <input class="in" id="projet-secteur" value="{{ current_user.secteur_assigne }}" disabled>
               <input type="hidden" name="secteur" value="{{ current_user.secteur_assigne }}">
             </div>
           {% else %}
             <div class="field-stack">
-              <label>Secteur</label>
-              <select class="in" name="secteur" required>
+              <label for="projet-secteur">Secteur</label>
+              <select class="in" name="secteur" id="projet-secteur" required>
                 <option value="">Choisir un secteur</option>
 {% for sec in secteurs %}
                 <option value="{{ sec }}">{{ sec }}</option>
@@ -42,8 +42,8 @@
           {% endif %}
 
           <div class="field-stack grow-2">
-            <label>Description</label>
-            <textarea class="in" name="description" rows="6" placeholder="Objectifs, public concerné, actions prévues, partenaires…"></textarea>
+            <label for="projet-description">Description</label>
+            <textarea class="in" name="description" id="projet-description" rows="6" placeholder="Objectifs, public concerné, actions prévues, partenaires…"></textarea>
           </div>
         </div>
 

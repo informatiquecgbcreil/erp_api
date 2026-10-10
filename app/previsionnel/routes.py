@@ -1072,7 +1072,7 @@ def duplicate(budget_id: int):
 
     annee_cible = _parse_int(request.form.get("annee_cible"), (budget.annee or date.today().year) + 1)
     if annee_cible == budget.annee:
-        flash("Choisis une année cible différente de l'année du budget.", "danger")
+        flash("Choisissez une année cible différente de l'année du budget.", "danger")
         return redirect(url_for("previsionnel.detail", budget_id=budget.id))
 
     copie = BudgetPrevisionnel(
@@ -1242,7 +1242,7 @@ def detail(budget_id: int):
                     abort(400)
             selected_ids = [int(x) for x in request.form.getlist("include_line") if str(x).isdigit()]
             if not selected_ids:
-                flash("Sélectionne au moins une ligne à inclure dans le budget d'appel à projet.", "danger")
+                flash("Sélectionnez au moins une ligne à inclure dans le budget d'appel à projet.", "danger")
                 return redirect(url_for("previsionnel.detail", budget_id=budget.id))
             usage = _appel_usage_for_budget(budget.id)
             selected_lines = BudgetPrevisionnelLigne.query.filter(
@@ -1759,7 +1759,7 @@ def generateur():
         if not _can_edit():
             abort(403)
         if not secteur:
-            flash("Sélectionne un secteur.", "danger")
+            flash("Sélectionnez un secteur.", "danger")
             return redirect(url_for("previsionnel.generateur"))
 
         lignes = cerfa.lignes_budget(structure)

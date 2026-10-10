@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Rédiger la fiche action — {{ action.titre }}{% endblock %}
 {% block body %}
 <div class="stack">
 
@@ -28,8 +29,8 @@
       <div class="form-grid-2 stretch-input">
         {% for cle, label in champs_entete %}
         <div class="field-stack">
-          <label>{{ label }}</label>
-          <input class="in" type="text" name="entete_{{ cle }}" value="{{ entete.get(cle, '') }}">
+          <label for="entete-{{ cle }}">{{ label }}</label>
+          <input class="in" type="text" name="entete_{{ cle }}" id="entete-{{ cle }}" value="{{ entete.get(cle, '') }}">
         </div>
         {% endfor %}
       </div>
@@ -45,7 +46,7 @@
             <input type="checkbox" name="os_{{ obj.id }}" value="1" {% if obj.id in contributions %}checked{% endif %}>
             {{ obj.code }} — {{ obj.libelle }}{% if obj.axe %} <span class="muted">· {{ obj.axe }}</span>{% endif %}
           </label>
-          <textarea class="in" name="contrib_{{ obj.id }}" rows="2" placeholder="Contribution de l'action à cet objectif…" style="margin-top:6px;">{{ contributions.get(obj.id, '') }}</textarea>
+          <textarea class="in" name="contrib_{{ obj.id }}" rows="2" placeholder="Contribution de l'action à cet objectif…" aria-label="Contribution de l'action à l'objectif {{ obj.code }}" style="margin-top:6px;">{{ contributions.get(obj.id, '') }}</textarea>
         </div>
         {% endfor %}
       {% else %}
@@ -58,7 +59,7 @@
     {% for s in sections %}
     {% if s.cle != 'objectifs_specifiques' or not objectifs_secteur %}
     <div class="card">
-      <h2>{{ s.numero }}. {{ s.titre }}</h2>
+      <h2 id="section-titre-{{ s.cle }}">{{ s.numero }}. {{ s.titre }}</h2>
       {% if s.format == 'liste' %}
         <p class="muted">Une idée par ligne (chaque ligne devient une puce dans le document).</p>
       {% else %}
@@ -67,7 +68,7 @@
           Colonnes : <strong>{{ s.colonnes | join(' | ') }}</strong>.
         </p>
       {% endif %}
-      <textarea class="in" name="section_{{ s.cle }}" rows="{{ 4 if s.format == 'liste' else 5 }}"
+      <textarea class="in" name="section_{{ s.cle }}" aria-labelledby="section-titre-{{ s.cle }}" rows="{{ 4 if s.format == 'liste' else 5 }}"
                 placeholder="{% if s.format == 'table' %}{{ s.colonnes | join(' | ') }}{% endif %}">{{ contenu.get(s.cle, '') }}</textarea>
       {% if s.cle == 'indicateurs_quali' %}
         <p class="muted" style="margin-top:8px;">

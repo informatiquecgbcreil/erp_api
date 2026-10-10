@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Fiche action — {{ action.titre }}{% endblock %}
 {% block body %}
 <style>
   .project-action-page { gap:18px; }
@@ -12,7 +13,7 @@
   .project-action-panel--wide { grid-column:1 / -1; }
   .project-action-facts { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
   .project-action-fact { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:10px 12px; background:rgba(15,23,42,.03); }
-  .project-action-fact__label { color:#64748b; font-size:12px; margin-bottom:3px; }
+  .project-action-fact__label { color:var(--muted, #475569); font-size:12px; margin-bottom:3px; }
   .project-action-status { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:999px; font-size:12px; background:rgba(15,23,42,.08); color:#334155; }
   .project-action-status--ok { background:rgba(34,197,94,.14); color:#166534; }
   .project-action-status--info { background:rgba(59,130,246,.13); color:#1d4ed8; }
@@ -202,7 +203,7 @@
                 </label>
               {% endfor %}
               {% if ateliers|length == 0 %}
-                <div class="empty-state">Aucun atelier n'est lié au projet. Ajoute d'abord les ateliers depuis la fiche projet.</div>
+                <div class="empty-state">Aucun atelier n'est lié au projet. Ajoutez d'abord les ateliers depuis la fiche projet.</div>
               {% endif %}
             </div>
           </div>
@@ -212,7 +213,7 @@
           </div>
         </form>
       {% else %}
-        <div class="tablewrap clean wide">
+        <div class="tablewrap clean wide" tabindex="0" role="region" aria-label="Informations de l’action">
           <table>
             <tbody>
               <tr><th>Type</th><td>{{ action_categories.get(action.categorie, action.categorie) }}</td></tr>
@@ -232,7 +233,7 @@
     <aside class="monster-card">
       <h2>Résultats de l’action</h2>
       <p class="muted">Cette action ne crée pas une nouvelle source de statistiques. Elle filtre les ateliers liés sur sa période.</p>
-      <div class="tablewrap clean wide">
+      <div class="tablewrap clean wide" tabindex="0" role="region" aria-label="Résultats de l’action">
         <table>
           <tbody>
             <tr><th>Présences</th><td>{{ stats.kpi.presences or 0 }}</td></tr>

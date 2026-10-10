@@ -61,7 +61,7 @@
     <p class="muted" style="font-size:12px;">Exemple de formulation : « {{ '%.0f'|format(montant) }} € pour {{ mesures.uniques }} participants et {{ mesures.heures }} heures d'activité, soit {% if couts.par_participant is not none %}{{ '%.2f'|format(couts.par_participant) }} € par participant{% endif %}{% if couts.par_heure is not none %} et {{ '%.2f'|format(couts.par_heure) }} € par heure{% endif %}. »</p>
   </section>
   {% else %}
-  <div class="callout-soft">Renseigne un montant (ou choisis une subvention) pour obtenir les coûts unitaires.</div>
+  <div class="callout-soft">Renseignez un montant (ou choisissez une subvention) pour obtenir les coûts unitaires.</div>
   {% endif %}
 </div>
 {% endblock %}
