@@ -934,7 +934,7 @@ def generer_cotisations(
     """
     if not inscription.participant_id:
         raise InscriptionAnnuelleErreur(
-            "Crée d'abord la fiche participant : sans elle, il n'y a personne à qui rattacher l'adhésion."
+            "Créez d'abord la fiche participant : sans elle, il n'y a personne à qui rattacher l'adhésion."
         )
 
     a_la_date = a_la_date or inscription.date_inscription or date.today()

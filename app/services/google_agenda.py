@@ -280,7 +280,7 @@ def _rafraichir_jeton(compte: GoogleAgendaCompte) -> str:
     except GoogleAgendaErreur as exc:
         # Jeton révoqué côté Google (invalid_grant) : accès à reconnecter.
         raise GoogleAgendaErreur(
-            f"Accès Google expiré ou révoqué ({exc}). Reconnecte ton compte depuis Mon agenda."
+            f"Accès Google expiré ou révoqué ({exc}). Reconnectez votre compte depuis Mon agenda."
         ) from exc
     compte.access_token = donnees.get("access_token")
     try:

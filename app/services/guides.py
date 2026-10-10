@@ -43,22 +43,22 @@ GUIDES: dict[str, dict[str, Any]] = {
         "etapes": [
             {
                 "titre": "Vérifier qu'elle n'a pas déjà une fiche",
-                "texte": "Tape son nom dans la recherche de la liste. Si sa fiche apparaît, ouvre-la : inutile d'en créer une deuxième, tu peux passer directement à la dernière étape.",
+                "texte": "Tapez son nom dans la recherche de la liste. Si sa fiche apparaît, ouvrez-la : inutile d'en créer une deuxième, vous pouvez passer directement à la dernière étape.",
                 "endpoint": "participants.list_participants",
             },
             {
                 "titre": "Créer sa fiche",
-                "texte": "Le nom et le prénom suffisent pour commencer, le reste peut attendre. Pense quand même à poser la question du droit à l'image. En cliquant sur Enregistrer, l'application t'amène sur la fiche créée.",
+                "texte": "Le nom et le prénom suffisent pour commencer, le reste peut attendre. Pensez quand même à poser la question du droit à l'image. En cliquant sur Enregistrer, l'application vous amène sur la fiche créée.",
                 "endpoint": "participants.new_participant",
             },
             {
                 "titre": "Compléter la fiche",
-                "texte": "Tu es maintenant sur sa fiche. Vérifie la ville et le quartier (ils comptent pour les bilans CAF) et ajoute un téléphone si possible.",
+                "texte": "Vous êtes maintenant sur sa fiche. Vérifiez la ville et le quartier (ils comptent pour les bilans CAF) et ajoutez un téléphone si possible.",
                 "endpoint": None,
             },
             {
                 "titre": "Noter sa présence sur une séance",
-                "texte": "Ouvre l'atelier concerné, choisis la séance du jour et coche sa présence. C'est cette présence qui l'inscrit réellement dans l'activité — il n'y a rien d'autre à faire.",
+                "texte": "Ouvrez l'atelier concerné, choisissez la séance du jour et cochez sa présence. C'est cette présence qui l'inscrit réellement dans l'activité — il n'y a rien d'autre à faire.",
                 "endpoint": "activite.index",
             },
         ],
@@ -71,17 +71,17 @@ GUIDES: dict[str, dict[str, Any]] = {
         "etapes": [
             {
                 "titre": "Ouvrir mon atelier",
-                "texte": "Dans la liste des ateliers, clique sur celui qui a lieu aujourd'hui.",
+                "texte": "Dans la liste des ateliers, cliquez sur celui qui a lieu aujourd'hui.",
                 "endpoint": "activite.index",
             },
             {
                 "titre": "Ouvrir la séance du jour",
-                "texte": "Dans la page de l'atelier, ouvre la séance d'aujourd'hui. Si elle n'existe pas encore, crée-la : la date du jour est proposée par défaut.",
+                "texte": "Dans la page de l'atelier, ouvrez la séance d'aujourd'hui. Si elle n'existe pas encore, créez-la : la date du jour est proposée par défaut.",
                 "endpoint": None,
             },
             {
                 "titre": "Cocher les présents",
-                "texte": "Coche chaque personne présente ; tout s'enregistre au fur et à mesure. Astuce : le bouton Kiosque permet de laisser les gens émarger eux-mêmes sur une tablette à l'entrée.",
+                "texte": "Cochez chaque personne présente ; tout s'enregistre au fur et à mesure. Astuce : le bouton Kiosque permet de laisser les gens émarger eux-mêmes sur une tablette à l'entrée.",
                 "endpoint": None,
             },
         ],
@@ -99,7 +99,7 @@ GUIDES: dict[str, dict[str, Any]] = {
             },
             {
                 "titre": "Saisir en grille",
-                "texte": "Choisis l'atelier et le mois de la feuille : les participants sont en lignes, les dates en colonnes, comme dans un tableur. Coche les présents, ajoute une séance ou une personne manquante si besoin, puis Enregistrer.",
+                "texte": "Choisissez l'atelier et le mois de la feuille : les participants sont en lignes, les dates en colonnes, comme dans un tableur. Cochez les présents, ajoutez une séance ou une personne manquante si besoin, puis Enregistrer.",
                 "endpoint": "activite.saisie_grille",
             },
             {
@@ -150,12 +150,12 @@ GUIDES: dict[str, dict[str, Any]] = {
             },
             {
                 "titre": "Lire les chiffres",
-                "texte": "Cette page rassemble les statistiques attendues par les financeurs : publics touchés, fréquentation, répartition par quartier. Choisis la bonne période en haut de page.",
+                "texte": "Cette page rassemble les statistiques attendues par les financeurs : publics touchés, fréquentation, répartition par quartier. Choisissez la bonne période en haut de page.",
                 "endpoint": "main.stats_bilans",
             },
             {
                 "titre": "Récupérer les documents",
-                "texte": "Les exports prêts à envoyer (tableaux, synthèses) sont regroupés ici. Télécharge celui qui correspond à ton financeur.",
+                "texte": "Les exports prêts à envoyer (tableaux, synthèses) sont regroupés ici. Téléchargez celui qui correspond à votre financeur.",
                 "endpoint": "main.documents_exports",
             },
         ],

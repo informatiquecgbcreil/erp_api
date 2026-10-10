@@ -502,7 +502,8 @@ p,
 .ui-badge--warn{
   border-color: color-mix(in srgb, var(--warn) 45%, var(--ui-line));
   background: color-mix(in srgb, var(--warn) 11%, var(--ui-card));
-  color: var(--warn);
+  /* L'orange seul sur son fond teinté reste sous 4,5:1 : on le fonce d'un cran. */
+  color: color-mix(in srgb, var(--warn) 82%, var(--text));
 }
 .ui-badge--bad,
 .ui-badge--danger{
