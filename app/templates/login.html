@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Connexion{% endblock %}
 {% block body %}
 <style>
   body[data-device-mode="mobile"] .form-actions .btn{
@@ -17,17 +18,17 @@
     <form method="POST" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div>
-        <label>Adresse e-mail</label>
+        <label for="loginEmail">Adresse e-mail</label>
         <input class="in" name="email" id="loginEmail" type="email" autocomplete="username" required placeholder="prenom.nom@structure.fr">
       </div>
       <div>
-        <label>Mot de passe</label>
-        <input class="in" name="password" id="loginPassword" type="password" autocomplete="current-password" required>
+        <label for="loginPassword">Mot de passe</label>
+        <input class="in" name="password" id="loginPassword" type="password" autocomplete="current-password" required aria-describedby="capsLockHint">
         <div class="inline" style="margin-top:8px; gap:12px; flex-wrap:wrap;">
           <label style="margin:0;display:flex;align-items:center;gap:6px;">
             <input type="checkbox" id="togglePassword" style="width:auto;"> Afficher le mot de passe
           </label>
-          <span id="capsLockHint" class="muted" style="display:none;">Verr. Maj activé</span>
+          <span id="capsLockHint" class="muted" style="display:none;" aria-live="polite">Attention : la touche Verr. Maj est activée</span>
         </div>
       </div>
       <div class="form-actions">

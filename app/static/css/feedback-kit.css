@@ -1,12 +1,13 @@
 /* Quick wins UI kit - sans modifier les routes */
 :root{
-  --fk-success:#16a34a;
+  /* Teintes assombries pour rester lisibles (≥ 4,5:1) sur les fonds teintés. */
+  --fk-success:#15803d;
   --fk-success-bg:color-mix(in srgb, var(--ok) 14%, var(--surface-strong));
-  --fk-warning:#d97706;
+  --fk-warning:#a14a0a;
   --fk-warning-bg:color-mix(in srgb, var(--warn) 18%, var(--surface-strong));
-  --fk-danger:#dc2626;
+  --fk-danger:#b91c1c;
   --fk-danger-bg:color-mix(in srgb, var(--danger) 14%, var(--surface-strong));
-  --fk-info:#2563eb;
+  --fk-info:#1d4ed8;
   --fk-info-bg:color-mix(in srgb, var(--accent) 14%, var(--surface-strong));
   --fk-radius:14px;
   --fk-shadow:0 12px 30px rgba(0,0,0,.22);
@@ -65,11 +66,12 @@ button.is-pending::after,
   grid-template-columns:auto 1fr auto;
   align-items:start;
   gap:10px;
-  opacity:0;
-  transform:translateY(10px);
-  transition:opacity .18s ease, transform .18s ease;
+  /* Apparition en glissement, sans fondu : le texte reste lisible (contraste
+     plein) pendant toute l'animation. */
+  transform:translateY(calc(100% + 24px));
+  transition:transform .18s ease;
 }
-.toast.show{opacity:1; transform:translateY(0);}
+.toast.show{transform:translateY(0);}
 .toast__icon{
   width:22px;height:22px;border-radius:999px;display:grid;place-items:center;
   font-size:12px;font-weight:900;flex:none;

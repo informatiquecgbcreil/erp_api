@@ -18,7 +18,9 @@
     const timeout = typeof opts.timeout === 'number' ? opts.timeout : 4200;
     const el = document.createElement('div');
     el.className = `toast toast--${tone}`;
-    el.setAttribute('role', tone === 'danger' ? 'alert' : 'status');
+    // Pas de rôle « alert »/« status » sur la bulle elle-même : announce()
+    // passe déjà le message aux zones #sr-status / #sr-alert, présentes dès le
+    // chargement (plus fiables). Les deux ensemble le faisaient lire deux fois.
     el.innerHTML = `<div class="toast__icon" aria-hidden="true">${iconFor(tone)}</div><div class="toast__message"></div><button type="button" class="toast__close" aria-label="Fermer">×</button>`;
     el.querySelector('.toast__message').textContent = message;
     const remove = ()=>{

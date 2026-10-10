@@ -3,7 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{ APP_NAME }}</title>
+  {#- Titre d'onglet « Titre de la page · Nom de l'application ». Priorité : le
+      bloc « title » de la page, puis le titre du registre d'aide ; à défaut,
+      un script en bas de page reprend le premier <h1>. Le bloc est déclaré
+      juste en dessous sous un « if false » : self.title() le rend ici, une seule fois. -#}
+  {%- set shell_titre_page = self.title() | trim -%}
+  {%- set shell_titre_aide = (AIDE_PAGE.titre if AIDE_PAGE and AIDE_PAGE.titre else '') -%}
+  <title>{% if shell_titre_page %}{{ shell_titre_page }}{% if APP_NAME not in shell_titre_page %} · {{ APP_NAME }}{% endif %}{% elif shell_titre_aide %}{{ shell_titre_aide }} · {{ APP_NAME }}{% else %}{{ APP_NAME }}{% endif %}</title>
+  {% if false %}{% block title %}{% endblock %}{% endif %}
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='mon-centre-social.svg') }}">
   {# Application installable : manifeste, icônes, plein écran sur iPhone. #}
   <link rel="manifest" href="{{ url_for('pwa.manifeste') }}">
@@ -74,9 +81,10 @@
       --border-hard: rgba(15,23,42,.22);
 
       --accent: #1d4ed8;
-      --danger: #dc2626;
-      --ok: #16a34a;
-      --warn: #d97706;
+      /* Teintes d'état assombries : lisibles (≥ 4,5:1) en texte sur fond blanc ou teinté. */
+      --danger: #b91c1c;
+      --ok: #15803d;
+      --warn: #b45309;
 
       --shadow: 0 10px 26px rgba(2,6,23,.08);
 
@@ -204,8 +212,8 @@
       background: color-mix(in srgb, var(--accent) 12%, var(--surface));
     }
 
-    .right{ margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .global-search{ position:relative; min-width:280px; max-width:420px; width:min(40vw, 420px); }
+    .topbar .right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .global-search{ position:relative; min-width:240px; max-width:460px; }
     .global-search input{
       width:100%;
       border:1px solid var(--input-border);
@@ -420,8 +428,9 @@
     .mode-switch{
       display:inline-flex;
       align-items:center;
-      gap:8px;
-      padding:6px 10px;
+      gap:6px;
+      margin:0;
+      padding:3px 4px 3px 12px;
       border-radius:999px;
       border:1px solid var(--border-soft);
       background: color-mix(in srgb, var(--surface) 90%, transparent);
@@ -431,22 +440,8 @@
       color:var(--muted);
       font-weight:700;
     }
-    .mode-switch .pill{ padding:6px 10px; }
-    .easy-banner{
-      margin:10px 0 0;
-      border:1px solid var(--border-soft);
-      border-radius:14px;
-      padding:10px 12px;
-      background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
-      display:flex;
-      flex-wrap:wrap;
-      align-items:center;
-      gap:8px;
-    }
-    .easy-banner__title{ font-weight:800; }
-    .easy-banner__text{ color:var(--muted); font-size:13px; }
-    .context-banner--simple{ gap:6px; }
-    .context-banner--simple .context-badge{ font-size:11px; }
+    /* Boutons du sélecteur un peu moins hauts : l'ensemble garde 44 px. */
+    .mode-switch .pill{ padding:6px 12px; min-height:36px; }
 
   
     .nav-more-panel{
@@ -473,19 +468,27 @@
     }
 
 
-    /* Aide contextuelle : l'utilité de la page reste visible, les étapes se déplient. */
-    .aide-page{border:1px solid var(--border-soft);border-radius:14px;margin:0 0 14px;background:color-mix(in srgb, var(--surface-soft) 88%, transparent);padding:12px 14px}
-    .aide-page__intro{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
-    .aide-page__icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);font-size:18px}
-    .aide-page__label{display:block;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
-    .aide-page__resume{margin:0;line-height:1.5;max-width:90ch}
-    .aide-page__details{margin:8px 0 0 44px}
-    .aide-page__details > summary{cursor:pointer;width:max-content;max-width:100%;font-weight:700;color:var(--accent);user-select:none}
-    .aide-page__corps{padding:8px 0 0}
+    /* Aide contextuelle compacte : une ligne (question + début du résumé),
+       le résumé complet et les étapes se déplient au clic. */
+    .aide-page{border:1px solid var(--border-soft);border-radius:12px;margin:0 0 12px;background:color-mix(in srgb, var(--surface-soft) 88%, transparent)}
+    .aide-page__details > summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;min-height:40px;padding:6px 12px;cursor:pointer;list-style:none;border-radius:12px}
+    .aide-page__details > summary::-webkit-details-marker{display:none}
+    .aide-page__icon{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:800}
+    .aide-page__label{flex:none;font-size:.92rem;color:var(--text)}
+    .aide-page__resume{flex:1 1 0;min-width:0;color:var(--muted);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .aide-page__chevron{flex:none;margin-left:auto;color:var(--accent);font-weight:700;font-size:.88rem;white-space:nowrap}
+    .aide-page__chevron::after{content:" ▾";display:inline-block;transition:transform .15s ease}
+    .aide-page__details[open] .aide-page__chevron::after{transform:rotate(180deg)}
+    .aide-page__details[open] .aide-page__resume{flex-basis:100%;order:3;white-space:normal;color:var(--text);padding-left:36px}
+    .aide-page__corps{padding:0 14px 10px 48px}
     .aide-page__corps p{margin:6px 0;line-height:1.5;max-width:80ch}
     .aide-page__corps ol{margin:6px 0 6px 20px;line-height:1.6}
-    .aide-page__astuce{opacity:.85}
-    @media(max-width:560px){.aide-page__details{margin-left:0}.aide-page{padding:11px 12px}}
+    .aide-page__astuce{color:var(--muted)}
+    @media(max-width:560px){
+      .aide-page__details:not([open]) .aide-page__resume{display:none}
+      .aide-page__details[open] .aide-page__resume{padding-left:0}
+      .aide-page__corps{padding-left:14px}
+    }
 
     /* Fil d'Ariane : page courante mise en valeur, niveaux cliquables soulignés au survol */
     .breadcrumb__current{ color:var(--text); font-weight:700; }
@@ -516,7 +519,7 @@
     .a11y-row{ display:flex; gap:6px; flex-wrap:wrap; width:100%; }
     .a11y-row .pill{ flex:1 1 auto; text-align:center; }
 </style>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/ux-final.css', v='20260610-ui-kit-v3') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ux-final.css', v='20261010-entete-a11y') }}">
   <script>
     /* Applique tôt les préférences d'accessibilité (taille du texte, contraste)
        afin d'éviter tout clignotement au chargement de la page. */
@@ -548,16 +551,31 @@
   {% set embed = request.args.get('embed') %}
   {% set ui_mode = UI_MODE if UI_MODE is defined else 'simple' %}
   {% set ui_simplified = UI_SIMPLIFIED if UI_SIMPLIFIED is defined else true %}
+  {% if current_user.is_authenticated %}
+    {#- Rôle et portée : repliés dans le badge du nom (infobulle sur bureau, en
+        clair dans le panneau du menu), et dans le bandeau de contexte en mode
+        expert. Libellés officiels : ROLE_LABELS (app/rbac.py). -#}
+    {% set shell_role_code = (current_user.role_codes[0] if current_user.role_codes else '') %}
+    {% set shell_libelles_roles = ROLE_LABELS if ROLE_LABELS is defined else {} %}
+    {% set shell_role_base = (current_user.roles | selectattr('code', 'equalto', shell_role_code) | map(attribute='label') | first) if shell_role_code else '' %}
+    {% set shell_role_libelle = 'Direction' if shell_role_code == 'directrice' else shell_libelles_roles.get(shell_role_code, shell_role_base or shell_role_code or 'Utilisateur') %}
+    {% set shell_portee = 'Tous secteurs' if can('scope:all_secteurs') else (current_user.secteur_assigne or 'Secteur non défini') %}
+  {% endif %}
 
   {% if not embed %}
-  <div class="topbar">
+  {#- En-tête. Sur bureau : la marque et le menu sur une ligne, la recherche et
+      les réglages sur la suivante. Dès que le bouton « Menu » apparaît
+      (≤ 1120 px), la barre se réduit à la marque, à la recherche quand elle
+      tient sur la ligne et au bouton « Menu » ; les réglages (affichage,
+      confort de lecture, thème, aide, compte, déconnexion) passent dans le
+      panneau du menu. Mise en forme : ux-final.css, rubrique « En-tête ». -#}
+  <header class="topbar">
     <div class="wrap">
       <div class="nav">
-        {% if can_manage_modules %}<a class="pill" href="{{ url_for('admin.modules') }}">Outils du centre</a>{% endif %}
         <div class="brand" style="display:flex;align-items:center;gap:8px;">{% if APP_LOGO_URL %}<img src="{{ APP_LOGO_URL }}" alt="Logo application" style="height:28px;width:28px;object-fit:contain;border-radius:6px;">{% endif %}<span>{{ APP_NAME }}</span></div>
 
         {% if current_user.is_authenticated %}
-          <button class="mobile-menu-toggle" type="button" data-mobile-menu-toggle aria-expanded="false" aria-controls="mobileNavPanel">
+          <button class="mobile-menu-toggle" type="button" data-mobile-menu-toggle aria-expanded="false" aria-controls="mobileNavPanel shellOutils">
             <span class="mobile-menu-icon" aria-hidden="true"></span>
             <span>Menu</span>
           </button>
@@ -572,7 +590,7 @@
           {% set is_suivi = ep == 'main.suivi_rappels' %}
 
           {% if ui_simplified %}
-            <div class="nav-quick desktop-nav-links">
+            <nav class="nav-quick desktop-nav-links" aria-label="Menu principal">
               <div class="nav-quick-label">Menu simple</div>
               {% if can('dashboard:view') %}
                 <a class="pill {% if ep.startswith('main.dashboard') %}active{% endif %}" href="{{ url_for('main.dashboard') }}">Accueil</a>
@@ -656,10 +674,10 @@
                   {% endif %}
                 </div>
               </details>
-            </div>
+            </nav>
 
           {% elif not current_user.has_role("admin_tech") %}
-            <div class="nav-category-row desktop-nav-links">
+            <nav class="nav-category-row desktop-nav-links" aria-label="Menu principal">
               {% if can('dashboard:view') %}
                 <a class="pill {% if ep.startswith('main.dashboard') %}active{% endif %}" href="{{ url_for('main.dashboard') }}">Accueil</a>
                 <a class="pill {% if is_suivi %}active{% endif %}" href="{{ url_for('main.suivi_rappels') }}">À traiter</a>
@@ -827,10 +845,10 @@
                   {% endif %}
                 </div>
               </details>
-            </div>
+            </nav>
 
           {% else %}
-            <div class="nav-category-row desktop-nav-links">
+            <nav class="nav-category-row desktop-nav-links" aria-label="Menu principal">
               <a class="pill {% if ep.startswith('main.dashboard') %}active{% endif %}" href="{{ url_for('main.dashboard') }}">Accueil</a>
               <a class="pill {% if is_suivi %}active{% endif %}" href="{{ url_for('main.suivi_rappels') }}">À traiter</a>
               <a class="pill {% if ep == 'main.parcours_metier' %}active{% endif %}" href="{{ url_for('main.parcours_metier') }}">Parcours métiers</a>
@@ -882,26 +900,33 @@
                   {% include "_nav_espace_salarie.html" %}
                 </div>
               </details>
-            </div>
+            </nav>
           {% endif %}
 
-          <div id="mobileNavPanel" class="mobile-nav-panel" hidden aria-label="Navigation principale"></div>
+          {#- Saut de ligne (bureau) : la recherche et les réglages passent sous le menu. -#}
+          <span class="shell-saut" aria-hidden="true"></span>
 
-          <div class="right">
-            <div class="global-search">
-              <label for="global-search-input" class="sr-only">Recherche globale</label>
-              <input id="global-search-input" type="search" placeholder="Rechercher (Ctrl+K) : personne, séance, atelier, dépense…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="global-search-results" />
-              <div id="global-search-results" class="global-search__panel" role="listbox" aria-label="Résultats de recherche"></div>
-            </div>
+          <div class="global-search" role="search">
+            <label for="global-search-input" class="sr-only">Recherche globale</label>
+            <input id="global-search-input" type="search" placeholder="Rechercher (Ctrl+K) : personne, séance, atelier, dépense…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="global-search-results" />
+            <div id="global-search-results" class="global-search__panel" role="listbox" aria-label="Résultats de recherche"></div>
+          </div>
+
+          <nav id="mobileNavPanel" class="mobile-nav-panel" hidden aria-label="Menu principal"></nav>
+
+          <div class="right shell-outils" id="shellOutils">
+            <p class="shell-outils__titre">Affichage et compte</p>
+            {% if can_manage_modules %}<a class="pill" href="{{ url_for('admin.modules') }}">Outils du centre</a>{% endif %}
             <form method="post" action="{{ url_for('main.set_ui_mode') }}" class="mode-switch">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
               <span class="mode-switch__label">Affichage</span>
-              <button class="pill {% if ui_simplified %}active{% endif %}" type="submit" name="mode" value="simple">Simple</button>
-              <button class="pill {% if not ui_simplified %}active{% endif %}" type="submit" name="mode" value="expert">Expert</button>
+              <button class="pill {% if ui_simplified %}active{% endif %}" type="submit" name="mode" value="simple" aria-pressed="{{ 'true' if ui_simplified else 'false' }}" title="Affichage simple : vous voyez d’abord les actions utiles au quotidien">Simple</button>
+              <button class="pill {% if not ui_simplified %}active{% endif %}" type="submit" name="mode" value="expert" aria-pressed="{{ 'false' if ui_simplified else 'true' }}" title="Affichage expert : toutes les pages restent dans le menu">Expert</button>
+              <span class="mode-switch__aide">Simple : l’essentiel d’abord. Expert : toutes les pages en permanence.</span>
             </form>
             <details class="nav-more a11y-menu" id="a11yMenu">
-              <summary class="pill" title="Confort de lecture : taille du texte et contraste" aria-label="Confort de lecture">Aa</summary>
+              <summary class="pill" title="Confort de lecture : taille du texte et contraste"><span aria-hidden="true">Aa</span><span class="shell-libelle-mobile">Confort de lecture</span></summary>
               <div class="nav-more-panel a11y-panel">
                 <div class="nav-more-heading">Taille du texte</div>
                 <div class="a11y-row">
@@ -916,15 +941,15 @@
                 </div>
               </div>
             </details>
-            <button class="pill theme-toggle" id="themeToggle" type="button" title="Changer de thème" aria-label="Changer de thème">🌙</button>
+            <button class="pill theme-toggle" id="themeToggle" type="button" title="Changer de thème" aria-label="Changer de thème"><span class="theme-toggle__icone" aria-hidden="true">🌙</span><span class="shell-libelle-mobile theme-toggle__texte">Thème sombre</span></button>
             <a class="pill" href="{{ url_for('aide.notice') }}" title="Ouvrir la notice d'utilisation" aria-label="Aide et notice d'utilisation">❓ Aide</a>
 
-            <div class="tag">
-              {{ current_user.nom }}
-              {% if current_user.secteur_assigne %} · {{ current_user.secteur_assigne }}{% endif %}
+            <div class="tag shell-identite" title="Rôle : {{ shell_role_libelle }} · Portée : {{ shell_portee }}">
+              <span class="shell-identite__nom">{{ current_user.nom }}{% if current_user.secteur_assigne %} · {{ current_user.secteur_assigne }}{% endif %}</span>
+              <span class="shell-identite__detail">Rôle : {{ shell_role_libelle }} · Portée : {{ shell_portee }}</span>
             </div>
 
-            <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline;">
+            <form method="post" action="{{ url_for('auth.logout') }}" class="shell-deconnexion">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="pill" type="submit">Déconnexion</button>
             </form>
@@ -932,16 +957,7 @@
         {% endif %}
       </div>
     </div>
-  </div>
-  {% endif %}
-
-  {% if current_user.is_authenticated and ui_simplified and not embed %}
-  <div class="wrap">
-    <div class="easy-banner" aria-label="Mode simplifié activé">
-      <div class="easy-banner__title">Mode simplifié actif</div>
-      <div class="easy-banner__text">Tu vois d’abord les actions utiles au quotidien. Passe en mode expert si tu veux toutes les pages en permanence.</div>
-    </div>
-  </div>
+  </header>
   {% endif %}
 
   <main id="main-content" class="container" tabindex="-1">
@@ -1022,15 +1038,6 @@
         'salaries': 'salarie:espace',
         'admin': 'admin:users'
       } %}
-      {% set role_code = (current_user.role_codes[0] if current_user.role_codes else '') %}
-      {% set role_labels = {
-        'direction': 'Direction',
-        'directrice': 'Direction',
-        'finance': 'Finance',
-        'admin_tech': 'Admin technique',
-        'responsable_secteur': 'Responsable secteur'
-      } %}
-
       {% if ep != 'main.dashboard' %}
         {% set endpoint_action = ep.split('.', 1)[1] if '.' in ep else '' %}
         {% set action_redondante = endpoint_action in ['', 'index', 'home', 'dashboard'] or endpoint_action.startswith('hub_') or endpoint_action.endswith('_home') or endpoint_action.endswith('_index') %}
@@ -1087,31 +1094,35 @@
         </nav>
       {% endif %}
 
-      <section class="context-banner {% if ui_simplified %}context-banner--simple{% endif %}" aria-label="Contexte de visibilité">
-        <span class="context-badge"><strong>Rôle</strong> · {{ role_labels.get(role_code, role_code or 'Utilisateur') }}</span>
-        <span class="context-badge"><strong>Portée</strong> · {% if can('scope:all_secteurs') %}Tous secteurs{% else %}{{ current_user.secteur_assigne or 'Secteur non défini' }}{% endif %}</span>
-        {% set hint = perm_hints.get(endpoint_module) %}
-        {% if hint and not ui_simplified %}
-          <span class="context-badge"><strong>Pourquoi je vois cette page</strong> · accès prévu par votre rôle</span>
-        {% endif %}
-      </section>
+      {#- Rôle et portée : en mode simple, ils restent dans le badge du nom
+          (en-tête) ; le bandeau n'est gardé qu'en mode expert. -#}
+      {% if not ui_simplified %}
+        <section class="context-banner" aria-label="Contexte de visibilité">
+          <span class="context-badge"><strong>Rôle</strong> · {{ shell_role_libelle }}</span>
+          <span class="context-badge"><strong>Portée</strong> · {{ shell_portee }}</span>
+          {% set hint = perm_hints.get(endpoint_module) %}
+          {% if hint %}
+            <span class="context-badge"><strong>Pourquoi je vois cette page</strong> · accès prévu par votre rôle</span>
+          {% endif %}
+        </section>
+      {% endif %}
     {% endif %}
 
     {% include "_guide_bandeau.html" %}
 
     {% if AIDE_PAGE %}
+      {#- Une ligne : la question et le début du résumé ; tout le reste se déplie. -#}
       <section class="aide-page no-print" aria-label="Aide pour cette page">
-        <div class="aide-page__intro">
-          <span class="aide-page__icon" aria-hidden="true">?</span>
-          <div>
+        <details class="aide-page__details">
+          <summary>
+            <span class="aide-page__icon" aria-hidden="true">?</span>
             <strong class="aide-page__label">À quoi sert cette page ?</strong>
-            <p class="aide-page__resume">{{ AIDE_PAGE.resume }}</p>
-          </div>
-        </div>
-        {% if AIDE_PAGE.etapes or AIDE_PAGE.astuce %}
-          <details class="aide-page__details">
-            <summary>Voir comment faire — {{ AIDE_PAGE.titre }}</summary>
-            <div class="aide-page__corps">
+            <span class="aide-page__resume">{{ AIDE_PAGE.resume }}</span>
+            <span class="aide-page__chevron" aria-hidden="true">Détails</span>
+          </summary>
+          <div class="aide-page__corps">
+            {% if AIDE_PAGE.etapes or AIDE_PAGE.astuce %}
+              <p><strong>Comment faire — {{ AIDE_PAGE.titre }}</strong></p>
               {% if AIDE_PAGE.etapes %}
                 <ol>
                   {% for etape in AIDE_PAGE.etapes %}<li>{{ etape }}</li>{% endfor %}
@@ -1120,10 +1131,10 @@
               {% if AIDE_PAGE.astuce %}
                 <p class="aide-page__astuce">💡 {{ AIDE_PAGE.astuce }}</p>
               {% endif %}
-              <p><a href="{{ url_for('aide.notice') }}">Ouvrir la notice complète →</a></p>
-            </div>
-          </details>
-        {% endif %}
+            {% endif %}
+            <p><a href="{{ url_for('aide.notice') }}">Ouvrir la notice complète →</a></p>
+          </div>
+        </details>
       </section>
     {% endif %}
     {% block body %}{% endblock %}
@@ -1131,6 +1142,87 @@
       <a href="{{ SOURCE_URL }}">Code source · AGPL-3.0</a>
     </footer>
   </main>
+
+  {% if not shell_titre_page and not shell_titre_aide %}
+  <script>
+  /* Titre d'onglet par défaut : la page n'a ni bloc « title » ni entrée dans
+     le registre d'aide, on reprend son premier titre <h1>. */
+  (function(){
+    var h1 = document.querySelector('#main-content h1') || document.querySelector('h1');
+    // Sans les pictogrammes de tête (« 📖 Notice… » devient « Notice… »).
+    var texte = h1 ? (h1.textContent || '').replace(/\s+/g, ' ').trim().replace(/^[^\p{L}\p{N}«"(]+/u, '') : '';
+    if(!texte) return;
+    if(texte.length > 80){ texte = texte.slice(0, 79).trim() + '…'; }
+    var nom = {{ APP_NAME | tojson }};
+    document.title = (nom && texte.indexOf(nom) === -1) ? texte + ' · ' + nom : texte;
+  })();
+  </script>
+  {% endif %}
+
+  <script>
+  /* Filet de sécurité accessibilité, dans l'esprit des autres filets globaux :
+     un <label> sans « for » et sans champ imbriqué est relié au champ qui le
+     suit immédiatement (élément frère suivant, ou unique champ de son
+     conteneur), si ce champ n'a encore aucun nom accessible. Au moindre doute
+     on ne fait rien. Les gabarits doivent tout de même relier leurs étiquettes
+     côté serveur : ceci ne protège que les écrans oubliés. */
+  (function(){
+    var CHAMPS = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), select, textarea';
+    function estChamp(el){ return !!(el && el.matches && el.matches(CHAMPS)); }
+    function aDejaUnNom(champ){
+      if((champ.getAttribute('aria-label') || '').trim()) return true;
+      if(champ.hasAttribute('aria-labelledby')) return true;
+      if(champ.labels && champ.labels.length) return true;
+      if((champ.getAttribute('title') || '').trim()) return true;
+      return false;
+    }
+    function champCible(label){
+      var suivant = label.nextElementSibling;
+      if(estChamp(suivant)) return suivant;
+      var parent = label.parentElement;
+      if(!parent || parent === document.body) return null;
+      var champs = parent.querySelectorAll(CHAMPS);
+      if(champs.length !== 1 || parent.querySelectorAll('label').length !== 1) return null;
+      // Le champ doit venir APRÈS l'étiquette dans la page.
+      var champ = champs[0];
+      return (label.compareDocumentPosition(champ) & Node.DOCUMENT_POSITION_FOLLOWING) ? champ : null;
+    }
+    var n = 0;
+    document.querySelectorAll('label:not([for])').forEach(function(label){
+      if(label.querySelector(CHAMPS)) return;
+      var champ = champCible(label);
+      if(!champ || aDejaUnNom(champ)) return;
+      // Un id en double désignerait peut-être un autre champ : on s'abstient.
+      if(champ.id && document.querySelectorAll('#' + CSS.escape(champ.id)).length !== 1) return;
+      if(!champ.id){
+        do { n += 1; } while(document.getElementById('champ-auto-' + n));
+        champ.id = 'champ-auto-' + n;
+      }
+      label.htmlFor = champ.id;
+    });
+  })();
+
+  /* Tableaux qui débordent sur le côté (petits écrans) : sans lien ni bouton
+     à l'intérieur, la zone de défilement doit pouvoir recevoir le focus,
+     sinon on ne peut pas la faire défiler au clavier. */
+  (function(){
+    function marquer(){
+      document.querySelectorAll('.tablewrap, .table-wrap').forEach(function(zone){
+        if(zone.hasAttribute('tabindex')) return;
+        if(zone.scrollWidth <= zone.clientWidth + 1) return;
+        // (Les en-têtes de tri, rendus focalisables plus bas, suffisent aussi.)
+        if(zone.querySelector('a[href], button, input, select, textarea, summary, [tabindex], table.js-sortable')) return;
+        var legende = zone.querySelector('caption');
+        zone.tabIndex = 0;
+        zone.setAttribute('role', 'region');
+        zone.setAttribute('aria-label', legende && legende.textContent.trim() ? legende.textContent.trim() : 'Tableau (défilement horizontal)');
+      });
+    }
+    marquer();
+    var attente = null;
+    window.addEventListener('resize', function(){ clearTimeout(attente); attente = setTimeout(marquer, 200); });
+  })();
+  </script>
 
   <script>
   (function(){
@@ -1237,7 +1329,7 @@
         panel.innerHTML = `
           <div class="global-search__facets">${facetButtons}</div>
           ${metaInfo}
-          <div class="global-search__empty">${currentTerm ? 'Aucun résultat pour cette recherche.' : 'Commence à taper pour lancer la recherche.'}</div>
+          <div class="global-search__empty">${currentTerm ? 'Aucun résultat pour cette recherche.' : 'Commencez à taper pour lancer la recherche.'}</div>
         `;
         panel.classList.add("visible");
         input.setAttribute("aria-expanded", "true");
@@ -1386,10 +1478,16 @@
     const btn  = document.getElementById("themeToggle");
     if(!btn) return;
 
+    const icone = btn.querySelector(".theme-toggle__icone");
+    const texte = btn.querySelector(".theme-toggle__texte");
+
     function apply(theme){
       root.setAttribute("data-theme", theme);
       localStorage.setItem("theme", theme);
-      btn.textContent = theme === "dark" ? "☀" : "🌙";
+      // L'icône et le libellé (visible dans le panneau du menu sur mobile)
+      // annoncent le thème obtenu en cliquant.
+      if(icone){ icone.textContent = theme === "dark" ? "☀" : "🌙"; } else { btn.textContent = theme === "dark" ? "☀" : "🌙"; }
+      if(texte){ texte.textContent = theme === "dark" ? "Thème clair" : "Thème sombre"; }
       btn.title = theme === "dark" ? "Passer en thème clair" : "Passer en thème sombre";
       btn.setAttribute("aria-label", btn.title);
       btn.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
@@ -1544,11 +1642,21 @@
       Array.from(headRow.cells).forEach((th, idx)=>{
         if (th.getAttribute('data-nosort') === '1') return;
         th.classList.add('sortable');
-        th.addEventListener('click', ()=>{
+        // Atteignable au clavier (Tab puis Entrée ou Espace), et l'ordre
+        // courant est annoncé aux lecteurs d'écran (aria-sort).
+        if(!th.hasAttribute('tabindex')) th.tabIndex = 0;
+        if(!th.title) th.title = 'Trier selon cette colonne';
+        const trier = ()=>{
           const current = th.classList.contains('is-sorted') && th.classList.contains('asc') ? 'desc' : 'asc';
-          Array.from(headRow.cells).forEach(x=>x.classList.remove('is-sorted','asc','desc'));
+          Array.from(headRow.cells).forEach(x=>{ x.classList.remove('is-sorted','asc','desc'); x.removeAttribute('aria-sort'); });
           th.classList.add('is-sorted', current);
+          th.setAttribute('aria-sort', current === 'asc' ? 'ascending' : 'descending');
           sortTable(table, idx, current);
+        };
+        th.addEventListener('click', trier);
+        th.addEventListener('keydown', (ev)=>{
+          if(ev.target !== th) return;
+          if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); trier(); }
         });
       });
     });
@@ -1614,11 +1722,14 @@
   </script>
 
 
-  <div id="toast-viewport" class="toast-viewport" aria-label="Notifications"></div>
+  {#- Zone des notifications éphémères. Les messages sont lus par les deux
+      zones « sr-status » / « sr-alert » ci-dessous (feedback-kit.js) : la
+      zone elle-même n'est qu'un repère nommé. -#}
+  <div id="toast-viewport" class="toast-viewport" role="region" aria-label="Notifications"></div>
   <div id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="sr-alert" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
-  <script src="{{ url_for('static', filename='js/feedback-kit.js') }}?v=20260701-submit-fix"></script>
+  <script src="{{ url_for('static', filename='js/feedback-kit.js') }}?v=20261009-annonces"></script>
 
   <script>
   /* Blocs repliés (macro `bloc_avance` de _ui.html) : les trois garde-fous
@@ -1746,12 +1857,17 @@
       panel.dataset.ready = '1';
     }
 
+    const topbar = toggle ? toggle.closest('.topbar') : null;
+
     function setMobileMenu(open){
       if(!toggle || !panel){ return; }
       buildMobileMenu();
       panel.hidden = !open;
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       toggle.classList.toggle('is-open', open);
+      // La barre réduite affiche alors la recherche (petits écrans) et les
+      // réglages (affichage, thème, aide, compte) sous les liens du menu.
+      if(topbar){ topbar.classList.toggle('is-menu-open', open); }
     }
 
     if(toggle && panel){
@@ -1762,7 +1878,13 @@
         if(event.target.closest && event.target.closest('a')){ setMobileMenu(false); }
       });
       document.addEventListener('keydown', function(event){
-        if(event.key === 'Escape'){ setMobileMenu(false); }
+        if(event.key !== 'Escape' || panel.hidden){ return; }
+        // Échap dans la recherche ferme seulement la liste des résultats.
+        if(event.target && event.target.id === 'global-search-input'){ return; }
+        // Le focus ne doit pas rester sur un élément qui disparaît.
+        const dedans = topbar && document.activeElement && topbar.contains(document.activeElement);
+        setMobileMenu(false);
+        if(dedans){ toggle.focus(); }
       });
       if(window.matchMedia){
         const desktopMedia = window.matchMedia('(min-width: 1121px)');

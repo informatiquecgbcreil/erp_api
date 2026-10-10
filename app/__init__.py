@@ -719,6 +719,10 @@ def create_app():
     def _inject_rbac_helpers():
         return {"can": can}
 
+    # Libellés officiels des rôles, pour le badge du nom dans l'en-tête.
+    from app.rbac import ROLE_LABELS
+    app.jinja_env.globals["ROLE_LABELS"] = ROLE_LABELS
+
     @app.context_processor
     def _inject_alerte_certificat():
         # Certificat reconnu proche de l'échéance sans renouvellement :
