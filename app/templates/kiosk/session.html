@@ -1,11 +1,12 @@
 {% extends 'kiosk/base.html' %}
 {% import "_genre.html" as genre %}
+{% block title %}Émargement — {{ atelier.nom if atelier else 'atelier' }}{% endblock %}
 {% block wrap_class %}k-wrap--wide{% endblock %}
 {% block header_title %}{{ atelier.nom if atelier else 'Émargement' }}{% endblock %}
 {% block body %}
 
-  <div id="offlineBanner" class="k-card" style="display:none; background:#fde2e1; color:#7a1f1c; border:1px solid #f5b5b2;">
-    ⚠️ <strong>Hors connexion</strong> — la recherche utilise les noms déjà chargés. Attendez le retour de la connexion avant de valider une signature.
+  <div id="offlineBanner" class="k-card" role="status" style="display:none; background:#fde2e1; color:#7a1f1c; border:1px solid #f5b5b2;">
+    <span aria-hidden="true">⚠️</span> <strong>Hors connexion</strong> — la recherche utilise les noms déjà chargés. Attendez le retour de la connexion avant de valider une signature.
   </div>
 
   <div class="k-card">
@@ -13,17 +14,40 @@
     <h1 class="k-card__title k-mt">{{ session_label }}</h1>
     <p class="k-card__sub">Code de la séance : <strong>{{ session.kiosk_pin or '—' }}</strong></p>
     <div class="k-row">
-      <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_home') }}">← Changer d'atelier</a>
-      <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_feedback', token=token) }}">💬 Donner mon avis</a>
+      <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_home') }}"><span aria-hidden="true">←</span> Changer d'atelier</a>
+      <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_feedback', token=token) }}"><span aria-hidden="true">💬</span> Donner mon avis</a>
     </div>
   </div>
 
   {% if message_ok %}
-    <div class="k-card k-bigok">
-      <div class="k-bigok__emoji">✅</div>
+    <div class="k-card k-bigok" role="status">
+      <div class="k-bigok__emoji" aria-hidden="true">✅</div>
       <div class="k-bigok__title">{{ message_ok }}</div>
-      <p class="k-card__sub">{% if recu %}Reçu n° <strong>{{ recu }}</strong> · {% endif %}Vous pouvez fermer cette page, ou émarger une autre personne.</p>
+      <p class="k-card__sub">Votre présence est enregistrée.{% if recu %} Reçu n° <strong>{{ recu }}</strong>.{% endif %}<br>
+        Vous pouvez fermer cette page, ou faire signer une autre personne.</p>
     </div>
+  {% endif %}
+
+  {% if doublons_candidats %}
+  <div class="k-card" style="border:2px solid #f2bd6b;">
+    <h2 class="k-card__title"><span aria-hidden="true">🤔</span> On a trouvé des personnes qui vous ressemblent</h2>
+    <p class="k-card__sub">Pour éviter d'avoir deux fiches : est-ce vous ? Touchez « C'est moi » à côté de votre nom.</p>
+    {% for c in doublons_candidats %}
+      <div class="k-row" style="justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #eee; flex-wrap:wrap;">
+        <strong>{{ c.nom }} {{ c.prenom }}</strong>
+        <a class="k-btn" href="{{ url_for('kiosk.kiosk_session', token=token, highlight=c.id) }}" aria-label="C'est moi : {{ c.nom }} {{ c.prenom }}"><span aria-hidden="true">✔</span> C'est moi</a>
+      </div>
+    {% endfor %}
+    <form method="post" style="margin-top:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add_participant">
+      <input type="hidden" name="force_creation" value="1">
+      {% for champ in ['nom','prenom','ville','email','telephone','type_public','genre','date_naissance','quartier_id'] %}
+        <input type="hidden" name="{{ champ }}" value="{{ pending.get(champ, '') }}">
+      {% endfor %}
+      <button class="k-btn k-btn--ghost" type="submit">Non, ce n'est pas moi — créer ma fiche</button>
+    </form>
+  </div>
   {% endif %}
 
   <form method="post" id="emargeForm" autocomplete="off">
@@ -37,12 +61,16 @@
       <p class="k-card__sub">Tapez les premières lettres de votre nom, puis touchez-le dans la liste.</p>
       <label class="k-label" for="search">Rechercher mon nom</label>
       <input class="k-input" id="search" placeholder="Ex : Dupont" autocomplete="off">
-      <div id="results" class="k-results" style="display:none;"></div>
+      <div id="results" class="k-results" role="group" aria-label="Noms trouvés" style="display:none;"></div>
 
       <div class="k-mt">
-        <label class="k-label">Personne sélectionnée</label>
-        <div id="chosen" class="k-chosen is-empty">Aucune personne sélectionnée</div>
-        <p class="k-hint">Vous ne vous trouvez pas ? <a href="#" id="toggleNew">Créer ma fiche</a></p>
+        {#- Simple intitulé (pas un champ) ; la zone est annoncée aux lecteurs
+            d'écran dès qu'une personne est choisie. -#}
+        <p class="k-label" id="chosen-titre">Personne sélectionnée</p>
+        <div id="chosen" class="k-chosen is-empty" role="status" aria-live="polite" aria-labelledby="chosen-titre">Aucune personne sélectionnée</div>
+        <p class="k-hint">Vous ne vous trouvez pas dans la liste ?</p>
+        <button type="button" id="toggleNew" class="k-btn k-btn--ghost k-mt-s"
+                aria-expanded="false" aria-controls="newParticipant"><span aria-hidden="true">➕</span> Créer ma fiche</button>
       </div>
     </div>
 
@@ -72,80 +100,58 @@
     <div class="k-card">
       <h2 class="k-card__title"><span class="k-step">{% if motifs %}3{% else %}2{% endif %}.</span> Votre signature</h2>
       <p class="k-card__sub">Signez avec le doigt (tablette/mobile) ou la souris (ordinateur).</p>
-      <canvas id="sig" width="700" height="200" class="k-sig-canvas"></canvas>
+      <canvas id="sig" width="700" height="200" class="k-sig-canvas" role="img" aria-label="Cadre de signature"></canvas>
       <div class="k-row k-mt">
-        <button class="k-btn k-btn--ghost" type="button" id="clearSig">Effacer</button>
+        <button class="k-btn k-btn--ghost" type="button" id="clearSig"><span aria-hidden="true">↺</span> Effacer et recommencer</button>
       </div>
     </div>
 
     <div class="k-actionbar">
-      <button class="k-btn k-btn--lg" type="submit">✔ Valider ma présence</button>
+      <button class="k-btn k-btn--lg" type="submit"><span aria-hidden="true">✔</span> Valider ma présence</button>
     </div>
   </form>
-
-  {% if doublons_candidats %}
-  <div class="k-card" style="border:2px solid #f2bd6b;">
-    <h2 class="k-card__title">🤔 On a trouvé des personnes qui vous ressemblent</h2>
-    <p class="k-card__sub">Pour éviter les fiches en double : est-ce vous ?</p>
-    {% for c in doublons_candidats %}
-      <div class="k-row" style="justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #eee; flex-wrap:wrap;">
-        <strong>{{ c.nom }} {{ c.prenom }}</strong>
-        <a class="k-btn" href="{{ url_for('kiosk.kiosk_session', token=token, highlight=c.id) }}">✔ C'est moi</a>
-      </div>
-    {% endfor %}
-    <form method="post" style="margin-top:12px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="action" value="add_participant">
-      <input type="hidden" name="force_creation" value="1">
-      {% for champ in ['nom','prenom','ville','email','telephone','type_public','genre','date_naissance','quartier_id'] %}
-        <input type="hidden" name="{{ champ }}" value="{{ pending.get(champ, '') }}">
-      {% endfor %}
-      <button class="k-btn k-btn--ghost" type="submit">Non, ce n'est pas moi — créer ma fiche</button>
-    </form>
-  </div>
-  {% endif %}
 
   <div id="newParticipant" style="display:none;">
     <div class="k-card">
       <h2 class="k-card__title">Créer ma fiche</h2>
-      <p class="k-card__sub">Renseignez au moins votre nom et prénom, puis re-cherchez votre nom ci-dessus pour signer.</p>
+      <p class="k-card__sub">Renseignez au moins votre nom et votre prénom. Ensuite, vérifiez votre nom en haut de la page et signez.</p>
       <form method="post" id="newParticipantForm" autocomplete="off">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="add_participant">
         <div class="k-grid2">
-          <div><label class="k-label">Nom</label><input class="k-input" name="nom" required></div>
-          <div><label class="k-label">Prénom</label><input class="k-input" name="prenom" required></div>
+          <div><label class="k-label" for="np_nom">Nom</label><input class="k-input" id="np_nom" name="nom" required></div>
+          <div><label class="k-label" for="np_prenom">Prénom</label><input class="k-input" id="np_prenom" name="prenom" required></div>
           {#- Villes déjà enregistrées : on choisit au lieu de retaper, et
               « Nogent sur Oise » cesse de cohabiter avec « Nogent-sur-Oise ». -#}
           <datalist id="villes-saisies">
             {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
           </datalist>
-          <div><label class="k-label">Ville</label><input class="k-input" name="ville" list="villes-saisies" placeholder="Creil" data-ville-input></div>
+          <div><label class="k-label" for="np_ville">Ville</label><input class="k-input" id="np_ville" name="ville" list="villes-saisies" placeholder="Creil" data-ville-input></div>
           <div>
-            <label class="k-label">Quartier</label>
-            <select class="k-select" name="quartier_id" data-quartier-select>
+            <label class="k-label" for="np_quartier">Quartier</label>
+            <select class="k-select" id="np_quartier" name="quartier_id" data-quartier-select>
               <option value="">—</option>
               {% for q in quartiers %}<option value="{{ q.id }}" data-ville="{{ q.ville }}">{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>{% endfor %}
             </select>
           </div>
           <div>
-            <label class="k-label">Type de public</label>
-            <select class="k-select" name="type_public">
+            <label class="k-label" for="np_type_public">Type de public</label>
+            <select class="k-select" id="np_type_public" name="type_public" aria-describedby="np_type_public_aide">
               <option value="H" selected>Habitant</option>
               <option value="S">Salarié</option>
               <option value="B">Bénévole</option>
               <option value="P">Partenaire</option>
               <option value="A">Autre</option>
             </select>
-            <p class="k-hint">Si vous ne savez pas : laissez « Habitant ».</p>
+            <p class="k-hint" id="np_type_public_aide">Si vous ne savez pas : laissez « Habitant ».</p>
           </div>
           <div>
-            <label class="k-label">Genre</label>
-            {{ genre.champ(none, none, classe="k-select") }}
+            <label class="k-label" for="np_genre">Genre</label>
+            {{ genre.champ(none, none, classe="k-select", attributs='id="np_genre"') }}
           </div>
-          <div><label class="k-label">Email (facultatif)</label><input class="k-input" type="email" name="email"></div>
-          <div><label class="k-label">Téléphone (facultatif)</label><input class="k-input" name="telephone"></div>
-          <div><label class="k-label">Date de naissance (facultatif)</label><input class="k-input" type="date" name="date_naissance"></div>
+          <div><label class="k-label" for="np_email">Email (facultatif)</label><input class="k-input" type="email" id="np_email" name="email"></div>
+          <div><label class="k-label" for="np_telephone">Téléphone (facultatif)</label><input class="k-input" type="tel" id="np_telephone" name="telephone"></div>
+          <div><label class="k-label" for="np_date_naissance">Date de naissance (facultatif)</label><input class="k-input" type="date" id="np_date_naissance" name="date_naissance"></div>
         </div>
         <div class="k-row k-mt">
           <button class="k-btn" type="submit">Créer ma fiche</button>
@@ -235,6 +241,7 @@
         chosen.classList.remove('is-empty');
         results.style.display='none';
         newBlock.style.display='none';
+        toggleNew.setAttribute('aria-expanded', 'false');
         search.value = '';
       });
       results.appendChild(b);
@@ -271,9 +278,10 @@
   toggleNew.addEventListener('click', (e) => {
     e.preventDefault();
     newBlock.style.display = (newBlock.style.display==='none') ? 'block' : 'none';
+    toggleNew.setAttribute('aria-expanded', newBlock.style.display==='block' ? 'true' : 'false');
     if(newBlock.style.display==='block'){ newBlock.scrollIntoView({behavior:'smooth'}); }
   });
-  cancelNew.addEventListener('click', () => { newBlock.style.display='none'; });
+  cancelNew.addEventListener('click', () => { newBlock.style.display='none'; toggleNew.setAttribute('aria-expanded', 'false'); });
 
   // Signature canvas
   const canvas = document.getElementById('sig');

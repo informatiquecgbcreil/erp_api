@@ -310,7 +310,7 @@ def kiosk_home():
             _compteur_pin(cle).noter(cle)
             if public:
                 _ECHECS_PIN_TOTAL.noter("*")
-            flash("Code invalide ou session fermée.", "danger")
+            flash("Code invalide ou atelier fermé. Vérifiez les chiffres, ou demandez le code à l'animateur.", "danger")
             return redirect(url_for("kiosk.kiosk_home"))
         return redirect(url_for("kiosk.kiosk_session", token=s.kiosk_token))
 
@@ -398,7 +398,7 @@ def kiosk_session(token: str):
             quartier_id = request.form.get("quartier_id") or None
 
             if not nom or not prenom:
-                flash("Nom et prénom obligatoires.", "danger")
+                flash("Pour créer votre fiche, indiquez au moins votre nom et votre prénom.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
 
             # Anti-doublons : avant de créer, proposer les personnes proches
@@ -450,7 +450,7 @@ def kiosk_session(token: str):
             db.session.commit()
             browser_session["kiosk_highlight"] = [s.id, p.id]
             _marquer_offerts(s, [p.id])
-            flash("Participant créé. Sélectionne-le ci-dessous puis signe.", "success")
+            flash("Votre fiche est créée. Vérifiez votre nom ci-dessous, puis signez dans le cadre.", "success")
             return redirect(url_for("kiosk.kiosk_session", token=token, highlight=p.id))
 
         if action == "emarger":
@@ -462,7 +462,7 @@ def kiosk_session(token: str):
             signature_data = request.form.get("signature_data")
 
             if not participant_id or str(participant_id).lower() in {"null", "undefined"}:
-                flash("Choisis ton nom dans la liste.", "danger")
+                flash("Cherchez votre nom, puis touchez-le dans la liste avant de signer.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
 
             try:
@@ -473,20 +473,20 @@ def kiosk_session(token: str):
                 current_app.logger.warning(
                     "Kiosque : émargement refusé pour une personne non proposée à ce navigateur "
                     "(séance #%s, participant #%s).", s.id, participant_id)
-                flash("Recherche ton nom dans la liste puis touche-le avant de signer.", "danger")
+                flash("Cherchez votre nom, puis touchez-le dans la liste avant de signer.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
             participant = _participants_for_session(s).filter(Participant.id == participant_id).first()
             if not participant:
-                flash("Participant introuvable.", "danger")
+                flash("Nous ne retrouvons pas cette personne. Cherchez à nouveau votre nom dans la liste.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
 
             existante = PresenceActivite.query.filter_by(session_id=s.id, participant_id=participant.id).first()
             if existante is not None and existante.signature_path:
-                flash("Tu es déjà émargé(e) sur cette séance.", "warning")
+                flash("Votre présence est déjà enregistrée pour cet atelier. Merci !", "warning")
                 return redirect(url_for("kiosk.kiosk_session", token=token))
 
             if not signature_data:
-                flash("Signe dans le cadre avant de valider.", "danger")
+                flash("Signez dans le cadre avant de valider.", "danger")
                 return redirect(url_for("kiosk.kiosk_session", token=token, highlight=participant.id))
 
             from app.services.signatures import save_signature
@@ -527,7 +527,7 @@ def kiosk_session(token: str):
                     Path(sig_path).unlink(missing_ok=True)
                 from sqlalchemy.exc import IntegrityError
                 if isinstance(error, IntegrityError) and PresenceActivite.query.filter_by(session_id=s.id, participant_id=participant.id).first():
-                    flash("Tu es déjà émargé(e) sur cette séance.", "warning")
+                    flash("Votre présence est déjà enregistrée pour cet atelier. Merci !", "warning")
                     return redirect(url_for("kiosk.kiosk_session", token=token))
                 current_app.logger.warning("Pointage kiosque interrompu (%s).", type(error).__name__)
                 abort(503)
@@ -632,11 +632,11 @@ def kiosk_feedback(token: str):
         deja = QuestionnaireResponseGroup.query.filter_by(
             questionnaire_id=selected_questionnaire.id, session_id=s.id)
         if participant_id is not None and deja.filter_by(participant_id=participant_id).first():
-            flash("Ton avis sur ce questionnaire est déjà enregistré. Merci !", "info")
+            flash("Votre avis sur ce questionnaire est déjà enregistré. Merci !", "info")
             return redirect(url_for("kiosk.kiosk_feedback", token=token, questionnaire_id=selected_questionnaire.id))
         if deja.count() >= max(_AVIS_PLANCHER, 2 * len(presences)):
             flash("Le nombre de réponses prévu pour cette séance est atteint. "
-                  "Demande à l'animateur si tu veux encore donner ton avis.", "warning")
+                  "Si vous souhaitez encore donner votre avis, adressez-vous à l'animateur.", "warning")
             return redirect(url_for("kiosk.kiosk_feedback", token=token, questionnaire_id=selected_questionnaire.id))
 
         group = QuestionnaireResponseGroup(
@@ -665,7 +665,7 @@ def kiosk_feedback(token: str):
             db.session.add(response)
 
         db.session.commit()
-        flash("Merci ! Ton ressenti a bien été enregistré.", "success")
+        flash("Merci ! Votre ressenti a bien été enregistré.", "success")
         return redirect(url_for("kiosk.kiosk_feedback", token=token, questionnaire_id=selected_questionnaire.id))
 
     return render_template(
@@ -713,7 +713,7 @@ def signer(token: str):
         except ValueError:
             sig_path = None
         if not sig_path:
-            flash("La signature est vide : signe dans le cadre puis valide.", "danger")
+            flash("La signature est vide : signez dans le cadre, puis validez.", "danger")
             return redirect(url_for("kiosk.signer", token=token))
 
         pr.signature_path = sig_path

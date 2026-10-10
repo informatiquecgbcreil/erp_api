@@ -1,11 +1,12 @@
 {% extends 'kiosk/base.html' %}
+{% block title %}Donner mon avis{% if atelier %} — {{ atelier.nom }}{% endif %}{% endblock %}
 {% block header_title %}Donner mon avis{% endblock %}
 {% block body %}
 
   <div class="k-card">
-    <h1 class="k-card__title">Votre ressenti 💬</h1>
+    <h1 class="k-card__title">Votre ressenti <span aria-hidden="true">💬</span></h1>
     <p class="k-card__sub">{{ session_label }}</p>
-    <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_session', token=token) }}">← Retour à l'émargement</a>
+    <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_session', token=token) }}"><span aria-hidden="true">←</span> Retour à l'émargement</a>
   </div>
 
   {% if questionnaires %}
@@ -15,16 +16,16 @@
       <div class="k-card">
         <div class="k-grid2">
           <div>
-            <label class="k-label">Questionnaire</label>
-            <select class="k-select" name="questionnaire_id" onchange="this.form.submit()">
+            <label class="k-label" for="fb_questionnaire">Questionnaire</label>
+            <select class="k-select" id="fb_questionnaire" name="questionnaire_id" onchange="this.form.submit()">
               {% for q in questionnaires %}
                 <option value="{{ q.id }}" {% if selected_questionnaire and selected_questionnaire.id == q.id %}selected{% endif %}>{{ q.nom }}</option>
               {% endfor %}
             </select>
           </div>
           <div>
-            <label class="k-label">Votre nom (facultatif)</label>
-            <select class="k-select" name="participant_id">
+            <label class="k-label" for="fb_participant">Votre nom (facultatif)</label>
+            <select class="k-select" id="fb_participant" name="participant_id">
               <option value="">Réponse anonyme</option>
               {% for p in presences %}
                 <option value="{{ p.id }}">{{ p.nom }} {{ p.prenom }}</option>
@@ -36,30 +37,36 @@
 
       {% for question in questions %}
         <div class="k-card">
-          <label class="k-label" style="font-size:18px;">{{ question.label }}</label>
-          {% if question.kind == 'scale' %}
-            <div class="k-choices">
-              {% for i in [1,2,3,4,5] %}
-                <label class="k-choice">
-                  <input type="radio" name="question_{{ question.id }}" value="{{ i }}">
-                  <span>{{ i }}</span>
-                </label>
-              {% endfor %}
-            </div>
-            <p class="k-hint">1 = pas du tout · 5 = tout à fait</p>
-          {% elif question.kind == 'yesno' %}
-            <div class="k-choices">
-              <label class="k-choice"><input type="radio" name="question_{{ question.id }}" value="oui"><span>👍 Oui</span></label>
-              <label class="k-choice"><input type="radio" name="question_{{ question.id }}" value="non"><span>👎 Non</span></label>
-            </div>
-          {% elif question.kind == 'multi' %}
-            <div class="k-choices">
-              {% for opt in options_map.get(question.id, []) %}
-                <label class="k-choice"><input type="checkbox" name="question_{{ question.id }}" value="{{ opt }}"><span>{{ opt }}</span></label>
-              {% endfor %}
-            </div>
+          {% if question.kind in ['scale', 'yesno', 'multi'] %}
+            {#- Choix tactiles : un groupe (fieldset) dont la question est la légende. -#}
+            <fieldset class="k-fieldset"{% if question.kind == 'scale' %} aria-describedby="fb_aide_{{ question.id }}"{% endif %}>
+              <legend class="k-label k-label--question">{{ question.label }}</legend>
+              {% if question.kind == 'scale' %}
+                <p class="k-hint k-hint--before" id="fb_aide_{{ question.id }}">1 = pas du tout · 5 = tout à fait</p>
+                <div class="k-choices">
+                  {% for i in [1,2,3,4,5] %}
+                    <label class="k-choice">
+                      <input type="radio" name="question_{{ question.id }}" value="{{ i }}">
+                      <span>{{ i }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              {% elif question.kind == 'yesno' %}
+                <div class="k-choices">
+                  <label class="k-choice"><input type="radio" name="question_{{ question.id }}" value="oui"><span><span aria-hidden="true">👍</span> Oui</span></label>
+                  <label class="k-choice"><input type="radio" name="question_{{ question.id }}" value="non"><span><span aria-hidden="true">👎</span> Non</span></label>
+                </div>
+              {% else %}
+                <div class="k-choices">
+                  {% for opt in options_map.get(question.id, []) %}
+                    <label class="k-choice"><input type="checkbox" name="question_{{ question.id }}" value="{{ opt }}"><span>{{ opt }}</span></label>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </fieldset>
           {% else %}
-            <textarea class="k-textarea" name="question_{{ question.id }}" rows="3" placeholder="Votre réponse…"></textarea>
+            <label class="k-label k-label--question" for="fb_question_{{ question.id }}">{{ question.label }}</label>
+            <textarea class="k-textarea" id="fb_question_{{ question.id }}" name="question_{{ question.id }}" rows="3" placeholder="Votre réponse…"></textarea>
           {% endif %}
         </div>
       {% endfor %}

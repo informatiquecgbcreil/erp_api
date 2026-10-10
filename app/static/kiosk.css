@@ -13,10 +13,16 @@
   --k-primary: #2563eb;
   --k-primary-press: #1d4ed8;
   --k-primary-soft: #e6efff;
+  /* Fond des boutons pleins (texte blanc) et texte bleu lisible partout,
+     y compris sur le fond bleu pâle (contraste ≥ 4,5:1). */
+  --k-primary-fill: #2563eb;
+  --k-primary-text: #1d4ed8;
   --k-success: #15a36b;
   --k-success-soft: #e3f7ee;
   --k-danger: #dc2626;
   --k-danger-soft: #fdeaea;
+  --k-warning: #d08a1c;
+  --k-warning-soft: #fff4e0;
   --k-border: #d7e0ee;
   --k-radius: 20px;
   --k-radius-sm: 14px;
@@ -32,12 +38,16 @@
     --k-text: #eef3fb;
     --k-muted: #a7b4cd;
     --k-primary: #4f8cff;
-    --k-primary-press: #3b7bff;
+    --k-primary-press: #1d4ed8;
     --k-primary-soft: #20304f;
+    --k-primary-fill: #2a5fd6;
+    --k-primary-text: #8fb4ff;
     --k-success: #34d399;
     --k-success-soft: #16352a;
     --k-danger: #f87171;
     --k-danger-soft: #3a1f22;
+    --k-warning: #f2bd6b;
+    --k-warning-soft: #3a2f17;
     --k-border: #2d3a57;
     --k-shadow: 0 10px 30px rgba(0, 0, 0, .35);
   }
@@ -52,6 +62,14 @@
   color: var(--k-text);
   background: linear-gradient(160deg, var(--k-bg1), var(--k-bg2));
   -webkit-text-size-adjust: 100%;
+}
+/* Liens texte : bleu lisible aussi en mode sombre (le bleu par défaut du
+   navigateur y est illisible). Les boutons et pavés gardent leurs couleurs. */
+.k-body a:not(.k-btn):not(.k-session) { color: var(--k-primary-text); }
+/* Contour de focus net pour le clavier et les contacteurs. */
+.k-body a:focus-visible, .k-body button:focus-visible {
+  outline: 3px solid var(--k-primary-text);
+  outline-offset: 3px;
 }
 
 .k-wrap {
@@ -96,11 +114,16 @@
 }
 .k-card__title { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
 .k-card__sub { color: var(--k-muted); margin: 0 0 16px; font-size: 15px; line-height: 1.45; }
-.k-step { color: var(--k-primary); font-weight: 800; }
+.k-step { color: var(--k-primary-text); font-weight: 800; }
 
 /* ---- Champs ---- */
 .k-label { display: block; font-weight: 700; margin: 0 0 6px; font-size: 15px; }
+.k-label--question { font-size: 18px; }
 .k-hint { color: var(--k-muted); font-size: 14px; margin: 6px 0 0; }
+.k-hint--before { margin: 0 0 10px; }
+/* Groupe de choix (avis) : fieldset sans cadre, la question sert de légende. */
+.k-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.k-fieldset legend { padding: 0; }
 .k-input, .k-select, .k-textarea {
   width: 100%;
   min-height: 56px;
@@ -132,7 +155,7 @@
   font-weight: 800;
   border: 2px solid transparent;
   border-radius: var(--k-radius-sm);
-  background: var(--k-primary);
+  background: var(--k-primary-fill);
   color: #fff;
   cursor: pointer;
   text-decoration: none;
@@ -143,7 +166,7 @@
 .k-btn--block { width: 100%; }
 .k-btn--ghost {
   background: var(--k-surface);
-  color: var(--k-primary);
+  color: var(--k-primary-text);
   border-color: var(--k-border);
 }
 .k-btn--ghost:hover { background: var(--k-primary-soft); }
@@ -180,7 +203,7 @@
   margin-top: 6px;
   align-self: flex-start;
   background: var(--k-primary-soft);
-  color: var(--k-primary);
+  color: var(--k-primary-text);
   font-weight: 800;
   padding: 8px 14px;
   border-radius: 999px;
@@ -189,7 +212,7 @@
 .k-chip {
   display: inline-block;
   background: var(--k-primary-soft);
-  color: var(--k-primary);
+  color: var(--k-primary-text);
   font-weight: 700;
   font-size: 13px;
   padding: 3px 10px;
@@ -257,10 +280,10 @@
 }
 .k-choice input:checked + span {
   border-color: var(--k-primary);
-  background: var(--k-primary);
+  background: var(--k-primary-fill);
   color: #fff;
 }
-.k-choice input:focus-visible + span { box-shadow: 0 0 0 4px var(--k-primary-soft); }
+.k-choice input:focus-visible + span { outline: 3px solid var(--k-primary-text); outline-offset: 3px; }
 
 /* ---- Messages ---- */
 .k-flash {
@@ -273,6 +296,8 @@
 }
 .k-flash--success, .k-flash.success { background: var(--k-success-soft); border-color: var(--k-success); }
 .k-flash--danger, .k-flash.danger, .k-flash.error { background: var(--k-danger-soft); border-color: var(--k-danger); }
+.k-flash.warning { background: var(--k-warning-soft); border-color: var(--k-warning); }
+.k-flash.info { background: var(--k-primary-soft); border-color: var(--k-primary); }
 .k-bigok {
   text-align: center;
   padding: 26px 18px;
@@ -296,3 +321,4 @@
 
 .k-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .k-mt { margin-top: 14px; }
+.k-mt-s { margin-top: 8px; }
