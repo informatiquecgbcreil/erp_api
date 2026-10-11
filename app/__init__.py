@@ -210,6 +210,104 @@ def create_app():
     login_manager.login_view = "auth.login"
 
     # ------------------------------------------------------------------
+    # Pages d'erreur en français, qui disent ce qui s'est passé : le droit
+    # qui manque, l'adresse introuvable, le formulaire expiré… et, pour une
+    # panne, une référence que l'administrateur retrouve dans erreurs.log.
+    # ------------------------------------------------------------------
+    from werkzeug.exceptions import HTTPException
+
+    _ERREURS = {
+        400: ("Demande invalide", "L'action demandée n'a pas pu être comprise. Revenez à l'écran précédent puis réessayez."),
+        401: ("Connexion nécessaire", "Cette page demande d'être connecté. Connectez-vous puis recommencez."),
+        403: ("Accès refusé", "Votre compte n'a pas accès à cette page."),
+        404: ("Page introuvable", "Cette adresse ne correspond à aucune page, ou l'élément demandé n'existe plus "
+                                   "(supprimé, archivé ou fusionné avec une autre fiche)."),
+        405: ("Action non permise", "Cette adresse ne s'utilise pas de cette façon : passez par le bouton prévu "
+                                     "dans l'application plutôt que par un lien ou un favori."),
+        409: ("Opération en conflit", "Cette opération entre en conflit avec une autre en cours. Rechargez la page puis réessayez."),
+        410: ("Élément expiré", "Cet élément n'est plus disponible. Recommencez l'opération depuis le début."),
+        413: ("Fichier trop volumineux", "Le fichier envoyé dépasse la taille autorisée."),
+        429: ("Trop de demandes", "Trop de demandes en peu de temps. Patientez une minute puis réessayez."),
+        500: ("Une erreur est survenue", "L'application a rencontré un problème inattendu : l'action n'a sans doute "
+                                          "pas été enregistrée. Réessayez dans quelques instants."),
+        503: ("Service momentanément indisponible", "L'application est en maintenance ou surchargée. Réessayez dans quelques minutes."),
+    }
+
+    def _libelle_permission(code: str) -> str:
+        from app.rbac import DEFAULT_PERMS
+        return dict(DEFAULT_PERMS).get(code, code)
+
+    def _decrire_erreur(erreur: HTTPException) -> dict:
+        from flask import g as _g
+        from flask_wtf.csrf import CSRFError
+
+        code = erreur.code or 500
+        titre, message = _ERREURS.get(code, ("Erreur", "La demande n'a pas pu aboutir."))
+        details = []
+        # Message rédigé par l'application (abort(403, description=…)) :
+        # il dit mieux que tout autre ce qui s'est passé. Les descriptions par
+        # défaut de Werkzeug, en anglais, sont écartées.
+        propre = erreur.description if erreur.description and erreur.description != type(erreur).description else None
+        if isinstance(erreur, CSRFError):
+            titre = "Formulaire expiré"
+            message = ("Ce formulaire est resté ouvert trop longtemps, ou la session a été fermée entre-temps : "
+                       "il n'a pas été enregistré. Revenez à la page précédente, rechargez-la, puis recommencez.")
+            propre = None
+        elif code == 403 and getattr(_g, "permission_refusee", None):
+            message = (f"Votre compte n'a pas le droit « {_libelle_permission(_g.permission_refusee)} ». "
+                       "Si vous en avez besoin pour votre travail, demandez-le à la direction "
+                       "(Administration → Droits d'accès).")
+        elif code == 413:
+            plafond = app.config.get("MAX_CONTENT_LENGTH")
+            if plafond:
+                message += f" Taille maximale : {plafond / (1024 * 1024):.0f} Mo."
+        if propre:
+            message = propre
+        if code in (403, 404, 405):
+            details.append(f"Adresse demandée : {request.path}")
+        if code == 403 and current_user.is_authenticated:
+            from app.rbac import ROLE_LABELS
+            roles = ", ".join(ROLE_LABELS.get(r, r) for r in (current_user.role_codes or [])) or "aucun"
+            details.append(f"Votre rôle : {roles} · Secteur : {current_user.secteur_assigne or 'aucun'}")
+        return {"code": code, "titre": titre, "message": message, "details": details}
+
+    @app.errorhandler(HTTPException)
+    def _page_erreur(erreur):
+        if erreur.code is None or erreur.code < 400:
+            return erreur
+        from flask import jsonify, render_template as _rendu
+
+        if erreur.code >= 500:
+            # Une base dans un état d'erreur ne doit pas empêcher d'afficher la page.
+            try:
+                db.session.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+        infos = _decrire_erreur(erreur)
+        if erreur.code >= 500:
+            import secrets
+            from app.utils.dates import utcnow
+            infos["reference"] = utcnow().strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(2)
+            app.logger.error("Erreur %s affichée sous la référence %s (%s %s)",
+                             erreur.code, infos["reference"], request.method, request.path)
+            infos["details"].append(f"Référence à donner à l'administrateur : {infos['reference']}")
+        if request.is_json or request.accept_mimetypes.best == "application/json":
+            return jsonify(erreur=infos["titre"], detail=infos["message"]), erreur.code
+        gabarit = "kiosk/erreur.html" if (request.blueprint == "kiosk" or request.path.startswith("/kiosk")) else "erreur.html"
+        try:
+            # Ni aide ni fil d'Ariane de la page refusée ou introuvable : ils
+            # décriraient un écran que la personne ne voit pas.
+            return _rendu(gabarit, erreur=infos, page_erreur=True, AIDE_PAGE=None), erreur.code
+        except Exception:  # noqa: BLE001 — une page d'erreur ne doit jamais elle-même planter
+            app.logger.exception("Page d'erreur impossible à afficher")
+            from markupsafe import escape
+            return (f"<!doctype html><html lang='fr'><meta charset='utf-8'><title>{escape(infos['titre'])}</title>"
+                    f"<body style='font-family:sans-serif;max-width:40em;margin:10vh auto;line-height:1.5'>"
+                    f"<h1>{escape(infos['titre'])}</h1><p>{escape(infos['message'])}</p>"
+                    f"<p><a href='/'>Retour à l'accueil</a></p></body></html>", erreur.code)
+
+
+    # ------------------------------------------------------------------
     # Jinja helper: safe_url_for
     # ------------------------------------------------------------------
     def safe_url_for(endpoint: str, fallback: str = "#", **values) -> str:

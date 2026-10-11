@@ -1041,7 +1041,7 @@
         'salaries': 'salarie:espace',
         'admin': 'admin:users'
       } %}
-      {% if ep != 'main.dashboard' %}
+      {% if ep != 'main.dashboard' and not page_erreur %}
         {% set endpoint_action = ep.split('.', 1)[1] if '.' in ep else '' %}
         {% set action_redondante = endpoint_action in ['', 'index', 'home', 'dashboard'] or endpoint_action.startswith('hub_') or endpoint_action.endswith('_home') or endpoint_action.endswith('_index') %}
         {% set verbes_crumb = {'edit': 'Modifier', 'new': 'Créer', 'create': 'Créer', 'add': 'Ajouter', 'list': 'Liste', 'detail': 'Détail', 'view': 'Consulter', 'import': 'Import', 'export': 'Export', 'print': 'Impression'} %}

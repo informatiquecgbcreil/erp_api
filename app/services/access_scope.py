@@ -7,6 +7,12 @@ from app.rbac import can
 from app.models import ORIGINE_PERSONNEL, InscriptionActivite, Participant, PresenceActivite, SessionActivite
 
 
+#: Message de la page d'erreur quand un écran borné au secteur est ouvert
+#: par un compte qui n'en a pas.
+SANS_SECTEUR = ("Cet écran affiche les données de votre secteur, mais aucun secteur n'est attribué "
+                "à votre compte. Demandez à la direction de l'indiquer dans Administration → Équipe.")
+
+
 def own_sector():
     return (getattr(current_user, "secteur_assigne", None) or "").strip()
 
@@ -88,7 +94,7 @@ def effective_sector(requested=None):
         return requested
     sector = own_sector()
     if not sector:
-        abort(403)
+        abort(403, description=SANS_SECTEUR)
     return sector
 
 

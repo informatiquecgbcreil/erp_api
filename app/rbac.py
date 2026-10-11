@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import wraps
 from typing import Iterable
 
-from flask import abort, current_app
+from flask import abort, current_app, g
 from flask_login import current_user
 
 from app.extensions import db
@@ -73,6 +73,7 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     ("inscriptions_annuelles:edit", "Saisir / modifier une inscription annuelle, créer la fiche participant"),
     ("inscriptions_annuelles:reglement", "Confirmer ou annuler le règlement d’une inscription annuelle"),
     ("inscriptions_annuelles:export", "Exporter les inscriptions annuelles (XLSX)"),
+    ("inscriptions_annuelles:tous_secteurs", "Traiter les inscriptions annuelles de tous les secteurs (accueil)"),
     ("transitions:view", "Voir le tableau de bord transitions"),
     ("transitions:edit", "Étiqueter les ateliers, gérer défis et mesures transitions"),
 
@@ -355,6 +356,9 @@ ROLE_TEMPLATES["accueil"] = {
         "inscriptions:view", "inscriptions:edit",
         "inscriptions_annuelles:view", "inscriptions_annuelles:edit",
         "inscriptions_annuelles:reglement",
+        # La rentrée passe par l'accueil, quel que soit le secteur qui fait
+        # venir la personne : tous les bulletins, sans la portée structure.
+        "inscriptions_annuelles:tous_secteurs",
         "cotisations:view", "cotisations:edit", "caisse:view",
         "salles:view", "locations:view", "locations:edit",
         "partenaires:view", "quartiers:view",
@@ -396,6 +400,8 @@ ROLE_LABELS: dict[str, str] = {
 PERMS_AUTO_GRANT = {
     # Accueil existant : le contrôle de secteur des écritures l'aurait bloqué.
     "participants:edit_all": ("accueil",),
+    # Accueil existant : sans secteur, les inscriptions annuelles lui étaient fermées.
+    "inscriptions_annuelles:tous_secteurs": ("accueil",),
     "dons:view": ("direction", "directrice", "finance"),
     "dons:edit": ("direction", "directrice", "finance"),
     "benevolat:taux": ("direction", "directrice", "finance"),
@@ -682,6 +688,8 @@ def require_perm(code: str):
                 abort(403)
 
             if not any(has_perm_fn(c) for c in wanted):
+                # La page d'erreur nomme le droit qui manque.
+                g.permission_refusee = code
                 abort(403)
 
             return fn(*args, **kwargs)

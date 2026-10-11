@@ -1,9 +1,10 @@
 """Module Inscriptions annuelles — saisie, suivi, règlement, fiche, export.
 
-Portée secteur : sans ``scope:all_secteurs``, on ne voit que les bulletins
-de son propre secteur — ceux qu'on a saisis (``created_secteur``) et ceux
-dont on est le secteur qui fait venir (``secteur_orienteur``). Les bulletins
-sans secteur forment une file à affecter réservée aux comptes globaux.
+Portée secteur : sans ``scope:all_secteurs`` ni ``inscriptions_annuelles:tous_secteurs``
+(accueil), on ne voit que les bulletins de son propre secteur — ceux qu'on a
+saisis (``created_secteur``) et ceux dont on est le secteur qui fait venir
+(``secteur_orienteur``). Les bulletins sans secteur forment une file à
+affecter, réservée aux comptes qui voient tous les secteurs.
 """
 from __future__ import annotations
 
@@ -74,7 +75,9 @@ def _secteur_utilisateur() -> str:
 
 
 def _portee_globale() -> bool:
-    return can("scope:all_secteurs")
+    # L'accueil traite toute la rentrée sans recevoir la portée structure
+    # (qui ouvrirait aussi le pilotage financier) : permission dédiée.
+    return can("scope:all_secteurs") or can("inscriptions_annuelles:tous_secteurs")
 
 
 def _secteur_requis() -> str:
