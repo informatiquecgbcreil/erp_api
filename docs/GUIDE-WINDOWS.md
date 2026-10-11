@@ -181,8 +181,10 @@ installation qui avait activé les finances avant cette séparation garde ses
 Deux rôles prêts à l'emploi facilitent les parcours de l'équipe (Administration ›
 Équipe) : **Animateur / animatrice** (ateliers, émargement, pédagogie,
 questionnaires, fréquentation, publics de son secteur) et **Accueil**
-(inscriptions, inscriptions de rentrée, adhésions, caisse, salles, annuaire
-complet ; ni finances ni administration). Ils sont créés au démarrage s'ils
+(secrétariat de toute la structure : inscriptions et rentrée, adhésions,
+paiements et caisse, bénévolat, statistiques et bilans de tous les secteurs,
+questionnaires, partenaires, salles, annuaire complet ; ni budgets ni
+subventions, ni salaires, ni administration). Ils sont créés au démarrage s'ils
 n'existent pas, puis ajustables dans l'écran des droits.
 
 ## Dossier confidentiel

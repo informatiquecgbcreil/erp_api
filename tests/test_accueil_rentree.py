@@ -65,8 +65,7 @@ def test_secteur_borne_ne_voit_pas_les_autres(app):
 
 
 def test_permission_attribuee_aux_bases_existantes(app):
-    """Base créée avant la permission : l'accueil la reçoit au démarrage,
-    sans la portée structure."""
+    """Base créée avant la permission : l'accueil la reçoit au démarrage."""
     from app.extensions import db
     from app.models import Permission, Role
     from app.rbac import PERMS_AUTO_GRANT, bootstrap_rbac
@@ -83,4 +82,25 @@ def test_permission_attribuee_aux_bases_existantes(app):
         role = Role.query.filter_by(code="accueil").one()
         codes = {p.code for p in role.permissions}
         assert "inscriptions_annuelles:tous_secteurs" in codes
-        assert "scope:all_secteurs" not in codes
+
+
+def test_migration_ouvre_toute_la_structure_a_l_accueil_existant(app):
+    """Rôle Accueil créé avec l'ancien gabarit : la migration lui accorde la
+    portée structure, la caisse, les stats, questionnaires et partenaires."""
+    import flask_migrate
+    from app.extensions import db
+    from app.models import Role
+    ajouts = {"scope:all_secteurs", "caisse:edit", "stats:view_all", "statsimpact:view_all",
+              "bilans:view", "questionnaires:edit", "partenaires:edit"}
+    with app.app_context():
+        role = Role.query.filter_by(code="accueil").one()
+        role.permissions = [p for p in role.permissions if p.code not in ajouts]
+        db.session.commit()
+
+        flask_migrate.downgrade(revision="d5b7c9e1f3a4")
+        flask_migrate.upgrade()
+
+        db.session.expire_all()
+        codes = {p.code for p in Role.query.filter_by(code="accueil").one().permissions}
+        assert ajouts <= codes
+        assert "rh:view" not in codes and "admin:users" not in codes and "depenses:view" not in codes

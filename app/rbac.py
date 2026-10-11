@@ -345,23 +345,25 @@ ROLE_TEMPLATES["accueil"] = {
     "label": "Accueil",
     "perms": [
         "dashboard:view",
-        # L'accueil reçoit tout le monde : annuaire complet, et droit de modifier
-        # toutes les fiches (adhésion, cotisation, coordonnées) quel que soit le
-        # secteur qui les a créées. Permission dédiée : « scope:all_secteurs »
-        # ouvrirait aussi le pilotage financier, le journal et les exports RGPD.
+        # Secrétariat d'accueil : il travaille pour TOUTE la structure (rentrée,
+        # caisse et paiements du public, bénévolat, statistiques de tous les
+        # secteurs et globales, communication). Portée structure, choisie par
+        # la direction en connaissance de cause : elle ouvre aussi le pilotage
+        # direction, le journal des actions sensibles et les exports RGPD.
+        # Toujours ni budgets/subventions/dépenses, ni salaires, ni administration.
+        "scope:all_secteurs",
         "participants:view", "participants:view_all", "participants:edit",
         "participants:edit_all",
         # Rattrapage des feuilles d'émargement papier : saisie, pas de suppression.
         "ateliers:view", "emargement:view", "emargement:edit",
         "inscriptions:view", "inscriptions:edit",
         "inscriptions_annuelles:view", "inscriptions_annuelles:edit",
-        "inscriptions_annuelles:reglement",
-        # La rentrée passe par l'accueil, quel que soit le secteur qui fait
-        # venir la personne : tous les bulletins, sans la portée structure.
-        "inscriptions_annuelles:tous_secteurs",
-        "cotisations:view", "cotisations:edit", "caisse:view",
+        "inscriptions_annuelles:reglement", "inscriptions_annuelles:tous_secteurs",
+        "cotisations:view", "cotisations:edit", "caisse:view", "caisse:edit",
+        "stats:view", "stats:view_all", "statsimpact:view", "statsimpact:view_all", "bilans:view",
+        "questionnaires:view", "questionnaires:edit", "questionnaires:respond", "questionnaires:export",
         "salles:view", "locations:view", "locations:edit",
-        "partenaires:view", "quartiers:view",
+        "partenaires:view", "partenaires:edit", "quartiers:view",
         "salarie:espace",
     ],
 }
