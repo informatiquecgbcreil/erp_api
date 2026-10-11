@@ -10,8 +10,8 @@
     <form method="get" class="filters-grid" style="grid-template-columns:1fr auto auto;">
       {% if is_admin_global %}
       <div>
-        <label class="muted">Secteur</label>
-        <select class="in" name="secteur">
+        <label class="muted" for="modeles-filtre-secteur">Secteur</label>
+        <select class="in" id="modeles-filtre-secteur" name="secteur">
           <option value="">Tous les secteurs</option>
           {% for secteur in secteurs %}
             <option value="{{ secteur }}" {% if selected_secteur == secteur %}selected{% endif %}>{{ secteur }}</option>
@@ -21,7 +21,7 @@
       </div>
       {% else %}
       <div>
-        <label class="muted">Secteur</label>
+        <strong class="muted" style="display:block;font-size:13px;">Secteur</strong>
         <div class="in" style="display:flex;align-items:center;">{{ selected_secteur or 'Votre secteur' }}</div>
       </div>
       {% endif %}
@@ -79,7 +79,7 @@
           </tbody>
         </table>
       </div>
-      <div class="responsive-card-list" aria-label="Modèles d’émargement (vue compacte)">
+      <div class="responsive-card-list" role="group" aria-label="Modèles d’émargement (vue compacte)">
         {% for row in rows %}
         <article class="responsive-card">
           <header class="responsive-card__head">

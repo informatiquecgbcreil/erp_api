@@ -236,9 +236,9 @@ def demande_transmise(demande, auteur) -> int:
         objet_type="demande_recuperation", objet_id=demande.id)
     n += programmer(
         "recup_transmise_salarie", [demande.salarie.compte], auteur=auteur,
-        sujet="Ta demande de récupération est transmise à la direction",
-        corps=(f"Bonjour,\n\nTa demande de récupération {_quand(demande)} a été transmise à la direction, "
-               f"qui va l'accepter ou la refuser. Tu seras prévenu·e de sa décision.\n\n"
+        sujet="Votre demande de récupération est transmise à la direction",
+        corps=(f"Bonjour,\n\nVotre demande de récupération {_quand(demande)} a été transmise à la direction, "
+               f"qui va l'accepter ou la refuser. Vous serez prévenu·e de sa décision.\n\n"
                f"{_lien('salaries.demande_detail', demande_id=demande.id)}"),
         objet_type="demande_recuperation", objet_id=demande.id)
     return n
@@ -252,8 +252,8 @@ def demande_refusee_relais(demande, auteur) -> int:
     """Refus au premier niveau (assistant·e) : le salarié est informé, justification comprise."""
     return programmer(
         "recup_refusee_relais", [demande.salarie.compte], auteur=auteur,
-        sujet="Ta demande de récupération est refusée",
-        corps=(f"Bonjour,\n\nTa demande de récupération {_quand(demande)} a été refusée par "
+        sujet="Votre demande de récupération est refusée",
+        corps=(f"Bonjour,\n\nVotre demande de récupération {_quand(demande)} a été refusée par "
                f"{getattr(auteur, 'nom', 'l’assistant·e de direction')} (assistant·e de direction).\n"
                f"{_justification(demande)}\n{_lien('salaries.demande_detail', demande_id=demande.id)}"),
         objet_type="demande_recuperation", objet_id=demande.id)
@@ -265,8 +265,8 @@ def demande_decidee(demande, auteur) -> int:
     nom = demande.salarie.nom_complet
     n = programmer(
         "recup_decidee", [demande.salarie.compte], auteur=auteur,
-        sujet=f"Ta demande de récupération est {decision}",
-        corps=(f"Bonjour,\n\nTa demande de récupération {_quand(demande)} a été {decision} "
+        sujet=f"Votre demande de récupération est {decision}",
+        corps=(f"Bonjour,\n\nVotre demande de récupération {_quand(demande)} a été {decision} "
                f"par la direction.\n{_justification(demande)}\n"
                f"{_lien('salaries.demande_detail', demande_id=demande.id)}"),
         objet_type="demande_recuperation", objet_id=demande.id)
@@ -274,7 +274,7 @@ def demande_decidee(demande, auteur) -> int:
         "recup_decidee_relais", relais_recuperations(), auteur=auteur,
         sujet=f"Décision sur la demande de récupération de {nom} : {decision}",
         corps=(f"Bonjour,\n\nLa direction a {decision.replace('ée', 'é')} la demande de récupération de {nom} "
-               f"{_quand(demande)}. Le salarié a été prévenu ; il te reste à en prendre connaissance.\n\n"
+               f"{_quand(demande)}. Le salarié a été prévenu ; il vous reste à en prendre connaissance.\n\n"
                f"{_lien('salaries.equipe_recuperations', statut='a_traiter')}"),
         objet_type="demande_recuperation", objet_id=demande.id)
     return n
@@ -288,8 +288,8 @@ def heures_corrigees(correction, avant: int, apres: int, auteur) -> int:
             else f"corrigées : {format_minutes(avant)} → {format_minutes(apres)}")
     return programmer(
         "heures_corrigees", [correction.salarie.compte], auteur=auteur,
-        sujet="Tes heures supplémentaires ont été " + ("retirées" if apres == 0 else "corrigées"),
-        corps=(f"Bonjour,\n\nTes heures supplémentaires du {jour} ont été {quoi} par "
+        sujet="Vos heures supplémentaires ont été " + ("retirées" if apres == 0 else "corrigées"),
+        corps=(f"Bonjour,\n\nVos heures supplémentaires du {jour} ont été {quoi} par "
                f"{getattr(auteur, 'nom', 'la direction')}.\n"
                f"Justification : {correction.commentaire_direction}\n\n{_lien('salaries.mes_recuperations')}"),
         objet_type="heure_supplementaire", objet_id=correction.id)
@@ -300,9 +300,9 @@ def document_depose(document, auteur) -> int:
     lecteurs = User.query.filter(User.id.in_([a.user_id for a in document.acces])).all() if document.acces else []
     return programmer(
         "document_depose", lecteurs, auteur=auteur,
-        sujet=f"Un document t'a été partagé : {document.type_document.libelle}",
+        sujet=f"Un document vous a été partagé : {document.type_document.libelle}",
         corps=(f"Bonjour,\n\n{getattr(auteur, 'nom', 'Quelqu’un')} a déposé un document "
-               f"(« {document.type_document.libelle} ») dans le coffre-fort et te l'a partagé.\n"
+               f"(« {document.type_document.libelle} ») dans le coffre-fort et vous l'a partagé.\n"
                f"Il se consulte uniquement dans l'application.\n\n"
                f"{_lien('salaries.documents')}"),
         objet_type="document_rh", objet_id=document.id)

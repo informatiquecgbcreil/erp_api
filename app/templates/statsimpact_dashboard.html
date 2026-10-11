@@ -27,7 +27,7 @@
 <div class="si-wrap">
   <div class="si-hero">
     <h1>Stats & Impacts — Exports</h1>
-    <p>Objectif : tu filtres, tu exportes. Pas 58 boutons, pas 4 formulaires qui se battent. 🤝</p>
+    <p>Objectif : vous filtrez, vous exportez. Pas 58 boutons, pas 4 formulaires qui se battent. 🤝</p>
   </div>
 
   {#
@@ -40,8 +40,8 @@
       <div class="si-row">
         {% if secteurs and secteurs|length > 0 %}
         <div>
-          <label>Secteur</label><br>
-          <select name="secteur">
+          <label for="sid-secteur">Secteur</label><br>
+          <select id="sid-secteur" name="secteur">
             <option value="">Tous</option>
             {% for s in secteurs %}
               <option value="{{ s }}" {% if flt.secteur==s %}selected{% endif %}>{{ s }}</option>
@@ -51,8 +51,8 @@
         {% endif %}
 
         <div>
-          <label>Atelier</label><br>
-          <select name="atelier_id">
+          <label for="sid-atelier">Atelier</label><br>
+          <select id="sid-atelier" name="atelier_id">
             <option value="">Tous</option>
             {% for a in ateliers %}
               <option value="{{ a.id }}" {% if flt.atelier_id==a.id %}selected{% endif %}>
@@ -63,22 +63,22 @@
         </div>
 
         <div>
-          <label>Du</label><br>
+          <label for="sid-date-from">Du</label><br>
           {% set date_from_value = flt.date_from.isoformat() if flt.date_from else "" %}
-          <input type="date" name="date_from" value="{{ date_from_value }}">
+          <input type="date" id="sid-date-from" name="date_from" value="{{ date_from_value }}">
           <div class="si-help">Vide = année courante (automatique)</div>
         </div>
 
         <div>
-          <label>Au</label><br>
+          <label for="sid-date-to">Au</label><br>
           {% set date_to_value = flt.date_to.isoformat() if flt.date_to else "" %}
-          <input type="date" name="date_to" value="{{ date_to_value }}">
+          <input type="date" id="sid-date-to" name="date_to" value="{{ date_to_value }}">
           <div class="si-help">Vide = année courante (automatique)</div>
         </div>
 
         <div>
-          <label>Groupement</label><br>
-          <select name="group_by">
+          <label for="sid-group-by">Groupement</label><br>
+          <select id="sid-group-by" name="group_by">
             {% for g in ["DAY","MONTH","QUARTER","YEAR"] %}
               <option value="{{ g }}" {% if flt.group_by==g %}selected{% endif %}>{{ g }}</option>
             {% endfor %}
@@ -123,8 +123,8 @@
   {# CSV sur mesure (optionnel) : collapsible, mais pas obligatoire #}
   <div class="si-card">
     <details>
-      <summary>CSV sur mesure (optionnel) — si tu veux choisir des colonnes</summary>
-      <div class="si-muted" style="margin:8px 0 10px 0;">Toujours 1 ligne = 1 présence (participant × session). Si tu ne touches à rien, le CSV par défaut suffit.</div>
+      <summary>CSV sur mesure (optionnel) — si vous voulez choisir des colonnes</summary>
+      <div class="si-muted" style="margin:8px 0 10px 0;">Toujours 1 ligne = 1 présence (participant × session). Si vous ne touchez à rien, le CSV par défaut suffit.</div>
 
       <form method="get" action="{{ url_for('statsimpact.magatomatique_export_csv') }}">
         {# on conserve les filtres existants #}
@@ -160,9 +160,9 @@
   <div class="si-card">
     <div style="font-weight:900;margin-bottom:6px;">Aide rapide</div>
     <div class="si-muted">
-      Si tu veux une export "CAF / AAP-ready" en mode tableau de présence par atelier (colonnes = sessions), utilise : <b>XLSX annuel (1 feuille / atelier)</b>.
+      Si vous voulez un export "CAF / AAP-ready" en mode tableau de présence par atelier (colonnes = sessions), utilisez : <b>XLSX annuel (1 feuille / atelier)</b>.
       <br>
-      Si tu veux juste un export brut pour Excel / stats : <b>CSV défaut</b> ou <b>XLSX Magatomatique</b>.
+      Si vous voulez juste un export brut pour Excel / stats : <b>CSV défaut</b> ou <b>XLSX Magatomatique</b>.
     </div>
   </div>
 </div>

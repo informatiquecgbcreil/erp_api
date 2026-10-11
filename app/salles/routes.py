@@ -237,7 +237,7 @@ def site_installer_plan(site_id: int):
     if crees:
         journaliser("salles.plan_type", cible=site.code, details={"espaces": crees})
         flash(
-            f"{crees} espaces créés. À toi de corriger les capacités et de cocher "
+            f"{crees} espaces créés. À vous de corriger les capacités et de cocher "
             "ce qui est louable — rien n'est figé.",
             "success",
         )
@@ -267,7 +267,7 @@ def espace_form(espace_id: int | None = None):
     site_id = espace.site_id if espace else (request.values.get("site_id", type=int))
     site = Site.query.get_or_404(site_id) if site_id else None
     if site is None:
-        flash("Crée d'abord un site (le bâtiment) avant d'y ajouter des espaces.", "warning")
+        flash("Créez d'abord un site (le bâtiment) avant d'y ajouter des espaces.", "warning")
         return redirect(url_for("salles.index"))
 
     # Parents possibles : tous les espaces du site, sauf soi-même et sa
@@ -513,7 +513,7 @@ def planning():
     """La grille murale : une ligne par salle, une colonne par jour."""
     site = _site_courant(request.args.get("site_id", type=int))
     if site is None:
-        flash("Crée d'abord un site pour voir un planning.", "warning")
+        flash("Créez d'abord un site pour voir un planning.", "warning")
         return redirect(url_for("salles.index"))
 
     jour = _date_arg("semaine") or date.today()
@@ -538,7 +538,7 @@ def planning_mensuel():
     """Le calendrier du mois, pour une salle ou pour tout le site."""
     site = _site_courant(request.args.get("site_id", type=int))
     if site is None:
-        flash("Crée d'abord un site pour voir un planning.", "warning")
+        flash("Créez d'abord un site pour voir un planning.", "warning")
         return redirect(url_for("salles.index"))
 
     repere = _date_arg("mois") or date.today().replace(day=1)
@@ -567,7 +567,7 @@ def planning_jour():
     """L'écran du hall : ce qui se passe aujourd'hui, en gros caractères."""
     site = _site_courant(request.args.get("site_id", type=int))
     if site is None:
-        flash("Crée d'abord un site.", "warning")
+        flash("Créez d'abord un site.", "warning")
         return redirect(url_for("salles.index"))
     jour = _date_arg("jour") or date.today()
     return render_template(
@@ -647,7 +647,7 @@ def occuper_form():
 
         espace = Espace.query.get(espace_id) if espace_id else None
         if espace is None:
-            flash("Choisis la salle occupée.", "danger")
+            flash("Choisissez la salle occupée.", "danger")
             return _afficher()
         if not jour_debut:
             flash("Il faut au moins une date.", "danger")
@@ -727,7 +727,7 @@ def occupation_supprimer(occupation_id: int):
     if occ.pilotee:
         flash(
             "Cette ligne vient d'une séance ou d'un créneau d'agenda : "
-            "modifie-la à sa source, sinon elle reviendra toute seule.",
+            "modifiez-la à sa source, sinon elle reviendra toute seule.",
             "warning",
         )
         return redirect(retour)

@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Fiche synthèse — {{ projet.nom }}{% endblock %}
 {% block body %}
 <style>
   .project-summary-page { gap: 18px; }
@@ -7,7 +8,7 @@
   .summary-two { display:grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap:14px; align-items:start; }
   .summary-note { border-left:4px solid #2563eb; padding:10px 12px; background:rgba(37,99,235,.06); border-radius:8px; margin-bottom:10px; }
   .summary-note h3 { margin:0 0 4px 0; font-size:16px; }
-  .summary-note__meta { color:#64748b; font-size:12px; margin-bottom:6px; }
+  .summary-note__meta { color:var(--muted, #475569); font-size:12px; margin-bottom:6px; }
   .summary-status { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:999px; font-size:12px; background:rgba(15,23,42,.08); color:#334155; }
   .summary-status--ok { background:rgba(34,197,94,.14); color:#166534; }
   .summary-status--warn { background:rgba(245,158,11,.16); color:#92400e; }
@@ -25,7 +26,7 @@
   .summary-check__title { font-weight:800; margin-bottom:3px; }
   .summary-facts { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-top:12px; }
   .summary-fact { border:1px solid rgba(15,23,42,.10); border-radius:8px; padding:10px 12px; background:rgba(15,23,42,.03); }
-  .summary-fact__label { color:#64748b; font-size:12px; margin-bottom:3px; }
+  .summary-fact__label { color:var(--muted, #475569); font-size:12px; margin-bottom:3px; }
   .summary-actions-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
   .summary-action-card { border:1px solid rgba(15,23,42,.12); border-radius:8px; padding:14px; background:#fff; }
   .summary-action-card--bad { border-left:4px solid #ef4444; }
@@ -33,7 +34,7 @@
   .summary-action-card--info { border-left:4px solid #3b82f6; }
   .summary-action-card--ok { border-left:4px solid #22c55e; }
   .summary-action-card h3 { margin:0; font-size:18px; }
-  .summary-action-meta { color:#64748b; font-size:12px; margin-top:4px; }
+  .summary-action-meta { color:var(--muted, #475569); font-size:12px; margin-top:4px; }
   .summary-action-facts { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
   .summary-mini-pill { border:1px solid rgba(15,23,42,.10); border-radius:999px; padding:4px 8px; font-size:12px; color:#475569; background:rgba(15,23,42,.03); }
   .summary-action-form { display:grid; grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(140px, 1fr)) auto; gap:10px; align-items:end; }
@@ -135,7 +136,7 @@
     <section class="monster-card">
       <h2>Fréquentation et résultats</h2>
       <p class="muted">Lecture issue des ateliers liés au projet et des présences d'émargement.</p>
-      <div class="tablewrap clean wide">
+      <div class="tablewrap clean wide" tabindex="0" role="region" aria-label="Fréquentation et résultats">
         <table>
           <tbody>
             <tr><th>Ateliers liés</th><td>{% if linked_ateliers %}{% for a in linked_ateliers %}{{ a.nom }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="muted">Aucun atelier lié</span>{% endif %}</td></tr>
@@ -254,7 +255,7 @@
       <div class="kpi-box"><div class="label">Sans objectif</div><div class="value">{{ indicator_summary.pending }}</div></div>
     </div>
     <div class="spacer"></div>
-    <div class="tablewrap clean wide">
+    <div class="tablewrap clean wide" tabindex="0" role="region" aria-label="Tableau des indicateurs">
       <table>
         <thead><tr><th>Indicateur</th><th>Valeur</th><th>Objectif</th><th>État</th></tr></thead>
         <tbody>

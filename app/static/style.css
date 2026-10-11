@@ -55,9 +55,10 @@ html[data-theme="light"]{
   --muted: #475569;
 
   --accent: #2563eb;
-  --danger: #dc2626;
-  --ok: #16a34a;
-  --warn: #d97706;
+  /* Teintes d'état assombries (mêmes valeurs que layout.html) : ≥ 4,5:1 en texte. */
+  --danger: #b91c1c;
+  --ok: #15803d;
+  --warn: #b45309;
 
   --input-bg: #ffffff;
   --input-text: #0f172a;

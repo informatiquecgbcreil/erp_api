@@ -1,11 +1,12 @@
 {% extends 'kiosk/base.html' %}
+{% block title %}Pointer ma présence{% endblock %}
 {% block header_title %}Pointer ma présence{% endblock %}
 {% block body %}
 
   <div class="k-card">
-    <h1 class="k-card__title">Bienvenue 👋</h1>
+    <h1 class="k-card__title">Bienvenue <span aria-hidden="true">👋</span></h1>
     <p class="k-card__sub">Choisissez votre atelier ci-dessous, ou entrez le code affiché par l'animateur.</p>
-    <p class="k-card__sub" style="margin-top:6px;"><a href="{{ url_for('kiosk.kiosk_programme') }}">📋 Voir le programme du jour</a></p>
+    <a class="k-btn k-btn--ghost" href="{{ url_for('kiosk.kiosk_programme') }}"><span aria-hidden="true">📋</span> Voir le programme du jour</a>
   </div>
 
   <div class="k-card">
@@ -18,10 +19,10 @@
             <span class="k-chip">{{ it.secteur }}</span>
             <span class="k-session__atelier">{{ it.atelier }}</span>
             <span class="k-session__meta">
-              {% if it.debut %}🕒 {{ it.debut }}{% if it.fin %} – {{ it.fin }}{% endif %}{% endif %}
+              {% if it.debut %}<span aria-hidden="true">🕒</span> {{ it.debut }}{% if it.fin %} – {{ it.fin }}{% endif %}{% endif %}
               {% if it.type != 'COLLECTIF' %} · rendez-vous{% endif %}
             </span>
-            <span class="k-session__go">Je participe →</span>
+            <span class="k-session__go">Je participe <span aria-hidden="true">→</span></span>
           </a>
         {% endfor %}
       </div>
@@ -31,19 +32,19 @@
         <p class="k-hint">Depuis cette adresse, la liste des ateliers n'est pas affichée (protection de l'annuaire).
           Scannez le QR code de l'atelier ou entrez son code ci-dessous.</p>
       {% else %}
-        <p class="k-hint">Aucun atelier ouvert pour le moment. Demandez le code à l'animateur ci-dessous.</p>
+        <p class="k-hint">Aucun atelier ouvert pour le moment. Demandez le code à l'animateur, puis entrez-le ci-dessous.</p>
       {% endif %}
     {% endif %}
   </div>
 
   <div class="k-card">
     <h2 class="k-card__title"><span class="k-step">2.</span> Ou entrer le code</h2>
-    <p class="k-card__sub">Le code est affiché par l'animateur de l'atelier.</p>
     <form method="post" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input class="k-input k-pin" name="pin" placeholder="000000" inputmode="numeric"
-             pattern="[0-9]*" maxlength="6" aria-label="Code de la séance" required>
-      <button class="k-btn k-btn--block k-btn--lg k-mt" type="submit">Continuer →</button>
+      <label class="k-label" for="pin">Code de l'atelier (affiché par l'animateur)</label>
+      <input class="k-input k-pin" id="pin" name="pin" placeholder="000000" inputmode="numeric"
+             pattern="[0-9]*" maxlength="6" required>
+      <button class="k-btn k-btn--block k-btn--lg k-mt" type="submit">Continuer <span aria-hidden="true">→</span></button>
     </form>
   </div>
 

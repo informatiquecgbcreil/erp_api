@@ -215,7 +215,7 @@ def login():
                     "Verrouillage déclenché pour %s depuis %s (%s min)",
                     email, adresse_ip, minutes,
                 )
-            flash("Identifiants invalides.", "danger")
+            flash("Identifiants invalides : vérifiez votre adresse e-mail et votre mot de passe.", "danger")
             return render_template("login.html")
 
         if not getattr(u, "actif", True):
@@ -257,7 +257,7 @@ def password_reset_request():
             current_app.logger.info("Password reset requested for %s (sent=%s)", user.email, sent)
 
         flash(
-            "Si un compte correspond à cet email, un lien de réinitialisation a été envoyé.",
+            "Si un compte correspond à cette adresse e-mail, un lien de réinitialisation vient de vous être envoyé.",
             "info",
         )
         return render_template("password_reset_request.html", debug_link=debug_link)

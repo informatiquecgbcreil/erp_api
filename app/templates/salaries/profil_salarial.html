@@ -28,10 +28,11 @@
         <tbody>
           {% set existantes = profil.charges if profil else [] %}
           {% for c in existantes %}
-            <tr><td><input class="in" name="charge_libelle" value="{{ c.libelle }}"></td><td><input class="in" name="charge_valeur" value="{{ ('%.2f'|format(c.centimes_par_heure / 100))|replace('.', ',') }}"></td><td><input class="in" name="charge_note" value="{{ c.note or '' }}"></td></tr>
+            <tr><td><input class="in" name="charge_libelle" value="{{ c.libelle }}" aria-label="Charge {{ loop.index }} : libellé"></td><td><input class="in" name="charge_valeur" value="{{ ('%.2f'|format(c.centimes_par_heure / 100))|replace('.', ',') }}" aria-label="Charge {{ loop.index }} : € par heure"></td><td><input class="in" name="charge_note" value="{{ c.note or '' }}" aria-label="Charge {{ loop.index }} : note"></td></tr>
           {% endfor %}
           {% for _ in range(3) %}
-            <tr><td><input class="in" name="charge_libelle" placeholder="Ex : mutuelle"></td><td><input class="in" name="charge_valeur" placeholder="0,00"></td><td><input class="in" name="charge_note"></td></tr>
+            {% set rang = existantes|length + loop.index %}
+            <tr><td><input class="in" name="charge_libelle" placeholder="Ex : mutuelle" aria-label="Charge {{ rang }} : libellé"></td><td><input class="in" name="charge_valeur" placeholder="0,00" aria-label="Charge {{ rang }} : € par heure"></td><td><input class="in" name="charge_note" aria-label="Charge {{ rang }} : note"></td></tr>
           {% endfor %}
         </tbody>
       </table></div>

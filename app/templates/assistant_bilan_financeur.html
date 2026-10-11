@@ -11,8 +11,8 @@
       <button class="btn no-print" onclick="window.print()" type="button">Imprimer la checklist</button>
     </div>
     <form class="inline no-print" method="get" style="gap:8px;flex-wrap:wrap;margin-top:10px;">
-      <input class="in" type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:110px;">
-      <select class="in" name="subvention_id">
+      <input class="in" type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:110px;" aria-label="Année d’exercice">
+      <select class="in" name="subvention_id" aria-label="Subvention à préparer">
         {% for s in subventions %}<option value="{{ s.id }}" {% if selected and s.id == selected.id %}selected{% endif %}>{{ s.nom }}{% if s.financeur %} · {{ s.financeur }}{% endif %}</option>{% endfor %}
       </select>
       <button class="btn" type="submit">Ouvrir</button>

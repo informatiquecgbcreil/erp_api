@@ -97,7 +97,7 @@ def session_new(atelier_id: int):
     secteur = _user_secteur()
     atelier = db.get_or_404(AtelierActivite, atelier_id)
     if atelier.is_deleted:
-        flash("Cet atelier est dans la corbeille. Restaure-le pour créer une séance.", "warning")
+        flash("Cet atelier est dans la corbeille. Restaurez-le pour créer une séance.", "warning")
         return redirect(url_for("activite.index", corbeille=1))
     if not _atelier_est_accessible(atelier):
         return _deny_activity_access()

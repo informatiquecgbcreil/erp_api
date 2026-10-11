@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Bilan — {{ sub.nom }}{% endblock %}
 {% block body %}
 
 {#
@@ -70,7 +71,7 @@
     <div class="grid two" style="margin-top:12px;">
       <div class="card">
         <div class="section-title">Progression (reçu / attribué)</div>
-        <div class="meter" aria-label="Progression">
+        <div class="meter" role="img" aria-label="Reçu sur attribué : {{ "%.0f"|format(pct_recu_sur_attribue) }} %">
           <div class="meter__fill {{ 'meter__fill--ok' if pct_recu_sur_attribue >= 80 else ('meter__fill--warn' if pct_recu_sur_attribue >= 30 else 'meter__fill--danger') }}" style="width:{{ pct_recu_sur_attribue }}%"></div>
         </div>
         <div class="balance-legend">
@@ -141,7 +142,7 @@
               <td>{{ "%.2f"|format(l.engage or 0) }}€</td>
               <td>{{ "%.2f"|format(l.reste or 0) }}€</td>
               <td style="min-width:240px;">
-                <div class="meter" aria-label="ligne">
+                <div class="meter" role="img" aria-label="{% if is_prod %}Réel : {{ "%.0f"|format(pct_reel) }} % de la base{% else %}Engagé : {{ "%.0f"|format(pct_engage) }} % de la base{% endif %}">
                   {% if is_prod %}
                     <div class="meter__fill meter__fill--ok" style="width:{{ pct_reel }}%"></div>
                   {% else %}

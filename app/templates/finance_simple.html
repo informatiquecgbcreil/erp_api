@@ -107,7 +107,7 @@
 
   <div class="card">
     <h2>Nouvelle dépense financée</h2>
-    <p class="muted">Crée une dépense réelle unique, puis répartis immédiatement son montant entre tes enveloppes.</p>
+    <p class="muted">Créez une dépense réelle unique, puis répartissez immédiatement son montant entre vos enveloppes.</p>
     {% if sources %}
     <form method="post" id="simpleDepenseForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -152,7 +152,7 @@
       <div class="form-actions" style="margin-top:14px;"><button class="btn ok" type="submit">Créer la dépense financée</button></div>
     </form>
     {% else %}
-      <div class="quick-info">Aucune ligne de charge disponible. Crée d’abord une subvention/enveloppe avec au moins une ligne de charge. Pour les fonds propres, crée une enveloppe “Fonds propres {{ year }}” avec un compte 99.</div>
+      <div class="quick-info">Aucune ligne de charge disponible. Créez d’abord une subvention/enveloppe avec au moins une ligne de charge. Pour les fonds propres, créez une enveloppe “Fonds propres {{ year }}” avec un compte 99.</div>
     {% endif %}
   </div>
 

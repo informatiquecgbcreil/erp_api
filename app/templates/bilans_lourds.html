@@ -125,24 +125,24 @@
       <input type="hidden" name="action" value="save_notes">
       <div class="grid" style="grid-template-columns:1fr; gap:10px;">
         <div>
-          <label>Faits marquants</label>
-          <textarea class="in" name="faits_marquants" rows="3" placeholder="Actions fortes, réussites, chiffres marquants...">{{ narrative.faits_marquants if narrative else '' }}</textarea>
+          <label for="bl-faits-marquants">Faits marquants</label>
+          <textarea class="in" id="bl-faits-marquants" name="faits_marquants" rows="3" placeholder="Actions fortes, réussites, chiffres marquants...">{{ narrative.faits_marquants if narrative else '' }}</textarea>
         </div>
         <div>
-          <label>Difficultés rencontrées</label>
-          <textarea class="in" name="difficultes" rows="3" placeholder="Freins, points de vigilance, causes...">{{ narrative.difficultes if narrative else '' }}</textarea>
+          <label for="bl-difficultes">Difficultés rencontrées</label>
+          <textarea class="in" id="bl-difficultes" name="difficultes" rows="3" placeholder="Freins, points de vigilance, causes...">{{ narrative.difficultes if narrative else '' }}</textarea>
         </div>
         <div>
-          <label>Perspectives / actions</label>
-          <textarea class="in" name="perspectives" rows="3" placeholder="Priorités, plan d'action, besoins...">{{ narrative.perspectives if narrative else '' }}</textarea>
+          <label for="bl-perspectives">Perspectives / actions</label>
+          <textarea class="in" id="bl-perspectives" name="perspectives" rows="3" placeholder="Priorités, plan d'action, besoins...">{{ narrative.perspectives if narrative else '' }}</textarea>
         </div>
         <div>
-          <label>Frise chronologique (1 ligne = Date | Titre | Détail)</label>
-          <textarea class="in" name="timeline_input" rows="5" placeholder="2026-01-12 | Lancement du cycle IA | 1ère session inter-secteurs&#10;2026-03-08 | Atelier parents | Forte mobilisation">{{ timeline_input or '' }}</textarea>
+          <label for="bl-frise">Frise chronologique (1 ligne = Date | Titre | Détail)</label>
+          <textarea class="in" id="bl-frise" name="timeline_input" rows="5" placeholder="2026-01-12 | Lancement du cycle IA | 1ère session inter-secteurs&#10;2026-03-08 | Atelier parents | Forte mobilisation">{{ timeline_input or '' }}</textarea>
         </div>
         <div>
-          <label>Photographies marquantes</label>
-          <input class="in" type="file" name="photos" accept="image/*" multiple>
+          <label for="bl-photos">Photographies marquantes</label>
+          <input class="in" type="file" id="bl-photos" name="photos" accept="image/*" multiple>
           <div class="muted" style="font-size:12px; margin-top:4px;">Formats supportés : jpg, png, webp, gif.</div>
         </div>
 

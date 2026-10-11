@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Notifications automatiques{% endblock %}
 {% block body %}
 
 <div class="stack">
@@ -39,10 +40,11 @@
                 </td>
                 <td>
                   <textarea name="destinataires_{{ r.code }}" rows="2" style="min-width:220px;"
+                            aria-label="Destinataires : {{ r.label }}"
                             placeholder="adresse@exemple.org, autre@exemple.org">{{ r.destinataires }}</textarea>
                 </td>
                 <td>
-                  <select name="frequence_{{ r.code }}">
+                  <select name="frequence_{{ r.code }}" aria-label="Fréquence : {{ r.label }}">
                     {% for code_f, label_f in frequences.items() %}
                       <option value="{{ code_f }}" {% if r.frequence == code_f %}selected{% endif %}>{{ label_f }}</option>
                     {% endfor %}
@@ -95,7 +97,7 @@
   <div class="card">
     <h2>Tester</h2>
     <p class="muted">
-      Envoie <strong>maintenant</strong> le récapitulatif des types actifs à leurs destinataires
+      Ce bouton envoie <strong>maintenant</strong> le récapitulatif des types actifs à leurs destinataires
       (la fréquence est ignorée pour ce test). Pratique pour vérifier le rendu et la
       configuration SMTP sans attendre demain.
     </p>

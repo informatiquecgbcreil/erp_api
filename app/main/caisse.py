@@ -124,12 +124,12 @@ def caisse_depot():
         nb_cheques = 0
 
     if especes <= 0 and cheques <= 0:
-        flash("Indique au moins un montant (espèces ou chèques) à déposer.", "danger")
+        flash("Indiquez au moins un montant (espèces ou chèques) à déposer.", "danger")
         return redirect(url_for("main.caisse"))
     if especes > etat["theorique_especes"]:
         flash(
             f"Impossible de déposer {especes:.2f} € en espèces : la caisse n'en contient que "
-            f"{etat['theorique_especes']:.2f} € en théorie (fais d'abord un comptage si le réel diffère).",
+            f"{etat['theorique_especes']:.2f} € en théorie (faites d'abord un comptage si le réel diffère).",
             "danger",
         )
         return redirect(url_for("main.caisse"))
@@ -141,7 +141,7 @@ def caisse_depot():
         )
         return redirect(url_for("main.caisse"))
     if cheques > 0 and nb_cheques <= 0:
-        flash("Indique le nombre de chèques déposés.", "danger")
+        flash("Indiquez le nombre de chèques déposés.", "danger")
         return redirect(url_for("main.caisse"))
 
     jour = _date_form("date_depot")
@@ -166,7 +166,7 @@ def caisse_depot():
         ids.append(m)
     db.session.commit()
     journaliser("caisse.depot", cible=f"espèces {especes:.2f} € + chèques {cheques:.2f} € ({nb_cheques})")
-    flash("Dépôt enregistré. Tu peux imprimer le bordereau pour l'apporter à la banque.", "success")
+    flash("Dépôt enregistré. Vous pouvez imprimer le bordereau pour l'apporter à la banque.", "success")
     return redirect(url_for("main.caisse_bordereau", mouvement_id=ids[0].id))
 
 

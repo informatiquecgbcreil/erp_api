@@ -8,8 +8,8 @@
 
     <form method="get" class="inline" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
       <div>
-        <label>Séance</label>
-        <select class="in" name="session_id" required>
+        <label for="observation-session-id">Séance</label>
+        <select class="in" id="observation-session-id" name="session_id" required>
           <option value="">Choisir…</option>
           {% for s in sessions %}
             {% set label = s.date_session or s.rdv_date or '' %}
@@ -18,8 +18,8 @@
         </select>
       </div>
       <div>
-        <label>Participant (optionnel)</label>
-        <select class="in" name="participant_id">
+        <label for="observation-participant-id">Participant (optionnel)</label>
+        <select class="in" id="observation-participant-id" name="participant_id">
           <option value="">Groupe / séance</option>
           {% for pr in participants %}
             <option value="{{ pr.participant.id }}" {% if selected_participant_id == pr.participant.id %}selected{% endif %}>{{ pr.participant.nom }} {{ pr.participant.prenom }}</option>
@@ -39,8 +39,8 @@
         <input type="hidden" name="participant_id" value="{{ selected_participant_id or '' }}">
 
         <div>
-          <label>Mode</label>
-          <select class="in" name="mode">
+          <label for="observation-mode">Mode</label>
+          <select class="in" id="observation-mode" name="mode">
             <option value="ressenti">Ressenti (souple)</option>
             <option value="competence">Compétence (objectif atteint)</option>
             <option value="mixte">Mixte</option>
@@ -59,8 +59,8 @@
 
               <div class="grid" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
                 <div>
-                  <label>État de l'objectif</label>
-                  <select class="in" name="etat_{{ obj.id }}">
+                  <label for="observation-etat-{{ obj.id }}">État de l'objectif</label>
+                  <select class="in" id="observation-etat-{{ obj.id }}" name="etat_{{ obj.id }}">
                     <option value="">—</option>
                     <option value="0">Non atteint</option>
                     <option value="1">En progression</option>
@@ -69,8 +69,8 @@
                   </select>
                 </div>
                 <div>
-                  <label>Ressenti (1 à 5)</label>
-                  <select class="in" name="ressenti_{{ obj.id }}">
+                  <label for="observation-ressenti-{{ obj.id }}">Ressenti (1 à 5)</label>
+                  <select class="in" id="observation-ressenti-{{ obj.id }}" name="ressenti_{{ obj.id }}">
                     <option value="">—</option>
                     <option value="1">1 · Très difficile</option>
                     <option value="2">2</option>
@@ -81,8 +81,8 @@
                 </div>
               </div>
 
-              <label style="margin-top:8px;">Commentaire</label>
-              <input class="in" name="commentaire_{{ obj.id }}" placeholder="Observation terrain, ressenti, anecdote utile…">
+              <label for="observation-commentaire-{{ obj.id }}" style="margin-top:8px;">Commentaire</label>
+              <input class="in" id="observation-commentaire-{{ obj.id }}" name="commentaire_{{ obj.id }}" placeholder="Observation terrain, ressenti, anecdote utile…">
             </div>
           {% endfor %}
 
@@ -90,7 +90,7 @@
             <button class="btn ok" type="submit">Enregistrer la saisie</button>
           </div>
         {% else %}
-          <div class="muted">Aucun apprentissage n’a été choisi pour cette séance. Passe par “Suivi des apprentissages” pour ajouter ce qui est travaillé aujourd’hui.</div>
+          <div class="muted">Aucun apprentissage n’a été choisi pour cette séance. Passez par “Suivi des apprentissages” pour ajouter ce qui est travaillé aujourd’hui.</div>
         {% endif %}
       </form>
     </div>

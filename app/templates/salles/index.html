@@ -34,7 +34,7 @@
       <div>
         <h1>🏢 Salles et espaces</h1>
         <p class="muted">
-          Le plan de tes bâtiments. Chaque espace peut en contenir d'autres :
+          Le plan de vos bâtiments. Chaque espace peut en contenir d'autres :
           c'est ce qui permet à la grande salle de savoir que ses deux moitiés
           sont prises, et à l'armoire sécurisée de vivre dans l'atelier sans
           polluer la liste des salles.
@@ -77,7 +77,7 @@
       <div class="ui-empty-state">
         <h2>Aucun bâtiment enregistré</h2>
         <p class="muted">
-          Commence par créer ton site principal. Ensuite, un bouton te proposera
+          Commencez par créer votre site principal. Ensuite, un bouton vous proposera
           d'installer un plan type de centre social — une trentaine d'espaces
           prêts à corriger, plutôt qu'une page blanche.
         </p>
@@ -158,13 +158,15 @@
                 {% if can('salles:edit') %}
                   <span class="plan-actions">
                     <a class="btn" href="{{ url_for('salles.espace_form', site_id=site.id, parent_id=espace.id) }}"
-                       title="Ajouter un espace à l'intérieur">＋</a>
-                    <a class="btn" href="{{ url_for('salles.espace_form', espace_id=espace.id) }}">✏️</a>
+                       title="Ajouter un espace à l'intérieur" aria-label="Ajouter un espace dans « {{ espace.nom }} »">＋</a>
+                    <a class="btn" href="{{ url_for('salles.espace_form', espace_id=espace.id) }}"
+                       title="Modifier « {{ espace.nom }} »" aria-label="Modifier « {{ espace.nom }} »">✏️</a>
                     <form method="post" action="{{ url_for('salles.espace_supprimer', espace_id=espace.id) }}"
                           style="display:inline;"
                           onsubmit="return confirm('Supprimer « {{ espace.nom|e }} » ainsi que tout ce qu\'il contient ?');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="btn warn" type="submit">🗑️</button>
+                      <button class="btn warn" type="submit" title="Supprimer « {{ espace.nom }} »"
+                              aria-label="Supprimer « {{ espace.nom }} »">🗑️</button>
                     </form>
                   </span>
                 {% endif %}

@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Résultats de recherche{% endblock %}
 {% block body %}
 {% set safe_results = results if results is iterable else [] %}
 {% set safe_grouped = grouped_results if grouped_results is mapping else {} %}
@@ -57,7 +58,7 @@
   {% else %}
     <div class="card" style="padding:18px;">
       <div style="font-weight:800; margin-bottom:6px;">Aucun résultat</div>
-      <div class="muted">Essaie un nom, un mail, un téléphone, un quartier, une ville, un secteur ou un filtre du type <code>type:participant</code>, <code>secteur:Insertion</code>, <code>quartier:Rouher</code>.</div>
+      <div class="muted">Essayez un nom, un e-mail, un téléphone, un quartier, une ville, un secteur ou un filtre du type <code>type:participant</code>, <code>secteur:Insertion</code>, <code>quartier:Rouher</code>.</div>
     </div>
   {% endif %}
 </div>

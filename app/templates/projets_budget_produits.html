@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Produits du projet — {{ projet.nom }}{% endblock %}
 {% block body %}
 <div class="stack">
 
@@ -47,8 +48,8 @@
 
     <div class="budget-section" style="padding:0; margin-top:12px;">
       <div class="metric-label">Sécurisé vs à sécuriser</div>
-      <div class="meter">
-        {% set pct_couvert = pct_accorde_sur_charges %}
+      {% set pct_couvert = pct_accorde_sur_charges %}
+      <div class="meter" role="img" aria-label="Part sécurisée des charges : {{ "%.0f"|format(pct_couvert) }} %">
         <div class="meter__fill meter__fill--ok" style="width:{{ pct_couvert }}%;"></div>
       </div>
       <div class="legend">
@@ -97,13 +98,13 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="field">
-        <label>Financeur</label>
-        <input name="financeur" placeholder="Ex: CAF Oise" required>
+        <label for="produit-financeur">Financeur</label>
+        <input name="financeur" id="produit-financeur" placeholder="Ex: CAF Oise" required>
       </div>
 
       <div class="field">
-        <label>Catégorie</label>
-        <select name="categorie">
+        <label for="produit-categorie">Catégorie</label>
+        <select name="categorie" id="produit-categorie">
           <option value="etat">État</option>
           <option value="region">Région</option>
           <option value="departement">Département</option>
@@ -118,8 +119,8 @@
       </div>
 
       <div class="field">
-        <label>Statut</label>
-        <select name="statut">
+        <label for="produit-statut">Statut</label>
+        <select name="statut" id="produit-statut">
           <option value="prevu">Prévu</option>
           <option value="demande">Demandé</option>
           <option value="accorde">Accordé</option>
@@ -129,28 +130,28 @@
       </div>
 
       <div class="field">
-        <label>Demandé (€)</label>
-        <input name="montant_demande" type="number" step="0.01" placeholder="0.00">
+        <label for="produit-demande">Demandé (€)</label>
+        <input name="montant_demande" id="produit-demande" type="number" step="0.01" placeholder="0.00">
       </div>
 
       <div class="field">
-        <label>Accordé (€)</label>
-        <input name="montant_accorde" type="number" step="0.01" placeholder="0.00">
+        <label for="produit-accorde">Accordé (€)</label>
+        <input name="montant_accorde" id="produit-accorde" type="number" step="0.01" placeholder="0.00">
       </div>
 
       <div class="field">
-        <label>Reçu (€)</label>
-        <input name="montant_recu" type="number" step="0.01" placeholder="0.00">
+        <label for="produit-recu">Reçu (€)</label>
+        <input name="montant_recu" id="produit-recu" type="number" step="0.01" placeholder="0.00">
       </div>
 
       <div class="field">
-        <label>Référence du dossier</label>
-        <input name="reference_dossier" placeholder="Ex: 2026-CAF-123">
+        <label for="produit-reference">Référence du dossier</label>
+        <input name="reference_dossier" id="produit-reference" placeholder="Ex: 2026-CAF-123">
       </div>
 
       <div class="field field--wide">
-        <label>Commentaire</label>
-        <input name="commentaire" placeholder="Notes…">
+        <label for="produit-commentaire">Commentaire</label>
+        <input name="commentaire" id="produit-commentaire" placeholder="Notes…">
       </div>
 
       <div class="field field--actions">
@@ -198,7 +199,7 @@
             <td class="num">
               <div class="cell-money">
                 <div class="cell-money__main mono">{{ "%.2f"|format(v) }}€</div>
-                <div class="meter meter--thin" style="width:140px;">
+                <div class="meter meter--thin" style="width:140px;" role="img" aria-label="Part ventilée : {{ "%.0f"|format(pct_v) }} %">
                   <div class="meter__fill" style="width:{{ pct_v }}%;"></div>
                 </div>
                 <div class="cell-money__sub muted">{{ "%.0f"|format(pct_v) }}% ventilé</div>
@@ -210,7 +211,7 @@
             </td>
 
             <td class="actions" style="white-space:nowrap">
-              <a class="btn" href="{{ url_for('projets.projet_budget_produit_edit', projet_id=projet.id, produit_id=p.id) }}">✏️</a>
+              <a class="btn" href="{{ url_for('projets.projet_budget_produit_edit', projet_id=projet.id, produit_id=p.id) }}" title="Modifier" aria-label="Modifier le financeur {{ p.financeur }}">✏️</a>
               <form method="post" action="{{ url_for('projets.projet_budget_produit_delete', projet_id=projet.id, produit_id=p.id) }}" style="display:inline" onsubmit="return confirm('Supprimer ce produit/financeur ?');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn" type="submit">Supprimer</button>

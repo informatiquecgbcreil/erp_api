@@ -28,7 +28,7 @@
         <tr><td><code>{{ t.code }}</code></td><td>{{ t.libelle }}</td><td>{{ t.extensions }}</td>
           <td>{% if t.id not in utilises %}
             <form method="post" action="{{ url_for('salaries.supprimer_type_document', type_id=t.id) }}" onsubmit="return confirm('Supprimer ce type ?');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost" type="submit">🗑</button></form>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost" type="submit" title="Supprimer ce type" aria-label="Supprimer le type {{ t.libelle }}">🗑</button></form>
           {% else %}<span class="muted">utilisé</span>{% endif %}</td></tr>
       {% else %}
         <tr><td colspan="4" class="muted">Aucun type.</td></tr>

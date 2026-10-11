@@ -164,7 +164,7 @@
           <div class="ia-doublon">
             <strong>⚠️ Des fiches ressemblantes existent déjà.</strong>
             <p class="muted" style="margin:4px 0 8px; font-size:.85rem;">
-              Rattache l'inscription à la bonne fiche plutôt que de créer un doublon
+              Rattachez l'inscription à la bonne fiche plutôt que de créer un doublon
               (un doublon fausse toutes les statistiques).
             </p>
             {% for d in doublons %}
@@ -234,7 +234,7 @@
         </tbody>
       </table>
       {% if cout.manquants %}
-        <p class="muted" style="margin-top:8px; color:#8a1f1f;">
+        <p class="muted" style="margin-top:8px; color:var(--danger);">
           ⚠️ Aucun tarif au barème pour : {{ cout.manquants|join(', ') }}. Le montant compte pour 0 €.
           {% if can('cotisations:tarifs') %}
             <a href="{{ url_for('main.tarifs_cotisations', annee=inscription.annee_scolaire) }}">Compléter le barème</a>.
@@ -305,7 +305,7 @@
             <label><span>Montant encaissé (€)</span>
               <input class="in" type="text" inputmode="decimal" name="montant"
                      value="{{ "%.2f"|format(etat.reste) }}"
-                     title="Laisse le total pour solder, ou saisis un acompte.">
+                     title="Laissez le total pour solder, ou saisissez un acompte.">
             </label>
             <label><span>Mode de règlement</span>
               <select class="in" name="mode">
@@ -328,10 +328,10 @@
           {# Rien à payer n'est pas la même chose que « déjà payé » : dire
              « réglé » ici induirait en erreur tant que le barème n'a pas
              donné de vrai montant. #}
-          <p style="margin-top:10px; color:#8a1f1f;">
+          <p style="margin-top:10px; color:var(--danger);">
             <strong>⚠️ Rien n'est encore dû</strong> — aucun montant n'a pu être calculé
             {% if cout.manquants %}(barème incomplet, voir ci-dessus){% endif %}.
-            Complète le barème puis clique sur « 🔄 Mettre les cotisations à jour »
+            Complétez le barème puis cliquez sur « 🔄 Mettre les cotisations à jour »
             ci-dessous : les montants seront rattrapés automatiquement.
           </p>
         {% else %}
@@ -355,7 +355,7 @@
             </tbody>
           </table>
           {% if etat.trop_percu > 0 and etat.source == 'cotisations' %}
-            <p style="color:#8a1f1f; margin:4px 0;"><strong>Trop-perçu : {{ "%.2f"|format(etat.trop_percu) }} €</strong> —
+            <p style="color:var(--danger); margin:4px 0;"><strong>Trop-perçu : {{ "%.2f"|format(etat.trop_percu) }} €</strong> —
               somme reçue au-delà de ce qui est dû. À rendre (contre-passation motivée) ou à conserver en attente d'affectation.</p>
           {% endif %}
           <form method="post" action="{{ url_for('inscriptions_annuelles.reglement', inscription_id=inscription.id) }}" style="margin-top:10px;"

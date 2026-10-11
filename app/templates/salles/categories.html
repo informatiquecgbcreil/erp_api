@@ -34,7 +34,8 @@
                           style="display:inline;"
                           onsubmit="return confirm('Supprimer « {{ c.libelle|e }} » et tous ses tarifs ?');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;">🗑️</button>
+                      <button class="btn warn" type="submit" style="padding:2px 9px; font-size:.76rem;"
+                              title="Supprimer « {{ c.libelle }} »" aria-label="Supprimer « {{ c.libelle }} »">🗑️</button>
                     </form>
                   </div>
                 </td>
@@ -63,13 +64,13 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         <div style="flex:1; min-width:220px;">
-          <label class="ui-label">Libellé *</label>
-          <input class="in" name="libelle" required style="width:100%;"
+          <label for="cat_libelle" class="ui-label">Libellé *</label>
+          <input id="cat_libelle" class="in" name="libelle" required style="width:100%;"
                  placeholder="Association du territoire, Comité d'entreprise…">
         </div>
         <div style="flex:2; min-width:240px;">
-          <label class="ui-label">Description</label>
-          <input class="in" name="description" style="width:100%;">
+          <label for="cat_description" class="ui-label">Description</label>
+          <input id="cat_description" class="in" name="description" style="width:100%;">
         </div>
       </div>
       <label class="inline" style="gap:7px; align-items:flex-start;">

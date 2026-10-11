@@ -28,12 +28,12 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="encaissement_id" value="{{ e.id }}">
         {% for i in range(3) %}
-          <div><label class="ui-label">Mode {{ i + 1 }}</label>
-            <select class="in" name="mode_{{ i }}"><option value="">—</option>
+          <div><label class="ui-label" for="qual-{{ e.id }}-mode-{{ i }}">Mode {{ i + 1 }}</label>
+            <select class="in" name="mode_{{ i }}" id="qual-{{ e.id }}-mode-{{ i }}"><option value="">—</option>
               {% for m in modes %}<option value="{{ m }}">{{ modes_labels[m] }}</option>{% endfor %}
             </select></div>
-          <div><label class="ui-label">Montant {{ i + 1 }}</label>
-            <input class="in" name="montant_{{ i }}" size="7" inputmode="decimal" {% if i == 0 %}value="{{ '%.2f'|format(e.montant) }}"{% endif %}></div>
+          <div><label class="ui-label" for="qual-{{ e.id }}-montant-{{ i }}">Montant {{ i + 1 }}</label>
+            <input class="in" name="montant_{{ i }}" id="qual-{{ e.id }}-montant-{{ i }}" size="7" inputmode="decimal" {% if i == 0 %}value="{{ '%.2f'|format(e.montant) }}"{% endif %}></div>
         {% endfor %}
         <div>
           <label><input type="radio" name="caisse" value="dans" required> Entre dans la caisse</label><br>

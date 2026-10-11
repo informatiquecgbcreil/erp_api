@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Séances en série — {{ atelier.nom }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="card">
@@ -17,39 +18,39 @@
 
       <div class="inline" style="gap:14px; flex-wrap:wrap;">
         <div class="field-stack">
-          <label>Du</label>
-          <input class="in" type="date" name="date_debut" required>
+          <label for="serie-du">Du</label>
+          <input class="in" type="date" id="serie-du" name="date_debut" required>
         </div>
         <div class="field-stack">
-          <label>Au</label>
-          <input class="in" type="date" name="date_fin" required>
+          <label for="serie-au">Au</label>
+          <input class="in" type="date" id="serie-au" name="date_fin" required>
         </div>
       </div>
 
-      <div>
-        <label>Jours de la semaine</label>
+      <fieldset style="border:0; margin:0; padding:0; min-width:0;">
+        <legend style="padding:0; font-size:13px; font-weight:700;">Jours de la semaine</legend>
         <div class="inline" style="gap:14px; flex-wrap:wrap; margin-top:4px;">
           {% set jours = [(0,'Lundi'),(1,'Mardi'),(2,'Mercredi'),(3,'Jeudi'),(4,'Vendredi'),(5,'Samedi'),(6,'Dimanche')] %}
           {% for val,lib in jours %}
-            <label class="inline" style="gap:6px; align-items:center;">
+            <label class="inline" style="gap:6px; align-items:center; flex-direction:row;">
               <input type="checkbox" name="weekday" value="{{ val }}"> {{ lib }}
             </label>
           {% endfor %}
         </div>
-      </div>
+      </fieldset>
 
       <div class="inline" style="gap:14px; flex-wrap:wrap;">
         <div class="field-stack">
-          <label>Heure de début</label>
-          <input class="in" type="time" name="heure_debut">
+          <label for="serie-debut">Heure de début</label>
+          <input class="in" type="time" id="serie-debut" name="heure_debut">
         </div>
         <div class="field-stack">
-          <label>Heure de fin</label>
-          <input class="in" type="time" name="heure_fin">
+          <label for="serie-fin">Heure de fin</label>
+          <input class="in" type="time" id="serie-fin" name="heure_fin">
         </div>
           <div style="margin-top:10px;">
-            <label>Salle</label>
-            <select class="in" name="espace_id">
+            <label for="serie-salle">Salle</label>
+            <select class="in" id="serie-salle" name="espace_id">
               <option value="">— Hors les murs / aucune salle —</option>
               {% for salle in salles_occupables() %}
                 <option value="{{ salle.id }}" {% if atelier.espace_id == salle.id %}selected{% endif %}>
@@ -60,16 +61,16 @@
             <div class="muted">Toutes les séances créées seront placées dans cette salle.</div>
           </div>
         <div class="field-stack">
-          <label>Capacité</label>
-          <input class="in" type="number" min="0" step="1" name="capacite"
+          <label for="serie-capacite">Capacité</label>
+          <input class="in" type="number" min="0" step="1" id="serie-capacite" name="capacite"
                  value="{{ atelier.capacite_defaut or '' }}" placeholder="Places">
         </div>
       </div>
 
       {% if secteurs_imputation|default([])|length > 1 %}
         <div class="field-stack">
-          <label>Secteur d'imputation</label>
-          <select class="in" name="secteur_impute">
+          <label for="serie-secteur">Secteur d'imputation</label>
+          <select class="in" id="serie-secteur" name="secteur_impute">
             {% for s_lbl in secteurs_imputation %}
               <option value="{{ s_lbl }}" {% if s_lbl == atelier.secteur %}selected{% endif %}>
                 {{ s_lbl }}{% if s_lbl == atelier.secteur %} (secteur de l'atelier){% endif %}
@@ -83,7 +84,7 @@
         </div>
       {% endif %}
 
-      <label class="inline" style="gap:6px; align-items:center;">
+      <label class="inline" style="gap:6px; align-items:center; flex-direction:row; flex-wrap:nowrap;">
         <input type="checkbox" name="skip_existing" value="1" checked>
         <span>Ne pas recréer une séance s'il en existe déjà une à la même date</span>
       </label>

@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}Modifier la fiche insertion{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="breadcrumb">
@@ -25,12 +26,12 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="filters-grid" style="grid-template-columns:1fr 1fr;">
         <div>
-          <label class="muted">Pays d’origine</label>
-          <input class="in" type="text" name="pays_origine" value="{{ profile.pays_origine or '' }}" maxlength="120">
+          <label for="insertion-pays-origine" class="muted">Pays d’origine</label>
+          <input class="in" type="text" id="insertion-pays-origine" name="pays_origine" value="{{ profile.pays_origine or '' }}" maxlength="120">
         </div>
         <div>
-          <label class="muted">CIR obtenu</label>
-          <select class="in" name="cir_obtenu">
+          <label for="insertion-cir-obtenu" class="muted">CIR obtenu</label>
+          <select class="in" id="insertion-cir-obtenu" name="cir_obtenu">
             <option value="">Non renseigné</option>
             <option value="1" {% if profile.cir_obtenu is sameas true %}selected{% endif %}>Oui</option>
             <option value="0" {% if profile.cir_obtenu is sameas false %}selected{% endif %}>Non</option>

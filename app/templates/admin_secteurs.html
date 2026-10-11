@@ -17,12 +17,12 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="row two">
           <div>
-            <label>Nom (label)</label>
-            <input name="label" required placeholder="Ex: Numérique, Jeunesse, Familles...">
+            <label for="secteur_label">Nom (label)</label>
+            <input id="secteur_label" name="label" required placeholder="Ex: Numérique, Jeunesse, Familles...">
           </div>
           <div>
-            <label>Code (optionnel)</label>
-            <input name="code" placeholder="Ex: numerique (sinon auto)">
+            <label for="secteur_code">Code (optionnel)</label>
+            <input id="secteur_code" name="code" placeholder="Ex: numerique (sinon auto)">
           </div>
         </div>
         <div class="spacer"></div>
@@ -49,7 +49,7 @@
                 <td>
                   <form method="POST" action="{{ url_for('admin.secteur_rename', secteur_id=s.id) }}" class="row" style="gap:.5rem;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input name="label" value="{{ s.label }}" style="min-width: 180px;">
+                    <input name="label" value="{{ s.label }}" style="min-width: 180px;" aria-label="Nouveau nom du secteur {{ s.label }}">
                     <button class="btn" type="submit">Renommer</button>
                   </form>
                 </td>
@@ -81,7 +81,7 @@
             <div class="inline-actions">
               <form method="POST" action="{{ url_for('admin.secteur_rename', secteur_id=s.id) }}" class="inline-actions">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input name="label" value="{{ s.label }}">
+                <input name="label" value="{{ s.label }}" aria-label="Nouveau nom du secteur {{ s.label }}">
                 <button class="btn" type="submit">Renommer</button>
               </form>
               <form method="POST" action="{{ url_for('admin.secteur_toggle', secteur_id=s.id) }}">

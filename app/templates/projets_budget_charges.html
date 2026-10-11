@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Charges du projet — {{ projet.nom }}{% endblock %}
 {% block body %}
 <div class="stack">
 
@@ -60,7 +61,7 @@
 
       <div class="card" style="margin-top:12px;">
         <div class="section-title">Couverture des charges</div>
-        <div class="meter" aria-label="Couverture des charges">
+        <div class="meter" role="img" aria-label="Couverture des charges : {{ "%.0f"|format(pct_ventile) }} %">
           <div class="meter__fill meter__fill--ok" style="width:{{ pct_ventile }}%"></div>
         </div>
         <div class="balance-legend">
@@ -88,15 +89,15 @@
 
     <form method="post" class="row three">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input name="libelle" placeholder="Libellé (ex. : animateur – 0,5 ETP)" required>
-      <select name="bloc">
+      <input name="libelle" placeholder="Libellé (ex. : animateur – 0,5 ETP)" required aria-label="Libellé de la charge">
+      <select name="bloc" aria-label="Bloc (charge directe ou indirecte)">
         <option value="directe">Directe</option>
         <option value="indirecte">Indirecte</option>
       </select>
-      <input name="code_plan" placeholder="Code comptable (60, 61, 62, 64…)" value="60">
-      <input name="montant_previsionnel" type="number" step="0.01" placeholder="Prévisionnel (€)">
-      <input name="montant_reel" type="number" step="0.01" placeholder="Montant réalisé (€) – optionnel">
-      <input name="commentaire" placeholder="Commentaire (option)">
+      <input name="code_plan" placeholder="Code comptable (60, 61, 62, 64…)" value="60" aria-label="Code comptable">
+      <input name="montant_previsionnel" type="number" step="0.01" placeholder="Prévisionnel (€)" aria-label="Montant prévisionnel (€)">
+      <input name="montant_reel" type="number" step="0.01" placeholder="Montant réalisé (€) – optionnel" aria-label="Montant réalisé (€), optionnel">
+      <input name="commentaire" placeholder="Commentaire (option)" aria-label="Commentaire (optionnel)">
       <button class="btn ok" type="submit">Ajouter la charge</button>
     </form>
   </div>
@@ -138,7 +139,7 @@
             <td class="num">
               <div class="cell-money">
                 <div class="cell-money__main mono">{{ "%.2f"|format(v) }}€</div>
-                <div class="meter meter--thin" aria-label="Couverture de la ligne">
+                <div class="meter meter--thin" role="img" aria-label="Couverture de la ligne : {{ "%.0f"|format(pct_ligne) }} %">
                   <div class="meter__fill meter__fill--ok" style="width:{{ "%.0f"|format(pct_ligne) }}%"></div>
                 </div>
                 <div class="cell-money__sub muted">{{ "%.0f"|format(pct_ligne) }}%</div>
@@ -157,7 +158,7 @@
 				  </span>
 				</div>
 
-				<div class="meter meter--thin" aria-label="Reste à financer (ligne)">
+				<div class="meter meter--thin" role="img" aria-label="Reste à financer (ligne) : {{ "%.0f"|format(pct_reste_ligne) }} %">
 				  <div class="meter__fill meter__fill--warn" style="width:{{ "%.0f"|format(pct_reste_ligne) }}%"></div>
 				</div>
 
@@ -170,7 +171,7 @@
             <td class="num mono">{{ "%.2f"|format(c.reste_a_engager or 0) }}€</td>
 
             <td class="actions" style="white-space:nowrap">
-              <a class="btn" href="{{ url_for('projets.projet_budget_charge_edit', projet_id=projet.id, charge_id=c.id) }}">✏️</a>
+              <a class="btn" href="{{ url_for('projets.projet_budget_charge_edit', projet_id=projet.id, charge_id=c.id) }}" title="Modifier" aria-label="Modifier la charge {{ c.libelle }}">✏️</a>
               <form method="post" action="{{ url_for('projets.projet_budget_charge_delete', projet_id=projet.id, charge_id=c.id) }}" style="display:inline" onsubmit="return confirm('Supprimer cette charge ?');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn" type="submit">Supprimer</button>

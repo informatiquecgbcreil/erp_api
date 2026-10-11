@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Registres de l'installation{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="card">
@@ -37,13 +38,13 @@
         <thead><tr><th>Série</th><th>Au moins</th><th>Dernier numéro émis (relevé)</th></tr></thead>
         <tbody>{% for espace, borne in (blocage.bornes or {})|dictsort %}
           <tr><td>{{ espace }}</td><td>{{ borne }}</td>
-              <td><input name="max_{{ espace }}" inputmode="numeric" size="8" required></td></tr>{% endfor %}
+              <td><input name="max_{{ espace }}" inputmode="numeric" size="8" required aria-label="Dernier numéro émis — {{ espace }}"></td></tr>{% endfor %}
         </tbody>
       </table>
       <p>Autre série émise absente de la liste :
-        <select name="autre_serie"><option value="">—</option><option value="don">Reçus de dons</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>
-        <input name="autre_annee" inputmode="numeric" size="5" placeholder="Année">
-        <input name="autre_numero" inputmode="numeric" size="6" placeholder="Dernier n°"></p>
+        <select name="autre_serie" aria-label="Autre série"><option value="">—</option><option value="don">Reçus de dons</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>
+        <input name="autre_annee" inputmode="numeric" size="5" placeholder="Année" aria-label="Année de l'autre série">
+        <input name="autre_numero" inputmode="numeric" size="6" placeholder="Dernier n°" aria-label="Dernier numéro émis de l'autre série"></p>
       <button class="btn btn-primary">Rétablir et reprendre l'émission</button>
     </form>
   </div>
@@ -74,7 +75,8 @@
     <p><a class="btn" href="{{ url_for('main.controle_registres_export') }}">Exporter les registres</a></p>
     <form method="post" enctype="multipart/form-data" action="{{ url_for('main.controle_registres_import') }}" class="inline" style="gap:8px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="file" name="fichier" accept=".json,application/json">
+      <label for="registres-fichier" class="sr-only">Fichier des registres à importer (JSON)</label>
+      <input type="file" id="registres-fichier" name="fichier" accept=".json,application/json">
       <button class="btn">Importer (fusion)</button>
     </form>
     <h3>Après la perte du serveur</h3>
@@ -85,9 +87,9 @@
       d'effacement reçues depuis cette date.</p>
     <form method="post" action="{{ url_for('main.controle_registres_dernier_numero') }}" class="inline" style="gap:8px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <select name="serie"><option value="don">Reçus de dons</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>
-      <input name="annee" inputmode="numeric" size="5" placeholder="Année">
-      <input name="numero" inputmode="numeric" size="6" placeholder="Dernier n°">
+      <select name="serie" aria-label="Série"><option value="don">Reçus de dons</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>
+      <input name="annee" inputmode="numeric" size="5" placeholder="Année" aria-label="Année">
+      <input name="numero" inputmode="numeric" size="6" placeholder="Dernier n°" aria-label="Dernier numéro émis">
       <button class="btn">Déclarer</button>
     </form>
   </div>
@@ -103,7 +105,7 @@
       les anonymisations manquantes, puis indiquez ce qui a été vérifié.</p>
     <form method="post" action="{{ url_for('main.controle_registres_incident_effacements') }}" class="inline" style="gap:8px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input name="note" maxlength="255" required placeholder="Ce qui a été vérifié">
+      <input name="note" maxlength="255" required placeholder="Ce qui a été vérifié" aria-label="Ce qui a été vérifié">
       <button class="btn">Vérifié</button>
     </form>
   </div>

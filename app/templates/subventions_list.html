@@ -142,14 +142,14 @@
         <div class="spacer"></div>
         <details class="card" style="margin:0; padding:12px;">
           <summary style="cursor:pointer; font-weight:800;">Préremplir les lignes budgétaires depuis le référentiel</summary>
-          <p class="muted">Optionnel : coche les charges/produits fréquents pour créer immédiatement les lignes de la subvention. Tu ajusteras ensuite les montants dans le pilotage.</p>
+          <p class="muted">Optionnel : cochez les charges et produits fréquents pour créer immédiatement les lignes de la subvention. Vous ajusterez ensuite les montants dans le pilotage.</p>
           <div class="tablewrap clean" style="max-height:280px; overflow:auto;">
             <table class="table">
               <thead><tr><th></th><th>Nature</th><th>Compte</th><th>Catégorie</th><th>Montant défaut</th></tr></thead>
               <tbody>
                 {% for c in categories_ref %}
                 <tr>
-                  <td><input type="checkbox" name="categorie_ref_id" value="{{ c.id }}"></td>
+                  <td><input type="checkbox" name="categorie_ref_id" value="{{ c.id }}" aria-label="Préremplir la ligne {{ c.compte.code }} — {{ c.libelle }}"></td>
                   <td>{{ 'Produit' if c.nature == 'produit' else 'Charge' }}</td>
                   <td>{{ c.compte.code }} - {{ c.compte.libelle }}</td>
                   <td><strong>{{ c.libelle }}</strong></td>

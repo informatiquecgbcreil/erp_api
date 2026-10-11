@@ -111,8 +111,8 @@
         <form method="post" class="inline" style="gap:6px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="ligne_id" value="{{ l.id }}">
-          <input name="note" maxlength="255" placeholder="Note" required>
-          <input name="montant" inputmode="decimal" size="8" placeholder="Montant">
+          <input name="note" maxlength="255" placeholder="Note" required aria-label="Note (sur quoi repose votre décision)">
+          <input name="montant" inputmode="decimal" size="8" placeholder="Montant" aria-label="Montant de la somme distincte (€)">
           <button class="btn" name="action" value="constater">Constater une somme distincte</button>
         </form>
         {% endif %}
@@ -130,7 +130,7 @@
     <form method="post" class="inline" style="gap:8px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="comparer">
-      <select name="base">{% for lot in lots %}<option value="{{ lot.base }}">{{ lot.base }}</option>{% endfor %}</select>
+      <select name="base" aria-label="Sauvegarde à comparer">{% for lot in lots %}<option value="{{ lot.base }}">{{ lot.base }}</option>{% endfor %}</select>
       <button class="btn">Lire cette sauvegarde</button>
     </form>
     {% endif %}

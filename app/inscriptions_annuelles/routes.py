@@ -1,9 +1,10 @@
 """Module Inscriptions annuelles — saisie, suivi, règlement, fiche, export.
 
-Portée secteur : sans ``scope:all_secteurs``, on ne voit que les bulletins
-de son propre secteur — ceux qu'on a saisis (``created_secteur``) et ceux
-dont on est le secteur qui fait venir (``secteur_orienteur``). Les bulletins
-sans secteur forment une file à affecter réservée aux comptes globaux.
+Portée secteur : sans ``scope:all_secteurs`` ni ``inscriptions_annuelles:tous_secteurs``
+(accueil), on ne voit que les bulletins de son propre secteur — ceux qu'on a
+saisis (``created_secteur``) et ceux dont on est le secteur qui fait venir
+(``secteur_orienteur``). Les bulletins sans secteur forment une file à
+affecter, réservée aux comptes qui voient tous les secteurs.
 """
 from __future__ import annotations
 
@@ -74,7 +75,9 @@ def _secteur_utilisateur() -> str:
 
 
 def _portee_globale() -> bool:
-    return can("scope:all_secteurs")
+    # L'accueil traite toute la rentrée sans recevoir la portée structure
+    # (qui ouvrirait aussi le pilotage financier) : permission dédiée.
+    return can("scope:all_secteurs") or can("inscriptions_annuelles:tous_secteurs")
 
 
 def _secteur_requis() -> str:
@@ -467,7 +470,7 @@ def regulariser():
 
     fiches = [p for p in (db.session.get(Participant, i) for i in ids) if p is not None]
     if not fiches:
-        flash("Coche d'abord au moins une personne dans la liste.", "warning")
+        flash("Cochez d'abord au moins une personne dans la liste.", "warning")
         return redirect(retour)
     for participant in fiches:
         _refuser_participant_hors_perimetre(participant)
@@ -671,7 +674,7 @@ def supprimer(inscription_id: int):
     inscription = _charger(inscription_id)
     if inscription.participant_id:
         flash(
-            "Ce bulletin est rattaché à une fiche participant : annule-le plutôt "
+            "Ce bulletin est rattaché à une fiche participant : annulez-le plutôt "
             "que de le supprimer, pour garder la trace de l'inscription.",
             "err",
         )
@@ -681,7 +684,7 @@ def supprimer(inscription_id: int):
     if Encaissement.query.filter_by(inscription_annuelle_id=inscription.id).first():
         flash(
             "De l'argent a été reçu sur ce bulletin : il ne peut pas être supprimé (la caisse "
-            "perdrait la trace de l'encaissement). Annule plutôt l'inscription, et le règlement "
+            "perdrait la trace de l'encaissement). Annulez plutôt l'inscription, et le règlement "
             "par contre-passation si besoin.",
             "err",
         )

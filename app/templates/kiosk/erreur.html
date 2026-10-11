@@ -1,0 +1,19 @@
+{% extends 'kiosk/base.html' %}
+{#- Erreur vue par le public au kiosque : pas d'en-tête de l'équipe, un seul
+    geste proposé (revenir à la saisie du code). -#}
+{% block title %}{{ erreur.titre }}{% endblock %}
+{% block header_title %}Pointer ma présence{% endblock %}
+{% block body %}
+  <div class="k-card">
+    <h1 class="k-card__title">{{ erreur.titre }}</h1>
+    {#- Le public n'a que faire de « fiche archivée ou fusionnée » : un lien
+        ou un QR code qui ne mène nulle part, c'est tout ce qu'il y a à dire. -#}
+    <p class="k-card__sub">{% if erreur.code == 404 %}Ce lien ne mène à aucune page. Vérifiez l'adresse, ou scannez à nouveau le QR code de l'atelier.{% else %}{{ erreur.message }}{% endif %}</p>
+    {% if erreur.reference %}
+      <p class="k-card__sub">Si cela se reproduit, montrez ce code à l'animateur·rice : <strong>{{ erreur.reference }}</strong></p>
+    {% else %}
+      <p class="k-card__sub">En cas de doute, demandez de l'aide à l'animateur·rice.</p>
+    {% endif %}
+    <p style="margin-top:14px;"><a class="k-btn" href="{{ url_for('kiosk.kiosk_home') }}">Revenir à l'accueil du pointage <span aria-hidden="true">→</span></a></p>
+  </div>
+{% endblock %}

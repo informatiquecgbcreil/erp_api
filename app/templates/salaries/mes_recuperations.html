@@ -21,7 +21,7 @@
     <div class="es-kpi" data-tone="{{ 'warn' if resume.en_attente else '' }}"><strong>{{ es.format_minutes(resume.en_attente) }}</strong><span>Demandées, en attente de décision</span></div>
   </div>
   {% if resume.solde < 0 %}
-    <p class="muted" style="margin-top:-4px;">Solde négatif : tu as récupéré par avance. Les prochaines heures sup le combleront.</p>
+    <p class="muted" style="margin-top:-4px;">Solde négatif : vous avez récupéré par avance. Les prochaines heures sup le combleront.</p>
   {% endif %}
 
   <div class="es-grid">
@@ -35,7 +35,7 @@
                    data-agenda-jour="lien-heures" data-agenda-url="{{ url_for('salaries.agenda_du_jour') }}"></label>
           <label class="field-stack"><span>Durée</span><input class="in" name="duree" placeholder="1h30 ou 1,5" required></label>
         </div>
-        <label class="field-stack"><span>C'était pour… <small class="muted">(ton agenda de ce jour-là)</small></span>
+        <label class="field-stack"><span>C'était pour… <small class="muted">(votre agenda de ce jour-là)</small></span>
           <select class="in" name="lien" id="lien-heures">
             <option value="">— Rien de particulier —</option>
             {% for e in suggestions %}<option value="{{ e.cle }}">{{ e.titre }}{% if e.horaire %} · {{ e.horaire }}{% endif %}</option>{% endfor %}
@@ -43,7 +43,7 @@
         </label>
         <label class="field-stack"><span>Précision</span><input class="in" name="motif" placeholder="Ex : réunion de quartier qui a débordé"></label>
         <div><button class="btn ok" type="submit">Enregistrer</button></div>
-        <p class="muted" style="font-size:.8rem;margin:0;">Pas de validation : les heures sont créditées tout de suite. L'assistant·e et la direction les voient et peuvent les corriger (en plus ou en moins) avec une justification ; tu es prévenu·e par e-mail.</p>
+        <p class="muted" style="font-size:.8rem;margin:0;">Pas de validation : les heures sont créditées tout de suite. L'assistant·e et la direction les voient et peuvent les corriger (en plus ou en moins) avec une justification ; vous êtes prévenu·e par e-mail.</p>
       </form>
     </section>
 
@@ -56,7 +56,7 @@
           <label class="field-stack"><span>Durée</span><input class="in" name="duree" placeholder="3h30" required></label>
         </div>
         <label class="field-stack"><span>Motif <small class="muted">(facultatif)</small></span><input class="in" name="motif"></label>
-        {{ m.signature("Signe pour envoyer tout de suite (sinon : brouillon)") }}
+        {{ m.signature("Signez pour envoyer tout de suite (sinon : brouillon)") }}
         <div><button class="btn ok" type="submit">Créer la demande</button></div>
       </form>
     </section>
@@ -111,7 +111,7 @@
             <td {% if h.minutes < 0 %}style="color:var(--danger,#dc2626);"{% endif %}>{{ '+' if h.est_ajustement and h.minutes > 0 }}{{ es.format_minutes(h.minutes) }}</td>
             <td>
               {% if h.est_ajustement %}<strong>{{ h.motif or 'Correction' }}</strong>
-                <div class="es-lien">par {{ 'toi-même' if h.par_interesse else (h.saisi_par.nom if h.saisi_par else 'la direction') }}{% if h.commentaire_direction %} : <em>{{ h.commentaire_direction }}</em>{% endif %}</div>
+                <div class="es-lien">par {{ 'vous-même' if h.par_interesse else (h.saisi_par.nom if h.saisi_par else 'la direction') }}{% if h.commentaire_direction %} : <em>{{ h.commentaire_direction }}</em>{% endif %}</div>
               {% else %}{{ h.motif or '' }}{% set lien = es.libelle_lien(h) %}{% if lien %}<div class="es-lien">🔗 {{ lien }}</div>{% endif %}{% endif %}
             </td>
           </tr>

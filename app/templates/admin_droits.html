@@ -40,7 +40,7 @@
                 <form method="post" action="{{ url_for('admin.set_user_roles') }}" class="stack compact-stack">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="user_id" value="{{ u.id }}">
-                  <select class="rbac-select role-select compact-select" name="role_codes" multiple>
+                  <select class="rbac-select role-select compact-select" name="role_codes" multiple aria-label="Rôles de {{ u.nom }}">
                     {% for r in roles %}
                       <option value="{{ r.code }}" {% if r.code in assigned %}selected{% endif %}>{{ r.label or r.code }}{% if r.label %} ({{ r.code }}){% endif %}</option>
                     {% endfor %}
@@ -71,8 +71,8 @@
       <div class="rbac-panel-top">
         <form method="post" action="{{ url_for('admin.create_role') }}" class="rbac-inline-grid create-role-grid">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input class="rbac-input compact" name="code" placeholder="Code court, ex. accueil" required>
-          <input class="rbac-input compact" name="label" placeholder="Nom affiché, ex. Équipe d’accueil">
+          <input class="rbac-input compact" name="code" placeholder="Code court, ex. accueil" aria-label="Code court du nouveau rôle" required>
+          <input class="rbac-input compact" name="label" placeholder="Nom affiché, ex. Équipe d’accueil" aria-label="Nom affiché du nouveau rôle">
           <button class="btn" type="submit">+ Créer</button>
         </form>
 
@@ -99,7 +99,7 @@
                 <option value="{{ r.code }}">{{ r.label or r.code }}{% if r.label %} ({{ r.code }}){% endif %}</option>
               {% endfor %}
             </select>
-            <input id="permSearch" class="rbac-input compact perm-search" type="search" placeholder="Rechercher un droit…">
+            <input id="permSearch" class="rbac-input compact perm-search" type="search" placeholder="Rechercher un droit…" aria-label="Rechercher un droit">
             <label class="pill compact-pill"><input id="showCheckedOnly" type="checkbox" style="width:auto;margin:0 6px 0 0;">actives seulement</label>
             <span id="permSummary" class="pill compact-pill">0 visible</span>
           </div>

@@ -6,7 +6,7 @@
   <div class="page-header">
     <div class="page-title-wrap">
       <h1 class="page-title">Questionnaires d’impact</h1>
-      <p class="page-subtitle">Crée, filtre et gère les questionnaires associés aux ateliers et secteurs.</p>
+      <p class="page-subtitle">Créez, filtrez et gérez les questionnaires associés aux ateliers et secteurs.</p>
     </div>
     {% if can('questionnaires:edit') %}
     <div class="hero-actions">
@@ -18,8 +18,8 @@
   <div class="filters-panel">
     <form method="get" class="filters-grid" data-filter-summary="true">
       <div class="field-stack grow-2">
-        <label>Recherche</label>
-        <input class="in" name="q" placeholder="Rechercher par nom" value="{{ q }}">
+        <label for="quest_filtre_q">Recherche</label>
+        <input id="quest_filtre_q" class="in" name="q" placeholder="Rechercher par nom" value="{{ q }}">
       </div>
       <div class="hero-actions">
         <button class="btn" type="submit">Filtrer</button>

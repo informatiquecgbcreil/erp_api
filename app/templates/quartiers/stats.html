@@ -16,12 +16,12 @@
       <h2 class="section-title" style="margin:0">Filtres d’analyse</h2>
       {% if quartier %}<span class="context-pill">{{ quartier.ville }} — {{ quartier.nom }}</span>{% endif %}
     </div>
-    <p class="muted" style="margin-top:0">L’idée est simple : tu choisis un quartier, puis tu regardes ce qui s’est passé sur une période donnée.</p>
+    <p class="muted" style="margin-top:0">L’idée est simple : vous choisissez un quartier, puis vous regardez ce qui s’est passé sur une période donnée.</p>
 
     <form method="get" class="filters-grid stretch-input">
       <div class="field-stack grow-2">
-        <label>Quartier</label>
-        <select class="in" name="quartier_id" style="min-width:260px;">
+        <label for="stats-quartier-quartier-id">Quartier</label>
+        <select class="in" id="stats-quartier-quartier-id" name="quartier_id" style="min-width:260px;">
           <option value="">— Choisir un quartier —</option>
           {% for q in quartiers %}
             <option value="{{ q.id }}" {% if quartier and q.id == quartier.id %}selected{% endif %}>{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
@@ -29,7 +29,7 @@
         </select>
       </div>
       <div class="field-stack">
-        <label>Période</label>
+        <label for="quartier-period-select">Période</label>
         <select class="in" name="period" id="quartier-period-select">
           <option value="tout" {% if period == 'tout' %}selected{% endif %}>Tout l'historique</option>
           {% for a in annees %}
@@ -44,16 +44,16 @@
         </select>
       </div>
       <div class="field-stack quartier-date-field" {% if period != 'custom' %}style="display:none"{% endif %}>
-        <label>Du</label>
-        <input class="in" type="date" name="date_from" value="{{ date_from }}">
+        <label for="stats-quartier-date-from">Du</label>
+        <input class="in" type="date" id="stats-quartier-date-from" name="date_from" value="{{ date_from }}">
       </div>
       <div class="field-stack quartier-date-field" {% if period != 'custom' %}style="display:none"{% endif %}>
-        <label>Au</label>
-        <input class="in" type="date" name="date_to" value="{{ date_to }}">
+        <label for="stats-quartier-date-to">Au</label>
+        <input class="in" type="date" id="stats-quartier-date-to" name="date_to" value="{{ date_to }}">
       </div>
       <div class="field-stack">
-        <label>Secteur</label>
-        <select class="in" name="secteur">
+        <label for="stats-quartier-secteur">Secteur</label>
+        <select class="in" id="stats-quartier-secteur" name="secteur">
           <option value="">Tous les secteurs</option>
           {% for secteur in secteur_choices %}
             <option value="{{ secteur }}" {% if secteur_filter == secteur %}selected{% endif %}>{{ secteur }}</option>
@@ -61,8 +61,8 @@
         </select>
       </div>
       <div class="field-stack">
-        <label>Type de public</label>
-        <select class="in" name="type_public">
+        <label for="stats-quartier-type-public">Type de public</label>
+        <select class="in" id="stats-quartier-type-public" name="type_public">
           <option value="">Tous les publics</option>
           {% for public in type_public_choices %}
             <option value="{{ public }}" {% if type_public_filter == public %}selected{% endif %}>{{ public }}</option>
@@ -266,11 +266,11 @@
   {% elif quartier %}
   <div class="quick-empty">
     <strong>Pas encore de données exploitables.</strong>
-    Le quartier existe bien, mais rien n’est remonté avec les filtres choisis. Essaie une période plus large ou enlève un filtre.
+    Le quartier existe bien, mais rien n’est remonté avec les filtres choisis. Essayez une période plus large ou enlevez un filtre.
   </div>
   {% else %}
   <div class="quick-empty">
-    <strong>Choisis un quartier pour démarrer.</strong>
+    <strong>Choisissez un quartier pour démarrer.</strong>
     Une fois le quartier sélectionné, la page affichera les personnes suivies, les présences, les ateliers touchés et une chronologie simple.
   </div>
   {% endif %}

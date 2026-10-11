@@ -12,8 +12,8 @@
       (c'est le piège n°1 de l'enquête).
     </p>
     <form method="get" class="inline-form">
-      <label>Année des données :</label>
-      <select class="in" name="annee" onchange="this.form.submit()">
+      <label for="senacs-annee">Année des données :</label>
+      <select class="in" id="senacs-annee" name="annee" onchange="this.form.submit()">
         {% for a in annees %}
           <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
         {% endfor %}
@@ -111,7 +111,7 @@
         <tr><th>Participations</th><td>{{ evenementiel.participations }}</td></tr>
         <tr><th>Participants uniques</th><td>{{ evenementiel.participants_uniques }}</td></tr>
       </table>
-      <p class="muted">Coche « 🎉 Séance événementielle » à la création d'une séance, ou marque-la depuis sa page d'émargement.</p>
+      <p class="muted">Cochez « 🎉 Séance événementielle » à la création d'une séance, ou marquez-la depuis sa page d'émargement.</p>
     </div>
   </div>
 
@@ -153,7 +153,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="5" class="muted">Aucun poste déclaré pour {{ annee }} : ajoute les postes salariés ci-dessous (fonction, contrat, quotité).</td></tr>
+            <tr><td colspan="5" class="muted">Aucun poste déclaré pour {{ annee }} : ajoutez les postes salariés ci-dessous (fonction, contrat, quotité).</td></tr>
           {% endfor %}
           <tr><th>TOTAL (RH + manuels)</th><th>{{ emplois.nb_rh + emplois.nb_postes }} poste(s)</th><th>{{ '%g'|format(emplois.etp_global) }} ETP</th><th colspan="2"></th></tr>
         </tbody>

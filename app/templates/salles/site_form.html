@@ -7,7 +7,7 @@
     <p class="muted">
       Un site, c'est un bâtiment : le centre social, ou une salle prêtée à
       l'autre bout de l'agglomération. La convention d'occupation se renseigne
-      ici — c'est elle qui dira si tu as le droit de mettre ces murs à
+      ici — c'est elle qui dira si vous avez le droit de mettre ces murs à
       disposition d'un tiers.
     </p>
   </div>
@@ -19,14 +19,14 @@
       <h2>Identité</h2>
       <div class="stack" style="gap:10px;">
         <div>
-          <label class="ui-label">Nom du site *</label>
-          <input class="in" name="nom" required value="{{ site.nom if site else '' }}"
+          <label for="site_nom" class="ui-label">Nom du site *</label>
+          <input id="site_nom" class="in" name="nom" required value="{{ site.nom if site else '' }}"
                  placeholder="Centre social — bâtiment principal" style="width:100%;">
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:220px;">
-            <label class="ui-label">Nature</label>
-            <select class="in" name="type_site" style="width:100%;">
+            <label for="site_type_site" class="ui-label">Nature</label>
+            <select id="site_type_site" class="in" name="type_site" style="width:100%;">
               {% for code in types_site %}
                 <option value="{{ code }}" {% if site and site.type_site == code %}selected{% endif %}>
                   {{ types_site_labels[code] }}
@@ -35,25 +35,25 @@
             </select>
           </div>
           <div style="flex:1; min-width:220px;">
-            <label class="ui-label">Mis à disposition par</label>
-            <input class="in" name="proprietaire" style="width:100%;"
+            <label for="site_proprietaire" class="ui-label">Mis à disposition par</label>
+            <input id="site_proprietaire" class="in" name="proprietaire" style="width:100%;"
                    value="{{ site.proprietaire or '' if site else '' }}" placeholder="Ville de Creil">
           </div>
         </div>
         <div>
-          <label class="ui-label">Adresse</label>
-          <input class="in" name="adresse" style="width:100%;"
+          <label for="site_adresse" class="ui-label">Adresse</label>
+          <input id="site_adresse" class="in" name="adresse" style="width:100%;"
                  value="{{ site.adresse or '' if site else '' }}">
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="width:140px;">
-            <label class="ui-label">Code postal</label>
-            <input class="in" name="code_postal" style="width:100%;"
+            <label for="site_code_postal" class="ui-label">Code postal</label>
+            <input id="site_code_postal" class="in" name="code_postal" style="width:100%;"
                    value="{{ site.code_postal or '' if site else '' }}">
           </div>
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Ville</label>
-            <input class="in" name="ville" style="width:100%;"
+            <label for="site_ville" class="ui-label">Ville</label>
+            <input id="site_ville" class="in" name="ville" style="width:100%;"
                    value="{{ site.ville or '' if site else 'Creil' }}">
           </div>
         </div>
@@ -74,24 +74,24 @@
       <div class="stack" style="gap:10px;">
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:200px;">
-            <label class="ui-label">Référence</label>
-            <input class="in" name="convention_reference" style="width:100%;"
+            <label for="site_convention_reference" class="ui-label">Référence</label>
+            <input id="site_convention_reference" class="in" name="convention_reference" style="width:100%;"
                    value="{{ site.convention_reference or '' if site else '' }}">
           </div>
           <div style="min-width:160px;">
-            <label class="ui-label">Début</label>
-            <input class="in" type="date" name="convention_debut" style="width:100%;"
+            <label for="site_convention_debut" class="ui-label">Début</label>
+            <input id="site_convention_debut" class="in" type="date" name="convention_debut" style="width:100%;"
                    value="{{ site.convention_debut.isoformat() if site and site.convention_debut else '' }}">
           </div>
           <div style="min-width:160px;">
-            <label class="ui-label">Fin</label>
-            <input class="in" type="date" name="convention_fin" style="width:100%;"
+            <label for="site_convention_fin" class="ui-label">Fin</label>
+            <input id="site_convention_fin" class="in" type="date" name="convention_fin" style="width:100%;"
                    value="{{ site.convention_fin.isoformat() if site and site.convention_fin else '' }}">
           </div>
         </div>
         <div>
-          <label class="ui-label">Mise à disposition de tiers</label>
-          <select class="in" name="regime_sous_location" style="width:100%;">
+          <label for="site_regime_sous_location" class="ui-label">Mise à disposition de tiers</label>
+          <select id="site_regime_sous_location" class="in" name="regime_sous_location" style="width:100%;">
             {% for code in regimes %}
               <option value="{{ code }}"
                 {% if (site and site.regime_sous_location == code) or (not site and code == 'inconnue') %}selected{% endif %}>
@@ -101,19 +101,19 @@
           </select>
         </div>
         <div>
-          <label class="ui-label">Valeur locative annuelle estimée (€)</label>
-          <input class="in" name="valeur_locative_annuelle" inputmode="decimal" style="width:100%;"
+          <label for="site_valeur_locative_annuelle" class="ui-label">Valeur locative annuelle estimée (€)</label>
+          <input id="site_valeur_locative_annuelle" class="in" name="valeur_locative_annuelle" inputmode="decimal" style="width:100%;"
                  value="{{ site.valeur_locative_annuelle or '' if site else '' }}"
                  placeholder="Estimation, même approximative">
           <p class="muted" style="margin:5px 0 0; font-size:.82rem;">
             Une mise à disposition gratuite est une contribution volontaire en nature :
-            elle a sa place au compte de résultat et dans tes dossiers de subvention.
+            elle a sa place au compte de résultat et dans vos dossiers de subvention.
             Mieux vaut une estimation discutée qu'une case vide.
           </p>
         </div>
         <div>
-          <label class="ui-label">Notes</label>
-          <textarea class="in" name="convention_notes" rows="3" style="width:100%;"
+          <label for="site_convention_notes" class="ui-label">Notes</label>
+          <textarea id="site_convention_notes" class="in" name="convention_notes" rows="3" style="width:100%;"
             >{{ site.convention_notes or '' if site else '' }}</textarea>
         </div>
       </div>

@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}Compétences de la séance — {{ atelier.nom }}{% endblock %}
 {% block body %}
   <div class="page-shell content-shell wide-shell">
     <section class="hero-card">
@@ -48,7 +49,7 @@
               </tbody>
             </table>
           </div>
-          <div class="responsive-card-list" aria-label="Compétences session (vue compacte)">
+          <div class="responsive-card-list" role="group" aria-label="Compétences session (vue compacte)">
             {% for comp in current_merged %}
               {% set is_direct = comp.id in current_direct_ids %}{% set is_inherited = comp.id in inherited_ids %}
               <article class="responsive-card">
@@ -74,7 +75,7 @@
       </section>
 
       <section class="section-card">
-        <div class="page-header"><div class="page-title-wrap"><h2>Ajouter des compétences en direct</h2><p class="muted">Ajoute des compétences spécifiques à cette séance, sans toucher aux modules.</p></div></div>
+        <div class="page-header"><div class="page-title-wrap"><h2>Ajouter des compétences en direct</h2><p class="muted">Ajoutez des compétences spécifiques à cette séance, sans toucher aux modules.</p></div></div>
         <form method="post" action="{{ url_for('activite.session_skill_add', session_id=session.id) }}" class="filters-panel">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="filters-grid">
@@ -95,7 +96,7 @@
             <tbody>{% for comp in inherited_from_modules %}<tr><td class="muted">{{ ref_map.get(comp.referentiel_id).nom if ref_map.get(comp.referentiel_id) else '—' }}</td><td><strong>{{ comp.code }}</strong></td><td>{{ comp.nom }}</td><td class="muted">{{ module_source_map.get(comp.id, [])|join(', ') }}</td></tr>{% endfor %}</tbody>
           </table>
         </div>
-        <div class="responsive-card-list" aria-label="Compétences héritées (vue compacte)">
+        <div class="responsive-card-list" role="group" aria-label="Compétences héritées (vue compacte)">
           {% for comp in inherited_from_modules %}
             <article class="responsive-card">
               <header class="responsive-card__head">

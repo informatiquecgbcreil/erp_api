@@ -465,7 +465,7 @@ def subvention_pilotage(subvention_id):
 
     warnings = []
     if recu > 0 and reel_lignes == 0:
-        warnings.append("Tu as un montant reçu, mais aucune ventilation en lignes réel : utilise la ventilation auto ou renseigne le réel par ligne.")
+        warnings.append("Vous avez un montant reçu, mais aucune ventilation en lignes réel : utilisez la ventilation auto ou renseignez le réel par ligne.")
     if recu > 0 and reel_lignes > 0 and reel_lignes < recu:
         warnings.append("Ventilation partielle : total lignes réel < montant reçu. Il manque une répartition.")
     if reel_lignes > 0 and engage > reel_lignes:
@@ -771,7 +771,7 @@ def subventions_reconduire():
         flash("Années invalides.", "danger")
         return redirect(url_for("main.subventions_list"))
     if not annee_source or not annee_cible or annee_source == annee_cible:
-        flash("Choisis une année source et une année cible différentes.", "danger")
+        flash("Choisissez une année source et une année cible différentes.", "danger")
         return redirect(url_for("main.subventions_list", annee=annee_source))
 
     q = Subvention.query.filter_by(est_archive=False, annee_exercice=annee_source)

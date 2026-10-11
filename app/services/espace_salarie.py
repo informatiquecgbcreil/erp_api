@@ -121,7 +121,7 @@ def parse_heures(valeur: str | None) -> int:
     """Durée saisie → minutes. Accepte « 1.5 », « 1,5 », « 1:30 », « 1h30 », « 45min »."""
     brut = (valeur or "").strip().lower().replace(" ", "")
     if not brut:
-        raise ValueError("Indique une durée, par exemple 1h30 ou 1,5.")
+        raise ValueError("Indiquez une durée, par exemple 1h30 ou 1,5.")
     try:
         if brut.endswith("min"):
             return int(brut[:-3])
@@ -381,7 +381,7 @@ def lien_agenda_valide(user, jour: date, cle: str | None) -> tuple[int | None, i
     for e in evenements_du_jour(user, jour):
         if e["cle"] == cle:
             return (e["id"], None) if e["type"] == "seance" else (None, e["id"])
-    raise ValueError("L'activité choisie n'est pas dans ton agenda de ce jour-là.")
+    raise ValueError("L'activité choisie n'est pas dans votre agenda de ce jour-là.")
 
 
 def libelle_lien(objet) -> str | None:
@@ -429,7 +429,7 @@ def enregistrer_signature(donnees: str | None, *, contexte: str, objet_type: str
     chemin = save_signature(donnees, dossier_rh("signatures"), f"{objet_type}_{objet_id}_{contexte}",
                             vide_autorise=vide_autorise) if donnees else None
     if chemin is None and not vide_autorise:
-        raise ValueError("Signe dans le cadre avant de valider.")
+        raise ValueError("Signez dans le cadre avant de valider.")
     empreinte = hashlib.sha256(Path(chemin).read_bytes()).hexdigest() if chemin else None
     signature = SignatureRh(
         signataire_user_id=getattr(current_user, "id", None),

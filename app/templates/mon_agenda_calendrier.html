@@ -14,7 +14,7 @@
   .cal-jour.aujourdhui{ box-shadow:inset 0 0 0 2px #3b82f6; }
   .cal-jour.week-end{ background:var(--surface-soft,#fafbfe); }
   .cal-num{ font-size:.8rem; font-weight:700; opacity:.7; margin-bottom:3px; }
-  .cal-jour.aujourdhui .cal-num{ color:#3b82f6; opacity:1; }
+  .cal-jour.aujourdhui .cal-num{ color:#1d4ed8; opacity:1; }
   .cal-ev{ display:block; margin:2px 0; padding:3px 6px; border-radius:7px; font-size:.76rem;
            line-height:1.25; text-decoration:none; color:inherit; border-left:3px solid #94a3b8;
            background:rgba(148,163,184,.14); }
@@ -29,7 +29,7 @@
   .cal-jour{ position:relative; }
   .cal-ajout{ position:absolute; top:3px; right:4px; width:20px; height:20px; border-radius:6px;
               display:flex; align-items:center; justify-content:center; text-decoration:none;
-              font-weight:800; font-size:.9rem; line-height:1; color:#3b82f6;
+              font-weight:800; font-size:.9rem; line-height:1; color:#1d4ed8;
               background:rgba(59,130,246,.12); opacity:0; transition:opacity .12s; }
   .cal-jour:hover .cal-ajout, .cal-ajout:focus{ opacity:1; }
   .cal-jour.selection{ box-shadow:inset 0 0 0 2px #10b981; }
@@ -57,16 +57,16 @@
     <div class="page-title-wrap">
       <h1 class="ui-title page-title">🗓️ Agenda</h1>
       <p class="ui-subtitle page-subtitle">
-        Séances et créneaux, mois par mois. C'est exactement le contenu de ton flux et de ta synchro
-        Google : ce que tu vois ici est ce qui part dans ton agenda.
+        Séances et créneaux, mois par mois. C'est exactement le contenu de votre flux et de votre synchro
+        Google : ce que vous voyez ici est ce qui part dans votre agenda.
       </p>
     </div>
   </section>
 
   <div class="cal-barre">
-    <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=precedent.isoformat()) }}">←</a>
+    <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=precedent.isoformat()) }}" aria-label="Période précédente" title="Période précédente">←</a>
     <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue) }}">Aujourd'hui</a>
-    <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=suivant.isoformat()) }}">→</a>
+    <a class="btn" href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=suivant.isoformat()) }}" aria-label="Période suivante" title="Période suivante">→</a>
     <span class="cal-titre">{{ titre_periode }}</span>
     <span style="flex:1"></span>
     <a class="btn {% if vue == 'mois' %}primary{% endif %}"
@@ -82,8 +82,8 @@
       <h2>{% if c %}✏️ Modifier le créneau{% else %}➕ Nouveau créneau{% endif %}
         — {{ jours_fr[jour_saisie.weekday()] }} {{ jour_saisie.strftime('%d/%m/%Y') }}</h2>
       <div class="muted" style="font-size:.86rem;">
-        Réunion, temps de préparation, formation… Ces créneaux comptent dans ta feuille de temps et
-        partent dans ton agenda synchronisé, comme les séances.
+        Réunion, temps de préparation, formation… Ces créneaux comptent dans votre feuille de temps et
+        partent dans votre agenda synchronisé, comme les séances.
       </div>
 
       <form method="post" style="margin-top:8px;"
@@ -94,40 +94,40 @@
 
         <div class="cal-champs">
           <div>
-            <label>Type</label>
-            <select name="type_creneau">
+            <label for="creneau-cal-type">Type</label>
+            <select id="creneau-cal-type" name="type_creneau">
               {% for t in types_creneau %}
                 <option value="{{ t }}" {% if c and c.type_creneau == t %}selected{% endif %}>{{ types_creneau_labels[t] }}</option>
               {% endfor %}
             </select>
           </div>
           <div style="grid-column:span 2;">
-            <label>Titre</label>
-            <input type="text" name="titre" required maxlength="200" placeholder="ex. Réunion d'équipe"
+            <label for="creneau-cal-titre">Titre</label>
+            <input type="text" id="creneau-cal-titre" name="titre" required maxlength="200" placeholder="ex. Réunion d'équipe"
                    value="{{ c.titre if c else '' }}">
           </div>
           <div>
-            <label>Date</label>
-            <input type="date" name="date_creneau" required value="{{ (c.date_creneau if c else jour_saisie).isoformat() }}">
+            <label for="creneau-cal-date">Date</label>
+            <input type="date" id="creneau-cal-date" name="date_creneau" required value="{{ (c.date_creneau if c else jour_saisie).isoformat() }}">
           </div>
           <div>
-            <label>Début</label>
-            <input type="time" name="heure_debut" value="{{ (c.heure_debut if c else '') or '' }}">
+            <label for="creneau-cal-debut">Début</label>
+            <input type="time" id="creneau-cal-debut" name="heure_debut" value="{{ (c.heure_debut if c else '') or '' }}">
           </div>
           <div>
-            <label>Fin</label>
-            <input type="time" name="heure_fin" value="{{ (c.heure_fin if c else '') or '' }}">
+            <label for="creneau-cal-fin">Fin</label>
+            <input type="time" id="creneau-cal-fin" name="heure_fin" value="{{ (c.heure_fin if c else '') or '' }}">
           </div>
           {% if not c %}
             <div>
-              <label>Répéter (semaines)</label>
-              <input type="number" name="repeter_semaines" min="0" max="52" value="0"
+              <label for="creneau-cal-repeter">Répéter (semaines)</label>
+              <input type="number" id="creneau-cal-repeter" name="repeter_semaines" min="0" max="52" value="0"
                      title="0 = une seule fois ; 12 = chaque semaine pendant 12 semaines de plus">
             </div>
           {% endif %}
           <div style="grid-column:span 2;">
-            <label>Salle (optionnel)</label>
-            <select name="espace_id">
+            <label for="creneau-cal-salle">Salle (optionnel)</label>
+            <select id="creneau-cal-salle" name="espace_id">
               <option value="">— Aucune salle —</option>
               {% for salle in salles_occupables() %}
                 <option value="{{ salle.id }}" {% if c and c.espace_id == salle.id %}selected{% endif %}>
@@ -137,12 +137,12 @@
             </select>
             <div class="muted" style="font-size:.78rem; margin-top:3px;">
               Renseignée, la salle est aussitôt occupée sur le planning : personne
-              ne pourra la louer par-dessus ta réunion.
+              ne pourra la louer par-dessus votre réunion.
             </div>
           </div>
           <div style="grid-column:span 2;">
-            <label>Compte sur le projet (optionnel)</label>
-            <select name="subvention_id">
+            <label for="creneau-cal-subvention">Compte sur le projet (optionnel)</label>
+            <select id="creneau-cal-subvention" name="subvention_id">
               <option value="">— Aucun —</option>
               {% for sub in subventions %}
                 <option value="{{ sub.id }}" {% if c and c.subvention_id == sub.id %}selected{% endif %}>
@@ -152,8 +152,8 @@
             </select>
           </div>
           <div style="grid-column:span 2;">
-            <label>Détail (optionnel)</label>
-            <input type="text" name="description" maxlength="500" placeholder="ex. point projet CAF"
+            <label for="creneau-cal-detail">Détail (optionnel)</label>
+            <input type="text" id="creneau-cal-detail" name="description" maxlength="500" placeholder="ex. point projet CAF"
                    value="{{ (c.description if c else '') or '' }}">
           </div>
         </div>
@@ -185,8 +185,8 @@
                 style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
             <input type="hidden" name="date" value="{{ jour_saisie.isoformat() }}">
             <div style="flex:1; min-width:220px;">
-              <label>Atelier</label>
-              <select name="atelier_id" required>
+              <label for="creneau-cal-atelier">Atelier</label>
+              <select id="creneau-cal-atelier" name="atelier_id" required>
                 {% for a in ateliers_disponibles %}
                   <option value="{{ a.id }}">{{ a.nom }} · {{ a.secteur }}</option>
                 {% endfor %}
@@ -210,7 +210,7 @@
                     {% if jour == jour_saisie %}selection{% endif %}
                     {% if jour.weekday() >= 5 %}week-end{% endif %}">
           <div class="cal-num" data-jour="{{ jours_fr[jour.weekday()] }} {{ jour.strftime('%d/%m') }}">{{ jour.day }}</div>
-          <a class="cal-ajout" title="Ajouter un créneau ce jour-là"
+          <a class="cal-ajout" title="Ajouter un créneau ce jour-là" aria-label="Ajouter un créneau le {{ jour.strftime('%d/%m/%Y') }}"
              href="{{ url_for('main.mon_agenda_calendrier', vue=vue, ancre=ancre.isoformat(), jour=jour.isoformat()) }}#saisie">+</a>
           {% set limite = evenements|length if vue == 'semaine' else 4 %}
           {% for e in evenements[:limite] %}

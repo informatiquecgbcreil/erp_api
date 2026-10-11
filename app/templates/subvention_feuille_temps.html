@@ -35,14 +35,14 @@
     </div>
     <div class="hero-actions">
       <a class="btn" href="{{ url_for('main.subvention_justificatif', subvention_id=sub.id) }}">📊 Justificatif d'activité</a>
-      <button class="btn ok" onclick="window.print()">🖨️ Imprimer / PDF</button>
+      <button class="btn ok" type="button" onclick="window.print()">🖨️ Imprimer / PDF</button>
     </div>
   </div>
 
   <form method="get" class="ft-filtres no-print" action="{{ url_for('main.subvention_feuille_temps', subvention_id=sub.id) }}">
-    <div><label>Du</label><input type="date" name="du" value="{{ du.isoformat() }}"></div>
-    <div><label>Au</label><input type="date" name="au" value="{{ au.isoformat() }}"></div>
-    <div><label>Préparation forfaitaire / séance (min)</label><input type="number" name="prep" min="0" max="240" step="5" value="{{ prep_minutes }}"></div>
+    <div><label for="ft-du">Du</label><input type="date" name="du" id="ft-du" value="{{ du.isoformat() }}"></div>
+    <div><label for="ft-au">Au</label><input type="date" name="au" id="ft-au" value="{{ au.isoformat() }}"></div>
+    <div><label for="ft-prep">Préparation forfaitaire / séance (min)</label><input type="number" name="prep" id="ft-prep" min="0" max="240" step="5" value="{{ prep_minutes }}"></div>
     <button class="btn" type="submit">Actualiser</button>
   </form>
 
@@ -73,8 +73,8 @@
         </tbody>
       </table>
     {% else %}
-      <p style="font-size:13px; opacity:.75;">Aucune séance d'atelier financé sur la période.
-        {% if not nb_seances %}Vérifie que les ateliers sont bien rattachés à la subvention (page Justificatif).{% endif %}</p>
+      <p style="font-size:13px; color:#444;">Aucune séance d'atelier financé sur la période.
+        {% if not nb_seances %}Vérifiez que les ateliers sont bien rattachés à la subvention (page Justificatif).{% endif %}</p>
     {% endif %}
 
     <h3 style="margin:16px 0 0;">2. Temps rattachés au projet (réunions, préparation dédiée…)</h3>
@@ -95,8 +95,8 @@
         </tbody>
       </table>
     {% else %}
-      <p style="font-size:13px; opacity:.75;">Aucun créneau rattaché au projet sur la période.
-        <span class="no-print">Rattache tes réunions/préparations depuis « Mon agenda » (champ « Compte sur le projet »).</span></p>
+      <p style="font-size:13px; color:#444;">Aucun créneau rattaché au projet sur la période.
+        <span class="no-print">Rattachez vos réunions et préparations depuis « Mon agenda » (champ « Compte sur le projet »).</span></p>
     {% endif %}
 
     <table class="ft-totaux">

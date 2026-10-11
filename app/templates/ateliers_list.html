@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Ateliers synchronisés (Présences){% endblock %}
 {% block body %}
 
 <div class="stack">
@@ -6,9 +7,9 @@
     <div class="inline" style="justify-content:space-between;">
       <div>
         <h1>Ateliers (Présences)</h1>
-        <p class="muted">Synchronisés depuis la base <strong>presence.db</strong> de ton app d’émargement. Les responsables de secteur ne voient que les ateliers déjà rattachés à leurs projets.</p>
+        <p class="muted">Synchronisés depuis la base <strong>presence.db</strong> de votre application d’émargement. Les responsables de secteur ne voient que les ateliers déjà rattachés à leurs projets.</p>
         <p class="muted">Chemin utilisé : <code>{{ presence_db_path }}</code></p>
-        <p class="muted">Si erreur <em>no such table \"participants\"</em> : tu pointes vers une DB vide/incorrecte (SQLite crée un fichier vide si le chemin est faux).</p>
+        <p class="muted">En cas d’erreur <em>no such table "participants"</em> : le chemin pointe vers une base vide ou incorrecte (SQLite crée un fichier vide si le chemin est faux).</p>
       </div>
       {% if can_manage %}
       <form method="POST" action="{{ url_for('activite.index') }}">
@@ -51,12 +52,12 @@
             </tr>
           {% endfor %}
           {% if ateliers|length == 0 %}
-            <tr><td colspan="6" class="muted">Aucun atelier. Si tu viens de copier presence.db, clique sur Synchroniser.</td></tr>
+            <tr><td colspan="6" class="muted">Aucun atelier. Si vous venez de copier presence.db, cliquez sur Synchroniser.</td></tr>
           {% endif %}
         </tbody>
       </table>
     </div>
-    <div class="responsive-card-list" aria-label="Liste des ateliers synchronisés (vue compacte)">
+    <div class="responsive-card-list" role="group" aria-label="Liste des ateliers synchronisés (vue compacte)">
       {% for a in ateliers %}
         <article class="responsive-card">
           <header class="responsive-card__head">
@@ -71,7 +72,7 @@
           </dl>
         </article>
       {% else %}
-        <div class="quick-empty"><strong>Aucun atelier trouvé.</strong>Si tu viens de copier `presence.db`, lance la synchronisation.</div>
+        <div class="quick-empty"><strong>Aucun atelier trouvé.</strong>Si vous venez de copier presence.db, lancez la synchronisation.</div>
       {% endfor %}
     </div>
   </div>

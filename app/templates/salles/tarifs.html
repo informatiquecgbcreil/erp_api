@@ -12,7 +12,7 @@
     <p class="muted" style="margin-top:8px;">
       Chaque enregistrement porte une <strong>date d'effet</strong> : changer un
       prix en janvier ne touche pas aux mises à disposition déjà calculées.
-      Tu peux préparer la grille de l'an prochain dès aujourd'hui.
+      Vous pouvez préparer la grille de l'an prochain dès aujourd'hui.
     </p>
   </div>
 
@@ -31,16 +31,16 @@
   <div class="card">
     <form method="get" class="inline" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
       <div>
-        <label class="ui-label">Salle</label>
-        <select class="in" name="espace_id" onchange="this.form.submit()" style="min-width:250px;">
+        <label for="tarif_espace_id" class="ui-label">Salle</label>
+        <select id="tarif_espace_id" class="in" name="espace_id" onchange="this.form.submit()" style="min-width:250px;">
           {% for s in salles %}
             <option value="{{ s.id }}" {% if espace_id == s.id %}selected{% endif %}>{{ s.chemin }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label class="ui-label">Tarifs en vigueur au</label>
-        <input class="in" type="date" name="au" value="{{ jour.isoformat() }}" onchange="this.form.submit()">
+        <label for="tarif_au" class="ui-label">Tarifs en vigueur au</label>
+        <input id="tarif_au" class="in" type="date" name="au" value="{{ jour.isoformat() }}" onchange="this.form.submit()">
       </div>
     </form>
   </div>
@@ -82,7 +82,7 @@
     </div>
     <p class="muted" style="margin-top:10px; font-size:.83rem;">
       Une case vide n'est pas une gratuité : c'est une unité qui ne sera pas
-      proposée au calcul. Renseigne au moins l'heure ou la demi-journée.
+      proposée au calcul. Renseignez au moins l'heure ou la demi-journée.
     </p>
   </div>
 
@@ -93,33 +93,33 @@
       <input type="hidden" name="espace_id" value="{{ espace_id }}">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         <div style="flex:1; min-width:220px;">
-          <label class="ui-label">Catégorie *</label>
-          <select class="in" name="categorie_id" required style="width:100%;">
+          <label for="tarif_categorie_id" class="ui-label">Catégorie *</label>
+          <select id="tarif_categorie_id" class="in" name="categorie_id" required style="width:100%;">
             {% for c in categories %}<option value="{{ c.id }}">{{ c.libelle }}</option>{% endfor %}
           </select>
         </div>
         <div style="min-width:180px;">
-          <label class="ui-label">À effet du *</label>
-          <input class="in" type="date" name="date_debut" required style="width:100%;"
+          <label for="tarif_date_debut" class="ui-label">À effet du *</label>
+          <input id="tarif_date_debut" class="in" type="date" name="date_debut" required style="width:100%;"
                  value="{{ aujourdhui.isoformat() }}">
         </div>
       </div>
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
         {% for u in unites %}
           <div style="flex:1; min-width:120px;">
-            <label class="ui-label">{{ unites_labels[u] }} (€)</label>
-            <input class="in" name="montant_{{ u }}" inputmode="decimal" style="width:100%;" placeholder="—">
+            <label for="tarif_montant_{{ u }}" class="ui-label">{{ unites_labels[u] }} (€)</label>
+            <input id="tarif_montant_{{ u }}" class="in" name="montant_{{ u }}" inputmode="decimal" style="width:100%;" placeholder="—">
           </div>
         {% endfor %}
       </div>
       <div>
-        <label class="ui-label">Commentaire</label>
-        <input class="in" name="commentaire" style="width:100%;"
+        <label for="tarif_commentaire" class="ui-label">Commentaire</label>
+        <input id="tarif_commentaire" class="in" name="commentaire" style="width:100%;"
                placeholder="Délibération du conseil d'administration du…">
       </div>
       <div><button class="btn ok" type="submit">💾 Enregistrer</button></div>
       <p class="muted" style="margin:0; font-size:.82rem;">
-        Laisse vide ce que tu ne tarifes pas. Le calcul retiendra toujours,
+        Laissez vide ce que vous ne tarifez pas. Le calcul retiendra toujours,
         parmi les unités renseignées, celle qui revient le moins cher au preneur.
       </p>
     </form>
@@ -143,7 +143,8 @@
                   <form method="post" action="{{ url_for('salles.tarif_supprimer', tarif_id=t.id) }}"
                         style="display:inline;" onsubmit="return confirm('Supprimer cette ligne ?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button class="btn warn" type="submit" style="padding:2px 8px; font-size:.75rem;">🗑️</button>
+                    <button class="btn warn" type="submit" style="padding:2px 8px; font-size:.75rem;"
+                            title="Supprimer cette ligne de tarif" aria-label="Supprimer le tarif du {{ t.date_debut.strftime('%d/%m/%Y') }} ({{ t.unite_label }})">🗑️</button>
                   </form>
                 </td>
               </tr>

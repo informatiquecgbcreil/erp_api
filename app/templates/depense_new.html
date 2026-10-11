@@ -20,21 +20,21 @@
     <div class="card-header">
       <div>
         <h1 class="card-title">Créer une dépense</h1>
-        <p class="card-subtitle">Crée une dépense réelle unique, puis répartis-la directement entre plusieurs financeurs si besoin.</p>
+        <p class="card-subtitle">Créez une dépense réelle unique, puis répartissez-la directement entre plusieurs financeurs si besoin.</p>
       </div>
       <div class="inline">
         <a class="btn" href="{{ url_for('budget.depenses_list') }}">Retour à la liste</a>
       </div>
     </div>
 
-    {{ ux.callout('1. Ligne de départ', 'Choisis une première ligne de charge. Si tu ne renseignes pas la répartition directe, la dépense sera affectée à 100% sur cette ligne. Sinon, elle sera répartie selon les montants indiqués plus bas.') }}
+    {{ ux.callout('1. Ligne de départ', 'Choisissez une première ligne de charge. Si vous ne renseignez pas la répartition directe, la dépense sera affectée à 100% sur cette ligne. Sinon, elle sera répartie selon les montants indiqués plus bas.') }}
 
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="row two">
         <div>
-          <label>Enveloppe / subvention de départ</label>
+          <label for="subSelect">Enveloppe / subvention de départ</label>
           <select name="subvention_id" id="subSelect" required>
             <option value="">Choisir une subvention</option>
             {% for s in subs %}
@@ -43,7 +43,7 @@
           </select>
         </div>
         <div>
-          <label>Filtrer par compte</label>
+          <label for="compteSelect">Filtrer par compte</label>
           <select name="compte" id="compteSelect" required>
             <option value="">Choisir un compte</option>
           </select>
@@ -54,15 +54,15 @@
 
       <div class="row two">
         <div>
-          <label>Ligne de départ pour l’imputation</label>
+          <label for="ligneSelect">Ligne de départ pour l’imputation</label>
           <select name="ligne_budget_id" id="ligneSelect" required>
             <option value="">Choisir une ligne</option>
           </select>
           <p class="muted" id="ligneInfo"></p>
         </div>
         <div>
-          <label>Type de dépense</label>
-          <select name="type_depense">
+          <label for="dep-type">Type de dépense</label>
+          <select name="type_depense" id="dep-type">
             <option>Fonctionnement</option>
             <option>Investissement</option>
             <option>Prestations</option>
@@ -75,8 +75,8 @@
       <div class="spacer"></div>
 
       <div class="row two">
-        <div><label>Libellé</label><input name="libelle" required placeholder="Minimum 5 caractères"></div>
-        <div><label>Montant (€)</label><input name="montant" type="text" inputmode="decimal" autocomplete="off" placeholder="Ex. 155 ou 155,50" required data-money-input></div>
+        <div><label for="dep-libelle">Libellé</label><input name="libelle" id="dep-libelle" required placeholder="Minimum 5 caractères"></div>
+        <div><label for="dep-montant">Montant (€)</label><input name="montant" id="dep-montant" type="text" inputmode="decimal" autocomplete="off" placeholder="Ex. 155 ou 155,50" required data-money-input></div>
       </div>
 
       <div class="spacer"></div>
@@ -85,24 +85,24 @@
                           "Sinon, tout est imputé sur la ligne de départ choisie ci-dessus.") %}
       <div class="split-panel">
         <p class="split-help">
-          Optionnel mais recommandé : indique directement quelle part de la dépense est imputée à chaque financeur.
+          Optionnel mais recommandé : indiquez directement quelle part de la dépense est imputée à chaque financeur.
           Exemple : CAF 250€, Politique de la ville 100€, fonds propres 50€.
-          Si tu ne mets rien, 100% ira sur la ligne de départ.
+          Si vous ne mettez rien, 100% ira sur la ligne de départ.
         </p>
 
         <div id="affRows">
           <div class="split-grid split-row" data-aff-row>
             <div>
-              <label>Source</label>
-              <select name="aff_source_type[]" class="in aff-source-type">
+              <label for="aff-source-1">Source</label>
+              <select name="aff_source_type[]" id="aff-source-1" class="in aff-source-type">
                 <option value="subvention">Enveloppe</option>
                 <option value="fonds_propres">Fonds propres / autofinancement</option>
                 <option value="autre">Autre</option>
               </select>
             </div>
             <div data-aff-line-wrap>
-              <label>Ligne financeur</label>
-              <select name="aff_ligne_budget_id[]" class="in">
+              <label for="aff-ligne-1">Ligne financeur</label>
+              <select name="aff_ligne_budget_id[]" id="aff-ligne-1" class="in">
                 <option value="">Choisir une ligne</option>
                 {% for l in available_lines %}
                   <option value="{{ l.id }}">{{ l.source_sub.annee_exercice }} · {{ l.source_sub.secteur }} · {{ l.source_sub.nom }} — {{ l.compte }} · {{ l.libelle }} · reste {{ "%.2f"|format(l.reste or 0) }}€</option>
@@ -110,16 +110,16 @@
               </select>
             </div>
             <div data-aff-label-wrap style="display:none">
-              <label>Libellé source</label>
-              <input class="in" name="aff_libelle_source[]" placeholder="Fonds propres, autre...">
+              <label for="aff-libelle-1">Libellé source</label>
+              <input class="in" name="aff_libelle_source[]" id="aff-libelle-1" placeholder="Fonds propres, autre...">
             </div>
             <div>
-              <label>Montant</label>
-              <input class="in" name="aff_montant[]" type="text" inputmode="decimal" data-money-input data-aff-montant placeholder="Ex. 100">
+              <label for="aff-montant-1">Montant</label>
+              <input class="in" name="aff_montant[]" id="aff-montant-1" type="text" inputmode="decimal" data-money-input data-aff-montant placeholder="Ex. 100">
             </div>
             <div>
-              <label>Commentaire</label>
-              <input class="in" name="aff_commentaire[]" placeholder="Facultatif">
+              <label for="aff-commentaire-1">Commentaire</label>
+              <input class="in" name="aff_commentaire[]" id="aff-commentaire-1" placeholder="Facultatif">
             </div>
             <div>
               <button class="btn danger" type="button" data-remove-aff>Retirer</button>
@@ -147,14 +147,14 @@
       {% call bloc_avance("Détails de paiement",
                           "Fournisseur, référence de la facture, mode et date de paiement.") %}
       <div class="row three">
-        <div><label>Fournisseur</label><input name="fournisseur" list="liste-fournisseurs">
+        <div><label for="dep-fournisseur">Fournisseur</label><input name="fournisseur" id="dep-fournisseur" list="liste-fournisseurs">
             <datalist id="liste-fournisseurs">
               {% for v in valeurs_deja_saisies('Depense', 'fournisseur') %}<option value="{{ v }}">{% endfor %}
             </datalist></div>
-        <div><label>Référence facture ou reçu</label><input name="reference"></div>
+        <div><label for="dep-reference">Référence facture ou reçu</label><input name="reference" id="dep-reference"></div>
         <div>
-          <label>Mode de paiement</label>
-          <select name="mode_paiement">
+          <label for="dep-mode-paiement">Mode de paiement</label>
+          <select name="mode_paiement" id="dep-mode-paiement">
             <option value="">Non renseigné</option>
             <option>CB</option>
             <option>Virement</option>
@@ -167,7 +167,7 @@
       <div class="spacer"></div>
 
       <div class="row two">
-        <div><label>Date de paiement</label><input name="date_paiement" type="date"></div>
+        <div><label for="dep-date-paiement">Date de paiement</label><input name="date_paiement" id="dep-date-paiement" type="date"></div>
       </div>
       {% endcall %}
 
@@ -181,18 +181,18 @@
 
         <div id="invBlock" data-bloc-ignore style="display:none; margin-top:12px">
           <div class="row two">
-            <div><label>Désignation</label><input class="in" name="inv_designation" placeholder="Par défaut : libellé de la dépense"></div>
-            <div><label>Catégorie</label><input class="in" name="inv_categorie" placeholder="Informatique, mobilier…"></div>
+            <div><label for="inv-designation">Désignation</label><input class="in" name="inv_designation" id="inv-designation" placeholder="Par défaut : libellé de la dépense"></div>
+            <div><label for="inv-categorie">Catégorie</label><input class="in" name="inv_categorie" id="inv-categorie" placeholder="Informatique, mobilier…"></div>
           </div>
 
           <div class="spacer"></div>
 
           <div class="row three">
-            <div><label>Quantité</label><input class="in" type="number" name="inv_quantite" min="1" value="1"></div>
-            <div><label>Valeur unitaire (€)</label><input class="in" type="text" inputmode="decimal" autocomplete="off" name="inv_valeur_unitaire" placeholder="Ex. 155 ou 155,50" data-money-input></div>
+            <div><label for="inv-quantite">Quantité</label><input class="in" type="number" name="inv_quantite" id="inv-quantite" min="1" value="1"></div>
+            <div><label for="inv-valeur-unitaire">Valeur unitaire (€)</label><input class="in" type="text" inputmode="decimal" autocomplete="off" name="inv_valeur_unitaire" id="inv-valeur-unitaire" placeholder="Ex. 155 ou 155,50" data-money-input></div>
             <div>
-              <label>État</label>
-              <select class="in" name="inv_etat">
+              <label for="inv-etat">État</label>
+              <select class="in" name="inv_etat" id="inv-etat">
                 {% for v in ['OK','A réparer','HS','Donné'] %}
                   <option value="{{ v }}">{{ v }}</option>
                 {% endfor %}
@@ -203,12 +203,12 @@
           <div class="spacer"></div>
 
           <div class="row two">
-            <div><label>Localisation</label><input class="in" name="inv_localisation" placeholder="Salle, placard, bureau…"></div>
-            <div><label>Numéro de série</label><input class="in" name="inv_numero_serie"></div>
+            <div><label for="inv-localisation">Localisation</label><input class="in" name="inv_localisation" id="inv-localisation" placeholder="Salle, placard, bureau…"></div>
+            <div><label for="inv-numero-serie">Numéro de série</label><input class="in" name="inv_numero_serie" id="inv-numero-serie"></div>
           </div>
 
           <div class="spacer"></div>
-          <div><label>Notes</label><textarea class="in" name="inv_notes" rows="3"></textarea></div>
+          <div><label for="inv-notes">Notes</label><textarea class="in" name="inv_notes" id="inv-notes" rows="3"></textarea></div>
         </div>
       {% endcall %}
 
@@ -384,10 +384,15 @@
     refreshRow(row);
   }
 
+  let affSeq = rows.querySelectorAll('[data-aff-row]').length;
   function cloneRow(type){
     const first = rows.querySelector('[data-aff-row]');
     if(!first){ return; }
     const clone = first.cloneNode(true);
+    // Identifiants uniques par ligne pour garder chaque étiquette reliée à son champ.
+    affSeq += 1;
+    clone.querySelectorAll('[id]').forEach(el => { el.id = el.id.replace(/-\d+$/, '-' + affSeq); });
+    clone.querySelectorAll('label[for]').forEach(l => { l.htmlFor = l.htmlFor.replace(/-\d+$/, '-' + affSeq); });
     clone.querySelectorAll('input').forEach(i => i.value = '');
     clone.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
     const typeSelect = clone.querySelector('.aff-source-type');

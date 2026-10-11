@@ -17,7 +17,8 @@
                  margin-right:6px; vertical-align:middle; font-style:normal; }
   .bl-phrase{ padding:13px 16px; border-radius:10px; background:var(--surface-soft,#f4f7fd);
               border-left:4px solid #3b82f6; font-size:.95rem; line-height:1.55; }
-  .bl-vide{ opacity:.55; }
+  /* Ligne sans occupation : couleur atténuée plutôt qu'opacité, pour garder un contraste lisible. */
+  .bl-vide, .bl-vide strong{ color:var(--muted,#475569); }
   @media print{
     .no-print{ display:none !important; }
     .card{ border:none !important; box-shadow:none !important; }
@@ -47,21 +48,21 @@
           style="gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:14px;">
       {% if sites|length > 1 %}
         <div>
-          <label class="ui-label">Site</label>
-          <select class="in" name="site_id" onchange="this.form.submit()">
+          <label for="bilan_site_id" class="ui-label">Site</label>
+          <select id="bilan_site_id" class="in" name="site_id" onchange="this.form.submit()">
             {% for s in sites %}
               <option value="{{ s.id }}" {% if s.id == site.id %}selected{% endif %}>{{ s.nom }}</option>
             {% endfor %}
           </select>
         </div>
       {% endif %}
-      <div><label class="ui-label">Du</label>
-        <input class="in" type="date" name="debut" value="{{ debut.isoformat() }}"></div>
-      <div><label class="ui-label">Au</label>
-        <input class="in" type="date" name="fin" value="{{ fin.isoformat() }}"></div>
+      <div><label for="bilan_debut" class="ui-label">Du</label>
+        <input id="bilan_debut" class="in" type="date" name="debut" value="{{ debut.isoformat() }}"></div>
+      <div><label for="bilan_fin" class="ui-label">Au</label>
+        <input id="bilan_fin" class="in" type="date" name="fin" value="{{ fin.isoformat() }}"></div>
       <div>
-        <label class="ui-label">Périmètre</label>
-        <select class="in" name="perimetre" onchange="this.form.submit()">
+        <label for="bilan_perimetre" class="ui-label">Périmètre</label>
+        <select id="bilan_perimetre" class="in" name="perimetre" onchange="this.form.submit()">
           {% for code in perimetres %}
             <option value="{{ code }}" {% if perimetre == code %}selected{% endif %}>
               {{ perimetres_labels[code] }}</option>

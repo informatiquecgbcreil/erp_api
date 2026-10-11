@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}Fiche insertion — {{ participant.prenom }} {{ participant.nom }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="breadcrumb">
@@ -10,7 +11,7 @@
   <div class="page-head" style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
     <div>
       <h1 style="margin:0;">{{ participant.nom }} {{ participant.prenom }}</h1>
-      <p class="muted" style="margin:6px 0 0 0;">Consulte la fiche d'accompagnement, les parcours suivis, les positionnements et les certifications.</p>
+      <p class="muted" style="margin:6px 0 0 0;">Consultez la fiche d'accompagnement, les parcours suivis, les positionnements et les certifications.</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <a class="pill" href="{{ url_for('participants.synthese_participant', participant_id=participant.id) }}">Synthèse personne</a>

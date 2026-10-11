@@ -8,7 +8,7 @@
     <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
       <div>
         <h1>Annuaire partenaires</h1>
-        <p class="muted" style="margin-top:6px;">Retrouve une structure, un contact ou un moyen de contact en un coup d’œil.</p>
+        <p class="muted" style="margin-top:6px;">Retrouvez une structure, un contact ou un moyen de contact en un coup d’œil.</p>
         
       </div>
       <div class="inline" style="gap:8px; flex-wrap:wrap;">
@@ -23,14 +23,14 @@
 
     <form method="get" style="margin-top:12px;">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
-        <input class="in" name="q" placeholder="Rechercher (nom, contact, email, téléphone)" value="{{ q }}" style="min-width:280px;">
-        <select class="in" name="secteur" multiple size="4" style="min-width:240px;">
+        <input class="in" name="q" placeholder="Rechercher (nom, contact, email, téléphone)" value="{{ q }}" style="min-width:280px;" aria-label="Rechercher un partenaire (nom, contact, e-mail, téléphone)">
+        <select class="in" name="secteur" multiple size="4" style="min-width:240px;" aria-label="Filtrer par secteur">
           {% for s in SECTEURS %}
             {% set is_selected = s in secteurs %}
             <option value="{{ s }}" {% if is_selected %}selected{% endif %}>{{ s }}</option>
           {% endfor %}
         </select>
-        <select class="in" name="competence" style="min-width:220px;">
+        <select class="in" name="competence" style="min-width:220px;" aria-label="Filtrer par compétence">
           <option value="">Toutes compétences</option>
           {% for key,label in orientation_domaines.items() %}
             <option value="{{ key }}" {% if competence == key %}selected{% endif %}>{{ label }}</option>

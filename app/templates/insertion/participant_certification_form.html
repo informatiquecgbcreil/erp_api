@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}{{ 'Nouvelle certification linguistique' if is_new else 'Modifier la certification linguistique' }}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="breadcrumb">
@@ -14,28 +15,28 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="filters-grid" style="grid-template-columns:1fr 1fr;">
         <div>
-          <label class="muted">Parcours rattaché</label>
-          <select class="in" name="parcours_id"><option value="">Aucun parcours rattaché</option>{% for opt in parcours_options %}<option value="{{ opt.id }}" {% if row.parcours_id == opt.id %}selected{% endif %}>{{ opt.label }}</option>{% endfor %}</select>
+          <label for="certif-parcours-id" class="muted">Parcours rattaché</label>
+          <select class="in" id="certif-parcours-id" name="parcours_id"><option value="">Aucun parcours rattaché</option>{% for opt in parcours_options %}<option value="{{ opt.id }}" {% if row.parcours_id == opt.id %}selected{% endif %}>{{ opt.label }}</option>{% endfor %}</select>
         </div>
         <div>
-          <label class="muted">Diplôme</label>
-          <select class="in" name="diplome_id"><option value="">Non renseigné</option>{% for ref in diplomes %}<option value="{{ ref.id }}" {% if row.diplome_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}</select>
+          <label for="certif-diplome-id" class="muted">Diplôme</label>
+          <select class="in" id="certif-diplome-id" name="diplome_id"><option value="">Non renseigné</option>{% for ref in diplomes %}<option value="{{ ref.id }}" {% if row.diplome_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}</select>
         </div>
         <div>
-          <label class="muted">Niveau visé / obtenu</label>
-          <select class="in" name="niveau_id"><option value="">Non renseigné</option>{% for ref in niveaux %}<option value="{{ ref.id }}" {% if row.niveau_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}</select>
+          <label for="certif-niveau-id" class="muted">Niveau visé / obtenu</label>
+          <select class="in" id="certif-niveau-id" name="niveau_id"><option value="">Non renseigné</option>{% for ref in niveaux %}<option value="{{ ref.id }}" {% if row.niveau_id == ref.id %}selected{% endif %}>{{ ref.label }}</option>{% endfor %}</select>
         </div>
         <div>
-          <label class="muted">Résultat</label>
-          <select class="in" name="resultat"><option value="">Non renseigné</option>{% for code, label in certification_results %}<option value="{{ code }}" {% if row.resultat == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          <label for="certif-resultat" class="muted">Résultat</label>
+          <select class="in" id="certif-resultat" name="resultat"><option value="">Non renseigné</option>{% for code, label in certification_results %}<option value="{{ code }}" {% if row.resultat == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
         </div>
         <div>
-          <label class="muted">Date de passage</label>
-          <input class="in" type="date" name="date_passage" value="{{ row.date_passage.isoformat() if row.date_passage else (row.date_obtention.isoformat() if row.date_obtention else '') }}">
+          <label for="certif-date-passage" class="muted">Date de passage</label>
+          <input class="in" type="date" id="certif-date-passage" name="date_passage" value="{{ row.date_passage.isoformat() if row.date_passage else (row.date_obtention.isoformat() if row.date_obtention else '') }}">
         </div>
         <div style="grid-column:1 / -1;">
-          <label class="muted">Commentaire</label>
-          <textarea class="in" name="commentaire" rows="4">{{ row.commentaire or '' }}</textarea>
+          <label for="certif-commentaire" class="muted">Commentaire</label>
+          <textarea class="in" id="certif-commentaire" name="commentaire" rows="4">{{ row.commentaire or '' }}</textarea>
         </div>
       </div>
       <div class="form-actions"><button class="pill active" type="submit">Enregistrer</button><a class="pill" href="{{ url_for('insertion.participant_detail', participant_id=participant.id) }}">Annuler</a></div>

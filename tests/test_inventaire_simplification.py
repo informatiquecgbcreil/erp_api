@@ -123,7 +123,7 @@ def test_une_selection_vide_ne_fait_rien(admin_client, rangement):
         "/inventaire/deplacer",
         data={"espace_id": str(rangement["armoire"])}, follow_redirects=True,
     )
-    assert "Coche au moins un matériel" in reponse.get_data(as_text=True)
+    assert "Cochez au moins un matériel" in reponse.get_data(as_text=True)
 
 
 def test_un_emplacement_inconnu_est_refuse(admin_client, app, rangement):

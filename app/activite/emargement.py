@@ -296,7 +296,7 @@ def emargement(session_id: int):
                             "nom", "prenom", "ville", "adresse", "email", "telephone", "genre",
                             "date_naissance", "type_public", "quartier_id")},
                     }
-                    flash("Des fiches proches existent déjà : vérifie avant de créer un doublon.", "warning")
+                    flash("Des fiches proches existent déjà : vérifiez avant de créer un doublon.", "warning")
                     return _redirect_emargement_with_period(session_id)
 
             dn = None
@@ -396,7 +396,7 @@ def emargement(session_id: int):
                 quantite_individuelle = 1
 
             if not participant_id:
-                flash("Choisis un participant.", "danger")
+                flash("Choisissez un participant.", "danger")
                 return _redirect_emargement_with_period(session_id)
             participant = db.session.get(Participant, int(participant_id))
             if not participant:
@@ -730,7 +730,7 @@ def kiosk_open(session_id: int):
     s.kiosk_opened_at = utcnow()
     db.session.commit()
 
-    flash(f"Kiosque ouvert (code: {pin}).", "success")
+    flash(f"Pointage tablette ouvert (code : {pin}).", "success")
     return _redirect_emargement_with_period(session_id)
 
 
@@ -747,7 +747,7 @@ def kiosk_close(session_id: int):
     s.kiosk_token = None
     db.session.commit()
 
-    flash("Kiosque fermé.", "success")
+    flash("Pointage tablette fermé.", "success")
     return _redirect_emargement_with_period(session_id)
 
 
@@ -779,7 +779,7 @@ def signature_liens_generer(session_id: int):
         crees += 1
     db.session.commit()
     if crees:
-        flash(f"{crees} lien(s) de signature générés : copie-les ci-dessous et envoie à chacun le sien.", "success")
+        flash(f"{crees} lien(s) de signature générés : copiez-les ci-dessous et envoyez à chacun le sien.", "success")
     else:
         flash("Aucun lien à générer : toutes les présences sont déjà signées (ou ont déjà leur lien).", "info")
     return redirect(url_for("activite.emargement", session_id=s.id) + "#signature-distance")

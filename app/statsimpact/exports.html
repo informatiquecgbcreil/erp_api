@@ -29,8 +29,8 @@
       <div class="grid" style="align-items:end;">
         {% if secteurs and secteurs|length > 0 %}
         <div>
-          <label>Secteur</label>
-          <select name="secteur">
+          <label for="sxa-secteur">Secteur</label>
+          <select id="sxa-secteur" name="secteur">
             <option value="">Tous</option>
             {% for s in secteurs %}
               <option value="{{ s }}" {% if flt.secteur==s %}selected{% endif %}>{{ s }}</option>
@@ -39,8 +39,8 @@
         </div>
         {% endif %}
 
-        <div style="grid-column:1 / -1;">
-          <label>Ateliers</label>
+        <fieldset style="grid-column:1 / -1; border:0; margin:0; padding:0; min-width:0;">
+          <legend style="padding:0; font-weight:700;">Ateliers</legend>
           <details {% if flt.atelier_ids %}open{% endif %} style="margin-top:6px; border:1px solid #dfe3f0; border-radius:12px; padding:10px 12px; background:#fff;">
             <summary>
               {% if flt.atelier_ids %}
@@ -62,19 +62,19 @@
               {% endfor %}
             </div>
           </details>
-        </div>
+        </fieldset>
 
         <div>
-          <label>Du</label>
+          <label for="sxa-date-from">Du</label>
           {% set date_from_value = flt.date_from.isoformat() if flt.date_from else "" %}
-          <input type="date" name="date_from" value="{{ date_from_value }}">
+          <input type="date" id="sxa-date-from" name="date_from" value="{{ date_from_value }}">
           <div class="help">Vide = année courante (auto)</div>
         </div>
 
         <div>
-          <label>Au</label>
+          <label for="sxa-date-to">Au</label>
           {% set date_to_value = flt.date_to.isoformat() if flt.date_to else "" %}
-          <input type="date" name="date_to" value="{{ date_to_value }}">
+          <input type="date" id="sxa-date-to" name="date_to" value="{{ date_to_value }}">
           <div class="help">Vide = année courante (auto)</div>
         </div>
 
@@ -113,8 +113,8 @@
 
   <div class="card">
     <details open>
-      <summary>CSV sur mesure (optionnel) — tu choisis les colonnes</summary>
-      <div class="muted" style="margin-top:6px;">Toujours 1 ligne = 1 présence (participant × session). Si tu veux du tableau matrice : prends le XLSX annuel.</div>
+      <summary>CSV sur mesure (optionnel) — vous choisissez les colonnes</summary>
+      <div class="muted" style="margin-top:6px;">Toujours 1 ligne = 1 présence (participant × session). Si vous voulez un tableau matrice : prenez le XLSX annuel.</div>
 
       <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
         <button class="btn" type="button" data-csv-select="all">Tout cocher</button>
@@ -153,9 +153,9 @@
   <div class="card" style="opacity:.9;">
     <b>Aide rapide</b>
     <div class="muted" style="margin-top:6px;">
-      Si tu veux une feuille par atelier avec <i>toutes les sessions en colonnes</i>, et les participants en lignes → <b>XLSX Magatomatique complet</b>.
+      Si vous voulez une feuille par atelier avec <i>toutes les sessions en colonnes</i>, et les participants en lignes → <b>XLSX Magatomatique complet</b>.
       <br>
-      Si tu veux du brut à retraiter → <b>CSV défaut</b> ou <b>CSV sur mesure</b>.
+      Si vous voulez du brut à retraiter → <b>CSV défaut</b> ou <b>CSV sur mesure</b>.
     </div>
   </div>
 </div>

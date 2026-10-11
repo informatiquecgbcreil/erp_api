@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Transitions {{ annee }}{% if secteur %} — {{ secteur }}{% endif %}{% endblock %}
 {% block body %}
 
 <div class="stack">
@@ -135,7 +136,8 @@
                   <form method="post" action="{{ url_for('transitions.defi_creer') }}" class="inline" style="gap:6px; flex-wrap:wrap;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="participant_id" value="{{ p.id }}">
-                    <input type="text" name="titre" placeholder="Titre du défi (ex. un mois à vélo)" required style="min-width:200px;">
+                    <input type="text" name="titre" placeholder="Titre du défi (ex. un mois à vélo)" required style="min-width:200px;"
+                           aria-label="Titre du défi de {{ p.prenom }} {{ p.nom }}">
                     <select name="thematique_id" required aria-label="Thématique du défi">
                       {% for th in data.thematiques %}
                         <option value="{{ th.thematique.id }}">{{ th.thematique.libelle }}</option>
@@ -217,9 +219,9 @@
             <option value="{{ a.id }}">{{ a.nom }} ({{ a.secteur }})</option>
           {% endfor %}
         </select>
-        <input type="text" name="libelle" placeholder="Mesure (ex. km évités)" required style="min-width:170px;">
-        <input type="text" name="valeur" placeholder="Valeur" required style="width:90px;" inputmode="decimal">
-        <input type="text" name="unite" placeholder="Unité (km, kg…)" style="width:110px;">
+        <input type="text" name="libelle" placeholder="Mesure (ex. km évités)" required style="min-width:170px;" aria-label="Nom de la mesure">
+        <input type="text" name="valeur" placeholder="Valeur" required style="width:90px;" inputmode="decimal" aria-label="Valeur mesurée">
+        <input type="text" name="unite" placeholder="Unité (km, kg…)" style="width:110px;" aria-label="Unité (km, kg…)">
         <input type="date" name="date_mesure" value="{{ today.isoformat() }}" aria-label="Date de la mesure">
         <button class="btn" type="submit">Enregistrer</button>
       </form>
@@ -284,7 +286,7 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="renommer">
                 <input type="hidden" name="thematique_id" value="{{ th.id }}">
-                <input type="text" name="libelle" value="{{ th.libelle }}" aria-label="Renommer la thématique">
+                <input type="text" name="libelle" value="{{ th.libelle }}" aria-label="Nouveau nom de la thématique « {{ th.libelle }} »">
                 <button class="btn" type="submit">Renommer</button>
               </form>
             </td>
@@ -308,7 +310,7 @@
     <form method="post" action="{{ url_for('transitions.thematiques_gerer') }}" class="inline" style="gap:6px; margin-top:8px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="ajouter">
-      <input type="text" name="libelle" placeholder="Nouvelle thématique (ex. Eau)" required>
+      <input type="text" name="libelle" placeholder="Nouvelle thématique (ex. Eau)" required aria-label="Nom de la nouvelle thématique">
       <button class="btn" type="submit">➕ Ajouter</button>
     </form>
   </div>

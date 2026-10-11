@@ -156,7 +156,7 @@ def deplacer_en_masse():
     retour = request.form.get("retour") or url_for("inventaire_materiel.list_items")
 
     if not ids:
-        flash("Coche au moins un matériel à déplacer.", "warning")
+        flash("Cochez au moins un matériel à déplacer.", "warning")
         return redirect(retour)
 
     espace = db.session.get(Espace, espace_id) if espace_id else None
@@ -181,7 +181,7 @@ def deplacer_en_masse():
     else:
         flash(f"{deplaces} matériel(s) détaché(s) de leur emplacement.", "success")
     if ignores:
-        flash(f"{ignores} matériel(s) ignoré(s) : hors de ton périmètre de secteur.", "warning")
+        flash(f"{ignores} matériel(s) ignoré(s) : hors de votre périmètre de secteur.", "warning")
     return redirect(retour)
 
 

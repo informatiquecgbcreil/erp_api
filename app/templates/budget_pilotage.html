@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% import "_ux_helpers.html" as ux %}
+{% block title %}Pilotage — {{ sub.nom }}{% endblock %}
 
 {% block body %}
 <div class="monster-shell budget-pilotage-shell wide-shell finance-shell finance-shell--single">
@@ -129,7 +130,7 @@
               <a class="btn ok" href="{{ url_for('main.subvention_justificatif', subvention_id=sub.id) }}">📊 Voir le justificatif chiffré</a>
             </div>
           {% else %}
-            <p class="muted">Aucun atelier rattaché : rattache les ateliers que cette subvention finance pour générer automatiquement le justificatif (séances, heures, participants, coût unitaire).</p>
+            <p class="muted">Aucun atelier rattaché : rattachez les ateliers que cette subvention finance pour générer automatiquement le justificatif (séances, heures, participants, coût unitaire).</p>
           {% endif %}
           {% if ateliers_disponibles %}
             <form method="post" class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
@@ -217,7 +218,7 @@
           <div style="padding: 0 16px 16px 16px; display:flex; flex-direction:column; gap:10px;">
 
             <div style="font-size:13px; color:var(--muted);">
-              Renseigne le <strong>montant réalisé</strong> sur chaque ligne. Les modes disponibles permettent de copier la base, d’appliquer un prorata (sur le reçu ou l’accordé) ou de remettre les valeurs à zéro.
+              Renseignez le <strong>montant réalisé</strong> sur chaque ligne. Les modes disponibles permettent de copier la base, d’appliquer un prorata (sur le reçu ou l’accordé) ou de remettre les valeurs à zéro.
             </div>
 
             <div class="action-strip">
@@ -369,7 +370,7 @@
                     <form method="POST" action="{{ url_for('main.ligne_edit', ligne_id=l.id) }}" class="finance-form-grid finance-form-grid--lines">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                      <select name="categorie_ref_id" data-ref-budget-line>
+                      <select name="categorie_ref_id" data-ref-budget-line aria-label="Ligne type du référentiel pour « {{ l.libelle }} »">
                         <option value="">Référentiel</option>
                         {% for c in categories_ref %}
                           <option value="{{ c.id }}"
@@ -382,14 +383,14 @@
                         {% endfor %}
                       </select>
 
-                      <select name="nature" data-ref-nature>
+                      <select name="nature" data-ref-nature aria-label="Nature de la ligne « {{ l.libelle }} »">
                         <option value="charge" {% if (l.nature or 'charge') == 'charge' %}selected{% endif %}>charge</option>
                         <option value="produit" {% if (l.nature or '') == 'produit' %}selected{% endif %}>produit</option>
                       </select>
-                      <input name="libelle" value="{{ l.libelle }}" data-ref-libelle>
-                      <input name="compte" value="{{ l.compte }}" data-ref-compte>
-                      <input name="montant_base" type="number" step="0.01" value="{{ (l.montant_base or 0)|float }}" data-ref-montant>
-                      <input name="montant_reel" type="number" step="0.01" value="{{ (l.montant_reel or 0)|float }}">
+                      <input name="libelle" value="{{ l.libelle }}" data-ref-libelle aria-label="Libellé de la ligne">
+                      <input name="compte" value="{{ l.compte }}" data-ref-compte aria-label="Compte de la ligne « {{ l.libelle }} »">
+                      <input name="montant_base" type="number" step="0.01" value="{{ (l.montant_base or 0)|float }}" data-ref-montant aria-label="Base (€) de la ligne « {{ l.libelle }} »">
+                      <input name="montant_reel" type="number" step="0.01" value="{{ (l.montant_reel or 0)|float }}" aria-label="Réel (€) de la ligne « {{ l.libelle }} »">
 
                       <div class="finance-actions" style="grid-column:1 / -1; justify-content:flex-end;">
                         <button class="btn" type="submit">Enregistrer</button>

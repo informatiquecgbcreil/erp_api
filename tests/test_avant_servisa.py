@@ -129,10 +129,15 @@ def test_accueil_sans_secteur_travaille(app, monde):
     assert client.get(f"/participants/{b}/edit").status_code == 200
 
 
-def test_accueil_ne_recoit_pas_la_portee_structure(app, monde):
+def test_accueil_travaille_pour_toute_la_structure(app, monde):
+    """Décision de la direction (octobre 2026) : le secrétariat d'accueil fait
+    les statistiques de tous les secteurs, la caisse, le bénévolat… Il reçoit
+    la portée structure, mais toujours pas les finances ni l'administration."""
     key, _ = monde
-    client = _login(app, _user(app, "accueil", "Numérique", key))
-    for url in ("/direction/pilotage", "/journal-metier", "/participants/import"):
+    client = _login(app, _user(app, "accueil", None, key))
+    for url in ("/benevolat", "/hart", "/direction/pilotage", "/bilans/senacs"):
+        assert client.get(url).status_code == 200, url
+    for url in ("/admin/users", "/depenses", "/subventions"):
         assert client.get(url).status_code in (302, 403, 404), url
 
 
@@ -145,7 +150,6 @@ def test_accueil_existant_recoit_la_permission_dediee(app):
     with app.app_context():
         role = Role.query.filter_by(code="accueil").one()
         assert "participants:edit_all" in {p.code for p in role.permissions}
-        assert "scope:all_secteurs" not in {p.code for p in role.permissions}
         assert Permission.query.filter_by(code="participants:edit_all").one()
 
 

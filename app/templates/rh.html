@@ -30,7 +30,7 @@
   <section class="section-card compact no-print">
     <strong>{{ stats.sans_compte }} salarié(s) actif(s) sans compte relié.</strong>
     <span class="muted">Sans lien, la personne n'a pas accès à son espace salarié (heures, récupérations, frais km, documents).
-      Les liens évidents se font seuls (même nom côté fiche et côté compte) ; pour les autres, choisis le compte dans la colonne « Compte ».</span>
+      Les liens évidents se font seuls (même nom côté fiche et côté compte) ; pour les autres, choisissez le compte dans la colonne « Compte ».</span>
   </section>
   {% endif %}
 
@@ -85,7 +85,8 @@
       <summary style="cursor:pointer; font-weight:700;">📥 Importer depuis votre outil RH (CSV)</summary>
       <form method="post" action="{{ url_for('main.rh_import') }}" enctype="multipart/form-data" class="inline-actions" style="margin-top:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input class="in" type="file" name="fichier" accept=".csv,.txt" required>
+        <label for="rh-import-fichier" class="sr-only">Fichier CSV des salariés</label>
+        <input class="in" type="file" id="rh-import-fichier" name="fichier" accept=".csv,.txt" required>
         <button class="btn" type="submit">Importer</button>
       </form>
       <p class="muted" style="font-size:12px; margin-top:6px;">
@@ -127,7 +128,7 @@
                 <details class="rh-edit no-print"><summary style="font-size:12px;">{{ 'changer' if s.compte else 'relier' }}</summary>
                   <form method="post" action="{{ url_for('main.rh_salarie_compte', salarie_id=s.id) }}" class="stack" style="gap:6px;margin-top:6px;min-width:200px;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select class="in" name="user_id">
+                    <select class="in" name="user_id" aria-label="Compte utilisateur de {{ s.prenom or '' }} {{ s.nom }}">
                       <option value="">— Aucun compte —</option>
                       {% if s.compte %}<option value="{{ s.compte.id }}" selected>{{ s.compte.nom }} ({{ s.compte.email }})</option>{% endif %}
                       {% for u in comptes_libres %}<option value="{{ u.id }}">{{ u.nom }} ({{ u.email }})</option>{% endfor %}
@@ -141,22 +142,22 @@
               <td>
                 {% if can_edit %}
                 <details class="rh-edit">
-                  <summary>✏️</summary>
+                  <summary title="Modifier la fiche" aria-label="Modifier la fiche de {{ s.prenom or '' }} {{ s.nom }}">✏️</summary>
                   <form method="post" action="{{ url_for('main.rh_salarie_update', salarie_id=s.id) }}" class="stack" style="gap:6px; margin-top:6px; min-width:260px;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input class="in" name="nom" value="{{ s.nom }}" required>
-                    <input class="in" name="prenom" value="{{ s.prenom or '' }}" placeholder="Prénom">
-                    <input class="in" name="poste" value="{{ s.poste or '' }}" placeholder="Poste">
-                    <select class="in" name="secteur"><option value="">— Non affecté —</option>
+                    <input class="in" name="nom" value="{{ s.nom }}" required aria-label="Nom">
+                    <input class="in" name="prenom" value="{{ s.prenom or '' }}" placeholder="Prénom" aria-label="Prénom">
+                    <input class="in" name="poste" value="{{ s.poste or '' }}" placeholder="Poste" aria-label="Poste">
+                    <select class="in" name="secteur" aria-label="Secteur"><option value="">— Non affecté —</option>
                       {% for sec in secteurs %}<option value="{{ sec }}" {% if sec == s.secteur %}selected{% endif %}>{{ sec }}</option>{% endfor %}
                     </select>
-                    <select class="in" name="type_contrat">
+                    <select class="in" name="type_contrat" aria-label="Type de contrat">
                       {% for val, lab in types_contrat %}<option value="{{ val }}" {% if val == s.type_contrat %}selected{% endif %}>{{ lab }}</option>{% endfor %}
                     </select>
-                    <input class="in" name="etp" value="{{ '%g'|format(s.etp) }}" title="ETP">
-                    <input class="in" name="salaire_brut_charge" value="{{ '%g'|format(s.salaire_brut_charge) if s.salaire_brut_charge else '' }}" placeholder="Salaire brut chargé (€)">
-                    <input class="in" type="date" name="date_entree" value="{{ s.date_entree.isoformat() if s.date_entree else '' }}" title="Date d'entrée">
-                    <input class="in" type="date" name="date_sortie" value="{{ s.date_sortie.isoformat() if s.date_sortie else '' }}" title="Date de sortie">
+                    <input class="in" name="etp" value="{{ '%g'|format(s.etp) }}" title="ETP" aria-label="ETP (équivalent temps plein)">
+                    <input class="in" name="salaire_brut_charge" value="{{ '%g'|format(s.salaire_brut_charge) if s.salaire_brut_charge else '' }}" placeholder="Salaire brut chargé (€)" aria-label="Salaire brut chargé (€)">
+                    <input class="in" type="date" name="date_entree" value="{{ s.date_entree.isoformat() if s.date_entree else '' }}" title="Date d'entrée" aria-label="Date d'entrée">
+                    <input class="in" type="date" name="date_sortie" value="{{ s.date_sortie.isoformat() if s.date_sortie else '' }}" title="Date de sortie" aria-label="Date de sortie">
                     <div class="inline-actions">
                       <button class="btn ok" type="submit">Enregistrer</button>
                     </div>
@@ -170,7 +171,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="10"><div class="quick-empty"><strong>Aucun salarié actif sur {{ annee }}.</strong>Ajoute les salariés ou importe-les depuis ton outil RH.</div></td></tr>
+            <tr><td colspan="10"><div class="quick-empty"><strong>Aucun salarié actif sur {{ annee }}.</strong>Ajoutez les salariés ou importez-les depuis votre outil RH.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>

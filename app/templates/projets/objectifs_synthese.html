@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Consolidation des objectifs{% if secteur %} — {{ secteur }}{% endif %}{% endblock %}
 {% block body %}
 <div class="stack">
   <div class="card">
@@ -11,12 +12,12 @@
     </div>
     <form method="get" class="inline" style="gap:10px; margin-top:8px;">
       {% if secteurs|length > 1 %}
-      <select class="in" name="secteur" onchange="this.form.submit()">
+      <select class="in" name="secteur" onchange="this.form.submit()" aria-label="Filtrer par secteur">
         {% for s in secteurs %}<option value="{{ s }}" {% if s == secteur %}selected{% endif %}>{{ s }}</option>{% endfor %}
       </select>
       {% endif %}
-      <label>Année :</label>
-      <input class="in" type="number" name="annee" value="{{ annee }}" style="width:110px;" onchange="this.form.submit()">
+      <label for="synthese-annee">Année :</label>
+      <input class="in" type="number" name="annee" id="synthese-annee" value="{{ annee }}" style="width:110px;" onchange="this.form.submit()">
     </form>
   </div>
 

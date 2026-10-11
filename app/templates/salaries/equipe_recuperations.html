@@ -7,8 +7,8 @@
     <div class="page-title-wrap">
       <h1 class="page-title">📥 Demandes de récupération de l'équipe</h1>
       <p class="page-subtitle">
-        {% if peut_transmettre and not peut_decider %}Tu transmets les demandes à la direction ou tu les refuses (avec une justification), puis tu prends connaissance de la décision. Le salarié est prévenu par e-mail à chaque étape.
-        {% elif peut_decider %}Tu décides des récupérations ; tu peux aussi décider sans attendre la transmission. Le salarié et l'assistant·e sont prévenus par e-mail.
+        {% if peut_transmettre and not peut_decider %}Vous transmettez les demandes à la direction ou vous les refusez (avec une justification), puis vous prenez connaissance de la décision. Le salarié est prévenu par e-mail à chaque étape.
+        {% elif peut_decider %}Vous décidez des récupérations ; vous pouvez aussi décider sans attendre la transmission. Le salarié et l'assistant·e sont prévenus par e-mail.
         {% endif %}
       </p>
     </div>
@@ -63,8 +63,8 @@
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <label><input type="radio" name="decision" value="transmettre" checked> Transmettre à la direction</label>
                   <label><input type="radio" name="decision" value="refuser"> Refuser</label>
-                  <input class="in" name="commentaire" placeholder="Justification (obligatoire si refus)">
-                  {{ m.signature("Signe ton choix") }}
+                  <input class="in" name="commentaire" placeholder="Justification (obligatoire si refus)" aria-label="Justification (obligatoire si refus)">
+                  {{ m.signature("Signez votre choix") }}
                   <button class="btn ok" type="submit">Valider</button>
                 </form>
               </details>
@@ -74,12 +74,12 @@
                 <form method="post" action="{{ url_for('salaries.decider_demande', demande_id=d.id) }}" class="stack" style="gap:6px;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   {% if d.salarie.user_id == current_user.id %}
-                    <p class="status-badge status-warning" style="margin:0;">C'est ta propre demande : la décision sera marquée « décidée par l'intéressé·e » et tracée au journal.</p>
+                    <p class="status-badge status-warning" style="margin:0;">C'est votre propre demande : la décision sera marquée « décidée par l'intéressé·e » et tracée au journal.</p>
                   {% endif %}
                   <label><input type="radio" name="decision" value="accepter" checked> Accepter</label>
                   <label><input type="radio" name="decision" value="refuser"> Refuser</label>
-                  <input class="in" name="commentaire" placeholder="Justification (obligatoire si refus)">
-                  {{ m.signature("Signe la décision") }}
+                  <input class="in" name="commentaire" placeholder="Justification (obligatoire si refus)" aria-label="Justification (obligatoire si refus)">
+                  {{ m.signature("Signez la décision") }}
                   <button class="btn ok" type="submit">Enregistrer la décision</button>
                 </form>
               </details>
@@ -101,7 +101,7 @@
 
   <section class="section-card">
     <h2 class="section-title">Heures sup déclarées ces 30 derniers jours</h2>
-    <p class="muted" style="margin-top:0;">Créditées dès leur saisie. Tu peux corriger une déclaration dans un sens ou dans l'autre (0 = retirer), avec une justification : le salarié la voit et la reçoit par e-mail. La déclaration d'origine reste visible.</p>
+    <p class="muted" style="margin-top:0;">Créditées dès leur saisie. Vous pouvez corriger une déclaration dans un sens ou dans l'autre (0 = retirer), avec une justification : le salarié la voit et la reçoit par e-mail. La déclaration d'origine reste visible.</p>
     <div class="tablewrap clean"><table>
       <thead><tr><th>Salarié</th><th>Le</th><th>Déclaré</th><th>En vigueur</th><th>Pour</th><th></th></tr></thead>
       <tbody>
@@ -123,11 +123,11 @@
               <form method="post" action="{{ url_for('salaries.corriger_heures', heure_id=h.id) }}" class="stack" style="gap:6px;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if h.salarie.user_id == current_user.id %}
-                  <p class="status-badge status-warning" style="margin:0;">Ce sont tes propres heures : la correction sera marquée et tracée au journal.</p>
+                  <p class="status-badge status-warning" style="margin:0;">Ce sont vos propres heures : la correction sera marquée et tracée au journal.</p>
                 {% endif %}
                 <label class="field-stack slim"><span>Durée retenue (0 = retirer)</span>
                   <input class="in" name="duree" value="{{ es.format_minutes(en_vigueur) }}" required></label>
-                <input class="in" name="commentaire" placeholder="Justification (obligatoire)" required>
+                <input class="in" name="commentaire" placeholder="Justification (obligatoire)" aria-label="Justification de la correction (obligatoire)" required>
                 <button class="btn" type="submit">Enregistrer la correction</button>
               </form>
             </details>

@@ -5,7 +5,7 @@
   <form method="post" class="stack" style="gap:8px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="calculer">
-    <div class="inline-actions">
+    <div class="inline-actions" role="radiogroup" aria-label="Sens du calcul">
       <label><input type="radio" name="mode" value="heures_vers_cout" {% if (saisie.get('mode') or 'heures_vers_cout') == 'heures_vers_cout' %}checked{% endif %}> Heures → coût</label>
       <label><input type="radio" name="mode" value="cout_vers_heures" {% if saisie.get('mode') == 'cout_vers_heures' %}checked{% endif %}> Budget → heures</label>
     </div>

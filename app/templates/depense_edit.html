@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 {% import "_ux_helpers.html" as ux %}
 {% from "_ui.html" import bloc_avance with context %}
+{% block title %}Modifier une dépense{% if dep and dep.libelle %} — {{ dep.libelle }}{% endif %}{% endblock %}
 {% block body %}
 
 <div class="stack">
@@ -25,7 +26,7 @@
   {% call bloc_avance("Répartition entre plusieurs financeurs",
                       "Pour imputer une même dépense sur plusieurs enveloppes.") %}
   <div class="card">
-    <p class="muted">La dépense reste unique, mais tu peux la répartir entre plusieurs enveloppes : CAF, Politique de la ville, FONJEP, fonds propres, etc.</p>
+    <p class="muted">La dépense reste unique, mais vous pouvez la répartir entre plusieurs enveloppes : CAF, Politique de la ville, FONJEP, fonds propres, etc.</p>
 
     <div class="kpi">
       <div class="box"><div class="muted">Montant dépense</div><div class="v">{{ "%.2f"|format(dep.montant or 0) }}€</div></div>
@@ -47,8 +48,8 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="update_affectation">
                 <input type="hidden" name="affectation_id" value="{{ a.id }}">
-                <label>Montant<input name="montant" type="text" inputmode="decimal" data-money-input value="{{ "%.2f"|format(a.montant or 0) }}"></label>
-                <label>Commentaire<input name="commentaire" value="{{ a.commentaire or "" }}" placeholder="Facultatif"></label>
+                <label for="aff-montant-{{ a.id }}">Montant<input name="montant" id="aff-montant-{{ a.id }}" type="text" inputmode="decimal" data-money-input value="{{ "%.2f"|format(a.montant or 0) }}"></label>
+                <label for="aff-commentaire-{{ a.id }}">Commentaire<input name="commentaire" id="aff-commentaire-{{ a.id }}" value="{{ a.commentaire or "" }}" placeholder="Facultatif"></label>
                 <button class="btn" type="submit">Modifier</button>
               </form>
             </td>
@@ -69,7 +70,7 @@
     </div>
 
     <div class="quick-info" style="margin-top:12px">
-      <strong>Mode split :</strong> si le total est déjà affecté à 100%, tu peux quand même ajouter une nouvelle source.
+      <strong>Mode split :</strong> si le total est déjà affecté à 100%, vous pouvez quand même ajouter une nouvelle source.
       L’application réduira automatiquement l’affectation existante pour garder le total égal au montant de la dépense.
       Exemple : dépense 400€ affectée à CAF 400€ → ajouter QPV 100€ donnera CAF 300€ + QPV 100€.
     </div>
@@ -81,19 +82,19 @@
       <input type="hidden" name="action" value="add_affectation">
       <div class="row two">
         <div>
-          <label>Source</label>
+          <label for="affSourceType">Source</label>
           <select name="source_type" id="affSourceType">
             <option value="subvention">Subvention / financeur</option>
             <option value="fonds_propres">Fonds propres / autofinancement</option>
           </select>
         </div>
-        <div><label>Montant à affecter</label><input name="montant" type="text" inputmode="decimal" data-money-input placeholder="Ex. 100"></div>
+        <div><label for="aff-ajout-montant">Montant à affecter</label><input name="montant" id="aff-ajout-montant" type="text" inputmode="decimal" data-money-input placeholder="Ex. 100"></div>
       </div>
 
       <div class="spacer"></div>
       <div id="affLineBlock">
-        <label>Ligne de charge à imputer</label>
-        <select name="ligne_budget_id">
+        <label for="aff-ajout-ligne">Ligne de charge à imputer</label>
+        <select name="ligne_budget_id" id="aff-ajout-ligne">
           <option value="">Choisir une ligne</option>
           {% for l in available_lines %}
             <option value="{{ l.id }}">{{ l.source_sub.annee_exercice }} · {{ l.source_sub.nom }} — {{ l.compte }} {{ l.libelle }} · reste {{ "%.2f"|format(l.reste or 0) }}€</option>
@@ -101,13 +102,13 @@
         </select>
       </div>
       <div id="affFondsBlock" style="display:none">
-        <label>Libellé source</label>
-        <input name="libelle_source" value="Fonds propres">
+        <label for="aff-ajout-libelle">Libellé source</label>
+        <input name="libelle_source" id="aff-ajout-libelle" value="Fonds propres">
       </div>
 
       <div class="spacer"></div>
-      <label>Commentaire</label>
-      <input name="commentaire" placeholder="Facultatif">
+      <label for="aff-ajout-commentaire">Commentaire</label>
+      <input name="commentaire" id="aff-ajout-commentaire" placeholder="Facultatif">
       <div class="spacer"></div>
       <button class="btn ok" type="submit">Ajouter l’affectation</button>
     </form>
@@ -123,22 +124,22 @@
         <input type="hidden" name="action" value="update">
 
         <div class="row two">
-          <div><label>Libellé</label><input name="libelle" value="{{ dep.libelle }}"></div>
-          <div><label>Montant (€)</label><input name="montant" type="text" inputmode="decimal" autocomplete="off" value="{{ "%.2f"|format(dep.montant or 0) }}" data-money-input></div>
+          <div><label for="dep-libelle">Libellé</label><input name="libelle" id="dep-libelle" value="{{ dep.libelle }}"></div>
+          <div><label for="dep-montant">Montant (€)</label><input name="montant" id="dep-montant" type="text" inputmode="decimal" autocomplete="off" value="{{ "%.2f"|format(dep.montant or 0) }}" data-money-input></div>
         </div>
 
         <div class="spacer"></div>
 
         <div class="row two">
           <div>
-            <label>Type de dépense</label>
-            <select name="type_depense">
+            <label for="dep-type">Type de dépense</label>
+            <select name="type_depense" id="dep-type">
               {% for t in ["Fonctionnement","Investissement","Prestations","Déplacements","Autre"] %}
                 <option {% if dep.type_depense==t %}selected{% endif %}>{{ t }}</option>
               {% endfor %}
             </select>
           </div>
-          <div><label>Date de paiement</label><input name="date_paiement" type="date" value="{{ dep.date_paiement }}"></div>
+          <div><label for="dep-date-paiement">Date de paiement</label><input name="date_paiement" id="dep-date-paiement" type="date" value="{{ dep.date_paiement }}"></div>
         </div>
 
         <div class="spacer"></div>
@@ -163,7 +164,8 @@
       <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="upload_doc">
-        <input type="file" name="document" required>
+        <label for="dep-justificatif">Fichier justificatif</label>
+        <input type="file" name="document" id="dep-justificatif" required>
         <div class="spacer"></div>
         <button class="btn ok" type="submit">Ajouter le justificatif</button>
       </form>
@@ -240,28 +242,28 @@
 
       <div class="grid two">
         <div>
-          <label>Secteur</label>
-          <input name="secteur" value="{{ inventaire_secteur }}" {% if not can('scope:all_secteurs') %}readonly{% endif %}>
+          <label for="inv-secteur">Secteur</label>
+          <input name="secteur" id="inv-secteur" value="{{ inventaire_secteur }}" {% if not can('scope:all_secteurs') %}readonly{% endif %}>
         </div>
         <div>
-          <label>Date d’entrée</label>
-          <input type="date" name="date_entree" value="{{ dep.date_paiement or '' }}">
+          <label for="inv-date-entree">Date d’entrée</label>
+          <input type="date" name="date_entree" id="inv-date-entree" value="{{ dep.date_paiement or '' }}">
         </div>
       </div>
 
       <div class="grid two">
         <div>
-          <label>Désignation</label>
-          <input name="designation" placeholder="Ex. : ordinateur portable" value="{{ dep.libelle }}" required>
+          <label for="inv-designation">Désignation</label>
+          <input name="designation" id="inv-designation" placeholder="Ex. : ordinateur portable" value="{{ dep.libelle }}" required>
         </div>
         <div class="grid two" style="grid-template-columns:1fr 1fr; gap:10px">
           <div>
-            <label>Quantité</label>
-            <input type="number" name="quantite" min="1" value="1">
+            <label for="inv-quantite">Quantité</label>
+            <input type="number" name="quantite" id="inv-quantite" min="1" value="1">
           </div>
           <div>
-            <label>État</label>
-            <select name="etat">
+            <label for="inv-etat">État</label>
+            <select name="etat" id="inv-etat">
               {% for v in ["OK","A réparer","HS","Donné"] %}
                 <option value="{{ v }}">{{ v }}</option>
               {% endfor %}
@@ -272,23 +274,23 @@
 
       <div class="grid two">
         <div>
-          <label>Catégorie</label>
-          <input name="categorie" placeholder="Informatique, mobilier…">
+          <label for="inv-categorie">Catégorie</label>
+          <input name="categorie" id="inv-categorie" placeholder="Informatique, mobilier…">
         </div>
         <div>
-          <label>Localisation</label>
-          <input name="localisation" placeholder="Salle, bureau…">
+          <label for="inv-localisation">Localisation</label>
+          <input name="localisation" id="inv-localisation" placeholder="Salle, bureau…">
         </div>
       </div>
 
       <div class="grid two">
         <div>
-          <label>Valeur unitaire (€)</label>
-          <input type="text" inputmode="decimal" autocomplete="off" name="valeur_unitaire" value="{{ "%.2f"|format(dep.montant or 0) if dep.montant else "" }}" data-money-input>
+          <label for="inv-valeur-unitaire">Valeur unitaire (€)</label>
+          <input type="text" inputmode="decimal" autocomplete="off" name="valeur_unitaire" id="inv-valeur-unitaire" value="{{ "%.2f"|format(dep.montant or 0) if dep.montant else "" }}" data-money-input>
         </div>
         <div>
-          <label>Notes</label>
-          <input name="notes" placeholder="Garantie, prêt, contexte…">
+          <label for="inv-notes">Notes</label>
+          <input name="notes" id="inv-notes" placeholder="Garantie, prêt, contexte…">
         </div>
       </div>
 

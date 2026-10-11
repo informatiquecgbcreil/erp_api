@@ -219,7 +219,7 @@
 @media (max-width: 640px){
   .tablewrap::after,
   .table-wrap::after{
-    content: "Glisse horizontalement pour voir tout le tableau →";
+    content: "Faites glisser le tableau sur le côté pour tout voir →";
     display: block;
     margin-top: 6px;
     color: var(--muted,#667085);

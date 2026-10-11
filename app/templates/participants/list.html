@@ -75,12 +75,12 @@
         <span class="context-pill">{{ pagination.total if pagination else items|length }} résultat(s)</span>
       </div>
     </div>
-    {{ ux.helper('Commence par un nom, un prénom, un e-mail ou un téléphone. Ouvre ensuite les filtres seulement si tu veux affiner la recherche.') }}
+    {{ ux.helper('Commencez par un nom, un prénom, un e-mail ou un téléphone. Ouvrez ensuite les filtres seulement si vous voulez affiner la recherche.') }}
     <form method="get" action="{{ url_for('participants.list_participants') }}" class="stack" data-filter-summary="true">
       <div class="inline-actions stretch-input" style="align-items:flex-end; gap:10px; flex-wrap:wrap;">
         <div class="field-stack grow-2" style="min-width:280px;">
-          <label>Recherche</label>
-          <input class="in" type="text" name="q" placeholder="Nom, prénom, e-mail ou téléphone" value="{{ q }}">
+          <label for="annuaire-q">Recherche</label>
+          <input class="in" type="text" id="annuaire-q" name="q" placeholder="Nom, prénom, e-mail ou téléphone" value="{{ q }}">
         </div>
         <button class="btn ok" type="submit">Rechercher</button>
         <a class="btn" href="{{ url_for('participants.list_participants') }}">Réinitialiser</a>
@@ -98,39 +98,39 @@
           </div>
           <div class="filters-grid stretch-input">
             <div class="field-stack">
-              <label>Ville</label>
-              <select name="ville" class="in"><option value="">Toutes</option>{% for v in villes %}<option value="{{ v }}" {% if f_ville == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+              <label for="annuaire-ville">Ville</label>
+              <select id="annuaire-ville" name="ville" class="in"><option value="">Toutes</option>{% for v in villes %}<option value="{{ v }}" {% if f_ville == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
             </div>
             <div class="field-stack">
-              <label>Quartier</label>
-              <select name="quartier_id" class="in"><option value="">Tous</option>{% for qt in quartiers %}<option value="{{ qt.id }}" {% if f_quartier_id and f_quartier_id|int == qt.id %}selected{% endif %}>{{ qt.ville }} — {{ qt.nom }}</option>{% endfor %}</select>
+              <label for="annuaire-quartier-id">Quartier</label>
+              <select id="annuaire-quartier-id" name="quartier_id" class="in"><option value="">Tous</option>{% for qt in quartiers %}<option value="{{ qt.id }}" {% if f_quartier_id and f_quartier_id|int == qt.id %}selected{% endif %}>{{ qt.ville }} — {{ qt.nom }}</option>{% endfor %}</select>
             </div>
             <div class="field-stack">
-              <label>Genre</label>
-              <select name="genre" class="in"><option value="">Tous</option>{% for g in genres %}<option value="{{ g }}" {% if f_genre == g %}selected{% endif %}>{{ genre_libelle(g) }}</option>{% endfor %}</select>
+              <label for="annuaire-genre">Genre</label>
+              <select id="annuaire-genre" name="genre" class="in"><option value="">Tous</option>{% for g in genres %}<option value="{{ g }}" {% if f_genre == g %}selected{% endif %}>{{ genre_libelle(g) }}</option>{% endfor %}</select>
             </div>
             <div class="field-stack">
-              <label>Type de public</label>
-              <select name="type_public" class="in"><option value="">Tous</option>{% for t in types_public %}<option value="{{ t }}" {% if f_type_public == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+              <label for="annuaire-type-public">Type de public</label>
+              <select id="annuaire-type-public" name="type_public" class="in"><option value="">Tous</option>{% for t in types_public %}<option value="{{ t }}" {% if f_type_public == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
             </div>
             <div class="field-stack">
-              <label>Présence</label>
-              <select name="presence" class="in"><option value="">Toutes</option><option value="with" {% if f_presence == 'with' %}selected{% endif %}>Avec présence</option><option value="without" {% if f_presence == 'without' %}selected{% endif %}>Sans présence</option></select>
+              <label for="annuaire-presence">Présence</label>
+              <select id="annuaire-presence" name="presence" class="in"><option value="">Toutes</option><option value="with" {% if f_presence == 'with' %}selected{% endif %}>Avec présence</option><option value="without" {% if f_presence == 'without' %}selected{% endif %}>Sans présence</option></select>
             </div>
             <div class="field-stack">
-              <label>Date de naissance</label>
-              <select name="naissance" class="in"><option value="">Toutes</option><option value="sans" {% if f_naissance == 'sans' %}selected{% endif %}>Sans date de naissance</option><option value="avec" {% if f_naissance == 'avec' %}selected{% endif %}>Avec date de naissance</option></select>
+              <label for="annuaire-naissance">Date de naissance</label>
+              <select id="annuaire-naissance" name="naissance" class="in"><option value="">Toutes</option><option value="sans" {% if f_naissance == 'sans' %}selected{% endif %}>Sans date de naissance</option><option value="avec" {% if f_naissance == 'avec' %}selected{% endif %}>Avec date de naissance</option></select>
             </div>
             {% if is_global %}
             <div class="field-stack">
-              <label>Créé pour</label>
-              <input class="in" type="text" name="created_secteur" placeholder="Secteur" value="{{ f_created_secteur }}">
+              <label for="annuaire-created-secteur">Créé pour</label>
+              <input class="in" type="text" id="annuaire-created-secteur" name="created_secteur" placeholder="Secteur" value="{{ f_created_secteur }}">
             </div>
             {% endif %}
             {% if not can('participants:view_all') %}
             <div class="field-stack grow-2">
-              <label>Périmètre</label>
-              <select name="scope" class="in">
+              <label for="annuaire-scope">Périmètre</label>
+              <select id="annuaire-scope" name="scope" class="in">
                 <option value="" {% if not scope or scope == 'secteur' %}selected{% endif %}>Mon secteur (créations + présences)</option>
                 <option value="created" {% if scope == 'created' %}selected{% endif %}>Créés par mon secteur</option>
                 <option value="annuaire" {% if scope == 'annuaire' %}selected{% endif %}>Annuaire global</option>
@@ -240,7 +240,7 @@
         </tbody>
       </table>
     </div>
-    <div class="responsive-card-list" aria-label="Liste des participants (vue compacte)">
+    <div class="responsive-card-list" role="group" aria-label="Liste des participants (vue compacte)">
       {% for item in items %}
       <article class="responsive-card">
         <header class="responsive-card__head">

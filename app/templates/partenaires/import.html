@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Importer des partenaires (CSV){% endblock %}
 {% block body %}
 <div class="stack">
   <div class="card">
@@ -27,7 +28,8 @@
     <h2>2. Importer le fichier</h2>
     <form method="post" enctype="multipart/form-data" class="stack" style="gap:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input class="in" type="file" name="fichier" accept=".csv,text/csv" required>
+      <label for="import_fichier">Fichier CSV à importer</label>
+      <input class="in" id="import_fichier" type="file" name="fichier" accept=".csv,text/csv" required>
       <div>
         <button class="btn" type="submit" data-pending-text="Import…">📥 Importer</button>
       </div>

@@ -23,7 +23,7 @@
       la contient et celles qu'elle contient.
     </p>
     <p class="muted" style="margin-top:8px; font-size:.85rem;">
-      Pour un atelier régulier, inutile de passer par ici : renseigne plutôt
+      Pour un atelier régulier, inutile de passer par ici : renseignez plutôt
       la <strong>salle de référence</strong> de l'atelier, et chaque séance
       occupera la salle toute seule.
     </p>
@@ -34,8 +34,8 @@
     <input type="hidden" name="retour" value="{{ retour }}">
 
     <div class="card">
-      <h2 style="margin-top:0;">Qu'est-ce qui occupe la salle ?</h2>
-      <div class="nat-choix">
+      <h2 style="margin-top:0;" id="occ_origine_titre">Qu'est-ce qui occupe la salle ?</h2>
+      <div class="nat-choix" role="radiogroup" aria-labelledby="occ_origine_titre">
         {% for code in origines %}
           <label class="nat-carte">
             <input type="radio" name="origine" value="{{ code }}"
@@ -51,8 +51,8 @@
     <div class="card">
       <div class="stack" style="gap:10px;">
         <div>
-          <label class="ui-label">Salle *</label>
-          <select class="in" name="espace_id" required style="width:100%;">
+          <label for="occ_espace_id" class="ui-label">Salle *</label>
+          <select id="occ_espace_id" class="in" name="espace_id" required style="width:100%;">
             <option value="">— Choisir —</option>
             {% for salle in salles %}
               <option value="{{ salle.id }}" {% if espace_prefere == salle.id %}selected{% endif %}>
@@ -63,28 +63,28 @@
         </div>
 
         <div>
-          <label class="ui-label">Intitulé *</label>
-          <input class="in" name="titre" required style="width:100%;"
+          <label for="occ_titre" class="ui-label">Intitulé *</label>
+          <input id="occ_titre" class="in" name="titre" required style="width:100%;"
                  placeholder="Atelier couture, réunion CAF, Association de gym, travaux peinture…">
           <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
-            C'est ce qui s'affichera dans la case du planning : sois lisible à deux mètres.
+            C'est ce qui s'affichera dans la case du planning : soyez lisible à deux mètres.
           </p>
         </div>
 
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:170px;">
-            <label class="ui-label">Du *</label>
-            <input class="in" type="date" name="date_debut" required style="width:100%;"
+            <label for="occ_date_debut" class="ui-label">Du *</label>
+            <input id="occ_date_debut" class="in" type="date" name="date_debut" required style="width:100%;"
                    value="{{ jour_prefere }}">
           </div>
           <div style="flex:1; min-width:170px;">
-            <label class="ui-label">Au</label>
-            <input class="in" type="date" name="date_fin" style="width:100%;">
+            <label for="occ_date_fin" class="ui-label">Au</label>
+            <input id="occ_date_fin" class="in" type="date" name="date_fin" style="width:100%;">
             <p class="muted" style="margin:4px 0 0; font-size:.8rem;">Vide = une seule journée.</p>
           </div>
           <div style="width:130px;">
-            <label class="ui-label">Effectif</label>
-            <input class="in" name="effectif_prevu" inputmode="numeric" style="width:100%;" placeholder="—">
+            <label for="occ_effectif_prevu" class="ui-label">Effectif</label>
+            <input id="occ_effectif_prevu" class="in" name="effectif_prevu" inputmode="numeric" style="width:100%;" placeholder="—">
           </div>
         </div>
 
@@ -96,24 +96,25 @@
 
         <div id="plage-horaire" class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:140px;">
-            <label class="ui-label">De</label>
-            <input class="in" type="time" name="heure_debut" value="{{ debut_prefere }}" style="width:100%;">
+            <label for="occ_heure_debut" class="ui-label">De</label>
+            <input id="occ_heure_debut" class="in" type="time" name="heure_debut" value="{{ debut_prefere }}" style="width:100%;">
           </div>
           <div style="flex:1; min-width:140px;">
-            <label class="ui-label">À</label>
-            <input class="in" type="time" name="heure_fin" value="{{ fin_prefere }}" style="width:100%;">
+            <label for="occ_heure_fin" class="ui-label">À</label>
+            <input id="occ_heure_fin" class="in" type="time" name="heure_fin" value="{{ fin_prefere }}" style="width:100%;">
           </div>
         </div>
 
         <div>
-          <label class="ui-label">Note</label>
-          <textarea class="in" name="note" rows="2" style="width:100%;"
+          <label for="occ_note" class="ui-label">Note</label>
+          <textarea id="occ_note" class="in" name="note" rows="2" style="width:100%;"
                     placeholder="Contact, consignes, matériel à prévoir…"></textarea>
         </div>
 
         {% if materiel %}
-          <div style="border-top:1px solid var(--border,#eef1f7); padding-top:11px;">
-            <label class="ui-label">Matériel partagé à retenir</label>
+          <div style="border-top:1px solid var(--border,#eef1f7); padding-top:11px;"
+               role="group" aria-labelledby="occ_materiel_titre">
+            <span class="ui-label" id="occ_materiel_titre">Matériel partagé à retenir</span>
             {% for e in materiel %}
               <div class="inline" style="gap:10px; align-items:center; padding:5px 0; flex-wrap:wrap;">
                 <span style="flex:1; min-width:180px;">
@@ -124,12 +125,12 @@
                   </span>
                 </span>
                 <input class="in" name="ressource_{{ e.ressource.id }}" inputmode="numeric"
-                       style="width:80px;" placeholder="0">
+                       style="width:80px;" placeholder="0" aria-label="Quantité de « {{ e.ressource.nom }} » à retenir">
               </div>
             {% endfor %}
             <p class="muted" style="margin:5px 0 0; font-size:.8rem;">
               La disponibilité affichée vaut pour le créneau ci-dessus. Dépasser
-              le stock reste possible — on emprunte parfois ailleurs — mais te sera signalé.
+              le stock reste possible — on emprunte parfois ailleurs — mais vous sera signalé.
             </p>
           </div>
         {% endif %}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import wraps
 from typing import Iterable
 
-from flask import abort, current_app
+from flask import abort, current_app, g
 from flask_login import current_user
 
 from app.extensions import db
@@ -73,6 +73,7 @@ DEFAULT_PERMS: list[tuple[str, str]] = [
     ("inscriptions_annuelles:edit", "Saisir / modifier une inscription annuelle, créer la fiche participant"),
     ("inscriptions_annuelles:reglement", "Confirmer ou annuler le règlement d’une inscription annuelle"),
     ("inscriptions_annuelles:export", "Exporter les inscriptions annuelles (XLSX)"),
+    ("inscriptions_annuelles:tous_secteurs", "Traiter les inscriptions annuelles de tous les secteurs (accueil)"),
     ("transitions:view", "Voir le tableau de bord transitions"),
     ("transitions:edit", "Étiqueter les ateliers, gérer défis et mesures transitions"),
 
@@ -344,20 +345,25 @@ ROLE_TEMPLATES["accueil"] = {
     "label": "Accueil",
     "perms": [
         "dashboard:view",
-        # L'accueil reçoit tout le monde : annuaire complet, et droit de modifier
-        # toutes les fiches (adhésion, cotisation, coordonnées) quel que soit le
-        # secteur qui les a créées. Permission dédiée : « scope:all_secteurs »
-        # ouvrirait aussi le pilotage financier, le journal et les exports RGPD.
+        # Secrétariat d'accueil : il travaille pour TOUTE la structure (rentrée,
+        # caisse et paiements du public, bénévolat, statistiques de tous les
+        # secteurs et globales, communication). Portée structure, choisie par
+        # la direction en connaissance de cause : elle ouvre aussi le pilotage
+        # direction, le journal des actions sensibles et les exports RGPD.
+        # Toujours ni budgets/subventions/dépenses, ni salaires, ni administration.
+        "scope:all_secteurs",
         "participants:view", "participants:view_all", "participants:edit",
         "participants:edit_all",
         # Rattrapage des feuilles d'émargement papier : saisie, pas de suppression.
         "ateliers:view", "emargement:view", "emargement:edit",
         "inscriptions:view", "inscriptions:edit",
         "inscriptions_annuelles:view", "inscriptions_annuelles:edit",
-        "inscriptions_annuelles:reglement",
-        "cotisations:view", "cotisations:edit", "caisse:view",
+        "inscriptions_annuelles:reglement", "inscriptions_annuelles:tous_secteurs",
+        "cotisations:view", "cotisations:edit", "caisse:view", "caisse:edit",
+        "stats:view", "stats:view_all", "statsimpact:view", "statsimpact:view_all", "bilans:view",
+        "questionnaires:view", "questionnaires:edit", "questionnaires:respond", "questionnaires:export",
         "salles:view", "locations:view", "locations:edit",
-        "partenaires:view", "quartiers:view",
+        "partenaires:view", "partenaires:edit", "quartiers:view",
         "salarie:espace",
     ],
 }
@@ -396,6 +402,8 @@ ROLE_LABELS: dict[str, str] = {
 PERMS_AUTO_GRANT = {
     # Accueil existant : le contrôle de secteur des écritures l'aurait bloqué.
     "participants:edit_all": ("accueil",),
+    # Accueil existant : sans secteur, les inscriptions annuelles lui étaient fermées.
+    "inscriptions_annuelles:tous_secteurs": ("accueil",),
     "dons:view": ("direction", "directrice", "finance"),
     "dons:edit": ("direction", "directrice", "finance"),
     "benevolat:taux": ("direction", "directrice", "finance"),
@@ -682,6 +690,8 @@ def require_perm(code: str):
                 abort(403)
 
             if not any(has_perm_fn(c) for c in wanted):
+                # La page d'erreur nomme le droit qui manque.
+                g.permission_refusee = code
                 abort(403)
 
             return fn(*args, **kwargs)

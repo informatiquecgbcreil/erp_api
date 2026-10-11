@@ -91,7 +91,7 @@
     <a class="mini-link" style="margin-left:auto;" href="{{ url_for('main.guides_liste') }}">🧭 Guides pas à pas</a>
   </div>
   {% if poste_travail.signals %}
-  <div class="poste-signal-grid" aria-label="Points de vigilance du jour">
+  <div class="poste-signal-grid" role="group" aria-label="Points de vigilance du jour">
     {% for signal in poste_travail.signals %}
       {% if signal.url %}<a class="poste-signal" data-tone="{{ signal.tone }}" href="{{ signal.url }}">{% else %}<div class="poste-signal" data-tone="{{ signal.tone }}">{% endif %}
         <span class="poste-signal__icon" aria-hidden="true">{{ signal.icon }}</span>

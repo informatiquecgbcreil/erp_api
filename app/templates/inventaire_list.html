@@ -16,28 +16,28 @@
     <div class="filters-panel">
       <form method="get" action="{{ url_for('inventaire_materiel.list_items') }}" class="filters-grid" data-filter-summary="true">
         <div class="field-stack">
-          <label>Recherche</label>
-          <input type="text" name="q" placeholder="Désignation, ID, série…" value="{{ filtre_q }}">
+          <label for="inv_filtre_q">Recherche</label>
+          <input id="inv_filtre_q" type="text" name="q" placeholder="Désignation, ID, série…" value="{{ filtre_q }}">
         </div>
         <div class="field-stack">
-          <label>Secteur</label>
-          <input type="text" name="secteur" placeholder="Secteur" value="{{ filtre_secteur }}">
+          <label for="inv_filtre_secteur">Secteur</label>
+          <input id="inv_filtre_secteur" type="text" name="secteur" placeholder="Secteur" value="{{ filtre_secteur }}">
         </div>
         <div class="field-stack">
-          <label>Catégorie</label>
-          <input type="text" name="categorie" placeholder="Catégorie" value="{{ filtre_categorie }}">
+          <label for="inv_filtre_categorie">Catégorie</label>
+          <input id="inv_filtre_categorie" type="text" name="categorie" placeholder="Catégorie" value="{{ filtre_categorie }}">
         </div>
         <div class="field-stack">
-          <label>Localisation</label>
-          <input type="text" name="localisation" placeholder="Localisation" value="{{ filtre_localisation }}">
+          <label for="inv_filtre_localisation">Localisation</label>
+          <input id="inv_filtre_localisation" type="text" name="localisation" placeholder="Localisation" value="{{ filtre_localisation }}">
         </div>
         <div class="field-stack">
-          <label>État</label>
-          <input type="text" name="etat" placeholder="OK, HS…" value="{{ filtre_etat }}">
+          <label for="inv_filtre_etat">État</label>
+          <input id="inv_filtre_etat" type="text" name="etat" placeholder="OK, HS…" value="{{ filtre_etat }}">
         </div>
         <div class="field-stack">
-          <label>Tri</label>
-          <select name="sort">
+          <label for="inv_filtre_sort">Tri</label>
+          <select id="inv_filtre_sort" name="sort">
             <option value="recent" {% if filtre_sort=='recent' %}selected{% endif %}>Plus récent</option>
             <option value="id" {% if filtre_sort=='id' %}selected{% endif %}>ID</option>
             <option value="designation" {% if filtre_sort=='designation' %}selected{% endif %}>Désignation</option>
@@ -66,7 +66,7 @@
           <span class="muted" style="font-size:.85rem;">
             <strong id="nb-selection">0</strong> sélectionné(s) →
           </span>
-          <select class="in" name="espace_id" style="min-width:230px;">
+          <select class="in" name="espace_id" style="min-width:230px;" aria-label="Emplacement où ranger la sélection">
             <option value="">— Détacher de tout emplacement —</option>
             {% for e in emplacements_stockage() %}
               <option value="{{ e.id }}">{{ e.chemin }}{% if e.securise %} 🔒{% endif %}</option>
@@ -74,7 +74,7 @@
           </select>
           <button class="btn ok" type="submit">📦 Ranger ici</button>
           <span class="muted" style="font-size:.8rem;">
-            Coche plusieurs lignes pour déplacer tout un lot d'un coup.
+            Cochez plusieurs lignes pour déplacer tout un lot d'un coup.
           </span>
         </div>
       {% endif %}
@@ -103,7 +103,7 @@
             {% for it in items %}
               <tr>
                 {% if can('inventaire:edit') %}
-                  <td><input type="checkbox" class="coche-item" name="item_ids" value="{{ it.id }}"></td>
+                  <td><input type="checkbox" class="coche-item" name="item_ids" value="{{ it.id }}" aria-label="Sélectionner {{ it.designation }}"></td>
                 {% endif %}
                 <td><strong>{{ it.id_interne or ('#' ~ it.id) }}</strong></td>
                 <td>{{ it.secteur }}</td>
@@ -179,7 +179,7 @@
             form.addEventListener('submit', (e) => {
               if (!form.querySelectorAll('.coche-item:checked').length) {
                 e.preventDefault();
-                alert('Coche au moins un matériel à déplacer.');
+                alert('Cochez au moins un matériel à déplacer.');
               }
             });
           })();

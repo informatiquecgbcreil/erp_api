@@ -41,12 +41,12 @@
 
         <div class="form-grid-2">
           <div>
-            <label>Adresse e-mail {{ ux.tooltip("Adresse utilisée pour la connexion et les notifications de récupération de mot de passe.") }}</label>
-            <input name="email" type="email" required>
+            <label for="nouveau_compte_email">Adresse e-mail {{ ux.tooltip("Adresse utilisée pour la connexion et les notifications de récupération de mot de passe.") }}</label>
+            <input id="nouveau_compte_email" name="email" type="email" required>
           </div>
           <div>
-            <label>Nom</label>
-            <input name="nom" required>
+            <label for="nouveau_compte_nom">Nom</label>
+            <input id="nouveau_compte_nom" name="nom" required>
           </div>
         </div>
 
@@ -54,7 +54,7 @@
 
         <div class="form-grid-2">
           <div>
-            <label>Rôle {{ ux.tooltip("Le rôle définit TOUT ce que le compte peut voir et faire. responsable_secteur : limité à son secteur. direction : accès global complet. admin_tech : gestion technique (comptes, réglages) sans les données métier.") }}</label>
+            <label for="roleSelect">Rôle {{ ux.tooltip("Le rôle définit TOUT ce que le compte peut voir et faire. responsable_secteur : limité à son secteur. direction : accès global complet. admin_tech : gestion technique (comptes, réglages) sans les données métier.") }}</label>
             <select name="role" id="roleSelect" required>
               <option value="">— choisir —</option>
               {% for r in roles %}
@@ -64,7 +64,7 @@
           </div>
 
           <div>
-            <label>Secteur assigné {{ ux.tooltip("À renseigner pour limiter un responsable de secteur à son périmètre d'intervention.") }}</label>
+            <label for="secteurSelect">Secteur assigné {{ ux.tooltip("À renseigner pour limiter un responsable de secteur à son périmètre d'intervention.") }}</label>
             <select name="secteur_assigne" id="secteurSelect">
               <option value="">—</option>
               {% for sec in secteurs %}
@@ -78,8 +78,8 @@
 
         <div class="field-stack">
           <div>
-            <label>Mot de passe {{ ux.tooltip("Choisissez un mot de passe temporaire. L'utilisateur pourra ensuite demander sa réinitialisation si la messagerie est configurée.") }}</label>
-            <input name="password" type="password" minlength="12" autocomplete="new-password" required>
+            <label for="nouveau_compte_password">Mot de passe {{ ux.tooltip("Choisissez un mot de passe temporaire. L'utilisateur pourra ensuite demander sa réinitialisation si la messagerie est configurée.") }}</label>
+            <input id="nouveau_compte_password" name="password" type="password" minlength="12" autocomplete="new-password" required>
             <span class="muted">12 caractères minimum.</span>
           </div>
         </div>

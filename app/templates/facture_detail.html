@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Facture n° {{ f.id }}{% if f.fournisseur %} — {{ f.fournisseur }}{% endif %}{% endblock %}
 {% block body %}
   <div class="page-shell wide-shell stack" id="top">
     <div class="page-header">
@@ -41,7 +42,7 @@
             <div class="help">Une fois validée, la facture devient un historique + on bloque la suppression des lignes.</div>
           </form>
         {% else %}
-          <div class="help">Facture validée : les dépenses ont été générées. (Tu peux les retrouver dans “Dépenses”.)</div>
+          <div class="help">Facture validée : les dépenses ont été générées. (Vous pouvez les retrouver dans « Dépenses ».)</div>
         {% endif %}
       </div>
 
@@ -56,18 +57,18 @@
 
             <div class="grid two">
               <div>
-                <label>Financement</label>
+                <label for="finSelect">Financement</label>
                 <select name="financement_type" id="finSelect" required>
                   <option value="subvention">Subvention</option>
                   <option value="fonds_propres">Fonds propres</option>
                   <option value="don">Don / mécénat</option>
                   <option value="autre">Autre</option>
                 </select>
-                <div class="help">Aide terrain : si ce n'est pas une subvention, l'app créera un support "Hors subvention" pour ton secteur.</div>
+                <div class="help">Aide terrain : si ce n'est pas une subvention, l'app créera un support "Hors subvention" pour votre secteur.</div>
               </div>
 
               <div id="subWrap">
-                <label>Subvention (si financement = Subvention)</label>
+                <label for="subSelect">Subvention (si financement = Subvention)</label>
                 <select name="subvention_id" id="subSelect">
                   <option value="">— (optionnel) —</option>
                   {% for s in subs %}
@@ -77,7 +78,7 @@
               </div>
 
               <div>
-                <label>Ligne budgétaire (charges)</label>
+                <label for="ligneSelect">Ligne budgétaire (charges)</label>
                 <select name="ligne_budget_id" id="ligneSelect">
                   <option value="">— Choisir la subvention d’abord —</option>
                   {% for l in all_lignes %}
@@ -88,28 +89,28 @@
                   <input type="checkbox" name="a_ventiler" id="avCheck" value="1">
                   <span>À ventiler (je régularise plus tard)</span>
                 </label>
-                <div class="help">Si coché : l'app bascule automatiquement sur une ligne tampon "À ventiler" (dans ton secteur).</div>
+                <div class="help">Si coché : l'app bascule automatiquement sur une ligne tampon "À ventiler" (dans votre secteur).</div>
               </div>
 
               <div style="grid-column:1 / -1">
-                <label>Libellé</label>
-                <input name="libelle" placeholder="ex : Écran 24\" IPS" required>
+                <label for="fac-ligne-libelle">Libellé</label>
+                <input name="libelle" id="fac-ligne-libelle" placeholder="ex : Écran 24\" IPS" required>
               </div>
 
               <div>
-                <label>Quantité</label>
-                <input type="number" name="quantite" min="1" value="1" required>
+                <label for="fac-ligne-quantite">Quantité</label>
+                <input type="number" name="quantite" id="fac-ligne-quantite" min="1" value="1" required>
               </div>
 
               <div>
-                <label>Prix unitaire (€)</label>
-                <input type="number" step="0.01" name="prix_unitaire" value="0">
+                <label for="fac-ligne-pu">Prix unitaire (€)</label>
+                <input type="number" step="0.01" name="prix_unitaire" id="fac-ligne-pu" value="0">
               </div>
 
               <div style="grid-column:1 / -1">
-                <label>Montant de la ligne (€)</label>
-                <input type="number" step="0.01" name="montant_ligne" value="0">
-                <div class="help">Si tu laisses 0 : montant = quantité × prix unitaire.</div>
+                <label for="fac-ligne-montant">Montant de la ligne (€)</label>
+                <input type="number" step="0.01" name="montant_ligne" id="fac-ligne-montant" value="0">
+                <div class="help">Si vous laissez 0 : montant = quantité × prix unitaire.</div>
               </div>
             </div>
 
@@ -228,7 +229,7 @@
               </tr>
             {% endfor %}
             {% if not f.lignes %}
-              <tr><td colspan="8" class="muted">Aucune ligne pour l’instant. Ajoute-en une à droite.</td></tr>
+              <tr><td colspan="8" class="muted">Aucune ligne pour l’instant. Ajoutez-en une avec le formulaire « Ajouter une ligne ».</td></tr>
             {% endif %}
           </tbody>
         </table>

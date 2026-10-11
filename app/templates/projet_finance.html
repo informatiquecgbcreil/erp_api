@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Dossier financier — {{ projet.nom }}{% endblock %}
 {% block body %}
 {% set k = finance.kpis %}
 <style>
@@ -67,8 +68,8 @@
 
     <form method="get" class="inline" style="margin-top:12px;">
       <input type="hidden" name="tab" value="{{ tab }}">
-      <label class="muted">Exercice</label>
-      <select class="in" name="year" onchange="this.form.submit()">
+      <label class="muted" for="finance-exercice">Exercice</label>
+      <select class="in" name="year" id="finance-exercice" onchange="this.form.submit()">
         {% for y in finance.years %}
           <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
@@ -158,7 +159,7 @@
 
   <div class="card">
     <h2>Actions rapides</h2>
-    <p class="muted">P0.2B : tu peux maintenant poser les bases financières directement depuis le dossier projet, sans partir en exploration spéléologique dans les menus.</p>
+    <p class="muted">Vous pouvez poser les bases financières directement depuis le dossier projet, sans chercher dans les menus.</p>
     <div class="finance-actions">
       <a class="btn" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='budget') }}">Ajouter du budget prévu</a>
       <a class="btn" href="{{ url_for('projets.projet_finance', projet_id=projet.id, year=year, tab='financements') }}">Créer / rattacher un financement</a>
@@ -340,10 +341,10 @@
         <label class="field-stack"><span>Type</span><select class="in" name="type_depense"><option>Fonctionnement</option><option>Investissement</option><option>Prestations</option><option>Déplacements</option><option>Autre</option></select></label>
       </div>
       <button class="btn ok" type="submit">Créer la dépense</button>
-      <p class="muted">La dépense sera imputée à 100% sur la ligne choisie. Clique ensuite sur “Ouvrir / répartir” pour la partager entre CAF, QPV, fonds propres, etc.</p>
+      <p class="muted">La dépense sera imputée à 100% sur la ligne choisie. Cliquez ensuite sur « Ouvrir / répartir » pour la partager entre CAF, QPV, fonds propres, etc.</p>
     </form>
     {% else %}
-      <p class="muted">Aucune ligne de charge disponible. Crée d’abord une subvention liée avec au moins une ligne de charge.</p>
+      <p class="muted">Aucune ligne de charge disponible. Créez d’abord une subvention liée avec au moins une ligne de charge.</p>
     {% endif %}
   </div>
 

@@ -8,8 +8,8 @@
 
     <div class="grid" style="grid-template-columns:1.3fr 0.7fr; gap:12px;">
       <div>
-        <label>Compétence</label>
-        <input class="in" id="compSearch" placeholder="🔎 Filtrer (code, intitulé, référentiel…)" autocomplete="off" style="margin-bottom:6px;">
+        <label for="competence_id">Compétence</label>
+        <input class="in" id="compSearch" aria-label="Filtrer la liste des compétences (code, intitulé, référentiel)" placeholder="🔎 Filtrer (code, intitulé, référentiel…)" autocomplete="off" style="margin-bottom:6px;">
         <select class="in" id="competence_id" name="competence_id" required size="1">
           <option value="">— Choisir une compétence —</option>
           {% for c in all_competences %}
@@ -43,8 +43,8 @@
       </script>
 
       <div>
-        <label>Niveau</label>
-        <select class="in" name="etat" required>
+        <label for="passeport-eval-etat">Niveau</label>
+        <select class="in" id="passeport-eval-etat" name="etat" required>
           <option value="0">0 — À faire / non évalué</option>
           <option value="1">1 — En cours</option>
           <option value="2">2 — Acquis</option>
@@ -55,13 +55,13 @@
 
     <div class="spacer"></div>
 
-    <label>Commentaire (optionnel)</label>
-    <input class="in" name="commentaire" placeholder="Observation rapide, difficulté, contexte…">
+    <label for="passeport-eval-commentaire">Commentaire (optionnel)</label>
+    <input class="in" id="passeport-eval-commentaire" name="commentaire" placeholder="Observation rapide, difficulté, contexte…">
 
     <div class="spacer"></div>
 
-    <label>Rattacher à une session (optionnel)</label>
-    <select class="in" name="session_id">
+    <label for="passeport-eval-session-id">Rattacher à une session (optionnel)</label>
+    <select class="in" id="passeport-eval-session-id" name="session_id">
       <option value="0">— Hors session —</option>
       {% for ss in session_choices %}
         {% set d = ss.date_session or ss.rdv_date or ss.created_at %}

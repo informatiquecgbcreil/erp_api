@@ -1,9 +1,10 @@
 {% extends 'kiosk/base.html' %}
+{% block title %}Trop de demandes{% endblock %}
 {% block header_title %}Un instant{% endblock %}
 {% block body %}
   <div class="k-card">
-    <h1 class="k-card__title">Trop de demandes d'un coup ⏳</h1>
+    <h1 class="k-card__title">Trop de demandes d'un coup <span aria-hidden="true">⏳</span></h1>
     <p class="k-card__sub">Cette tablette a envoyé beaucoup de demandes en peu de temps. Patientez quelques minutes, puis réessayez. Si cela se reproduit, prévenez l'animateur ou l'animatrice.</p>
-    {% if retour %}<a class="k-btn" href="{{ retour }}">← Revenir à l'émargement</a>{% endif %}
+    {% if retour %}<a class="k-btn" href="{{ retour }}"><span aria-hidden="true">←</span> Revenir à l'émargement</a>{% endif %}
   </div>
 {% endblock %}

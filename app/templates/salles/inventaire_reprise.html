@@ -15,8 +15,8 @@
   {% if not emplacements %}
     <div class="card" style="border-left:4px solid #f59e0b;">
       <p style="margin:0;">
-        Aucun espace n'est déclaré « point de stockage ». Coche la case sur les
-        salles et les armoires concernées, puis reviens ici.
+        Aucun espace n'est déclaré « point de stockage ». Cochez la case sur les
+        salles et les armoires concernées, puis revenez ici.
       </p>
       <a class="btn" style="margin-top:10px;" href="{{ url_for('salles.index') }}">Aller au plan</a>
     </div>
@@ -47,7 +47,8 @@
                   <td><strong>{{ groupe.libelle }}</strong></td>
                   <td>{{ groupe.nb }}</td>
                   <td>
-                    <select class="in" name="loc_{{ groupe.libelle }}" style="width:100%;">
+                    <select class="in" name="loc_{{ groupe.libelle }}" style="width:100%;"
+                            aria-label="Emplacement réel pour « {{ groupe.libelle }} »">
                       <option value="">— Laisser tel quel —</option>
                       {% for emplacement in emplacements %}
                         <option value="{{ emplacement.id }}">

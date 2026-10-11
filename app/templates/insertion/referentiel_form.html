@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% block title %}{{ 'Modifier' if row else 'Ajouter' }} {{ meta.singular }}{% endblock %}
 {% block body %}
 {% set values = values or {} %}
 <div class="stack">

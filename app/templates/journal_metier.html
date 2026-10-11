@@ -10,8 +10,8 @@
       <a class="btn" href="{{ url_for('admin.journal_audit') }}">Vue technique</a>
     </div>
     <form method="get" class="inline" style="gap:8px; margin-top:10px; flex-wrap:wrap;">
-      <select class="in" name="action"><option value="">Toutes les actions</option>{% for a in actions %}<option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
-      <input class="in" name="cible" value="{{ cible or '' }}" placeholder="chercher une cible">
+      <select class="in" name="action" aria-label="Filtrer par action"><option value="">Toutes les actions</option>{% for a in actions %}<option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
+      <input class="in" name="cible" value="{{ cible or '' }}" placeholder="chercher une cible" aria-label="Chercher une cible">
       <button class="btn" type="submit">Filtrer</button>
     </form>
   </section>

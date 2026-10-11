@@ -45,7 +45,7 @@
       {% if peut_regler_taux %}
         <form method="post" action="{{ url_for('main.benevolat_taux_update') }}" class="inline-actions no-print" style="margin-top:6px; gap:4px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input class="in" name="taux" inputmode="decimal" value="{{ '%g'|format(stats.taux_horaire) }}" style="width:70px;" title="Taux horaire de valorisation (€/h)">
+          <input class="in" name="taux" inputmode="decimal" value="{{ '%g'|format(stats.taux_horaire) }}" style="width:70px;" title="Taux horaire de valorisation (€/h)" aria-label="Taux horaire de valorisation (€/h)">
           <button class="btn" type="submit" style="padding:2px 8px;">Régler</button>
         </form>
       {% endif %}
@@ -60,7 +60,7 @@
       <input type="hidden" name="participant_id" id="benevoleId">
       <div class="form-grid-3">
         <label class="field-stack" style="position:relative;"><span>Bénévole (habitant) *</span>
-          <input class="in" id="benevoleSearch" autocomplete="off" placeholder="Tape 2 lettres du nom…"
+          <input class="in" id="benevoleSearch" autocomplete="off" placeholder="Tapez 2 lettres du nom…"
                  data-search-url="{{ url_for('participants.search_participants') }}">
           <div id="benevoleResults"></div>
         </label>
@@ -144,13 +144,13 @@
                 {% if can_edit %}
                 <form method="post" action="{{ url_for('main.benevolat_heures_supprimer', ligne_id=l.id) }}" onsubmit="return confirm('Supprimer cette ligne ?');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn danger" type="submit" style="padding:2px 8px;">🗑</button>
+                  <button class="btn danger" type="submit" style="padding:2px 8px;" title="Supprimer cette ligne" aria-label="Supprimer cette ligne">🗑</button>
                 </form>
                 {% endif %}
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="7"><div class="quick-empty"><strong>Aucune saisie.</strong>Utilise le formulaire ci-dessus pour enregistrer les premières heures.</div></td></tr>
+            <tr><td colspan="7"><div class="quick-empty"><strong>Aucune saisie.</strong>Utilisez le formulaire ci-dessus pour enregistrer les premières heures.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>

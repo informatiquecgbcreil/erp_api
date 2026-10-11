@@ -11,7 +11,7 @@
 
 <div class="grid two">
   <div class="card">
-    <h1>Contrôle</h1>
+    <h2>Contrôle des dépenses</h2>
     <p class="muted">
       Cette page est volontairement “safe” : elle ne dépend d’aucune requête complexe.
       Elle sert de point d’entrée pour les routines de contrôle à venir.
@@ -37,7 +37,7 @@
   </div>
 
   <div class="card">
-    <h2>Prochaine étape (quand tu veux)</h2>
+    <h2>Prochaine étape (quand vous voulez)</h2>
     <p class="muted">
       Là on peut rendre cette page vraiment utile en listant automatiquement :
     </p>
@@ -48,7 +48,7 @@
       <li>Dépenses “brouillon” / anomalies</li>
     </ul>
     <p class="muted">
-      Ça, c’est le tableau de bord qui fait gagner des heures à ta responsable financière.
+      Ça, c’est le tableau de bord qui fait gagner des heures à votre responsable financière.
     </p>
   </div>
 
@@ -61,7 +61,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="add_materiel">
       <div class="inline" style="gap:8px; flex-wrap:wrap;">
-        <input class="in" type="text" name="nom" placeholder="Ex. Tour fixe, PC portable, vidéoprojecteur" style="min-width:260px;">
+        <label for="controle-materiel-nom" class="sr-only">Nom du matériel</label>
+        <input class="in" type="text" id="controle-materiel-nom" name="nom" placeholder="Ex. Tour fixe, PC portable, vidéoprojecteur" style="min-width:260px;">
         <button class="btn ok" type="submit">Ajouter</button>
       </div>
     </form>
@@ -86,11 +87,11 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="add_conso_config">
       <div class="form-grid-3">
-        <div class="field-stack"><label>Libellé</label><input class="in" type="text" name="label" placeholder="Référence 2026" required></div>
-        <div class="field-stack"><label>Date de début</label><input class="in" type="date" name="date_debut" required></div>
-        <div class="field-stack"><label>Date de fin</label><input class="in" type="date" name="date_fin"></div>
+        <div class="field-stack"><label for="conso-new-label">Libellé</label><input class="in" type="text" id="conso-new-label" name="label" placeholder="Référence 2026" required></div>
+        <div class="field-stack"><label for="conso-new-debut">Date de début</label><input class="in" type="date" id="conso-new-debut" name="date_debut" required></div>
+        <div class="field-stack"><label for="conso-new-fin">Date de fin</label><input class="in" type="date" id="conso-new-fin" name="date_fin"></div>
       </div>
-      <div class="field-stack"><label>CO₂ par kWh (kg)</label><input class="in" type="number" step="0.001" min="0" name="co2_kg_par_kwh" value="0.06"></div>
+      <div class="field-stack"><label for="conso-new-co2">CO₂ par kWh (kg)</label><input class="in" type="number" step="0.001" min="0" id="conso-new-co2" name="co2_kg_par_kwh" value="0.06"></div>
       <div class="form-grid-3">
         {% for m in materiels|default([]) %}
           <label class="field-stack" style="padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--surface);">
@@ -107,7 +108,7 @@
 <div class="card" style="margin-top:16px;">
   <h2>Référentiels existants</h2>
   <p class="muted">
-    Un référentiel utilisé par des séances ne doit pas être supprimé : clôture-le avec une date de fin ou désactive-le pour garder l’historique propre.
+    Un référentiel utilisé par des séances ne doit pas être supprimé : clôturez-le avec une date de fin ou désactivez-le pour garder l’historique propre.
   </p>
 
   <div class="stack">
@@ -130,23 +131,23 @@
 
           <div class="form-grid-3">
             <div class="field-stack">
-              <label>Libellé</label>
-              <input class="in" type="text" name="label" value="{{ cfg.label }}" required>
+              <label for="conso-{{ cfg.id }}-label">Libellé</label>
+              <input class="in" type="text" id="conso-{{ cfg.id }}-label" name="label" value="{{ cfg.label }}" required>
             </div>
             <div class="field-stack">
-              <label>Date de début</label>
-              <input class="in" type="date" name="date_debut" value="{{ cfg.date_debut }}" required>
+              <label for="conso-{{ cfg.id }}-debut">Date de début</label>
+              <input class="in" type="date" id="conso-{{ cfg.id }}-debut" name="date_debut" value="{{ cfg.date_debut }}" required>
             </div>
             <div class="field-stack">
-              <label>Date de fin</label>
-              <input class="in" type="date" name="date_fin" value="{{ cfg.date_fin or '' }}">
+              <label for="conso-{{ cfg.id }}-fin">Date de fin</label>
+              <input class="in" type="date" id="conso-{{ cfg.id }}-fin" name="date_fin" value="{{ cfg.date_fin or '' }}">
             </div>
           </div>
 
           <div class="form-grid-3">
             <div class="field-stack">
-              <label>CO₂ par kWh (kg)</label>
-              <input class="in" type="number" step="0.001" min="0" name="co2_kg_par_kwh" value="{{ cfg.co2_kg_par_kwh }}">
+              <label for="conso-{{ cfg.id }}-co2">CO₂ par kWh (kg)</label>
+              <input class="in" type="number" step="0.001" min="0" id="conso-{{ cfg.id }}-co2" name="co2_kg_par_kwh" value="{{ cfg.co2_kg_par_kwh }}">
             </div>
             <label class="field-stack" style="justify-content:end;">
               <span>Statut</span>
@@ -176,7 +177,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="delete_conso_config">
           <input type="hidden" name="config_id" value="{{ cfg.id }}">
-          <button class="btn danger" type="submit" {% if row.used_count %}disabled title="Référentiel utilisé par des séances : clôture ou désactive plutôt."{% endif %}>
+          <button class="btn danger" type="submit" {% if row.used_count %}disabled title="Référentiel utilisé par des séances : clôturez-le ou désactivez-le plutôt."{% endif %}>
             Supprimer
           </button>
         </form>

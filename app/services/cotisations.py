@@ -147,7 +147,7 @@ def regrouper_en_foyer(membres: list[Participant]) -> tuple[bool, str]:
     """
     membres = [m for m in membres if m is not None]
     if len(membres) < 2:
-        return False, "Sélectionne au moins deux personnes pour former une famille."
+        return False, "Sélectionnez au moins deux personnes pour former une famille."
 
     foyers_existants = {m.foyer_id for m in membres if m.foyer_id}
     if len(foyers_existants) > 1:

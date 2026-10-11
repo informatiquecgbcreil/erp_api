@@ -18,20 +18,20 @@
     <h1>🤝 Nouvelle mise à disposition</h1>
     <p class="muted">
       Qui, quelle salle, quelles dates. Le prix se calcule tout seul à partir
-      de la grille — tu n'as aucun barème à connaître, et le détail s'affiche
+      de la grille — vous n'avez aucun barème à connaître, et le détail s'affiche
       ligne par ligne sur la fiche.
     </p>
   </div>
 
   {% if not preneurs %}
     <div class="card" style="border-left:4px solid #f59e0b;">
-      <p style="margin:0;">Aucun preneur enregistré. Crée d'abord la structure ou la personne qui occupe les lieux.</p>
+      <p style="margin:0;">Aucun preneur enregistré. Créez d'abord la structure ou la personne qui occupe les lieux.</p>
       <a class="btn ok" style="margin-top:10px;" href="{{ url_for('salles.preneur_form') }}">➕ Nouveau preneur</a>
     </div>
   {% elif not salles %}
     <div class="card" style="border-left:4px solid #f59e0b;">
       <p style="margin:0;">
-        Aucune salle n'est marquée « mobilisable par un tiers ». Coche la case
+        Aucune salle n'est marquée « mobilisable par un tiers ». Cochez la case
         sur les salles concernées, dans le plan.
       </p>
       <a class="btn" style="margin-top:10px;" href="{{ url_for('salles.index') }}">Aller au plan</a>
@@ -45,8 +45,8 @@
       <div class="stack" style="gap:10px;">
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:230px;">
-            <label class="ui-label">Preneur *</label>
-            <select class="in" name="preneur_id" required style="width:100%;">
+            <label for="resa_preneur_id" class="ui-label">Preneur *</label>
+            <select id="resa_preneur_id" class="in" name="preneur_id" required style="width:100%;">
               <option value="">— Choisir —</option>
               {% for p in preneurs %}
                 <option value="{{ p.id }}">
@@ -61,8 +61,8 @@
             </p>
           </div>
           <div style="flex:1; min-width:230px;">
-            <label class="ui-label">Salle *</label>
-            <select class="in" name="espace_id" required style="width:100%;">
+            <label for="resa_espace_id" class="ui-label">Salle *</label>
+            <select id="resa_espace_id" class="in" name="espace_id" required style="width:100%;">
               <option value="">— Choisir —</option>
               {% for s in salles %}
                 <option value="{{ s.id }}" {% if espace_prefere == s.id %}selected{% endif %}>
@@ -74,13 +74,13 @@
         </div>
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:2; min-width:230px;">
-            <label class="ui-label">Intitulé *</label>
-            <input class="in" name="titre" required style="width:100%;"
+            <label for="resa_titre" class="ui-label">Intitulé *</label>
+            <input id="resa_titre" class="in" name="titre" required style="width:100%;"
                    placeholder="Cours de gym, assemblée générale, anniversaire…">
           </div>
           <div style="width:130px;">
-            <label class="ui-label">Effectif</label>
-            <input class="in" name="effectif" inputmode="numeric" style="width:100%;">
+            <label for="resa_effectif" class="ui-label">Effectif</label>
+            <input id="resa_effectif" class="in" name="effectif" inputmode="numeric" style="width:100%;">
           </div>
         </div>
       </div>
@@ -91,27 +91,27 @@
       <div class="stack" style="gap:10px;">
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:160px;">
-            <label class="ui-label">Du *</label>
-            <input class="in" type="date" name="date_debut" required style="width:100%;"
+            <label for="resa_date_debut" class="ui-label">Du *</label>
+            <input id="resa_date_debut" class="in" type="date" name="date_debut" required style="width:100%;"
                    value="{{ jour_prefere }}">
           </div>
           <div style="flex:1; min-width:160px;">
-            <label class="ui-label">Au</label>
-            <input class="in" type="date" name="date_fin" style="width:100%;">
+            <label for="resa_date_fin" class="ui-label">Au</label>
+            <input id="resa_date_fin" class="in" type="date" name="date_fin" style="width:100%;">
             <p class="muted" style="margin:4px 0 0; font-size:.8rem;">Vide = une seule date.</p>
           </div>
           <div style="width:140px;">
-            <label class="ui-label">De</label>
-            <input class="in" type="time" name="heure_debut" value="09:00" style="width:100%;">
+            <label for="resa_heure_debut" class="ui-label">De</label>
+            <input id="resa_heure_debut" class="in" type="time" name="heure_debut" value="09:00" style="width:100%;">
           </div>
           <div style="width:140px;">
-            <label class="ui-label">À</label>
-            <input class="in" type="time" name="heure_fin" value="12:00" style="width:100%;">
+            <label for="resa_heure_fin" class="ui-label">À</label>
+            <input id="resa_heure_fin" class="in" type="time" name="heure_fin" value="12:00" style="width:100%;">
           </div>
         </div>
 
-        <div>
-          <label class="ui-label">Jours retenus (pour une occupation régulière)</label>
+        <fieldset style="border:0; margin:0; padding:0; min-width:0;">
+          <legend class="ui-label" style="padding:0;">Jours retenus (pour une occupation régulière)</legend>
           <div class="jours-semaine">
             {% for i, nom in [(0,'Lundi'),(1,'Mardi'),(2,'Mercredi'),(3,'Jeudi'),
                               (4,'Vendredi'),(5,'Samedi'),(6,'Dimanche')] %}
@@ -120,10 +120,10 @@
           </div>
           <p class="muted" style="margin:6px 0 0; font-size:.8rem;">
             Rien de coché = toutes les dates de la période.
-            « L'asso de gym, tous les mardis de septembre à juin » : coche Mardi,
-            mets septembre en début et juin en fin.
+            « L'asso de gym, tous les mardis de septembre à juin » : cochez Mardi,
+            mettez septembre en début et juin en fin.
           </p>
-        </div>
+        </fieldset>
 
         <label class="inline" style="gap:7px; align-items:center;">
           <input type="checkbox" name="sauter_feries" value="1" checked>
@@ -135,7 +135,7 @@
     {% if catalogue %}
       <div class="card">
         <h2 style="margin-top:0;">Prestations</h2>
-        <p class="muted">Laisse à zéro ce qui n'est pas retenu.</p>
+        <p class="muted">Laissez à zéro ce qui n'est pas retenu.</p>
         {% for p in catalogue %}
           <div class="presta-ligne">
             <span class="presta-nom">
@@ -144,7 +144,7 @@
             </span>
             <span class="muted" style="white-space:nowrap;">{{ '%.2f'|format(p.montant) }} € · {{ p.unite_label|lower }}</span>
             <input class="in" name="prestation_{{ p.id }}" inputmode="decimal"
-                   style="width:90px;" placeholder="0">
+                   style="width:90px;" placeholder="0" aria-label="Quantité retenue : {{ p.libelle }}">
           </div>
         {% endfor %}
       </div>
@@ -164,8 +164,8 @@
           </span>
         </label>
         <div style="max-width:260px;">
-          <label class="ui-label">L'option expire le</label>
-          <input class="in" type="date" name="option_expire_le" style="width:100%;">
+          <label for="resa_option_expire_le" class="ui-label">L'option expire le</label>
+          <input id="resa_option_expire_le" class="in" type="date" name="option_expire_le" style="width:100%;">
         </div>
 
         <label class="inline" style="gap:7px; align-items:center;">
@@ -174,8 +174,8 @@
           <span><strong>Mise à disposition gratuite</strong></span>
         </label>
         <div id="motif-gratuite" hidden>
-          <label class="ui-label">Motif de la gratuité *</label>
-          <input class="in" name="motif_gratuite" style="width:100%;"
+          <label for="resa_motif_gratuite" class="ui-label">Motif de la gratuité *</label>
+          <input id="resa_motif_gratuite" class="in" name="motif_gratuite" style="width:100%;"
                  placeholder="Convention de partenariat, réciprocité, action d'intérêt général…">
           <p class="muted" style="margin:4px 0 0; font-size:.8rem;">
             Obligatoire : c'est ce motif qui justifie la gratuité en contrôle et
@@ -185,16 +185,16 @@
 
         <div class="inline" style="gap:10px; flex-wrap:wrap;">
           <div style="flex:1; min-width:160px;">
-            <label class="ui-label">Caution (€)</label>
-            <input class="in" name="caution_montant" inputmode="decimal" style="width:100%;">
+            <label for="resa_caution_montant" class="ui-label">Caution (€)</label>
+            <input id="resa_caution_montant" class="in" name="caution_montant" inputmode="decimal" style="width:100%;">
           </div>
           <div style="flex:1; min-width:160px;">
-            <label class="ui-label">Acompte (€)</label>
-            <input class="in" name="acompte_montant" inputmode="decimal" style="width:100%;">
+            <label for="resa_acompte_montant" class="ui-label">Acompte (€)</label>
+            <input id="resa_acompte_montant" class="in" name="acompte_montant" inputmode="decimal" style="width:100%;">
           </div>
           <div style="flex:1; min-width:190px;">
-            <label class="ui-label">Référent (ouverture / fermeture)</label>
-            <input class="in" name="referent" style="width:100%;" list="liste-referents">
+            <label for="resa_referent" class="ui-label">Référent (ouverture / fermeture)</label>
+            <input id="resa_referent" class="in" name="referent" style="width:100%;" list="liste-referents">
             <datalist id="liste-referents">
               {% for v in valeurs_deja_saisies('Reservation', 'referent') %}<option value="{{ v }}">{% endfor %}
             </datalist>
@@ -202,13 +202,13 @@
         </div>
 
         <div>
-          <label class="ui-label">Conditions particulières</label>
-          <textarea class="in" name="conditions_particulieres" rows="2" style="width:100%;"
+          <label for="resa_conditions_particulieres" class="ui-label">Conditions particulières</label>
+          <textarea id="resa_conditions_particulieres" class="in" name="conditions_particulieres" rows="2" style="width:100%;"
                     placeholder="Accès par la porte arrière, remise en état des tables, pas d'accès cuisine…"></textarea>
         </div>
         <div>
-          <label class="ui-label">Notes internes</label>
-          <textarea class="in" name="notes" rows="2" style="width:100%;"></textarea>
+          <label for="resa_notes" class="ui-label">Notes internes</label>
+          <textarea id="resa_notes" class="in" name="notes" rows="2" style="width:100%;"></textarea>
         </div>
       </div>
     </div>

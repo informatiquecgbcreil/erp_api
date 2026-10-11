@@ -29,20 +29,20 @@
 
     <form method="get" style="margin-top:12px;">
       <div class="inline" style="gap:10px; flex-wrap:wrap;">
-        <input class="in" name="q" placeholder="Rechercher (titre, financeur, mot-clé)" value="{{ q }}" style="min-width:260px;">
-        <select class="in" name="statut">
+        <input class="in" name="q" placeholder="Rechercher (titre, financeur, mot-clé)" value="{{ q }}" style="min-width:260px;" aria-label="Rechercher une opportunité (titre, financeur, mot-clé)">
+        <select class="in" name="statut" aria-label="Filtrer par statut">
           <option value="">Tous les statuts (sauf écartés)</option>
           {% for code, label in statuts.items() %}
             <option value="{{ code }}" {% if statut == code %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
-        <select class="in" name="source">
+        <select class="in" name="source" aria-label="Filtrer par source">
           <option value="">Toutes les sources</option>
           {% for s in sources %}
             <option value="{{ s.id }}" {% if source_id == s.id %}selected{% endif %}>{{ s.nom }}</option>
           {% endfor %}
         </select>
-        <select class="in" name="tri">
+        <select class="in" name="tri" aria-label="Trier les opportunités">
           {% for code, label in tris.items() %}
             <option value="{{ code }}" {% if tri == code %}selected{% endif %}>Trier par : {{ label }}</option>
           {% endfor %}
@@ -95,7 +95,7 @@
               <td>
                 {% if o.date_cloture %}
                   {% set jr = o.jours_restants %}
-                  <span {% if jr is not none and jr < 0 %}class="muted"{% elif jr is not none and jr <= 15 %}style="color:#dc2626;font-weight:bold;"{% endif %}>
+                  <span {% if jr is not none and jr < 0 %}class="muted"{% elif jr is not none and jr <= 15 %}style="color:var(--danger, #b91c1c);font-weight:bold;"{% endif %}>
                     {{ o.date_cloture.strftime("%d/%m/%Y") }}
                     {% if jr is not none and jr >= 0 %}<br><small>J-{{ jr }}</small>{% elif jr is not none %}<br><small>clôturé</small>{% endif %}
                   </span>
@@ -115,7 +115,7 @@
                 <form method="post" action="{{ url_for('veille.changer_statut', opp_id=o.id) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="retour" value="{{ request.full_path }}">
-                  <select class="in" name="statut" onchange="this.form.submit()" style="width:100%;">
+                  <select class="in" name="statut" onchange="this.form.submit()" style="width:100%;" aria-label="Suivi de l’opportunité « {{ o.titre }} »">
                     {% for code, label in statuts.items() %}
                       <option value="{{ code }}" {% if o.statut == code %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}

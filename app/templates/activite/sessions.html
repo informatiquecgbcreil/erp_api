@@ -2,6 +2,8 @@
 {% import "_ux_macros.html" as ui %}
 {% import "_selection_multiple.html" as sel %}
 
+{% block title %}Séances — {{ atelier.nom }}{% endblock %}
+
 {% block body %}
   <div class="stack">
     <div class="card">
@@ -160,13 +162,13 @@
           </tbody>
         </table>
       </div>
-      <div class="responsive-card-list" aria-label="Historique des sessions (vue compacte)">
+      <div class="responsive-card-list" role="group" aria-label="Historique des sessions (vue compacte)">
         {% for s, nb, cap, taux in sessions %}
         <article class="responsive-card">
           <header class="responsive-card__head">
             <strong>
               <label style="display:inline-flex; align-items:center; gap:8px;">
-                {{ sel.case("seances", "sid", s.id, "Sélectionner la séance") }}
+                {{ sel.case("seances", "sid", s.id, "Sélectionner la séance du " ~ (s.date_session or s.rdv_date or '')) }}
               </label>
               {% if (s.statut or '') == 'annulee' %}🚫 {% endif %}
               {% if s.session_type == 'COLLECTIF' %}
@@ -224,14 +226,14 @@
         <div class="spacer"></div>
         <div class="card">
           <h2 style="margin-top:0;">Documents mensuels (individuel)</h2>
-          <div class="muted">Choisis une période, puis télécharge / corrige / envoie. Le PDF dépend de LibreOffice.</div>
+          <div class="muted">Choisissez une période, puis téléchargez, corrigez ou envoyez le document. Le PDF dépend de LibreOffice.</div>
           <div class="row" style="gap:12px; flex-wrap:wrap; margin-top:12px;">
             <div>
-              <label>Année</label>
+              <label for="ymYear">Année</label>
               <input class="in" id="ymYear" type="number" min="2000" max="2100" value="{{ current_year or 2026 }}" style="width:120px;">
             </div>
             <div>
-              <label>Mois</label>
+              <label for="ymMonth">Mois</label>
               <input class="in" id="ymMonth" type="number" min="1" max="12" value="{{ current_month or 1 }}" style="width:120px;">
             </div>
             <div style="align-self:end;" class="row" style="gap:10px; flex-wrap:wrap;">
@@ -244,16 +246,16 @@
           <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
             <form id="upForm" method="post" enctype="multipart/form-data">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <label>Uploader version corrigée (DOCX ou PDF)</label>
+              <label for="upFichier">Déposer une version corrigée (DOCX ou PDF)</label>
               <div class="row" style="gap:8px; flex-wrap:wrap;">
-                <input class="in" type="file" name="file" accept=".docx,.pdf" required>
+                <input class="in" type="file" id="upFichier" name="file" accept=".docx,.pdf" required>
                 <button class="btn" type="submit">Envoyer</button>
               </div>
             </form>
             <form id="mailForm" method="post">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <label>Envoyer par mail (si SMTP configuré)</label>
-              <input class="in" name="to" placeholder="destinataire@exemple.fr" required>
+              <label for="mailDestinataire">Envoyer par mail (si SMTP configuré)</label>
+              <input class="in" id="mailDestinataire" name="to" placeholder="destinataire@exemple.fr" required>
               <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap;">
                 <button class="btn" type="submit">Envoyer</button>
               </div>

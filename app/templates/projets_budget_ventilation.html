@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Répartition du budget — {{ projet.nom }}{% endblock %}
 {% block body %}
 <div class="stack">
 
@@ -46,7 +47,7 @@
 
     <div style="margin-top:12px;">
       <div class="kpi-label">Progression de la répartition</div>
-      <div class="meter">
+      <div class="meter" role="img" aria-label="Progression de la répartition : {{ "%.0f"|format(pct_ventile) }} %">
         <div class="meter__fill" style="width:{{ pct_ventile }}%;"></div>
       </div>
       <div class="legend">
@@ -86,7 +87,7 @@
         <table class="matrix">
           <thead>
             <tr>
-              <th class="sticky-col">Charge \\ Financeur</th>
+              <th class="sticky-col">Charge / financeur</th>
               {% for p in produits %}
                 <th class="matrix-head">
                   <div class="matrix-head__title">{{ p.financeur }}</div>
@@ -129,6 +130,7 @@
                       value="{{ val if val else '' }}"
                       placeholder="0"
                       inputmode="decimal"
+                      aria-label="Part de {{ p.financeur }} sur la charge {{ c.code_plan }} — {{ c.libelle }} (€)"
                     >
                   </td>
                 {% endfor %}
@@ -137,7 +139,7 @@
                 <td class="num">
                   <div class="cell-money">
                     <div class="cell-money__main mono">{{ "%.2f"|format(vtot) }}€</div>
-                    <div class="meter meter--thin" aria-label="Couverture de la ligne">
+                    <div class="meter meter--thin" role="img" aria-label="Couverture de la ligne : {{ "%.0f"|format(pct_ligne) }} %">
                       <div class="meter__fill meter__fill--ok" style="width:{{ "%.0f"|format(pct_ligne) }}%"></div>
                     </div>
                     <div class="cell-money__sub muted">{{ "%.0f"|format(pct_ligne) }}%</div>
@@ -160,7 +162,7 @@
 					  {% endif %}
 					</div>
 
-					<div class="meter meter--thin" aria-label="Reste à financer (ligne)">
+					<div class="meter meter--thin" role="img" aria-label="Reste à financer (ligne) : {{ "%.0f"|format(pct_reste_ligne) }} %">
 					  <div class="meter__fill meter__fill--warn" style="width:{{ "%.0f"|format(pct_reste_ligne) }}%"></div>
 					</div>
 

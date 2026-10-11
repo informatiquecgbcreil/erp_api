@@ -40,18 +40,18 @@
           <td>{{ d.salarie.nom_complet if d.salarie else '—' }}</td>
           <td>{{ d.depose_par.nom if d.depose_par else '—' }}</td>
           <td>{{ d.created_at.strftime('%d/%m/%Y') }}</td>
-          <td class="es-lien">{% if d.depose_par_user_id == current_user.id %}{{ d.acces|map(attribute='user')|map(attribute='nom')|join(', ') or 'Toi seul·e' }}{% else %}Partagé avec toi{% endif %}</td>
+          <td class="es-lien">{% if d.depose_par_user_id == current_user.id %}{{ d.acces|map(attribute='user')|map(attribute='nom')|join(', ') or 'Vous seul·e' }}{% else %}Partagé avec vous{% endif %}</td>
           <td>
             {% if d.depose_par_user_id == current_user.id %}
             <form method="post" action="{{ url_for('salaries.supprimer_document', document_id=d.id) }}" onsubmit="return confirm('Retirer ce document du coffre-fort ?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn ghost" type="submit">🗑</button>
+              <button class="btn ghost" type="submit" title="Retirer ce document" aria-label="Retirer le document {{ d.nom_original }}">🗑</button>
             </form>
             {% endif %}
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="7"><div class="quick-empty"><strong>Aucun document.</strong> Les documents qu'on te partage (fiches de paie, contrats…) apparaîtront ici.</div></td></tr>
+        <tr><td colspan="7"><div class="quick-empty"><strong>Aucun document.</strong> Les documents qu'on vous partage (fiches de paie, contrats…) apparaîtront ici.</div></td></tr>
       {% endfor %}
       </tbody>
     </table></div>

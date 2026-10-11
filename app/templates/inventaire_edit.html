@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% block title %}Matériel — {{ item.designation or ('#' ~ item.id) }}{% endblock %}
 {% block body %}
   <div class="stack">
     <div class="inline">
@@ -22,21 +23,21 @@
 
         <div class="grid2">
           <div>
-            <label>ID interne</label>
-            <input type="text" value="{{ item.id_interne or '' }}" readonly>
+            <label for="inv_id_interne">ID interne</label>
+            <input id="inv_id_interne" type="text" value="{{ item.id_interne or '' }}" readonly>
             <div class="muted" style="font-size:12px">Généré automatiquement ({{ item.secteur }} · {{ item.date_entree or 'date inconnue' }})</div>
           </div>
           <div>
-            <label>Secteur</label>
+            <label for="inv_secteur">Secteur</label>
             {% if can('scope:all_secteurs') %}
-              <input type="text" name="secteur" value="{{ item.secteur }}">
+              <input id="inv_secteur" type="text" name="secteur" value="{{ item.secteur }}">
             {% else %}
-              <input type="text" name="secteur" value="{{ item.secteur }}" readonly>
+              <input id="inv_secteur" type="text" name="secteur" value="{{ item.secteur }}" readonly>
             {% endif %}
           </div>
           <div>
-            <label>Catégorie</label>
-            <input type="text" name="categorie" value="{{ item.categorie or '' }}" list="liste-categories-inv">
+            <label for="inv_categorie">Catégorie</label>
+            <input id="inv_categorie" type="text" name="categorie" value="{{ item.categorie or '' }}" list="liste-categories-inv">
             <datalist id="liste-categories-inv">
               {% for v in valeurs_deja_saisies('InventaireItem', 'categorie') %}<option value="{{ v }}">{% endfor %}
             </datalist>
@@ -45,17 +46,17 @@
 
         <div class="grid2">
           <div>
-            <label>Désignation *</label>
-            <input type="text" name="designation" value="{{ item.designation }}" required>
+            <label for="inv_designation">Désignation *</label>
+            <input id="inv_designation" type="text" name="designation" value="{{ item.designation }}" required>
           </div>
           <div class="grid2" style="grid-template-columns:1fr 1fr; gap:10px">
             <div>
-              <label>Quantité</label>
-              <input type="number" name="quantite" value="{{ item.quantite }}" min="1">
+              <label for="inv_quantite">Quantité</label>
+              <input id="inv_quantite" type="number" name="quantite" value="{{ item.quantite }}" min="1">
             </div>
             <div>
-              <label>État</label>
-              <select name="etat">
+              <label for="inv_etat">État</label>
+              <select id="inv_etat" name="etat">
                 {% for v in ['OK','A réparer','HS','Donné'] %}
                   <option value="{{ v }}" {% if item.etat==v %}selected{% endif %}>{{ v }}</option>
                 {% endfor %}
@@ -66,29 +67,29 @@
 
         <div class="grid2">
           <div>
-            <label>Marque</label>
-            <input type="text" name="marque" value="{{ item.marque or '' }}" list="liste-marques-inv">
+            <label for="inv_marque">Marque</label>
+            <input id="inv_marque" type="text" name="marque" value="{{ item.marque or '' }}" list="liste-marques-inv">
             <datalist id="liste-marques-inv">
               {% for v in valeurs_deja_saisies('InventaireItem', 'marque') %}<option value="{{ v }}">{% endfor %}
             </datalist>
           </div>
           <div>
-            <label>Modèle</label>
-            <input type="text" name="modele" value="{{ item.modele or '' }}">
+            <label for="inv_modele">Modèle</label>
+            <input id="inv_modele" type="text" name="modele" value="{{ item.modele or '' }}">
           </div>
         </div>
 
         <div class="grid2">
           <div>
-            <label>Numéro de série</label>
-            <input type="text" name="numero_serie" value="{{ item.numero_serie or '' }}">
+            <label for="inv_numero_serie">Numéro de série</label>
+            <input id="inv_numero_serie" type="text" name="numero_serie" value="{{ item.numero_serie or '' }}">
           </div>
           <div>
-            <label>Localisation</label>
-            <input type="text" name="localisation" value="{{ item.localisation or '' }}">
+            <label for="inv_localisation">Localisation</label>
+            <input id="inv_localisation" type="text" name="localisation" value="{{ item.localisation or '' }}">
           <div class="field-stack">
-            <label>Emplacement</label>
-            <select class="in" name="espace_id" style="width:100%;">
+            <label for="inv_espace_id">Emplacement</label>
+            <select id="inv_espace_id" class="in" name="espace_id" style="width:100%;">
               <option value="">— Non rangé —</option>
               {% for e in emplacements_stockage() %}
                 <option value="{{ e.id }}" {% if item.espace_id == e.id %}selected{% endif %}>
@@ -107,18 +108,18 @@
 
         <div class="grid2">
           <div>
-            <label>Valeur unitaire</label>
-            <input type="number" step="0.01" name="valeur_unitaire" value="{% if item.valeur_unitaire is not none %}{{ item.valeur_unitaire }}{% endif %}">
+            <label for="inv_valeur_unitaire">Valeur unitaire</label>
+            <input id="inv_valeur_unitaire" type="number" step="0.01" name="valeur_unitaire" value="{% if item.valeur_unitaire is not none %}{{ item.valeur_unitaire }}{% endif %}">
           </div>
           <div>
-            <label>Date d’entrée</label>
-            <input type="date" name="date_entree" value="{% if item.date_entree %}{{ item.date_entree }}{% endif %}">
+            <label for="inv_date_entree">Date d’entrée</label>
+            <input id="inv_date_entree" type="date" name="date_entree" value="{% if item.date_entree %}{{ item.date_entree }}{% endif %}">
           </div>
         </div>
 
         <div>
-          <label>Notes</label>
-          <textarea name="notes" rows="4">{{ item.notes or '' }}</textarea>
+          <label for="inv_notes">Notes</label>
+          <textarea id="inv_notes" name="notes" rows="4">{{ item.notes or '' }}</textarea>
         </div>
 
         <div class="inline" style="justify-content:flex-end; margin-top:10px">

@@ -194,7 +194,7 @@ def rh_salarie_supprimer(salarie_id: int):
     for modele in (HeureSupplementaire, DemandeRecuperation, FraisKilometrique, ProfilSalarial, DocumentRh):
         if modele.query.filter_by(salarie_id=salarie.id).first() is not None:
             flash(f"La fiche « {nom} » a un historique (heures, récupérations, frais, documents ou profil "
-                  "salarial) : elle ne peut pas être supprimée. Renseigne plutôt sa date de sortie.", "danger")
+                  "salarial) : elle ne peut pas être supprimée. Renseignez plutôt sa date de sortie.", "danger")
             return redirect(url_for("main.rh"))
     db.session.delete(salarie)
     db.session.commit()
@@ -216,7 +216,7 @@ def rh_import():
     """
     fichier = request.files.get("fichier")
     if fichier is None or not fichier.filename:
-        flash("Choisis un fichier CSV à importer.", "danger")
+        flash("Choisissez un fichier CSV à importer.", "danger")
         return redirect(url_for("main.rh"))
 
     try:

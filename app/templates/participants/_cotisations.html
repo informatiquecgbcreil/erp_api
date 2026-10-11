@@ -68,7 +68,7 @@
                           onsubmit="return confirm('Enregistrer une écriture inverse de ce versement ? Le versement d\'origine reste au livre de caisse.');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-                      <div><label>Motif (obligatoire)</label><input type="text" name="motif" size="22" required minlength="3" maxlength="255" placeholder="300 € au lieu de 30 €…"></div>
+                      <div><label for="cotis-{{ c.id }}-{{ v.id }}-motif">Motif (obligatoire)</label><input type="text" id="cotis-{{ c.id }}-{{ v.id }}-motif" name="motif" size="22" required minlength="3" maxlength="255" placeholder="300 € au lieu de 30 €…"></div>
                       <button class="btn" type="submit">Contre-passer</button>
                     </form>
                   </details>
@@ -83,14 +83,14 @@
             <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement', participant_id=participant.id, cotisation_id=c.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-              <div><label>Montant réglé</label><input type="text" name="montant" size="6" placeholder="0,00" required></div>
-              <div><label>Date</label><input type="date" name="date_paiement"></div>
-              <div><label>Mode</label>
-                <select name="mode">
+              <div><label for="cotis-{{ c.id }}-montant">Montant réglé</label><input type="text" id="cotis-{{ c.id }}-montant" name="montant" size="6" placeholder="0,00" required></div>
+              <div><label for="cotis-{{ c.id }}-date-paiement">Date</label><input type="date" id="cotis-{{ c.id }}-date-paiement" name="date_paiement"></div>
+              <div><label for="cotis-{{ c.id }}-mode">Mode</label>
+                <select id="cotis-{{ c.id }}-mode" name="mode">
                   {% for m in modes_paiement %}<option value="{{ m }}">{{ {'especes':'Espèces','cheque':'Chèque','carte':'Carte','virement':'Virement','autre':'Autre'}[m] }}</option>{% endfor %}
                 </select>
               </div>
-              <div><label>Commentaire</label><input type="text" name="commentaire" size="14" placeholder="optionnel"></div>
+              <div><label for="cotis-{{ c.id }}-commentaire">Commentaire</label><input type="text" id="cotis-{{ c.id }}-commentaire" name="commentaire" size="14" placeholder="optionnel"></div>
               <button class="btn" type="submit">💶 Enregistrer</button>
             </form>
             <div class="cotis-actions-row">
@@ -104,7 +104,7 @@
                 <summary class="btn" style="display:inline-block;">✏️ Corriger le montant dû</summary>
                 <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_montant_update', participant_id=participant.id, cotisation_id=c.id) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <div><label>Nouveau montant dû</label><input type="text" name="montant_du" size="6" value="{{ '%.2f'|format(c.montant_du) }}"></div>
+                  <div><label for="cotis-{{ c.id }}-montant-du">Nouveau montant dû</label><input type="text" id="cotis-{{ c.id }}-montant-du" name="montant_du" size="6" value="{{ '%.2f'|format(c.montant_du) }}"></div>
                   <button class="btn" type="submit">Valider</button>
                 </form>
               </details>
@@ -161,7 +161,7 @@
                           onsubmit="return confirm('Enregistrer une écriture inverse de ce versement ? Le versement d\'origine reste au livre de caisse.');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-                      <div><label>Motif (obligatoire)</label><input type="text" name="motif" size="22" required minlength="3" maxlength="255" placeholder="300 € au lieu de 30 €…"></div>
+                      <div><label for="cotis-{{ c.id }}-{{ v.id }}-motif">Motif (obligatoire)</label><input type="text" id="cotis-{{ c.id }}-{{ v.id }}-motif" name="motif" size="22" required minlength="3" maxlength="255" placeholder="300 € au lieu de 30 €…"></div>
                       <button class="btn" type="submit">Contre-passer</button>
                     </form>
                   </details>
@@ -209,14 +209,14 @@
             <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_versement', participant_id=participant.id, cotisation_id=c.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="jeton" value="{{ nouveau_jeton() }}">
-              <div><label>Montant réglé</label><input type="text" name="montant" size="6" placeholder="0,00" required></div>
-              <div><label>Date</label><input type="date" name="date_paiement"></div>
-              <div><label>Mode</label>
-                <select name="mode">
+              <div><label for="cotis-{{ c.id }}-montant">Montant réglé</label><input type="text" id="cotis-{{ c.id }}-montant" name="montant" size="6" placeholder="0,00" required></div>
+              <div><label for="cotis-{{ c.id }}-date-paiement">Date</label><input type="date" id="cotis-{{ c.id }}-date-paiement" name="date_paiement"></div>
+              <div><label for="cotis-{{ c.id }}-mode">Mode</label>
+                <select id="cotis-{{ c.id }}-mode" name="mode">
                   {% for m in modes_paiement %}<option value="{{ m }}">{{ {'especes':'Espèces','cheque':'Chèque','carte':'Carte','virement':'Virement','autre':'Autre'}[m] }}</option>{% endfor %}
                 </select>
               </div>
-              <div><label>Commentaire</label><input type="text" name="commentaire" size="14" placeholder="optionnel"></div>
+              <div><label for="cotis-{{ c.id }}-commentaire">Commentaire</label><input type="text" id="cotis-{{ c.id }}-commentaire" name="commentaire" size="14" placeholder="optionnel"></div>
               <button class="btn" type="submit">💶 Enregistrer</button>
             </form>
             <div class="cotis-actions-row">
@@ -230,7 +230,7 @@
                 <summary class="btn" style="display:inline-block;">✏️ Corriger le montant dû</summary>
                 <form class="cotis-form-inline" method="post" action="{{ url_for('participants.cotisation_montant_update', participant_id=participant.id, cotisation_id=c.id) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <div><label>Nouveau montant dû</label><input type="text" name="montant_du" size="6" value="{{ '%.2f'|format(c.montant_du) }}"></div>
+                  <div><label for="cotis-{{ c.id }}-montant-du">Nouveau montant dû</label><input type="text" id="cotis-{{ c.id }}-montant-du" name="montant_du" size="6" value="{{ '%.2f'|format(c.montant_du) }}"></div>
                   <button class="btn" type="submit">Valider</button>
                 </form>
               </details>
@@ -302,9 +302,9 @@
 
   {% if can_edit_cotisations %}
     <form method="get" action="{{ url_for('participants.synthese_participant', participant_id=participant.id) }}" style="margin-top:10px;">
-      <label style="font-size:12px; color:#64748b; display:block;">Rapprocher un membre de la famille</label>
+      <label for="cotis-q-famille" style="font-size:12px; color:var(--muted); display:block;">Rapprocher un membre de la famille</label>
       <div style="display:flex; gap:6px;">
-        <input type="search" name="q_famille" value="{{ q_famille or '' }}" placeholder="Nom ou prénom…" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(15,23,42,.15);">
+        <input type="search" id="cotis-q-famille" name="q_famille" value="{{ q_famille or '' }}" placeholder="Nom ou prénom…" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(15,23,42,.15);">
         <button class="btn" type="submit">🔎 Chercher</button>
       </div>
     </form>

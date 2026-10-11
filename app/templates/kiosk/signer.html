@@ -1,15 +1,16 @@
 {% extends 'kiosk/base.html' %}
+{% block title %}Signature de présence{% endblock %}
 {% block header_title %}Signature de présence{% endblock %}
 {% block body %}
 {% if presence is none %}
   <div class="k-card">
-    <h2 class="k-card__title">Lien invalide ou déjà utilisé</h2>
+    <h1 class="k-card__title">Lien invalide ou déjà utilisé</h1>
     <p>Ce lien de signature n'existe pas, ou la présence a déjà été signée.
        En cas de doute, contactez votre animateur·rice.</p>
   </div>
 {% elif signe %}
   <div class="k-card">
-    <h2 class="k-card__title">✅ Merci {{ participant.prenom }} !</h2>
+    <h1 class="k-card__title"><span aria-hidden="true">✅</span> Merci {{ participant.prenom }} !</h1>
     <p>Votre signature a bien été enregistrée pour
        <strong>{{ atelier.nom if atelier else 'la séance' }}</strong>
        du {{ (session.rdv_date or session.date_session).strftime('%d/%m/%Y') if (session.rdv_date or session.date_session) else '' }}.
@@ -17,7 +18,7 @@
   </div>
 {% else %}
   <div class="k-card">
-    <h2 class="k-card__title">Bonjour {{ participant.prenom }} {{ participant.nom }}</h2>
+    <h1 class="k-card__title">Bonjour {{ participant.prenom }} {{ participant.nom }}</h1>
     <p>Vous confirmez votre présence à
        <strong>{{ atelier.nom if atelier else 'la séance' }}</strong>
        du <strong>{{ (session.rdv_date or session.date_session).strftime('%d/%m/%Y') if (session.rdv_date or session.date_session) else '' }}</strong>
@@ -30,10 +31,10 @@
     <div class="k-card">
       <h2 class="k-card__title">Votre signature</h2>
       <p class="k-card__sub">Signez dans le cadre avec le doigt ou un stylet, puis validez.</p>
-      <canvas id="sig" width="700" height="200" class="k-sig-canvas"></canvas>
+      <canvas id="sig" width="700" height="200" class="k-sig-canvas" role="img" aria-label="Cadre de signature"></canvas>
       <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap;">
-        <button type="button" class="k-btn k-btn--ghost" id="clearSig">↺ Recommencer</button>
-        <button type="submit" class="k-btn k-btn--primary">✔ Valider ma signature</button>
+        <button type="button" class="k-btn k-btn--ghost" id="clearSig"><span aria-hidden="true">↺</span> Effacer et recommencer</button>
+        <button type="submit" class="k-btn k-btn--primary"><span aria-hidden="true">✔</span> Valider ma signature</button>
       </div>
     </div>
   </form>
@@ -109,7 +110,8 @@
   document.getElementById('signerForm').addEventListener('submit', (e) => {
     if(!aTrace){
       e.preventDefault();
-      alert('Signez d\\'abord dans le cadre.');
+      // Apostrophe typographique : une apostrophe échappée cassait tout le script.
+      alert('Signez d’abord dans le cadre.');
       return;
     }
     document.getElementById('signature_data').value = canvas.toDataURL('image/png');
