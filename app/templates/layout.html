@@ -912,8 +912,6 @@
             <div id="global-search-results" class="global-search__panel" role="listbox" aria-label="Résultats de recherche"></div>
           </div>
 
-          <nav id="mobileNavPanel" class="mobile-nav-panel" hidden aria-label="Menu principal"></nav>
-
           <div class="right shell-outils" id="shellOutils">
             <p class="shell-outils__titre">Affichage et compte</p>
             {% if can_manage_modules %}<a class="pill" href="{{ url_for('admin.modules') }}">Outils du centre</a>{% endif %}
@@ -954,6 +952,11 @@
                 <button class="pill" type="submit">Déconnexion</button>
             </form>
           </div>
+
+          {#- Liens du menu (panneau mobile, rempli par buildMobileMenu) : APRÈS les réglages
+              et le compte, pour que Déconnexion et le confort de lecture ne se retrouvent pas
+              sous des dizaines de liens. -#}
+          <nav id="mobileNavPanel" class="mobile-nav-panel" hidden aria-label="Menu principal"></nav>
         {% endif %}
       </div>
     </div>
@@ -1640,7 +1643,9 @@
       const headRow = table.tHead && table.tHead.rows[0];
       if (!headRow) return;
       Array.from(headRow.cells).forEach((th, idx)=>{
-        if (th.getAttribute('data-nosort') === '1') return;
+        // Un en-tête qui porte déjà une commande (case « Tout cocher »…) ne
+        // devient pas, en plus, un bouton de tri.
+        if (th.getAttribute('data-nosort') === '1' || th.querySelector('input,button,select,a')) return;
         th.classList.add('sortable');
         // Atteignable au clavier (Tab puis Entrée ou Espace), et l'ordre
         // courant est annoncé aux lecteurs d'écran (aria-sort).
@@ -1881,6 +1886,10 @@
         if(event.key !== 'Escape' || panel.hidden){ return; }
         // Échap dans la recherche ferme seulement la liste des résultats.
         if(event.target && event.target.id === 'global-search-input'){ return; }
+        // Échap dans un sous-menu ouvert (confort de lecture…) ne referme que
+        // lui : le panneau reste ouvert, la personne garde sa place.
+        const sousMenu = event.target && event.target.closest && event.target.closest('details[open]');
+        if(sousMenu && topbar && topbar.contains(sousMenu)){ return; }
         // Le focus ne doit pas rester sur un élément qui disparaît.
         const dedans = topbar && document.activeElement && topbar.contains(document.activeElement);
         setMobileMenu(false);
