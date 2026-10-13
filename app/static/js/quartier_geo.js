@@ -23,10 +23,12 @@
   });
 
   var hasCoord = !!(latInput.value && lonInput.value);
-  var lat = parseFloat(latInput.value) || 49.2583;
-  var lon = parseFloat(lonInput.value) || 2.475;
+  // Sans position : la ville siège réglée (ou la France entière).
+  var lat = parseFloat(latInput.value) || parseFloat(el.getAttribute("data-centre-lat")) || 46.6;
+  var lon = parseFloat(lonInput.value) || parseFloat(el.getAttribute("data-centre-lon")) || 2.45;
+  var zoomDefaut = parseInt(el.getAttribute("data-centre-zoom"), 10) || 6;
 
-  var map = L.map(el).setView([lat, lon], hasCoord ? 15 : 13);
+  var map = L.map(el).setView([lat, lon], hasCoord ? 15 : zoomDefaut);
   L.tileLayer(el.getAttribute("data-tile-url"), {
     maxZoom: 19,
     attribution: el.getAttribute("data-tile-attr"),

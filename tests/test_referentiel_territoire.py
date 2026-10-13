@@ -129,7 +129,7 @@ def test_deduction_du_qpv_depuis_les_noms_bricoles():
     assert nom_sans_qpv("Rouher") == "Rouher"
 
 
-def test_deux_quartiers_du_meme_qpv_restent_distincts(app):
+def test_deux_quartiers_du_meme_qpv_restent_distincts(app, territoire_creil):
     """Le cœur du besoin : distinguer le Rouher des autres quartiers des
     Hauts de Creil, tout en les additionnant quand le financeur demande le
     QPV. Avant, il fallait fabriquer deux faux quartiers dont le nom portait
@@ -151,19 +151,18 @@ def test_deux_quartiers_du_meme_qpv_restent_distincts(app):
         db.session.add(habitant)
         db.session.commit()
 
-        from app.services.senacs import _bucket_quartier
-        from app.statsimpact.exports_xlsx import _quartier_bucket
+        from app.services.senacs import _bucket_quartier, provenance
 
         assert habitant.is_qpv is True
         assert _bucket_quartier(habitant) == "Hauts de Creil"
-        assert _quartier_bucket(cavee) == "Hauts de Creil"
-        # Et le Rouher garde sa ligne à lui.
-        assert _quartier_bucket(rouher) == "Rouher"
+        assert provenance(habitant) == "Hauts de Creil"
 
+        # Et le Rouher garde sa ligne à lui, dans les deux exports.
         voisin = Participant(nom=f"Rouher{suf}", prenom="B", quartier_id=rouher.id)
         db.session.add(voisin)
         db.session.commit()
         assert _bucket_quartier(voisin) == "Rouher"
+        assert provenance(voisin) == "Rouher"
 
 
 def test_renseigner_un_qpv_coche_la_case(admin_client, app):

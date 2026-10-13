@@ -13,8 +13,9 @@
     tileUrl: el.getAttribute("data-tile-url"),
     tileAttr: el.getAttribute("data-tile-attr"),
     markerBase: el.getAttribute("data-marker-base"),
-    lat: parseFloat(el.getAttribute("data-centre-lat")) || 49.2583,
-    lon: parseFloat(el.getAttribute("data-centre-lon")) || 2.475,
+    lat: parseFloat(el.getAttribute("data-centre-lat")) || 46.6,
+    lon: parseFloat(el.getAttribute("data-centre-lon")) || 2.45,
+    zoom: parseInt(el.getAttribute("data-centre-zoom"), 10) || 6,
   };
 
   var icon = L.icon({
@@ -27,7 +28,7 @@
     shadowSize: [41, 41],
   });
 
-  var map = L.map(el, { scrollWheelZoom: true }).setView([cfg.lat, cfg.lon], 12);
+  var map = L.map(el, { scrollWheelZoom: true }).setView([cfg.lat, cfg.lon], cfg.zoom);
   L.tileLayer(cfg.tileUrl, { maxZoom: 19, attribution: cfg.tileAttr }).addTo(map);
   var layer = L.layerGroup().addTo(map);
   var infoEl = document.getElementById("carte-info");

@@ -832,11 +832,13 @@ AIDE_PAGES: dict[str, dict] = {
     },
     "admin.instance_settings": {
         "titre": "Identité de la structure",
-        "resume": "Le nom, les logos, l'adresse publique et la messagerie (SMTP) de votre structure.",
+        "resume": "Le nom, les logos, le territoire, l'adresse publique et la messagerie (SMTP) de votre structure.",
         "etapes": [
             "Renseignez le nom et les logos : ils apparaissent dans l'application et sur les documents.",
+            "Indiquez la ville siège et, si besoin, les QPV à suivre à part : le bilan SENACS, les indicateurs et la carte s'en servent.",
             "Configurez la messagerie (SMTP) pour activer l'envoi des emails (réinitialisation de mot de passe).",
         ],
+        "astuce": "Sans QPV suivi, les bilans comptent simplement « QPV » et « hors QPV ». Un quartier distingué (facultatif) a sa propre ligne, avant celle de son QPV.",
     },
     "admin.referentiels": {
         "titre": "Listes de compétences",

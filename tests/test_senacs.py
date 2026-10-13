@@ -30,7 +30,9 @@ def donnees_senacs(app):
             SessionActivite,
         )
 
-        rouher = Quartier.query.filter(Quartier.nom.ilike("%rouher%")).first()
+        # Le quartier exactement nommé « Rouher » : un quartier distingué se
+        # reconnaît à son nom, et d'autres tests créent des « Rouher<suffixe> ».
+        rouher = Quartier.query.filter_by(nom="Rouher", ville="Creil").first()
         if rouher is None:
             rouher = Quartier(nom="Rouher", ville="Creil", is_qpv=True)
             db.session.add(rouher)
@@ -96,7 +98,7 @@ def test_tranches_age_senacs(app, donnees_senacs):
         assert ages["0-6 ans"] == 1, "Chloé née en 2020 a 5 ans au 31/12/2025"
 
 
-def test_genres_et_quartiers(app, donnees_senacs):
+def test_genres_et_quartiers(app, donnees_senacs, territoire_creil):
     with app.app_context():
         from app.services.senacs import publics_annee
 

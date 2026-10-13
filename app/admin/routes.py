@@ -695,11 +695,31 @@ def instance_settings():
                 org_logo.save(os.path.join(logo_dir, out))
                 row.organization_logo_path = media_relpath("branding", out)
 
+        from app.services import territoire as territoire_service
+
+        avertissement_carte = territoire_service.enregistrer(
+            row,
+            ville=request.form.get("territoire_ville"),
+            code_postal=request.form.get("territoire_code_postal"),
+            qpv_suivis=request.form.get("territoire_qpv_suivis"),
+            quartiers_distingues=request.form.get("territoire_quartiers_distingues"),
+        )
+
         db.session.commit()
+        territoire_service.oublier()
         flash("Paramètres de votre structure enregistrés ✅", "success")
+        if avertissement_carte:
+            flash(avertissement_carte, "warning")
         return redirect(url_for("admin.instance_settings"))
 
-    return render_template("admin_instance.html", settings=row)
+    from app.services.territoire import depuis_reglages, qpv_deja_saisis
+
+    return render_template(
+        "admin_instance.html",
+        settings=row,
+        territoire=depuis_reglages(row if row.id else None),
+        qpv_deja_saisis=qpv_deja_saisis(),
+    )
 
 
 @bp.route("/modules", methods=["GET", "POST"])

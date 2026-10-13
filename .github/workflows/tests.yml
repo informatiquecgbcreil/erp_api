@@ -3,6 +3,8 @@ name: Tests
 on:
   push:
   pull_request:
+  # Appelée aussi par windows-installer.yml : pas d'installateur sans tests verts.
+  workflow_call:
 
 jobs:
   # La suite telle qu'elle tourne sur le poste de chacun : SQLite, rien à

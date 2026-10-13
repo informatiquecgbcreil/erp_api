@@ -251,6 +251,16 @@ class InstanceSettings(db.Model):
     # (audit 6.5 : l'installation Windows n'a pas de fichier .env).
     sauvegarde_hors_serveur = db.Column(db.Text, nullable=True)
 
+    # Territoire du centre (app/services/territoire.py) : ville siège, QPV
+    # suivis à part dans les bilans et quartiers distingués à l'intérieur de
+    # leur QPV (une valeur par ligne), point où centrer la carte.
+    territoire_ville = db.Column(db.String(120), nullable=True)
+    territoire_code_postal = db.Column(db.String(10), nullable=True)
+    territoire_qpv_suivis = db.Column(db.Text, nullable=True)
+    territoire_quartiers_distingues = db.Column(db.Text, nullable=True)
+    territoire_latitude = db.Column(db.Float, nullable=True)
+    territoire_longitude = db.Column(db.Float, nullable=True)
+
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
 
@@ -1494,10 +1504,6 @@ class Participant(db.Model):
     geocode_query = db.Column(db.String(255), nullable=True)
 
     @property
-    def is_creil(self):
-        return (self.ville or "").strip().lower() == "creil"
-
-    @property
     def attend_premiere_participation(self) -> bool:
         """Fiche créée par une inscription annuelle, jamais encore pointée."""
         return (self.statut_inscription or "actif") == STATUT_PARTICIPANT_ATTENTE
@@ -1523,13 +1529,15 @@ class Participant(db.Model):
             return True
         if self.quartier.is_qpv:
             return True
-        ville = (self.quartier.ville or "").strip().lower()
         nom = (self.quartier.nom or "").strip().lower()
         if "qpv" in nom:
             return True
-        if ville == "creil" and ("rouher" in nom or "hauts de creil" in nom):
-            return True
-        return False
+        # Dernier recours : un quartier de la ville siège dont le nom cite
+        # un QPV suivi ou un quartier distingué (réglages du territoire).
+        from app.services.territoire import territoire
+
+        terr = territoire()
+        return terr.habite_ville_siege(self.quartier.ville) and terr.nomme_un_qpv(self.quartier.nom)
 
     def age_au(self, reference: date | None = None):
         """Âge révolu à une date de référence (par défaut aujourd'hui).

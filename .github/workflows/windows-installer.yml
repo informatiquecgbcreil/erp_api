@@ -11,7 +11,14 @@ on:
 permissions:
   contents: read
 jobs:
+  # L'installateur est ce que l'on remet aux centres : il ne se construit
+  # que sur un code dont toute la suite passe (SQLite, PostgreSQL 16 et 18).
+  # Sans cette dépendance, un artefact tout neuf pouvait sortir d'un commit
+  # aux tests rouges, et rien ne le signalait au moment de le télécharger.
+  tests:
+    uses: ./.github/workflows/tests.yml
   build:
+    needs: tests
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

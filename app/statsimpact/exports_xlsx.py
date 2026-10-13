@@ -213,8 +213,9 @@ GENRE_BUCKETS = ("Femmes", "Hommes", "Autre / non renseigné")
 GENRE_ENTETES = ("Femmes", "Hommes", "Autre / NR")
 
 #: Feuille « Synthèse » du Magatomatique : 17 colonnes d'activité, puis la
-#: provenance (5 quartiers) et la répartition par genre (3).
-SYNTHESE_NB_COLONNES = 17 + 5 + len(GENRE_ENTETES)
+#: provenance (autant de colonnes que le territoire en demande, voir
+#: Territoire.colonnes_provenance) et la répartition par genre (3).
+SYNTHESE_NB_COLONNES_ACTIVITE = 17
 
 #: Libellé au singulier pour une ligne individuelle (matrice de présence).
 _GENRE_INDIVIDUEL = {"Femmes": "Femme", "Hommes": "Homme"}
@@ -244,47 +245,6 @@ def _genre_individuel(participant) -> str:
     """Genre d'une personne, normalisé : les filtres Excel restent fiables
     même si la saisie varie (« F », « féminin », « Femme »…)."""
     return _GENRE_INDIVIDUEL.get(_participant_genre_bucket(participant), "Non renseigné")
-
-
-def _quartier_bucket(quartier) -> str:
-    """Regroupe les quartiers en 4 grandes catégories + Inconnu.
-
-    Lit d'abord le CHAMP ``qpv`` du quartier. Cette fonction ne recevait
-    auparavant que le NOM, et cherchait dedans « hors rouher », puis
-    « rouher », puis « bas », puis « haut » — une règle qui ne ressemblait
-    même pas à celle de l'export SENACS, et qui classait dans « Autres »
-    tout quartier nommé « Cavée de Senlis » alors qu'il est aux Hauts de
-    Creil. C'est ce qui obligeait à coder le QPV dans le nom du quartier.
-
-    Accepte encore une simple chaîne, pour les appels qui n'ont que le nom.
-    """
-    from app.services.recherche_texte import sans_accent
-
-    if quartier is None:
-        return "Inconnu"
-    if isinstance(quartier, str):
-        nom, qpv = quartier, ""
-    else:
-        nom = getattr(quartier, "nom", "") or ""
-        qpv = (getattr(quartier, "qpv", None) or "").strip()
-
-    s = sans_accent(nom) or ""
-    if not s.strip() and not qpv:
-        return "Inconnu"
-
-    if "rouher" in s and "hors rouher" not in s:
-        return "Rouher"
-    if qpv:
-        return "Hauts de Creil" if "hauts de creil" in (sans_accent(qpv) or "") else "Autres"
-    # Repli sur le nom, pour une base dont les quartiers n'ont pas encore
-    # reçu leur QPV.
-    if "hors rouher" in s:
-        return "Hauts de Creil"
-    if "bas" in s:
-        return "Bas de Creil"
-    if "haut" in s:
-        return "Hauts de Creil"
-    return "Autres"
 
 
 def _xlsx_table_name(raw: str, fallback: str = "Tableau") -> str:
@@ -539,6 +499,15 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
     _autosize_columns(ws_params, max_width=50)
     ws_params.sheet_view.showGridLines = False
 
+    # Provenance : colonnes et règles du territoire réglé (Administration >
+    # Identité), les mêmes que le bilan SENACS.
+    from app.services.senacs import provenance, villes_avec_qpv
+    from app.services.territoire import territoire
+
+    terr = territoire()
+    villes_qpv = villes_avec_qpv(terr)
+    colonnes_provenance = terr.colonnes_provenance
+
     ws0.append([f"Magatomatique — période {_export_period_label(flt)} : 1 feuille par atelier (matrice) + stats détaillées"])
     ws0.append([f"Périmètre : secteur {eff_secteur or 'Tous'} · ateliers {atelier_ids_label}"])
 
@@ -560,16 +529,13 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         "Conso kWh",
         "CO₂ kg",
         "Séances équipées",
-        "Bas de Creil",
-        "Hauts de Creil",
-        "Rouher",
-        "Autres",
-        "Inconnu",
+        *colonnes_provenance,
         *GENRE_ENTETES,
     ])
+    nb_colonnes_synthese = SYNTHESE_NB_COLONNES_ACTIVITE + len(colonnes_provenance) + len(GENRE_ENTETES)
 
     # Agrégats globaux provenance + genre + lecture financeur
-    global_prov = {"Bas de Creil": 0, "Hauts de Creil": 0, "Rouher": 0, "Autres": 0, "Inconnu": 0}
+    global_prov = {colonne: 0 for colonne in colonnes_provenance}
     global_genre = {cle: 0 for cle in GENRE_BUCKETS}
     global_sessions_real = 0
     global_presences = 0
@@ -656,10 +622,10 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         ages = [p.age for p in participants if getattr(p, "age", None) is not None]
         age_avg = round(sum(ages) / len(ages), 1) if ages else None
 
-        prov = {"Bas de Creil": 0, "Hauts de Creil": 0, "Rouher": 0, "Autres": 0, "Inconnu": 0}
+        prov = {colonne: 0 for colonne in colonnes_provenance}
         for p in participants:
-            b = _quartier_bucket(getattr(p, "quartier", None))
-            prov[b] = prov.get(b, 0) + 1
+            colonne = provenance(p, villes_qpv, terr)
+            prov[colonne] = prov.get(colonne, 0) + 1
         for k in global_prov:
             global_prov[k] += prov.get(k, 0)
 
@@ -716,11 +682,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
             conso_kwh,
             conso_co2,
             conso_sessions,
-            prov.get("Bas de Creil", 0),
-            prov.get("Hauts de Creil", 0),
-            prov.get("Rouher", 0),
-            prov.get("Autres", 0),
-            prov.get("Inconnu", 0),
+            *[prov.get(colonne, 0) for colonne in colonnes_provenance],
             *[genre_counts.get(cle, 0) for cle in GENRE_BUCKETS],
         ])
 
@@ -766,11 +728,8 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
 
         ws.append([])
         ws.append(["Provenance (quartiers)", "Nb inscrits"])
-        ws.append(["Bas de Creil", prov.get("Bas de Creil", 0)])
-        ws.append(["Hauts de Creil", prov.get("Hauts de Creil", 0)])
-        ws.append(["Rouher", prov.get("Rouher", 0)])
-        ws.append(["Autres", prov.get("Autres", 0)])
-        ws.append(["Inconnu", prov.get("Inconnu", 0)])
+        for colonne in colonnes_provenance:
+            ws.append([colonne, prov.get(colonne, 0)])
 
         ws.append([])
 
@@ -835,8 +794,8 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         _largeurs_matrice(ws, len(headers))
 
     synthese_last_row = ws0.max_row
-    _format_xlsx_header_row(ws0, 3, SYNTHESE_NB_COLONNES)
-    _add_excel_table(ws0, "SyntheseAteliers", 3, synthese_last_row, SYNTHESE_NB_COLONNES, style="TableStyleMedium9")
+    _format_xlsx_header_row(ws0, 3, nb_colonnes_synthese)
+    _add_excel_table(ws0, "SyntheseAteliers", 3, synthese_last_row, nb_colonnes_synthese, style="TableStyleMedium9")
     ws0.freeze_panes = "C4"
     ws0.sheet_view.showGridLines = False
 
@@ -868,11 +827,8 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
     # Bloc "Provenance globale" en bas de la synthèse
     ws0.append([])
     ws0.append(["Provenance globale (inscrits uniques sur l'ensemble du périmètre)"])
-    ws0.append(["Bas de Creil", global_prov.get("Bas de Creil", 0)])
-    ws0.append(["Hauts de Creil", global_prov.get("Hauts de Creil", 0)])
-    ws0.append(["Rouher", global_prov.get("Rouher", 0)])
-    ws0.append(["Autres", global_prov.get("Autres", 0)])
-    ws0.append(["Inconnu", global_prov.get("Inconnu", 0)])
+    for colonne in colonnes_provenance:
+        ws0.append([colonne, global_prov.get(colonne, 0)])
 
     # Bloc "Répartition par genre" globale (cumul par atelier : une personne
     # présente sur plusieurs ateliers est comptée dans chacun d'eux).
@@ -884,7 +840,7 @@ def _build_magato_per_atelier_workbook(flt) -> Workbook:
         ws0.append([cle, nb, part])
 
     # Largeurs synthèse
-    for col in range(1, SYNTHESE_NB_COLONNES + 1):
+    for col in range(1, nb_colonnes_synthese + 1):
         ws0.column_dimensions[get_column_letter(col)].width = 20 if col <= 2 else 18
 
     _format_magato_workbook(wb)

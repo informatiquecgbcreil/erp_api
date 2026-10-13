@@ -686,7 +686,7 @@
           <datalist id="villes-saisies">
             {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
           </datalist>
-          <input class="in" name="ville" id="np-ville" list="villes-saisies" placeholder="Creil" data-ville-input value="{{ saisie.ville or '' }}">
+          <input class="in" name="ville" id="np-ville" list="villes-saisies" placeholder="{{ VILLE_SIEGE or 'Commune' }}" data-ville-input value="{{ saisie.ville or '' }}">
         </div>
         <div>
           <label for="np-quartier">Quartier</label>

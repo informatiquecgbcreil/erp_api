@@ -126,7 +126,7 @@
           <datalist id="villes-saisies">
             {% for v in valeurs_deja_saisies('Participant', 'ville') %}<option value="{{ v }}">{% endfor %}
           </datalist>
-          <div><label class="k-label" for="np_ville">Ville</label><input class="k-input" id="np_ville" name="ville" list="villes-saisies" placeholder="Creil" data-ville-input></div>
+          <div><label class="k-label" for="np_ville">Ville</label><input class="k-input" id="np_ville" name="ville" list="villes-saisies" placeholder="{{ VILLE_SIEGE or 'Commune' }}" data-ville-input></div>
           <div>
             <label class="k-label" for="np_quartier">Quartier</label>
             <select class="k-select" id="np_quartier" name="quartier_id" data-quartier-select>

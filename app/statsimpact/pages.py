@@ -111,7 +111,7 @@ def _statsimpact_quality_payload(flt) -> dict:
         participant_issue(
             "participant_no_city",
             "Participants sans ville",
-            "Rend moins lisibles l'origine géographique et les contrôles Creil / hors Creil.",
+            "Rend moins lisibles l'origine géographique et les contrôles ville siège / hors ville siège.",
             [p for p in participants if not (p.ville or "").strip()],
             "warn",
         ),

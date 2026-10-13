@@ -80,8 +80,9 @@ INDICATOR_METRICS = {
         "unit": "",
         "group": "Publics",
     },
+    # Code historique conservé : des indicateurs de projet y sont rattachés.
     "participants_creil": {
-        "label": "Habitants de Creil",
+        "label": "Habitants de la ville siège",
         "unit": "",
         "group": "Territoires",
     },
@@ -598,7 +599,9 @@ def _add_demography_metrics(out: dict, participant_ids: list[int], reference: da
     # un QPV, sans quartier renseigné, est « non renseigné » — ni QPV ni hors
     # QPV — et sort du dénominateur du taux au lieu de le faire baisser.
     from app.services.senacs import NON_RENSEIGNE, _bucket_quartier, villes_avec_qpv
-    villes_qpv = villes_avec_qpv()
+    from app.services.territoire import territoire
+    terr = territoire()
+    villes_qpv = villes_avec_qpv(terr)
     # Âge figé à la fin de la période de l'indicateur (cohérent avec SENACS et
     # stable dans le temps pour les bilans d'années passées).
     ages = [p.age_au(reference) for p in participants if p.age_au(reference) is not None]
@@ -622,11 +625,11 @@ def _add_demography_metrics(out: dict, participant_ids: list[int], reference: da
         else:
             out["participants_genre_autre"] += 1
 
-        if getattr(participant, "is_creil", False):
+        if terr.habite_ville_siege(participant.ville):
             out["participants_creil"] += 1
         if getattr(participant, "is_qpv", False):
             out["participants_qpv"] += 1
-        elif _bucket_quartier(participant, villes_qpv) == NON_RENSEIGNE:
+        elif _bucket_quartier(participant, villes_qpv, terr) == NON_RENSEIGNE:
             out["participants_qpv_inconnu"] += 1
 
         public_code = (getattr(participant, "type_public", None) or "H").strip().lower()

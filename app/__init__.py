@@ -898,6 +898,7 @@ def create_app():
     def inject_app_identity():
         from app.services.instance_settings import resolve_identity
         from app.services.storage import media_url
+        from app.services.territoire import territoire
 
         app_name, organization_name, app_logo_path, organization_logo_path = resolve_identity(
             app.config.get("APP_NAME", "App Gestion"),
@@ -946,6 +947,7 @@ def create_app():
             "UI_SIMPLIFIED": ui_mode == "simple",
             "UI_DEVICE_MODE": requested_mode,
             "GUIDE_ACTIF": guide_actif,
+            "VILLE_SIEGE": territoire().ville_siege,
         }
 
     # ------------------------------------------------------------------

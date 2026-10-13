@@ -39,6 +39,37 @@
       </div>
     </div>
 
+    <h3 id="territoire" style="margin-bottom:0;">Territoire du centre</h3>
+    <p class="muted" style="margin-top:0;">Utilisé par le bilan SENACS, les indicateurs, les tableaux de bord, la carte et les attestations. Rien n'est obligatoire : sans réglage, les bilans comptent simplement « QPV » et « hors QPV ».</p>
+    <div class="row">
+      <div>
+        <label for="inst_territoire_ville">Ville siège du centre</label>
+        <input id="inst_territoire_ville" class="in" name="territoire_ville" value="{{ territoire.ville_siege or '' }}" placeholder="Ex : Beauvais" data-ville-input>
+        <div class="muted">Sert à compter les « Habitants de … » et à centrer la carte.</div>
+      </div>
+      <div>
+        <label for="inst_territoire_code_postal">Code postal</label>
+        <input id="inst_territoire_code_postal" class="in" name="territoire_code_postal" value="{{ territoire.code_postal or '' }}" placeholder="Ex : 60000" inputmode="numeric" maxlength="10">
+        <div class="muted">Évite de confondre deux communes du même nom.</div>
+      </div>
+    </div>
+    {% if settings.territoire_ville and settings.territoire_latitude is none %}
+      <div class="muted">⚠️ La ville n'a pas encore été placée sur la carte (pas d'accès à Internet lors de l'enregistrement ?). Enregistrez de nouveau pour réessayer.</div>
+    {% endif %}
+    <div class="row">
+      <div>
+        <label for="inst_territoire_qpv_suivis">QPV suivis à part dans les bilans (un par ligne)</label>
+        <textarea id="inst_territoire_qpv_suivis" class="in" name="territoire_qpv_suivis" rows="3" placeholder="Ex : Saint-Jean&#10;Argentine">{{ territoire.qpv_suivis | join('\n') }}</textarea>
+        <div class="muted">Zéro, un ou plusieurs. Chacun aura sa propre ligne ; les autres QPV sont regroupés dans « Autre QPV ».
+          {% if qpv_deja_saisis %}QPV déjà indiqués sur vos fiches quartier : <strong>{{ qpv_deja_saisis | join(', ') }}</strong>.{% endif %}</div>
+      </div>
+      <div>
+        <label for="inst_territoire_quartiers_distingues">Quartiers à distinguer à l'intérieur de leur QPV (un par ligne, facultatif)</label>
+        <textarea id="inst_territoire_quartiers_distingues" class="in" name="territoire_quartiers_distingues" rows="3" placeholder="Ex : Rouher">{{ territoire.quartiers_distingues | join('\n') }}</textarea>
+        <div class="muted">Pour un suivi interne plus fin : ces quartiers ont leur ligne à eux, avant celle de leur QPV.</div>
+      </div>
+    </div>
+
     <h3 style="margin-bottom:0;">URL publique</h3>
     <div>
       <label for="inst_public_base_url">URL publique de l'application</label>

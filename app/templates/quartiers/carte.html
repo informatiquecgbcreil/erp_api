@@ -77,8 +77,9 @@
          data-stats-url="{{ url_for('quartiers.stats') }}"
          data-tile-url="{{ tile_url }}"
          data-tile-attr="{{ tile_attribution }}"
-         data-centre-lat="49.2583"
-         data-centre-lon="2.4750"></div>
+         data-centre-lat="{{ carte_centre.lat }}"
+         data-centre-lon="{{ carte_centre.lon }}"
+         data-centre-zoom="{{ carte_centre.zoom }}"></div>
 
     <div class="carte-legend">
       <span><span class="dot std"></span>Quartier</span>

@@ -97,7 +97,7 @@
         </select>
       </label>
       <label class="field-stack">Ville
-        <input class="in" name="ville" value="{{ current_filters.ville }}" placeholder="Ex. Creil" data-ville-input>
+        <input class="in" name="ville" value="{{ current_filters.ville }}" placeholder="{{ ('Ex. ' ~ VILLE_SIEGE) if VILLE_SIEGE else 'Commune' }}" data-ville-input>
       </label>
       <label class="field-stack">Quartier
         <select class="in" name="quartier_id" data-quartier-select>
@@ -148,7 +148,7 @@
             </select>
           </label>
           <label class="field-stack">Ville
-            <input class="in" name="ville" placeholder="Ex. Creil" data-ville-input>
+            <input class="in" name="ville" placeholder="{{ ('Ex. ' ~ VILLE_SIEGE) if VILLE_SIEGE else 'Commune' }}" data-ville-input>
           </label>
           <label class="field-stack">Quartier
             <select class="in" name="quartier_id" data-quartier-select>

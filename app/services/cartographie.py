@@ -53,8 +53,22 @@ def _ids_presents(date_from, date_to):
         q = q.filter(sd <= date_to)
     return q.distinct()
 
-# Centre de Creil par défaut (utilisé si aucun participant n'est localisé).
-CENTRE_DEFAUT = {"lat": 49.2583, "lon": 2.4750}
+#: Centre de la France métropolitaine : dernier recours tant que la ville
+#: siège n'est pas réglée (ou n'a pas pu être placée sur la carte).
+CENTRE_FRANCE = {"lat": 46.6, "lon": 2.45, "zoom": 6}
+
+
+def centre_par_defaut() -> dict:
+    """Où ouvrir une carte vide : la ville siège réglée, sinon la France.
+
+    Dès que des points existent, les cartes se recadrent sur eux.
+    """
+    from app.services.territoire import territoire
+
+    centre = territoire().centre_carte
+    if centre is None:
+        return dict(CENTRE_FRANCE)
+    return {**centre, "zoom": 13}
 
 
 def repartition_par_quartier(secteur=None, type_public=None, date_from=None, date_to=None) -> dict:
@@ -160,7 +174,7 @@ def repartition_par_quartier(secteur=None, type_public=None, date_from=None, dat
             "lon": sum(x["lon"] for x in quartiers_out) / len(quartiers_out),
         }
     else:
-        centre = dict(CENTRE_DEFAUT)
+        centre = centre_par_defaut()
 
     return {
         "centre": centre,
@@ -226,7 +240,7 @@ def liste_partenaires(secteur=None) -> dict:
             "lon": sum(x["lon"] for x in points) / len(points),
         }
     else:
-        centre = dict(CENTRE_DEFAUT)
+        centre = centre_par_defaut()
 
     return {
         "centre": centre,

@@ -671,7 +671,9 @@ s'il manque Chromium (Playwright) ou Pebble (certificat reconnu).
   PostgreSQL 18.1 ancienne, mise à jour, désinstallation). Déclenché sur
   `main` quand `desktop/`, `app/`, `migrations/`, `config.py` ou
   `requirements.txt` changent, et sur les pull requests qui y touchent ;
-  artefact `Mon-Centre-Social-Windows-x64`, gardé 30 jours.
+  artefact `Mon-Centre-Social-Windows-x64`, gardé 30 jours. La construction
+  attend que toute la suite de `tests.yml` soit verte (elle l'appelle
+  elle-même) : pas d'installateur issu d'un commit aux tests rouges.
 - **Ne jamais déployer un commit rouge en CI**, sur l'un ou l'autre
   workflow.
 - Pièges connus des tests : une suite verte en local sur SQLite ne dit rien
