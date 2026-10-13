@@ -52,6 +52,7 @@
       <span class="chip">Séances créées <strong>{{ stats.sessions_created }}</strong></span>
       <span class="chip">Présences créées <strong>{{ stats.presences_created }}</strong></span>
       <span class="chip">Doublons ignorés <strong>{{ stats.presences_skipped_duplicates }}</strong></span>
+      {% if stats.quartiers_ignores %}<span class="chip">Quartiers non repris (ville manquante) <strong>{{ stats.quartiers_ignores }}</strong></span>{% endif %}
     </div>
 
     {% if stats.warnings and stats.warnings|length %}
