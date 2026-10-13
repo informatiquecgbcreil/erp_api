@@ -182,7 +182,7 @@ def _detect_date_columns(ws, header_row: int) -> Dict[int, date]:
     return date_by_col
 
 
-def _get_or_create_quartier(nom_quartier: str, ville: str) -> Optional[Quartier]:
+def _get_or_create_quartier(nom_quartier: str, ville: str, journal=None) -> Optional[Quartier]:
     """Le quartier ``nom_quartier`` de ``ville``, créé s'il n'existe pas.
 
     Toutes les villes ont leurs quartiers. L'import ne les gardait que pour
@@ -216,6 +216,8 @@ def _get_or_create_quartier(nom_quartier: str, ville: str) -> Optional[Quartier]
     except IntegrityError:
         return Quartier.query.filter_by(ville=ville, nom=nom).first()
 
+    if journal is not None:
+        journal.cree("quartiers", q.id)
     return q
 
 
@@ -241,6 +243,7 @@ def _find_participant(
     quartier: Optional[Quartier],
     secteur: str,
     ville: Optional[str] = None,
+    journal=None,
 ) -> Participant:
     n = _norm(nom)
     p = _norm(prenom)
@@ -267,22 +270,28 @@ def _find_participant(
     if existing:
         changed = False
 
+        def completer(champ, valeur):
+            # Le journal garde la valeur d'avant : l'annulation la remet.
+            if journal is not None:
+                journal.modifie(existing.id, champ, getattr(existing, champ), valeur)
+            setattr(existing, champ, valeur)
+
         # ville : on la met si vide (ou placeholder) — ET on n’écrase pas une ville déjà renseignée
         if nv and getattr(existing, "ville", None) in (None, "", "—"):
-            existing.ville = nv
+            completer("ville", nv)
             changed = True
 
         # quartier si manquant, quelle que soit la ville
         if quartier and not existing.quartier_id:
-            existing.quartier = quartier
+            completer("quartier_id", quartier.id)
             changed = True
 
         if ddn and not existing.date_naissance:
-            existing.date_naissance = ddn
+            completer("date_naissance", ddn)
             changed = True
 
         if ng and existing.genre != ng:
-            existing.genre = ng
+            completer("genre", ng)
             changed = True
 
         if changed:
@@ -304,10 +313,12 @@ def _find_participant(
 
     db.session.add(part)
     db.session.flush()
+    if journal is not None:
+        journal.cree("participants", part.id)
     return part
 
 
-def _get_or_create_atelier(secteur: str, nom_atelier: str) -> AtelierActivite:
+def _get_or_create_atelier(secteur: str, nom_atelier: str, journal=None) -> AtelierActivite:
     nom = _norm(nom_atelier)
     a = AtelierActivite.query.filter_by(secteur=secteur, nom=nom, is_deleted=False).first()
     if a:
@@ -315,10 +326,12 @@ def _get_or_create_atelier(secteur: str, nom_atelier: str) -> AtelierActivite:
     a = AtelierActivite(secteur=secteur, nom=nom, type_atelier="COLLECTIF")
     db.session.add(a)
     db.session.flush()
+    if journal is not None:
+        journal.cree("ateliers", a.id)
     return a
 
 
-def _get_or_create_session(atelier: AtelierActivite, secteur: str, d: date) -> SessionActivite:
+def _get_or_create_session(atelier: AtelierActivite, secteur: str, d: date, journal=None) -> SessionActivite:
     s = (
         SessionActivite.query.filter_by(
             atelier_id=atelier.id,
@@ -341,6 +354,8 @@ def _get_or_create_session(atelier: AtelierActivite, secteur: str, d: date) -> S
     )
     db.session.add(s)
     db.session.flush()
+    if journal is not None:
+        journal.cree("sessions", s.id)
     return s
 
 
@@ -353,7 +368,15 @@ def import_presences_from_xlsx(
     skip_sheets: Optional[List[str]] = None,
     dry_run: bool = False,
     limit_rows_per_sheet: int = 5000,
+    journal=None,
+    avant_validation=None,
 ) -> Dict[str, Any]:
+    """Importe les présences du classeur.
+
+    ``journal`` (app.services.imports_lots.Journal) note ce que l'import crée
+    et modifie, pour pouvoir l'annuler ; ``avant_validation`` est appelé juste
+    avant le commit, dans la même transaction (on y enregistre le lot).
+    """
 
     secteur = normalize_secteur(secteur)
 
@@ -436,7 +459,7 @@ def import_presences_from_xlsx(
                 )
             quartiers_ignores = 0
 
-            atelier = _get_or_create_atelier(secteur, sheet_name.strip())
+            atelier = _get_or_create_atelier(secteur, sheet_name.strip(), journal)
 
             blank_streak = 0
             processed_rows = 0
@@ -483,7 +506,7 @@ def import_presences_from_xlsx(
                 quartier = None
                 if _norm(quartier_name):
                     if ville_norm:
-                        quartier = _get_or_create_quartier(quartier_name, ville_norm)
+                        quartier = _get_or_create_quartier(quartier_name, ville_norm, journal)
                     else:
                         quartier = _quartier_connu_sans_ville(quartier_name)
                         if quartier is None:
@@ -503,6 +526,7 @@ def import_presences_from_xlsx(
                     quartier,
                     secteur,
                     ville=ville_norm,
+                    journal=journal,
                 )
 
                 if before is None:
@@ -527,7 +551,7 @@ def import_presences_from_xlsx(
                         is_deleted=False,
                     ).first()
 
-                    session = _get_or_create_session(atelier, secteur, d)
+                    session = _get_or_create_session(atelier, secteur, d, journal)
                     if session_before is None:
                         stats["sessions_created"] += 1
                         stats_sheet["sessions"] += 1
@@ -537,6 +561,8 @@ def import_presences_from_xlsx(
                         with db.session.begin_nested():
                             db.session.add(pr)
                             db.session.flush()
+                        if journal is not None:
+                            journal.cree("presences", pr.id)
                         stats["presences_created"] += 1
                         stats_sheet["presences"] += 1
                     except IntegrityError:
@@ -554,6 +580,8 @@ def import_presences_from_xlsx(
         if dry_run:
             db.session.rollback()
         else:
+            if avant_validation is not None:
+                avant_validation(stats)
             db.session.commit()
 
     except Exception:

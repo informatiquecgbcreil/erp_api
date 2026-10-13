@@ -2368,7 +2368,7 @@ def _import_dossier():
     return chemin
 
 
-def _import_resoudre_quartier_id(ville, nom, qpv=False):
+def _import_resoudre_quartier_id(ville, nom, qpv=False, journal=None):
     """Relie à un quartier (ville + nom), en le CRÉANT s'il n'existe pas.
 
     - Ne crée rien si le « quartier » est en réalité la commune (nom == ville)
@@ -2388,12 +2388,27 @@ def _import_resoudre_quartier_id(ville, nom, qpv=False):
         q = Quartier(ville=ville, nom=nom, is_qpv=bool(qpv))
         db.session.add(q)
         db.session.flush()
+        if journal is not None:
+            journal.cree("quartiers", q.id)
     return q.id
 
 
 def _import_acces_autorise() -> bool:
     # L'import en masse est une opération globale : réservé aux comptes à portée globale.
     return bool(can("participants:edit")) and bool(can("scope:all_secteurs"))
+
+
+def _rendre_import(**contexte):
+    """La page d'import, avec l'encart « Dernier import » (sauvegarde, annulation)."""
+    from app.services import imports_lots
+
+    dernier = imports_lots.dernier_lot("annuaire")
+    return render_template(
+        "participants/import.html", dernier_import=dernier,
+        dernier_import_elements=imports_lots.elements(dernier) if dernier else None,
+        dernier_import_annulable=imports_lots.peut_annuler(dernier, current_user),
+        dernier_import_compte_rendu=imports_lots.compte_rendu(dernier) if dernier else None,
+        **contexte)
 
 
 @bp.route("/import", methods=["GET", "POST"])
@@ -2406,10 +2421,10 @@ def import_annuaire():
         fichier = request.files.get("fichier")
         if not fichier or not fichier.filename:
             flash("Veuillez choisir un fichier .xlsx.", "danger")
-            return render_template("participants/import.html", rapport=None)
+            return _rendre_import(rapport=None)
         if not fichier.filename.lower().endswith(".xlsx"):
             flash("Format non reconnu : fournissez un fichier Excel .xlsx.", "danger")
-            return render_template("participants/import.html", rapport=None)
+            return _rendre_import(rapport=None)
 
         token = uuid.uuid4().hex
         chemin = os.path.join(_import_dossier(), f"{token}.xlsx")
@@ -2424,19 +2439,19 @@ def import_annuaire():
             except OSError:
                 pass
             flash("Impossible de lire ce fichier Excel. Vérifiez qu'il n'est pas corrompu.", "danger")
-            return render_template("participants/import.html", rapport=None)
+            return _rendre_import(rapport=None)
 
         fortes, faibles = _import_cles_base()
         rapport = _import_analyser(feuilles, cles_existantes=fortes, cles_faibles_existantes=faibles)
-        return render_template(
-            "participants/import.html",
+        return _rendre_import(
             rapport=rapport,
             token=token,
+            fichier_nom=fichier.filename,
             apercu_nouveaux=rapport.nouveaux[:15],
             apercu_ambigus=rapport.ambigus[:15],
         )
 
-    return render_template("participants/import.html", rapport=None)
+    return _rendre_import(rapport=None)
 
 
 @bp.route("/import/confirmer", methods=["POST"])
@@ -2462,30 +2477,52 @@ def import_annuaire_confirmer():
     fortes, faibles = _import_cles_base()
     rapport = _import_analyser(feuilles, cles_existantes=fortes, cles_faibles_existantes=faibles)
 
+    from app.services import imports_lots
+
+    # Le parachute : une sauvegarde juste avant de créer quoi que ce soit.
+    sauvegarde = None
+    if rapport.nouveaux or (inclure_ambigus and rapport.ambigus):
+        try:
+            sauvegarde = imports_lots.sauvegarder_avant_import()
+        except imports_lots.SauvegardeImpossible as exc:
+            flash("Import non lancé : la sauvegarde de sécurité d'avant import a échoué "
+                  f"({exc}). Vérifiez Administration > Sauvegardes, puis recommencez.", "danger")
+            return redirect(url_for("participants.import_annuaire"))
+    journal = imports_lots.Journal()
+
+    def creer(**champs):
+        fiche = Participant(**champs)
+        db.session.add(fiche)
+        db.session.flush()
+        journal.cree("participants", fiche.id)
+
     crees = 0
     faibles_courantes = set(faibles)
     for p in rapport.nouveaux:
-        db.session.add(Participant(
+        creer(
             nom=p.nom, prenom=p.prenom, genre=p.sexe,
             date_naissance=date(p.annee, 1, 1),  # jour/mois inconnus : 1er janvier de l'année connue
             type_public="H",
             adresse=p.adresse, ville=p.ville,
-            quartier_id=_import_resoudre_quartier_id(p.ville, p.quartier, p.qpv),
-        ))
+            quartier_id=_import_resoudre_quartier_id(p.ville, p.quartier, p.qpv, journal),
+        )
         faibles_courantes.add(p.cle_faible)
         crees += 1
 
     crees_ambigus = 0
     if inclure_ambigus:
         for p in _import_dedup_ambigus(rapport.ambigus, faibles_courantes):
-            db.session.add(Participant(
+            creer(
                 nom=p.nom, prenom=p.prenom, genre=p.sexe, type_public="H",
                 adresse=p.adresse, ville=p.ville,
-                quartier_id=_import_resoudre_quartier_id(p.ville, p.quartier, p.qpv),
-            ))
+                quartier_id=_import_resoudre_quartier_id(p.ville, p.quartier, p.qpv, journal),
+            )
             faibles_courantes.add(p.cle_faible)
             crees_ambigus += 1
 
+    if crees + crees_ambigus:
+        imports_lots.enregistrer("annuaire", (request.form.get("fichier_nom") or "").strip(), journal,
+                                 sauvegarde, getattr(current_user, "id", None))
     db.session.commit()
     try:
         os.remove(chemin)
@@ -2497,10 +2534,35 @@ def import_annuaire_confirmer():
         getattr(current_user, "email", "?"), crees + crees_ambigus, crees_ambigus,
     )
     if crees + crees_ambigus:
-        flash(f"{crees + crees_ambigus} fiche(s) créée(s) ({crees} fiables, {crees_ambigus} sans date de naissance).", "success")
+        flash(f"{crees + crees_ambigus} fiche(s) créée(s) ({crees} fiables, {crees_ambigus} sans date de naissance). "
+              f"Une sauvegarde a été faite juste avant ({sauvegarde}) ; cet import peut être annulé depuis "
+              "Participants > Importer.", "success")
     else:
         flash("Aucune nouvelle fiche à créer (tout existait déjà).", "info")
     return redirect(url_for("participants.list_participants"))
+
+
+@bp.route("/import/annuler/<int:lot_id>", methods=["POST"])
+@login_required
+def import_annuaire_annuler(lot_id):
+    """Annule le dernier import de l'annuaire (voir app/services/imports_lots.py)."""
+    if not _import_acces_autorise():
+        abort(403)
+    from app.models import ImportLot
+    from app.services import imports_lots
+
+    lot = db.session.get(ImportLot, lot_id)
+    if lot is None or lot.nature != "annuaire":
+        abort(404)
+    if imports_lots.annulable(lot) and not imports_lots.peut_annuler(lot, current_user):
+        abort(403)
+    try:
+        rapport = imports_lots.annuler(lot, getattr(current_user, "id", None))
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("participants.import_annuaire"))
+    flash(imports_lots.message_annulation(rapport), "success")
+    return redirect(url_for("participants.import_annuaire"))
 
 
 from app.participants import cotisations as _cotisations_routes  # noqa: E402,F401

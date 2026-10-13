@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import "_dernier_import.html" as parachute %}
 {% block body %}
 <div class="page-shell long-form-shell content-shell">
   <section class="hero-card">
@@ -14,7 +15,7 @@
   <section class="section-card">
     <div class="ux-callout" style="margin-bottom:14px;">
       <div class="ux-callout__title">Avant de lancer un import</div>
-      <div class="ux-callout__text">Commencez par un test sans enregistrement. Les séances créées par import ne contiennent pas d'horaires si le fichier source ne les prévoit pas.</div>
+      <div class="ux-callout__text">Commencez par un test sans enregistrement. Les séances créées par import ne contiennent pas d'horaires si le fichier source ne les prévoit pas. Un import réel fait d'abord une sauvegarde complète, et le dernier import peut être annulé.</div>
     </div>
 
     <form method="post" enctype="multipart/form-data" class="filters-panel">
@@ -42,6 +43,10 @@
       <div class="hero-actions"><button class="btn ok" type="submit">Lancer l'import</button></div>
     </form>
   </section>
+
+  {{ parachute.encart(dernier_import, dernier_import_elements, dernier_import_annulable,
+                      dernier_import_compte_rendu,
+                      url_for('admin.import_excel_annuler', lot_id=dernier_import.id) if dernier_import else '') }}
 
   {% if stats %}
   <section class="section-card">
