@@ -182,6 +182,31 @@ def _bucket_quartier(p: Participant, villes_qpv: set[str] | None = None, terr=No
     return NON_RENSEIGNE
 
 
+def provenance(p: Participant, villes_qpv: set[str] | None = None, terr=None) -> str:
+    """Colonne « provenance » du Magatomatique pour un habitant.
+
+    Mêmes règles que le bilan SENACS (:func:`_bucket_quartier`), la ligne
+    « Hors QPV » étant coupée en deux : la ville siège (« Creil hors QPV »)
+    et les autres communes (« Hors Creil »). Ce découpage remplace « Bas de
+    Creil », qui voulait dire « Creil hors QPV » jusqu'à ce qu'un QPV
+    s'ouvre dans le Bas de Creil, et « Autres », qui mélangeait des QPV, des
+    quartiers de Creil et d'autres communes.
+    """
+    from app.services.territoire import PROVENANCE_INCONNUE, territoire
+
+    terr = terr or territoire()
+    ligne = _bucket_quartier(p, villes_qpv, terr)
+    if ligne == NON_RENSEIGNE:
+        return PROVENANCE_INCONNUE
+    if ligne != "Hors QPV":
+        return ligne
+    if not terr.ville_siege:
+        return terr.libelle_ville_hors_qpv
+    quartier = p.quartier
+    ville = quartier.ville if quartier is not None and (quartier.ville or "").strip() else p.ville
+    return terr.libelle_ville_hors_qpv if terr.habite_ville_siege(ville) else terr.libelle_hors_ville
+
+
 def publics_annee(annee: int) -> dict:
     """Indicateurs « publics » SENACS pour l'année (tableau 6.1)."""
     from sqlalchemy.orm import joinedload

@@ -2,10 +2,12 @@
 
 Ce que ces tests garantissent :
 
-1. **Creil ne bouge pas.** Avec le territoire historique (celui que la
-   migration reprend), le bilan SENACS classe chaque habitant exactement
+1. **Creil ne bouge pas, sauf ses erreurs.** Avec le territoire historique
+   (celui que la migration reprend), le bilan SENACS classe chaque habitant
    comme l'ancien code — recopié ici tel qu'il était — sur un jeu de
-   quartiers choisis pour être piégeux.
+   quartiers choisis pour être piégeux, à quelques corrections près, listées
+   une à une (« Hauts de Creil (hors Rouher) » n'est pas le Rouher).
+   Le Magatomatique suit les mêmes règles.
 2. **Un autre centre obtient ses propres lignes** : zéro, un ou plusieurs
    QPV suivis, des quartiers distingués ou non, ses « Habitants de … ».
 3. **Une base neuve n'hérite pas de Creil**, et une base de Creil le garde.
@@ -85,19 +87,6 @@ def _ancien_bucket(p, villes_qpv):
     return "Non renseigné"
 
 
-def _anciennes_villes_avec_qpv():
-    from app.models import Quartier
-    from app.services.recherche_texte import sans_accent
-
-    villes = set()
-    for q in Quartier.query.all():
-        nom = sans_accent(q.nom) or ""
-        if ((q.qpv or "").strip() or q.is_qpv or "qpv" in nom or "hauts de creil" in nom
-                or "rouher" in nom) and (q.ville or "").strip():
-            villes.add((sans_accent(q.ville) or "").strip())
-    return villes
-
-
 def _ancien_is_qpv(p):
     if not p.quartier:
         return False
@@ -113,14 +102,16 @@ QUARTIERS_PIEGES = [
     ("Creil", "Rouher", "Hauts de Creil", True),
     ("Creil", "Rouher", None, False),
     ("Creil", "Rouher (QPV Hauts de Creil)", None, False),
+    ("Creil", "Hauts de Creil (hors Rouher)", "Hauts de Creil", True),
+    ("Creil", "Hauts de Creil (hors Rouher)", None, True),
     ("Creil", "Cavée de Senlis", "Hauts de Creil", True),
     ("Creil", "Cavée de Senlis", None, False),
     ("Creil", "Hauts de Creil", None, False),
     ("Creil", "hauts-de-creil nord", None, False),
     ("Creil", "Bas de Creil", None, False),
     ("Creil", "Plateau", "HAUTS DE CRÉIL", True),
-    ("Creil", "Moulin", "Autre quartier prioritaire", True),
-    ("Creil", "Gournay", None, True),
+    ("Creil", "Jaurès Gournay", "Jaurès Gournay", True),
+    ("Creil", "Jaurès Gournay", None, True),
     ("Creil", "Quartier QPV sans nom", None, False),
     ("Nogent-sur-Oise", "Les Granges", "Les Granges", True),
     ("Nogent-sur-Oise", "Centre", None, False),
@@ -128,41 +119,154 @@ QUARTIERS_PIEGES = [
     ("", "Sans ville", None, False),
 ]
 
+#: Les seuls écarts avec l'ancien bilan SENACS : des erreurs corrigées.
+#: L'ancien code cherchait « rouher » n'importe où dans le nom du quartier.
+CORRECTIONS_SENACS = {
+    # La ligne Rouher comptait tous les Hauts de Creil.
+    ("Hauts de Creil (hors Rouher)", "Hauts de Creil"): "Hauts de Creil",
+    ("Hauts de Creil (hors Rouher)", None): "Hauts de Creil",
+    # Un quartier d'une autre ville n'est pas le Rouher.
+    ("Rouher-bis", None): "Hors QPV",
+}
 
-def test_creil_obtient_exactement_les_memes_chiffres_qu_avant(app, territoire_creil):
-    from app.extensions import db
-    from app.models import Participant, Quartier
-    from app.services.senacs import _bucket_quartier, villes_avec_qpv
+VILLES_A_QPV = {"creil", "nogent-sur-oise", "montataire"}
+
+
+def _en_memoire(ville, nom=None, qpv=None, is_qpv=False):
+    """Un habitant et son quartier, sans base : seuls leurs attributs comptent."""
+    from types import SimpleNamespace
+
+    quartier = SimpleNamespace(ville=ville, nom=nom, qpv=qpv, is_qpv=is_qpv) if nom else None
+    return SimpleNamespace(quartier=quartier, ville=ville or None)
+
+
+def test_creil_garde_ses_chiffres_sauf_les_erreurs_corrigees(app, territoire_creil):
+    from app.models import Participant
+    from app.services.senacs import _bucket_quartier
     from app.services.territoire import territoire
 
-    suf = _suffixe()
+    habitants = [_en_memoire(*cas) for cas in QUARTIERS_PIEGES]
+    habitants += [_en_memoire(ville) for ville in ("Creil", "CREIL", "Nogent-sur-Oise", "Laigneville", "")]
     with app.app_context():
         assert territoire() == CREIL
+        for p in habitants:
+            q = p.quartier
+            cle = (q.nom, q.qpv) if q is not None else None
+            attendu = CORRECTIONS_SENACS.get(cle) or _ancien_bucket(p, VILLES_A_QPV)
+            assert _bucket_quartier(p, VILLES_A_QPV) == attendu, (p.ville, q and q.nom)
 
-        habitants = []
-        for i, (ville, nom, qpv, is_qpv) in enumerate(QUARTIERS_PIEGES):
-            quartier = Quartier(ville=ville, nom=f"{nom} {suf}{i}", qpv=qpv, is_qpv=is_qpv)
-            db.session.add(quartier)
-            db.session.flush()
-            habitants.append(Participant(nom=f"Piege{suf}{i}", prenom="X", ville=ville or None,
-                                         quartier_id=quartier.id))
-        for ville in ("Creil", "CREIL", "Nogent-sur-Oise", "Laigneville", ""):
-            habitants.append(Participant(nom=f"SansQuartier{suf}", prenom=ville or "vide", ville=ville or None))
-        db.session.add_all(habitants)
+            is_qpv = Participant.is_qpv.fget(p)
+            if q is not None and q.nom == "hauts-de-creil nord":
+                # Écrit avec des tirets et sans QPV renseigné : déjà compté aux
+                # Hauts de Creil par SENACS, désormais aussi dans le taux QPV.
+                assert _ancien_is_qpv(p) is False and is_qpv is True
+                continue
+            assert is_qpv == _ancien_is_qpv(p), (p.ville, q and q.nom)
+
+
+# ---------------------------------------------------------------------------
+# 1 bis. Le Magatomatique, sur les quartiers réels du centre
+# ---------------------------------------------------------------------------
+
+#: Les quartiers de Creil et de l'agglomération tels que le centre les tient,
+#: et la colonne attendue. « Haut Montataire » est un nom inventé : l'ancien
+#: tri l'aurait rangé aux Hauts de Creil (le mot « haut » dans le nom).
+PROVENANCES_ATTENDUES = [
+    (("Creil", "Rouher", "Hauts de Creil", True), "Rouher"),
+    (("Creil", "Hauts de Creil (hors Rouher)", "Hauts de Creil", True), "Hauts de Creil"),
+    (("Creil", "Bas de Creil", None, False), "Creil hors QPV"),
+    (("Creil", "Jaurès Gournay", "Jaurès Gournay", True), "Autre QPV"),
+    (("Creil", "Jaurès Gournay", None, True), "Autre QPV"),
+    (("Nogent-sur-Oise", "Les Granges", "Les Granges", True), "Autre QPV"),
+    (("Nogent-sur-Oise", "Centre", None, False), "Hors Creil"),
+    (("Montataire", "Haut Montataire", None, False), "Hors Creil"),
+    (("Villers-Saint-Paul",), "Hors Creil"),   # commune sans QPV, pas de quartier
+    (("Nogent-sur-Oise",), "Inconnu"),         # commune à QPV, quartier non dit
+    (("",), "Inconnu"),
+]
+
+
+def test_les_quartiers_du_centre_dans_le_magatomatique(app, territoire_creil):
+    from app.services.senacs import provenance
+    from app.services.territoire import territoire
+
+    with app.app_context():
+        terr = territoire()
+        assert terr.colonnes_provenance == [
+            "Rouher", "Hauts de Creil", "Autre QPV", "Creil hors QPV", "Hors Creil", "Inconnu"]
+        for cas, attendu in PROVENANCES_ATTENDUES:
+            assert provenance(_en_memoire(*cas), VILLES_A_QPV, terr) == attendu, cas
+
+
+def test_un_qpv_suivi_a_part_a_sa_colonne():
+    """Jaurès Gournay ajouté aux QPV suivis : sa colonne à lui. Un quartier
+    est rattaché par le QPV inscrit sur sa fiche, ou à défaut par son nom ;
+    la case « QPV » seule ne dit pas lequel."""
+    from app.services.senacs import provenance
+
+    terr = Territoire(ville_siege="Creil", qpv_suivis=("Hauts de Creil", "Jaurès Gournay"),
+                      quartiers_distingues=("Rouher",))
+    assert terr.colonnes_provenance == [
+        "Rouher", "Hauts de Creil", "Jaurès Gournay", "Autre QPV", "Creil hors QPV", "Hors Creil", "Inconnu"]
+    assert provenance(_en_memoire("Creil", "Jaurès Gournay", "Jaurès Gournay", True), VILLES_A_QPV, terr) \
+        == "Jaurès Gournay"
+    assert provenance(_en_memoire("Creil", "Jaurès Gournay", None, True), VILLES_A_QPV, terr) == "Jaurès Gournay"
+    assert provenance(_en_memoire("Creil", "Rue Jean Jaurès", None, True), VILLES_A_QPV, terr) == "Autre QPV"
+
+
+def test_colonnes_d_un_centre_sans_territoire_regle():
+    assert Territoire().colonnes_provenance == ["QPV", "Hors QPV", "Inconnu"]
+    beauvais = Territoire(ville_siege="Beauvais", qpv_suivis=("Saint-Jean",))
+    assert beauvais.colonnes_provenance == [
+        "Saint-Jean", "Autre QPV", "Beauvais hors QPV", "Hors Beauvais", "Inconnu"]
+
+
+def test_l_export_magatomatique_suit_le_territoire(app, admin_client, territoire_creil):
+    """De bout en bout : le classeur Excel porte les colonnes du territoire,
+    remplies, et son tableau de synthèse couvre toutes les colonnes."""
+    import datetime as dt
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from app.extensions import db
+    from app.models import AtelierActivite, PresenceActivite, SessionActivite
+
+    suf = _suffixe()
+    secteur = f"Prov{suf}"
+    with app.app_context():
+        habitants = [
+            _habitant(app, "Creil", "Rouher", qpv="Hauts de Creil", is_qpv=True),
+            _habitant(app, "Creil", "Hauts de Creil (hors Rouher)", qpv="Hauts de Creil", is_qpv=True),
+            _habitant(app, "Creil", "Bas de Creil"),
+            _habitant(app, "Creil", "Jaurès Gournay", qpv="Jaurès Gournay", is_qpv=True),
+            _habitant(app, f"Villers{suf}"),
+        ]
+        atelier = AtelierActivite(nom=f"Atelier{suf}", secteur=secteur, type_atelier="COLLECTIF",
+                                  capacite_defaut=10, is_active=True)
+        db.session.add(atelier)
+        db.session.flush()
+        seance = SessionActivite(atelier_id=atelier.id, secteur=secteur, session_type="COLLECTIF",
+                                 date_session=dt.date(dt.date.today().year, 1, 2), heure_debut="14:00",
+                                 heure_fin="16:00", capacite=10, statut="realisee")
+        db.session.add(seance)
+        db.session.flush()
+        db.session.add_all([PresenceActivite(session_id=seance.id, participant_id=p.id) for p in habitants])
         db.session.commit()
 
-        villes_qpv = villes_avec_qpv()
-        assert villes_qpv == _anciennes_villes_avec_qpv()
-        for p in habitants:
-            attendu = _ancien_bucket(p, villes_qpv)
-            assert _bucket_quartier(p, villes_qpv) == attendu, (p.ville, p.quartier and p.quartier.nom)
-            if p.quartier is not None and p.quartier.nom.startswith("hauts-de-creil"):
-                # Seule correction voulue : écrit avec des tirets et sans QPV
-                # renseigné, ce quartier comptait déjà aux Hauts de Creil dans
-                # le bilan SENACS, mais pas dans le taux QPV des indicateurs.
-                assert _ancien_is_qpv(p) is False and p.is_qpv is True
-                continue
-            assert p.is_qpv == _ancien_is_qpv(p), (p.ville, p.quartier and p.quartier.nom)
+    r = admin_client.get(f"/stats-impact/magatomatique.xlsx?export_mode=complete&secteur={secteur}")
+    assert r.status_code == 200
+    ws = load_workbook(BytesIO(r.data))["Synthese"]
+    entetes = [c.value for c in ws[3]]
+    ligne = next(dict(zip(entetes, row)) for row in ws.iter_rows(min_row=4, values_only=True)
+                 if row[1] == f"Atelier{suf}")
+    assert {k: ligne[k] for k in ("Rouher", "Hauts de Creil", "Autre QPV", "Creil hors QPV",
+                                  "Hors Creil", "Inconnu")} == {
+        "Rouher": 1, "Hauts de Creil": 1, "Autre QPV": 1, "Creil hors QPV": 1, "Hors Creil": 1, "Inconnu": 0}
+    assert "Bas de Creil" not in entetes and "Autres" not in entetes
+    # Le tableau Excel de la synthèse s'étend jusqu'à la dernière colonne (genre).
+    assert ws.tables["SyntheseAteliers"].ref.split(":")[1].rstrip("0123456789") == \
+        ws.cell(row=3, column=len([e for e in entetes if e])).column_letter
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +280,9 @@ def _habitant(app, ville, nom_quartier=None, qpv=None, is_qpv=False):
     suf = _suffixe()
     quartier_id = None
     if nom_quartier:
-        quartier = Quartier(ville=ville, nom=f"{nom_quartier} {suf}", qpv=qpv, is_qpv=is_qpv)
+        # Le suffixe (unicité en base) va entre parenthèses : un quartier
+        # distingué se reconnaît à son nom, précisions entre parenthèses à part.
+        quartier = Quartier(ville=ville, nom=f"{nom_quartier} ({suf})", qpv=qpv, is_qpv=is_qpv)
         db.session.add(quartier)
         db.session.flush()
         quartier_id = quartier.id

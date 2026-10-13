@@ -35,6 +35,8 @@ from app.services.villes import memes_villes
 AUTRE_QPV = "Autre QPV"
 #: Libellé quand aucun QPV n'est suivi à part : il n'y a pas d'« autre ».
 QPV_SANS_DETAIL = "QPV"
+#: Colonne des exports pour qui n'a ni quartier ni commune exploitable.
+PROVENANCE_INCONNUE = "Inconnu"
 
 
 def lire_liste(texte: str | None) -> tuple[str, ...]:
@@ -77,6 +79,28 @@ class Territoire:
         return AUTRE_QPV if self.qpv_suivis else QPV_SANS_DETAIL
 
     @property
+    def libelle_ville_hors_qpv(self) -> str:
+        """« Creil hors QPV » : habitants de la ville siège hors de tout QPV."""
+        return f"{self.ville_siege} hors QPV" if self.ville_siege else "Hors QPV"
+
+    @property
+    def libelle_hors_ville(self) -> str | None:
+        """« Hors Creil » : autres communes, hors QPV. None sans ville siège."""
+        return f"Hors {self.ville_siege}" if self.ville_siege else None
+
+    @property
+    def colonnes_provenance(self) -> list[str]:
+        """Colonnes « provenance » des exports, dans l'ordre : quartiers
+        distingués, QPV suivis, autres QPV, ville siège hors QPV, autres
+        communes, inconnu."""
+        colonnes = [*self.quartiers_distingues, *self.qpv_suivis, self.libelle_autre_qpv,
+                    self.libelle_ville_hors_qpv]
+        if self.libelle_hors_ville:
+            colonnes.append(self.libelle_hors_ville)
+        colonnes.append(PROVENANCE_INCONNUE)
+        return colonnes
+
+    @property
     def centre_carte(self) -> dict | None:
         if self.latitude is None or self.longitude is None:
             return None
@@ -90,12 +114,17 @@ class Territoire:
     def quartier_distingue(self, nom_quartier: str | None) -> str | None:
         """Le quartier distingué que ce nom désigne, s'il y en a un.
 
-        Recherche par sous-chaîne, comme l'a toujours fait le bilan : un
-        quartier nommé « Rouher (QPV Hauts de Creil) » reste le Rouher.
+        Reconnu à son NOM, précisions entre parenthèses mises à part :
+        « Rouher » et « Rouher (QPV Hauts de Creil) » sont le Rouher. Le
+        bilan cherchait auparavant le mot n'importe où dans le nom, si bien
+        que « Hauts de Creil (hors Rouher) » tombait dans la ligne Rouher,
+        qui comptait alors tous les Hauts de Creil.
         """
-        nom = sans_accent(nom_quartier) or ""
+        nom = _sans_tirets(_SANS_PARENTHESES.sub(" ", nom_quartier or ""))
+        if not nom:
+            return None
         for distingue in self.quartiers_distingues:
-            if sans_accent(distingue) in nom:
+            if _sans_tirets(distingue) == nom:
                 return distingue
         return None
 
@@ -121,6 +150,9 @@ class Territoire:
     def nomme_un_qpv(self, nom_quartier: str | None) -> bool:
         """Le nom du quartier cite-t-il un QPV suivi ou un quartier distingué ?"""
         return bool(self.quartier_distingue(nom_quartier) or self.qpv_suivi_dans_le_nom(nom_quartier))
+
+
+_SANS_PARENTHESES = re.compile(r"\([^)]*\)")
 
 
 def _sans_tirets(valeur: str | None) -> str:
