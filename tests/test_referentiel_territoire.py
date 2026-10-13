@@ -129,7 +129,7 @@ def test_deduction_du_qpv_depuis_les_noms_bricoles():
     assert nom_sans_qpv("Rouher") == "Rouher"
 
 
-def test_deux_quartiers_du_meme_qpv_restent_distincts(app):
+def test_deux_quartiers_du_meme_qpv_restent_distincts(app, territoire_creil):
     """Le cœur du besoin : distinguer le Rouher des autres quartiers des
     Hauts de Creil, tout en les additionnant quand le financeur demande le
     QPV. Avant, il fallait fabriquer deux faux quartiers dont le nom portait

@@ -200,20 +200,6 @@ def app():
         assert role is not None, "bootstrap_rbac n'a pas créé le rôle direction"
         user.roles.append(role)
         db.session.add(user)
-
-        # La base de test joue l'installation historique de Creil : celle
-        # que la migration « territoire du centre » reprend telle quelle.
-        # Les tests d'un autre territoire passent par la fixture
-        # ``territoire_regle`` (tests/test_territoire.py).
-        from app.models import InstanceSettings
-        from app.services.territoire import TERRITOIRE_HISTORIQUE
-
-        reglages = InstanceSettings.query.first()
-        if reglages is None:
-            reglages = InstanceSettings()
-            db.session.add(reglages)
-        for colonne, valeur in TERRITOIRE_HISTORIQUE.items():
-            setattr(reglages, colonne, valeur)
         db.session.commit()
     return app
 
@@ -232,6 +218,48 @@ def admin_client(app):
     assert r.status_code == 302, "la connexion admin a échoué"
     assert "/dashboard" in r.headers.get("Location", "")
     return c
+
+
+@pytest.fixture()
+def regler_territoire(app):
+    """Règle le territoire du centre le temps d'un test, puis remet l'ancien.
+
+    ``regler_territoire(territoire_ville="Beauvais", ...)`` : toute colonne
+    non citée est vidée. Le territoire ne se pose pas une fois pour toutes
+    au début de la session : les tests qui font descendre puis remonter les
+    migrations suppriment ses colonnes, et avec elles leur contenu.
+    """
+    from app.extensions import db
+    from app.models import InstanceSettings
+    from app.services.territoire import TERRITOIRE_HISTORIQUE, oublier
+
+    avant = {}
+
+    def regler(**valeurs):
+        with app.app_context():
+            reglages = InstanceSettings.query.first()
+            if reglages is None:
+                reglages = InstanceSettings()
+                db.session.add(reglages)
+            if not avant:
+                avant.update({c: getattr(reglages, c) for c in TERRITOIRE_HISTORIQUE})
+            for colonne in TERRITOIRE_HISTORIQUE:
+                setattr(reglages, colonne, valeurs.get(colonne))
+            db.session.commit()
+            oublier()
+
+    yield regler
+    if avant:
+        regler(**avant)
+
+
+@pytest.fixture()
+def territoire_creil(regler_territoire):
+    """Le territoire historique (Creil, QPV Hauts de Creil, Rouher distingué),
+    celui que la migration reprend sur une base de Creil."""
+    from app.services.territoire import TERRITOIRE_HISTORIQUE
+
+    regler_territoire(**TERRITOIRE_HISTORIQUE)
 
 
 @pytest.fixture()

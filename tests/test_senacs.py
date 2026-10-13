@@ -96,7 +96,7 @@ def test_tranches_age_senacs(app, donnees_senacs):
         assert ages["0-6 ans"] == 1, "Chloé née en 2020 a 5 ans au 31/12/2025"
 
 
-def test_genres_et_quartiers(app, donnees_senacs):
+def test_genres_et_quartiers(app, donnees_senacs, territoire_creil):
     with app.app_context():
         from app.services.senacs import publics_annee
 

@@ -33,30 +33,6 @@ def _suffixe() -> str:
     return uuid.uuid4().hex[:6]
 
 
-@pytest.fixture
-def territoire_regle(app):
-    """Règle un autre territoire le temps d'un test, puis rétablit Creil."""
-    from app.extensions import db
-    from app.models import InstanceSettings
-    from app.services.territoire import oublier
-
-    def regler(**valeurs):
-        with app.app_context():
-            reglages = InstanceSettings.query.first()
-            for colonne in TERRITOIRE_HISTORIQUE:
-                setattr(reglages, colonne, valeurs.get(colonne))
-            db.session.commit()
-            oublier()
-
-    yield regler
-    with app.app_context():
-        reglages = InstanceSettings.query.first()
-        for colonne, valeur in TERRITOIRE_HISTORIQUE.items():
-            setattr(reglages, colonne, valeur)
-        db.session.commit()
-        oublier()
-
-
 # ---------------------------------------------------------------------------
 # Lecture des réglages
 # ---------------------------------------------------------------------------
@@ -153,7 +129,7 @@ QUARTIERS_PIEGES = [
 ]
 
 
-def test_creil_obtient_exactement_les_memes_chiffres_qu_avant(app):
+def test_creil_obtient_exactement_les_memes_chiffres_qu_avant(app, territoire_creil):
     from app.extensions import db
     from app.models import Participant, Quartier
     from app.services.senacs import _bucket_quartier, villes_avec_qpv
@@ -161,7 +137,6 @@ def test_creil_obtient_exactement_les_memes_chiffres_qu_avant(app):
 
     suf = _suffixe()
     with app.app_context():
-        # La base de test joue la base historique : son territoire est Creil.
         assert territoire() == CREIL
 
         habitants = []
@@ -265,14 +240,14 @@ def test_un_quartier_distingue_garde_sa_ligne_avant_son_qpv(app):
 ANNEE_BILAN = 1997  # aucune autre donnée de test : le bilan ne compte que les nôtres
 
 
-def test_bilan_senacs_et_indicateurs_d_un_centre_de_beauvais(app, territoire_regle):
+def test_bilan_senacs_et_indicateurs_d_un_centre_de_beauvais(app, regler_territoire):
     """De bout en bout : régler le territoire change le bilan et les indicateurs."""
     from app.extensions import db
     from app.models import AtelierActivite, PresenceActivite, SessionActivite
     from app.services.indicators import _add_demography_metrics
     from app.services.senacs import publics_annee
 
-    territoire_regle(territoire_ville="Beauvais", territoire_qpv_suivis="Saint-Jean\nArgentine",
+    regler_territoire(territoire_ville="Beauvais", territoire_qpv_suivis="Saint-Jean\nArgentine",
                      territoire_quartiers_distingues=None)
     with app.app_context():
         habitants = [
@@ -301,7 +276,7 @@ def test_bilan_senacs_et_indicateurs_d_un_centre_de_beauvais(app, territoire_reg
         assert mesures["participants_qpv"] == 3
 
 
-def test_les_habitants_de_creil_restent_comptes_a_creil(app):
+def test_les_habitants_de_creil_restent_comptes_a_creil(app, territoire_creil):
     from app.services.indicators import _add_demography_metrics
 
     with app.app_context():
@@ -318,32 +293,32 @@ def test_les_habitants_de_creil_restent_comptes_a_creil(app):
 # 3. Carte et attestations
 # ---------------------------------------------------------------------------
 
-def test_la_carte_s_ouvre_sur_la_ville_siege_sinon_sur_la_france(app, territoire_regle):
+def test_la_carte_s_ouvre_sur_la_ville_siege_sinon_sur_la_france(app, territoire_creil, regler_territoire):
     from app.services.cartographie import CENTRE_FRANCE, centre_par_defaut
 
     with app.app_context():
         assert centre_par_defaut() == {"lat": 49.2583, "lon": 2.4750, "zoom": 13}
-    territoire_regle(territoire_ville="Beauvais")
+    regler_territoire(territoire_ville="Beauvais")
     with app.app_context():
         assert centre_par_defaut() == CENTRE_FRANCE
-    territoire_regle(territoire_ville="Beauvais", territoire_latitude=49.43, territoire_longitude=2.08)
+    regler_territoire(territoire_ville="Beauvais", territoire_latitude=49.43, territoire_longitude=2.08)
     with app.app_context():
         assert centre_par_defaut() == {"lat": 49.43, "lon": 2.08, "zoom": 13}
 
 
-def test_la_page_carte_porte_le_centre_regle(admin_client, territoire_regle):
-    territoire_regle(territoire_ville="Beauvais", territoire_latitude=49.43, territoire_longitude=2.08)
+def test_la_page_carte_porte_le_centre_regle(admin_client, regler_territoire):
+    regler_territoire(territoire_ville="Beauvais", territoire_latitude=49.43, territoire_longitude=2.08)
     page = admin_client.get("/quartiers/carte").get_data(as_text=True)
     assert 'data-centre-lat="49.43"' in page
     assert "49.2583" not in page
 
 
-def test_les_attestations_sont_faites_a_la_ville_siege(app, territoire_regle):
+def test_les_attestations_sont_faites_a_la_ville_siege(app, territoire_creil, regler_territoire):
     from app.activite.helpers import _attestation_document_fields
 
     with app.test_request_context("/"):
         assert _attestation_document_fields()["city"] == "Creil"
-    territoire_regle(territoire_ville="Beauvais")
+    regler_territoire(territoire_ville="Beauvais")
     with app.test_request_context("/"):
         assert _attestation_document_fields()["city"] == "Beauvais"
     with app.test_request_context("/?city=Allonne"):
@@ -364,7 +339,7 @@ def test_une_base_neuve_n_herite_pas_de_creil(fresh_app):
         assert terr.qpv_suivis == () and terr.quartiers_distingues == ()
 
 
-def test_la_reprise_pose_creil_sur_une_base_de_creil_sans_rien_ecraser(app, territoire_regle):
+def test_la_reprise_pose_creil_sur_une_base_de_creil_sans_rien_ecraser(app, regler_territoire):
     from app.extensions import db
     from app.models import InstanceSettings
     from app.services.territoire import reprendre_territoire_historique
@@ -374,14 +349,14 @@ def test_la_reprise_pose_creil_sur_une_base_de_creil_sans_rien_ecraser(app, terr
         db.session.commit()
 
     # Déjà réglée (sur Beauvais) : la reprise ne touche à rien.
-    territoire_regle(territoire_ville="Beauvais")
+    regler_territoire(territoire_ville="Beauvais")
     with app.app_context():
         assert reprendre_territoire_historique(db.session.connection()) is False
         db.session.commit()
         assert InstanceSettings.query.first().territoire_ville == "Beauvais"
 
     # Pas réglée, mais des habitants de Creil : Creil, comme avant.
-    territoire_regle()
+    regler_territoire()
     with app.app_context():
         assert reprendre_territoire_historique(db.session.connection()) is True
         db.session.commit()
@@ -396,7 +371,7 @@ def test_la_reprise_pose_creil_sur_une_base_de_creil_sans_rien_ecraser(app, terr
 # 5. Les écrans
 # ---------------------------------------------------------------------------
 
-def test_administration_enregistre_le_territoire(admin_client, app, territoire_regle, monkeypatch):
+def test_administration_enregistre_le_territoire(admin_client, app, regler_territoire, monkeypatch):
     from app.models import InstanceSettings
     from app.services import territoire as service
 
@@ -407,7 +382,7 @@ def test_administration_enregistre_le_territoire(admin_client, app, territoire_r
         return {"lat": 49.43, "lon": 2.08}
 
     monkeypatch.setattr(service, "localiser_ville_siege", localiser)
-    territoire_regle()
+    regler_territoire()
     r = admin_client.post("/admin/instance", data={
         "app_name": "", "organization_name": "",
         "territoire_ville": "beauvais", "territoire_code_postal": "60 000",
@@ -436,12 +411,12 @@ def test_administration_enregistre_le_territoire(admin_client, app, territoire_r
     assert len(appels) == 1
 
 
-def test_sans_internet_la_ville_est_gardee_et_on_previent(admin_client, app, territoire_regle, monkeypatch):
+def test_sans_internet_la_ville_est_gardee_et_on_previent(admin_client, app, regler_territoire, monkeypatch):
     from app.models import InstanceSettings
     from app.services import territoire as service
 
     monkeypatch.setattr(service, "localiser_ville_siege", lambda ville, cp: None)
-    territoire_regle()
+    regler_territoire()
     r = admin_client.post("/admin/instance", data={"territoire_ville": "Beauvais"}, follow_redirects=True)
     assert "pas pu être placée sur la carte" in r.get_data(as_text=True)
     with app.app_context():
@@ -450,7 +425,7 @@ def test_sans_internet_la_ville_est_gardee_et_on_previent(admin_client, app, ter
         assert reglages.territoire_latitude is None
 
 
-def test_un_formulaire_sans_les_champs_territoire_n_efface_rien(admin_client, app):
+def test_un_formulaire_sans_les_champs_territoire_n_efface_rien(admin_client, app, territoire_creil):
     """Un autre formulaire de la même table (ou un vieil onglet ouvert)
     ne doit pas remettre le territoire à zéro."""
     from app.models import InstanceSettings
