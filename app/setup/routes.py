@@ -61,6 +61,14 @@ def wizard():
         settings.smtp_use_tls = smtp_use_tls if smtp_host else None
         settings.smtp_sender = smtp_sender
 
+        from app.services import territoire as territoire_service
+
+        avertissement_carte = territoire_service.enregistrer(
+            settings,
+            ville=request.form.get("territoire_ville"),
+            code_postal=request.form.get("territoire_code_postal"),
+        )
+
         u = User(email=admin_email, nom=admin_name)
         u.set_password(admin_password)
 
@@ -77,8 +85,11 @@ def wizard():
 
         db.session.add(u)
         db.session.commit()
+        territoire_service.oublier()
 
         flash("Installation terminée ✅ Connectez-vous avec votre compte admin.", "success")
+        if avertissement_carte:
+            flash(avertissement_carte, "warning")
         return redirect(url_for("auth.login"))
 
     return render_template("setup/wizard.html")

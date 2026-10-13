@@ -208,15 +208,19 @@ def _attestation_document_fields() -> dict[str, str]:
         centre_determiner = "du"
     centre_reference = f"{centre_determiner}{centre_text_name}" if centre_determiner in {"de l'", "de l’"} else f"{centre_determiner} {centre_text_name}"
 
+    from app.services.territoire import territoire
+
+    ville_siege = territoire().ville_siege or ""
+
     return {
         "centre_name": centre_name,
         "centre_text_name": centre_text_name,
         "centre_determiner": centre_determiner,
         "centre_reference": centre_reference,
-        "centre_address": (request.values.get("centre_address") or "Creil").strip(),
+        "centre_address": (request.values.get("centre_address") or ville_siege).strip(),
         "centre_contact": (request.values.get("centre_contact") or "").strip(),
         "signatory_title": (request.values.get("signatory_title") or "pour le compte du centre").strip(),
-        "city": (request.values.get("city") or "Creil").strip(),
+        "city": (request.values.get("city") or ville_siege).strip(),
     }
 
 

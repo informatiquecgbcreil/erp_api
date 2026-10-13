@@ -60,7 +60,10 @@
         <div id="quartier-map" style="height:360px; width:100%; border-radius:10px;"
              data-tile-url="{{ tile_url }}"
              data-tile-attr="{{ tile_attribution }}"
-             data-marker-base="{{ url_for('static', filename='vendor/leaflet/images/') }}"></div>
+             data-marker-base="{{ url_for('static', filename='vendor/leaflet/images/') }}"
+             data-centre-lat="{{ carte_centre.lat }}"
+             data-centre-lon="{{ carte_centre.lon }}"
+             data-centre-zoom="{{ carte_centre.zoom }}"></div>
         <div class="inline" style="gap:10px; margin-top:8px; align-items:center; flex-wrap:wrap;">
           <input type="hidden" id="quartier-lat" name="latitude" value="{{ quartier.latitude if quartier.latitude is not none else '' }}">
           <input type="hidden" id="quartier-lon" name="longitude" value="{{ quartier.longitude if quartier.longitude is not none else '' }}">

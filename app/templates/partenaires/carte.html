@@ -47,8 +47,9 @@
          data-tile-url="{{ tile_url }}"
          data-tile-attr="{{ tile_attribution }}"
          data-marker-base="{{ url_for('static', filename='vendor/leaflet/images/') }}"
-         data-centre-lat="49.2583"
-         data-centre-lon="2.4750"></div>
+         data-centre-lat="{{ carte_centre.lat }}"
+         data-centre-lon="{{ carte_centre.lon }}"
+         data-centre-zoom="{{ carte_centre.zoom }}"></div>
 
     <div class="carte-legend">
       <span class="muted">📍 Un marqueur = un partenaire. Cliquez pour le détail.</span>

@@ -10,7 +10,8 @@ produire, en respectant les règles de l'enquête :
   nativement),
 - participations cumulées (présences),
 - répartition par les 8 tranches d'âge SENACS, âge au 31/12 de l'année,
-- genre, quartiers (Rouher / Hauts de Creil / autre QPV / hors QPV),
+- genre, quartiers (quartiers distingués / QPV suivis / autre QPV /
+  hors QPV, selon le territoire réglé pour le centre),
 - tableau actions/séances par atelier (séances réalisées, heures face
   public, participants uniques, participations),
 - partenaires recensés.
@@ -107,14 +108,7 @@ def _tranche_age(age: int | None) -> str:
     return NON_RENSEIGNE
 
 
-#: Le quartier que la grille SENACS de ce centre distingue à l'intérieur de
-#: son QPV, et le QPV de rattachement. Ce sont les libellés du formulaire,
-#: pas une règle de code : ils vivent ici, en un seul endroit.
-QUARTIER_DISTINGUE = "Rouher"
-QPV_DE_REFERENCE = "Hauts de Creil"
-
-
-def villes_avec_qpv() -> set[str]:
+def villes_avec_qpv(terr=None) -> set[str]:
     """Villes (sans accents, en minuscules) qui ont au moins un quartier QPV.
 
     Dans ces villes, un habitant sans quartier renseigné peut habiter le QPV :
@@ -123,55 +117,66 @@ def villes_avec_qpv() -> set[str]:
     """
     from app.models import Quartier
     from app.services.recherche_texte import sans_accent
+    from app.services.territoire import territoire
 
+    terr = terr or territoire()
     villes = set()
     for q in Quartier.query.all():
         nom = sans_accent(q.nom) or ""
         est_qpv = bool((q.qpv or "").strip()) or bool(q.is_qpv) or "qpv" in nom \
-            or sans_accent(QPV_DE_REFERENCE) in nom or sans_accent(QUARTIER_DISTINGUE) in nom
+            or terr.nomme_un_qpv(q.nom)
         if est_qpv and (q.ville or "").strip():
             villes.add((sans_accent(q.ville) or "").strip())
     return villes
 
 
-def _bucket_quartier(p: Participant, villes_qpv: set[str] | None = None) -> str:
-    """Ligne du tableau SENACS : Rouher / Hauts de Creil / autre QPV / hors QPV.
+def _bucket_quartier(p: Participant, villes_qpv: set[str] | None = None, terr=None) -> str:
+    """Ligne du tableau SENACS : quartiers distingués / QPV suivis / autre QPV / hors QPV.
+
+    Le territoire (Administration > Identité) dit quels QPV ont leur propre
+    ligne — zéro, un ou plusieurs — et quels quartiers sont distingués à
+    l'intérieur de leur QPV (à Creil : le Rouher, aux Hauts de Creil). Tout
+    autre QPV tombe dans « Autre QPV » (« QPV » quand aucun n'est suivi).
 
     Lit d'abord le CHAMP ``qpv`` du quartier. Avant qu'il existe, cette
-    fonction cherchait « rouher » puis « hauts de creil » dans le NOM — ce
-    qui obligeait à coder l'appartenance dans le nom (« Cavée de Senlis
-    (QPV Hauts de Creil) ») et rangeait dans « Hors QPV » tout quartier
-    nommé simplement « Cavée de Senlis ».
+    fonction cherchait les noms dans le NOM du quartier — ce qui obligeait
+    à coder l'appartenance dans le nom (« Cavée de Senlis (QPV Hauts de
+    Creil) ») et rangeait dans « Hors QPV » tout quartier nommé simplement
+    « Cavée de Senlis ».
 
     La lecture du nom reste en second recours, pour les quartiers d'une
     base pas encore reprise.
     """
     from app.services.recherche_texte import sans_accent
+    from app.services.territoire import territoire
 
+    terr = terr or territoire()
     quartier = p.quartier
     if quartier is None:
         ville = (sans_accent(p.ville) or "").strip()
         if not ville:
             return NON_RENSEIGNE
         if villes_qpv is None:
-            villes_qpv = villes_avec_qpv()
+            villes_qpv = villes_avec_qpv(terr)
         # Ville qui compte un QPV : sans quartier, on ne sait pas.
         return NON_RENSEIGNE if ville in villes_qpv else "Hors QPV"
 
     nom = sans_accent(quartier.nom) or ""
     qpv = (getattr(quartier, "qpv", None) or "").strip()
 
-    if sans_accent(QUARTIER_DISTINGUE) in nom:
-        return QUARTIER_DISTINGUE
+    distingue = terr.quartier_distingue(quartier.nom)
+    if distingue:
+        return distingue
     if qpv:
-        return QPV_DE_REFERENCE if sans_accent(qpv) == sans_accent(QPV_DE_REFERENCE) else "Autre QPV"
+        return terr.qpv_suivi(qpv) or terr.libelle_autre_qpv
 
     # Repli sur le nom, pour une base dont les quartiers n'ont pas encore
     # reçu leur QPV.
-    if sans_accent(QPV_DE_REFERENCE) in nom or "hauts-de-creil" in nom:
-        return QPV_DE_REFERENCE
+    suivi = terr.qpv_suivi_dans_le_nom(quartier.nom)
+    if suivi:
+        return suivi
     if getattr(quartier, "is_qpv", False) or "qpv" in nom:
-        return "Autre QPV"
+        return terr.libelle_autre_qpv
     if ((quartier.ville or "") or (p.ville or "")).strip():
         return "Hors QPV"
     return NON_RENSEIGNE
@@ -205,12 +210,15 @@ def publics_annee(annee: int) -> dict:
     # tableau remis au financeur.
     genres = {libelle: 0 for libelle in ordre_pluriels()}
     quartiers: dict[str, int] = {}
-    villes_qpv = villes_avec_qpv()
+    from app.services.territoire import territoire
+
+    terr = territoire()
+    villes_qpv = villes_avec_qpv(terr)
     for p in participants.values():
         ages[_tranche_age(p.age_au(reference))] += 1
         mot = libelle_participant(p, reference, pluriel=True)
         genres[mot] = genres.get(mot, 0) + 1
-        bucket = _bucket_quartier(p, villes_qpv)
+        bucket = _bucket_quartier(p, villes_qpv, terr)
         quartiers[bucket] = quartiers.get(bucket, 0) + 1
 
     return {

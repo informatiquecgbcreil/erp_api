@@ -200,6 +200,20 @@ def app():
         assert role is not None, "bootstrap_rbac n'a pas créé le rôle direction"
         user.roles.append(role)
         db.session.add(user)
+
+        # La base de test joue l'installation historique de Creil : celle
+        # que la migration « territoire du centre » reprend telle quelle.
+        # Les tests d'un autre territoire passent par la fixture
+        # ``territoire_regle`` (tests/test_territoire.py).
+        from app.models import InstanceSettings
+        from app.services.territoire import TERRITOIRE_HISTORIQUE
+
+        reglages = InstanceSettings.query.first()
+        if reglages is None:
+            reglages = InstanceSettings()
+            db.session.add(reglages)
+        for colonne, valeur in TERRITOIRE_HISTORIQUE.items():
+            setattr(reglages, colonne, valeur)
         db.session.commit()
     return app
 

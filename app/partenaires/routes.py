@@ -15,6 +15,7 @@ from app.services.contexte import annee_travail
 from app.extensions import db
 from app.models import Partenaire, PartenaireSecteur, PartenaireIntervention, OrientationAccesDroit, Participant, Quartier
 from app.rbac import require_perm, can
+from app.services.cartographie import centre_par_defaut
 
 from . import bp
 
@@ -385,6 +386,7 @@ def carte():
         or "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
         tile_attribution=current_app.config.get("CARTO_TILE_ATTRIBUTION")
         or "© contributeurs OpenStreetMap",
+        carte_centre=centre_par_defaut(),
     )
 
 

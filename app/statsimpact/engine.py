@@ -11,6 +11,7 @@ from sqlalchemy import and_, func
 from app.extensions import db
 from app.models import AtelierActivite, PresenceActivite, SessionActivite, PeriodeFinancement, Participant
 from app.services.presences_comptees import est_seance_tenue, seance_tenue, venue_reelle
+from app.services.territoire import territoire
 
 
 
@@ -875,7 +876,7 @@ def compute_demography_stats(flt: StatsFilters) -> Dict[str, Any]:
             "age_buckets": {},
             "genre": {},
             "villes_top": [],
-            "creil": {"creil": 0, "hors_creil": 0},
+            "ville_siege": {"ville": territoire().libelle_ville, "dedans": 0, "hors": 0},
             "qpv": {"qpv": 0, "hors_qpv": 0, "inconnu": 0},
             "qpv_details": [],
             "type_public": {},
@@ -911,8 +912,8 @@ def compute_demography_stats(flt: StatsFilters) -> Dict[str, Any]:
     ville_counts = Counter([(p.ville or "Inconnue").strip() or "Inconnue" for p in participants])
     villes_top = [{"ville": k, "count": v} for k, v in ville_counts.most_common(10)]
 
-    creil = sum(1 for p in participants if getattr(p, "is_creil", False))
-    hors_creil = len(participants) - creil
+    terr = territoire()
+    dans_ville = sum(1 for p in participants if terr.habite_ville_siege(p.ville))
 
     qpv = 0
     hors_qpv = 0
@@ -936,7 +937,7 @@ def compute_demography_stats(flt: StatsFilters) -> Dict[str, Any]:
         "age_buckets": age_buckets,
         "genre": dict(genre_counts),
         "villes_top": villes_top,
-        "creil": {"creil": creil, "hors_creil": hors_creil},
+        "ville_siege": {"ville": terr.libelle_ville, "dedans": dans_ville, "hors": len(participants) - dans_ville},
         "qpv": {"qpv": qpv, "hors_qpv": hors_qpv, "inconnu": inconnu},
         "qpv_details": list(qpv_detail_map.values()),
         "type_public": dict(type_public_counts),
