@@ -425,3 +425,59 @@ def test_le_rapport_sos_dit_l_etat_3_2_1_sans_chemin(app, admin_client, reglages
     rapport = _rapport_affiche(admin_client.post("/admin/sante/sos", data={"action": "afficher"}))
     assert "Règle 3-2-1" in rapport and "1 hors du centre NON" in rapport and "phrase secrète non définie" in rapport
     assert "Dupont" not in rapport
+
+
+def test_rapatrier_ne_touche_jamais_un_lot_deja_sur_le_serveur(app, reglages, tmp_path):
+    """Un échec en cours de route aurait effacé la sauvegarde d'origine."""
+    from app.services.sauvegarde import DejaSurLeServeur, copier_lot_hors_serveur, rapatrier_lot_chiffre
+
+    cloud = tmp_path / "cloud"
+    cloud.mkdir()
+    reglages(sauvegarde_cloud=str(cloud))
+    _avec_phrase(app)
+    base = _ecrire_lot(reglages.local, "Centre_20261014_020000", b"original-du-serveur")
+    with app.app_context():
+        assert copier_lot_hors_serveur(base)[0]["ok"]
+        with pytest.raises(DejaSurLeServeur):
+            rapatrier_lot_chiffre(base, PHRASE)
+    assert (reglages.local / f"{base}.db").read_bytes() == b"original-du-serveur"
+
+
+def test_parcourir_refuse_les_adresses_reseau(admin_client):
+    """Sinon un lien piégé ferait s'authentifier le serveur auprès d'une machine pirate."""
+    for adresse in (r"\\pirate.example\partage", "//pirate.example/partage"):
+        vue = admin_client.get("/admin/sauvegardes/parcourir", query_string={"chemin": adresse}).get_json()
+        assert vue["dossiers"] == [] and "adresse réseau" in vue["erreur"]
+
+
+def test_un_echec_en_cours_de_rapatriement_laisse_le_serveur_intact(app, reglages, tmp_path, monkeypatch):
+    from app.services import chiffrement_sauvegarde
+    from app.services.sauvegarde import copier_lot_hors_serveur, rapatrier_lot_chiffre
+
+    cloud = tmp_path / "cloud"
+    cloud.mkdir()
+    reglages(sauvegarde_cloud=str(cloud))
+    _avec_phrase(app)
+    base = _ecrire_lot(reglages.local, "Centre_20261014_020000")
+    with app.app_context():
+        assert copier_lot_hors_serveur(base)[0]["ok"]
+    # Le serveur a perdu sa base mais garde le reste du lot.
+    (reglages.local / f"{base}.db").unlink()
+    avant = {p.name: p.read_bytes() for p in reglages.local.iterdir() if p.is_file()}
+
+    vrai, appels = chiffrement_sauvegarde.dechiffrer_fichier, []
+
+    def tomber_au_deuxieme(source, cible, phrase):
+        appels.append(source)
+        if len(appels) == 2:
+            raise OSError("disque plein")
+        vrai(source, cible, phrase)
+
+    monkeypatch.setattr(chiffrement_sauvegarde, "dechiffrer_fichier", tomber_au_deuxieme)
+    with app.app_context(), pytest.raises(OSError):
+        rapatrier_lot_chiffre(base, PHRASE)
+    assert {p.name: p.read_bytes() for p in reglages.local.iterdir() if p.is_file()} == avant
+    assert not [p for p in reglages.local.iterdir() if p.is_dir()]
+    monkeypatch.undo()
+    with app.app_context():
+        assert rapatrier_lot_chiffre(base, PHRASE)["fichiers"] == 3

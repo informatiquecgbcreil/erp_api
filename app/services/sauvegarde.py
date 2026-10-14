@@ -1351,6 +1351,10 @@ class PhraseNonDefinie(RuntimeError):
     """Copie cloud demandée sans phrase secrète : rien ne part en clair."""
 
 
+class DejaSurLeServeur(ValueError):
+    """Le lot à rapatrier est déjà sur le serveur : le restaurer directement."""
+
+
 def trousseau():
     """Clés de chiffrement des copies cloud, ou None si la phrase n'est pas définie."""
     import base64
@@ -1525,19 +1529,21 @@ def rapatrier_lot_chiffre(base: str, phrase: str) -> dict:
 
         raise PhraseIncorrecte("phrase secrète incorrecte pour cette copie")
     local = dossier_sauvegardes()
-    ecrits: list[Path] = []
-    try:
+    if verifier_integrite(base, local) is True:
+        raise DejaSurLeServeur("cette sauvegarde est déjà sur le serveur : restaurez-la directement depuis la liste")
+    # Déchiffré et vérifié à l'écart, puis seulement déplacé : un échec en
+    # cours de route ne touche jamais aux fichiers du serveur (un lot
+    # incomplet qu'on voulait réparer reste tel quel).
+    with tempfile.TemporaryDirectory(dir=local, prefix=".rapatriement-") as attente:
+        attente = Path(attente)
         for nom in noms:
-            cible = local / nom[: -len(EXTENSION)]
-            dechiffrer_fichier(cloud / nom, cible, phrase)
-            ecrits.append(cible)
-        if verifier_integrite(base, local) is not True:
+            dechiffrer_fichier(cloud / nom, attente / nom[: -len(EXTENSION)], phrase)
+        if verifier_integrite(base, attente) is not True:
             raise CopieIllisible("le lot déchiffré ne correspond pas à ses empreintes d'origine")
-    except Exception:
-        for fichier in ecrits:
-            fichier.unlink(missing_ok=True)
-        raise
-    return {"base": base, "fichiers": len(ecrits)}
+        fichiers = sorted(attente.iterdir())
+        for fichier in fichiers:
+            fichier.replace(local / fichier.name)
+    return {"base": base, "fichiers": len(fichiers)}
 
 
 def etat_321(etat: dict | None = None) -> dict:

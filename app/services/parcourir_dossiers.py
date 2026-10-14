@@ -52,6 +52,13 @@ def racines() -> list[dict]:
 
 def sous_dossiers(chemin: str) -> dict:
     """``{chemin, parent, dossiers, erreur}`` pour un dossier du serveur."""
+    if chemin.startswith(("\\\\", "//")):
+        # Lister \\machine\partage oblige le serveur à s'authentifier auprès de
+        # cette machine : un lien piégé (cette lecture n'a pas de jeton CSRF)
+        # ferait fuiter l'empreinte de son mot de passe. Une adresse réseau se
+        # tape et se teste par « Enregistrer et tester l'écriture » (protégé).
+        return {"chemin": chemin, "parent": None, "dossiers": [],
+                "erreur": "une adresse réseau ne se parcourt pas : tapez-la, puis « Enregistrer et tester l'écriture »"}
     dossier = Path(chemin)
     if not dossier.is_absolute():
         return {"chemin": chemin, "parent": None, "dossiers": [], "erreur": "indiquez un chemin complet"}

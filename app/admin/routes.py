@@ -925,11 +925,13 @@ def sauvegarde_phrase_verifier():
 def sauvegarde_cloud_rapatrier():
     """Déchiffre une copie cloud sur le serveur ; elle se restaure ensuite comme les autres."""
     from app.services.chiffrement_sauvegarde import CopieIllisible, PhraseIncorrecte
-    from app.services.sauvegarde import rapatrier_lot_chiffre
+    from app.services.sauvegarde import DejaSurLeServeur, rapatrier_lot_chiffre
 
     base = request.form.get("base") or ""
     try:
         resultat = rapatrier_lot_chiffre(base, request.form.get("phrase") or "")
+    except DejaSurLeServeur as exc:
+        flash(f"Rien à rapatrier : {exc}.", "info")
     except PhraseIncorrecte:
         flash("Phrase secrète incorrecte pour cette copie : rien n'a été rapatrié.", "danger")
     except CopieIllisible as exc:
