@@ -87,6 +87,17 @@ def wizard():
         db.session.commit()
         territoire_service.oublier()
 
+        if request.form.get("mode_entrainement") in {"1", "on", "true"}:
+            from app.services import mode_entrainement
+
+            try:
+                mode_entrainement.activer(u.id)
+                flash("Mode entraînement activé : des données d'exemple vous attendent. Le bandeau orange "
+                      "rappelle qu'elles seront effacées au passage en mode réel.", "info")
+            except mode_entrainement.EntrainementImpossible as exc:
+                db.session.rollback()
+                flash(str(exc), "warning")
+
         flash("Installation terminée ✅ Connectez-vous avec votre compte admin.", "success")
         if avertissement_carte:
             flash(avertissement_carte, "warning")

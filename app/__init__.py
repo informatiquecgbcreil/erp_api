@@ -185,7 +185,17 @@ def create_app():
     from app.utils.xlsx_safe import installer_garde_formules
     installer_garde_formules()
 
+    from app.services.mode_entrainement import EmissionEnEntrainement
     from app.services.registre_externe import RegistreErreur
+
+    @app.errorhandler(EmissionEnEntrainement)
+    def _emission_en_entrainement(error):
+        # Refus voulu, pas une panne : rien dans erreurs.log (ni dans le rapport SOS).
+        db.session.rollback()
+        from flask import flash
+        flash(f"{error} Rien n'a été enregistré.", "warning")
+        retour = request.referrer if request.referrer and request.referrer.startswith(request.host_url) else "/"
+        return redirect(retour), 303
 
     @app.errorhandler(RegistreErreur)
     def _registre_indisponible(error):
@@ -898,6 +908,7 @@ def create_app():
     def inject_app_identity():
         from app.services.instance_settings import resolve_identity
         from app.services.storage import media_url
+        from app.services.mode_entrainement import actif as entrainement_actif
         from app.services.territoire import territoire
 
         app_name, organization_name, app_logo_path, organization_logo_path = resolve_identity(
@@ -948,6 +959,7 @@ def create_app():
             "UI_DEVICE_MODE": requested_mode,
             "GUIDE_ACTIF": guide_actif,
             "VILLE_SIEGE": territoire().ville_siege,
+            "MODE_ENTRAINEMENT": entrainement_actif(),
         }
 
     # ------------------------------------------------------------------

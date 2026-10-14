@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% block title %}Mode entraînement{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1>🎓 Mode entraînement</h1>
+    <p class="muted">Pour découvrir l'application et former l'équipe sans risque : la base est remplie de fausses données (habitants, activités, séances, présences, adhésions). Essayez tout, puis effacez tout d'un clic avant de saisir vos vraies données.</p>
+  </div>
+
+  {% if actif %}
+    <div class="card">
+      <h2>L'entraînement est en cours</h2>
+      <p>Depuis le {{ depuis.strftime('%d/%m/%Y à %H:%M') if depuis else '—' }} (heure UTC). Le bandeau orange le rappelle sur toutes les pages.</p>
+      <ul class="muted">
+        <li>Reçus fiscaux et factures de location sont indisponibles : leur numérotation officielle ne recule jamais.</li>
+        <li>Tout ce qui est créé pendant l'entraînement sera effacé, y compris vos propres essais.</li>
+        <li>Seront <strong>gardés</strong> : les comptes, les réglages (nom, logo, territoire, modules), les secteurs, les quartiers, les salles et les tarifs.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Tout effacer et passer en mode réel</h2>
+      <p class="muted">Une sauvegarde complète est faite juste avant. Si elle échoue, rien n'est effacé.</p>
+      <form method="post" class="stack" style="gap:10px;"
+            onsubmit="return confirm('Effacer toutes les données d\'entraînement et passer en mode réel ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="quitter">
+        <label for="entrainement-confirmation">Pour confirmer, tapez <strong>EFFACER</strong></label>
+        <input id="entrainement-confirmation" class="in" name="confirmation" autocomplete="off" style="max-width:220px;" required>
+        <div><button class="btn danger" type="submit">Tout effacer et passer en mode réel</button></div>
+      </form>
+    </div>
+  {% elif donnees_reelles %}
+    <div class="card">
+      <h2>Indisponible sur cette base</h2>
+      <p>Le mode entraînement ne s'active que sur une base sans données réelles, pour ne jamais mélanger vraies et fausses données. Cette base contient déjà {{ donnees_reelles|join(', ') }}.</p>
+    </div>
+  {% else %}
+    <div class="card">
+      <h2>Activer le mode entraînement</h2>
+      <p>La base est vierge : vous pouvez la remplir de données d'exemple pour vous entraîner.</p>
+      <ul class="muted">
+        <li>Une vingtaine d'habitants, trois activités, six semaines de séances avec leurs présences, des adhésions réglées en caisse et d'autres à relancer.</li>
+        <li>Les habitants prennent les quartiers déjà réglés pour votre ville siège : réglez votre territoire d'abord (Administration &gt; Nom et logo) pour un exemple plus parlant.</li>
+        <li>Un bandeau orange « MODE ENTRAÎNEMENT » s'affichera sur toutes les pages jusqu'au passage en mode réel.</li>
+      </ul>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="activer">
+        <button class="btn primary" type="submit">Activer avec des données d'exemple</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

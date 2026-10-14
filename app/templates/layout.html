@@ -831,6 +831,7 @@
                     <a class="pill {% if ep.startswith('admin.referentiels') %}active{% endif %}" href="{{ url_for('admin.referentiels') }}">Listes de compétences</a>
                     <a class="pill {% if ep.startswith('admin.instance_settings') %}active{% endif %}" href="{{ url_for('admin.instance_settings') }}">Nom et logo</a>
                     <a class="pill {% if ep == 'admin.sauvegardes' %}active{% endif %}" href="{{ url_for('admin.sauvegardes') }}">Sauvegardes</a>
+                    <a class="pill {% if ep == 'admin.mode_entrainement' %}active{% endif %}" href="{{ url_for('admin.mode_entrainement') }}">Mode entraînement</a>
                     <a class="pill {% if ep == 'admin.notifications' %}active{% endif %}" href="{{ url_for('admin.notifications') }}">Notifications</a>
                   {% endif %}
                   {% if can('secteurs:edit') %}
@@ -863,6 +864,7 @@
                     <a class="pill {% if ep.startswith('admin.referentiels') %}active{% endif %}" href="{{ url_for('admin.referentiels') }}">Listes de compétences</a>
                     <a class="pill {% if ep.startswith('admin.instance_settings') %}active{% endif %}" href="{{ url_for('admin.instance_settings') }}">Nom et logo</a>
                     <a class="pill {% if ep == 'admin.sauvegardes' %}active{% endif %}" href="{{ url_for('admin.sauvegardes') }}">Sauvegardes</a>
+                    <a class="pill {% if ep == 'admin.mode_entrainement' %}active{% endif %}" href="{{ url_for('admin.mode_entrainement') }}">Mode entraînement</a>
                     <a class="pill {% if ep == 'admin.notifications' %}active{% endif %}" href="{{ url_for('admin.notifications') }}">Notifications</a>
                   {% endif %}
                   {% if can('secteurs:edit') %}
@@ -964,6 +966,14 @@
   {% endif %}
 
   <main id="main-content" class="container" tabindex="-1">
+    {% if MODE_ENTRAINEMENT %}
+      <div class="bandeau-entrainement" role="status"
+           style="background:#fdba74; color:#431407; border:2px solid #ea580c; border-radius:10px; padding:10px 14px; margin:8px 0 12px; font-weight:700;">
+        🎓 MODE ENTRAÎNEMENT — FAUSSES DONNÉES.
+        <span style="font-weight:400;">Tout ce qui est saisi ici sera effacé au passage en mode réel. Reçus fiscaux et factures indisponibles.</span>
+        {% if can('admin:rbac') %}<a href="{{ url_for('admin.mode_entrainement') }}" style="color:#431407; text-decoration:underline; margin-left:6px;">Passer en mode réel</a>{% endif %}
+      </div>
+    {% endif %}
     {% if alerte_certificat %}
       <div class="stack flash-stack" role="alert">
         <div class="flash flash-warning warning" data-alerte-certificat="1">

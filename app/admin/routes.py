@@ -1175,6 +1175,49 @@ def rapport_sos():
     return render_template("admin_rapport_sos.html", rapport=rapport, contexte=contexte)
 
 
+@bp.route("/entrainement", methods=["GET", "POST"])
+@login_required
+@require_perm("admin:rbac")
+def mode_entrainement():
+    """Activer le mode entraînement (base vierge) ou le quitter (app/services/mode_entrainement.py)."""
+    from flask import abort
+
+    from app.services import mode_entrainement as entrainement
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "activer":
+                resume = entrainement.activer(getattr(current_user, "id", None))
+                flash(f"Mode entraînement activé : {resume['habitants']} habitants, {resume['activites']} activités, "
+                      f"{resume['seances']} séances et {resume['adhesions']} adhésions d'exemple. "
+                      "Essayez tout, rien ne compte !", "success")
+            elif action == "quitter":
+                if (request.form.get("confirmation") or "").strip().upper() != "EFFACER":
+                    flash("Pour tout effacer, tapez EFFACER dans la case de confirmation.", "warning")
+                    return redirect(url_for("admin.mode_entrainement"))
+                resume = entrainement.quitter(getattr(current_user, "id", None))
+                flash(f"Mode réel : {resume['lignes_effacees']} éléments d'entraînement effacés. Une sauvegarde a été "
+                      f"faite juste avant ({resume['sauvegarde']}). Vous pouvez saisir vos vraies données.", "success")
+            else:
+                abort(400)
+        except entrainement.EntrainementImpossible as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        return redirect(url_for("admin.mode_entrainement"))
+
+    from app.models import InstanceSettings
+
+    reglages = InstanceSettings.query.first()
+    actif = entrainement.actif()
+    return render_template(
+        "admin_entrainement.html",
+        actif=actif,
+        depuis=reglages.entrainement_depuis if reglages else None,
+        donnees_reelles=[] if actif else entrainement.donnees_reelles(),
+    )
+
+
 @bp.route("/sante/test-smtp", methods=["POST"])
 @login_required
 @require_perm("admin:rbac")

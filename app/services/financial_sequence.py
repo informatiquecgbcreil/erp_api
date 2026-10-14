@@ -301,6 +301,11 @@ def plus_haut_emis(namespace: str) -> int:
 
 
 def next_number(namespace, existing_numbers):
+    # Pas de reçu fiscal ni de facture sur des données d'exemple : le numéro
+    # consommé manquerait à la vraie série (app/services/mode_entrainement.py).
+    from app.services.mode_entrainement import interdire_emission
+
+    interdire_emission()
     maximum = plus_haut_emis(namespace)
     for value in existing_numbers:
         try:

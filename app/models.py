@@ -261,6 +261,13 @@ class InstanceSettings(db.Model):
     territoire_latitude = db.Column(db.Float, nullable=True)
     territoire_longitude = db.Column(db.Float, nullable=True)
 
+    # Mode entraînement (app/services/mode_entrainement.py) : fausses données
+    # pour se former. « Photo » = plus grand numéro de chaque table au moment
+    # de l'activation : en quittant, tout ce qui a été créé depuis s'efface.
+    entrainement_actif = db.Column(db.Boolean, nullable=True)
+    entrainement_depuis = db.Column(db.DateTime, nullable=True)
+    entrainement_photo = db.Column(db.Text, nullable=True)
+
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
 
