@@ -866,6 +866,16 @@ AIDE_PAGES: dict[str, dict] = {
         ],
         "astuce": "Faites toujours une simulation d'abord : elle montre ce qui sera importé sans rien modifier.",
     },
+    "admin.rapport_sos": {
+        "titre": "Rapport SOS",
+        "resume": "Rassemble ce qu'il faut pour faire réparer une panne : version installée, état de l'application et dernières erreurs, sans aucune donnée personnelle.",
+        "etapes": [
+            "Décrivez ce que vous faisiez quand le problème est apparu (l'écran, le bouton), sans nom ni coordonnées.",
+            "Générez le rapport, relisez-le, puis copiez-le ou téléchargez-le.",
+            "Collez-le dans une IA de programmation ou envoyez-le à la personne qui maintient l'application.",
+        ],
+        "astuce": "Les noms, e-mails, téléphones et adresses connus de l'application sont remplacés par [NOM], [EMAIL], [TÉLÉPHONE], [ADRESSE].",
+    },
     "admin.sauvegardes": {
         "titre": "Sauvegardes",
         "resume": "Créez une sauvegarde de la base de données et des pièces jointes, et consultez les sauvegardes existantes.",

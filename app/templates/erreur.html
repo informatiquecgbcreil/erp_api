@@ -22,7 +22,10 @@
   </div>
   {% if erreur.code >= 500 %}
     <p class="muted" style="margin-top:14px;">Si le problème revient, notez ce que vous étiez en train de faire
-      et donnez la référence ci-dessus à l'administrateur.</p>
+      et donnez la référence ci-dessus à l'administrateur.
+      {% if current_user.is_authenticated %}Un administrateur peut aussi générer un
+        <a href="{{ url_for('admin.rapport_sos') }}">rapport SOS</a> (Administration &gt; Santé du système) :
+        il rassemble les erreurs, sans aucune donnée personnelle, pour faire réparer la panne.{% endif %}</p>
   {% endif %}
 </div>
 {% endblock %}
