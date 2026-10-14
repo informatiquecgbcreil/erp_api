@@ -10,7 +10,10 @@
         <h1>🩺 Santé du système</h1>
         <p class="muted">Vue d'ensemble de l'état technique de l'application.</p>
       </div>
-      <a class="btn" href="{{ url_for('admin.journal_audit') }}">📜 Journal d'audit</a>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        <a class="btn primary" href="{{ url_for('admin.rapport_sos') }}">🆘 Rapport SOS</a>
+        <a class="btn" href="{{ url_for('admin.journal_audit') }}">📜 Journal d'audit</a>
+      </div>
     </div>
   </div>
 

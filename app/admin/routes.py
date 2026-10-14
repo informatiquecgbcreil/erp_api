@@ -1151,6 +1151,30 @@ def sante_systeme():
     )
 
 
+@bp.route("/sante/sos", methods=["GET", "POST"])
+@login_required
+@require_perm("admin:rbac")
+def rapport_sos():
+    """Rapport SOS anonymisé, à coller dans une IA ou à envoyer (app/services/rapport_sos.py)."""
+    from datetime import datetime
+
+    from flask import Response
+
+    from app.services.rapport_sos import generer
+
+    if request.method == "GET":
+        return render_template("admin_rapport_sos.html", rapport=None, contexte="")
+
+    contexte = (request.form.get("contexte") or "").strip()[:2000]
+    rapport = generer(contexte)
+    journaliser("sos.rapport", cible="structure")
+    if request.form.get("action") == "telecharger":
+        nom = f"rapport-sos-{datetime.now():%Y%m%d-%H%M}.md"
+        return Response(rapport, mimetype="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{nom}"'})
+    return render_template("admin_rapport_sos.html", rapport=rapport, contexte=contexte)
+
+
 @bp.route("/sante/test-smtp", methods=["POST"])
 @login_required
 @require_perm("admin:rbac")

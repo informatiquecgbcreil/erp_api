@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% block title %}Rapport SOS{% endblock %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <div class="inline" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h1>🆘 Rapport SOS</h1>
+        <p class="muted">Quelque chose ne marche pas ? Ce rapport rassemble ce qu'il faut pour faire réparer la panne : la version installée, l'état de l'application et les dernières erreurs.</p>
+      </div>
+      <a class="btn" href="{{ url_for('admin.sante_systeme') }}">🩺 Santé du système</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1. Décrivez ce que vous faisiez</h2>
+    <form method="post" class="stack" style="gap:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="sos-contexte">Ce que vous faisiez quand le problème est apparu, et ce qui s'est passé</label>
+      <textarea id="sos-contexte" class="in" name="contexte" rows="4" maxlength="2000"
+                placeholder="Ex : j'ai cliqué sur « Exporter » dans le bilan SENACS 2025 et une page « Erreur » s'est affichée.">{{ contexte }}</textarea>
+      <p class="muted" style="margin:0;">N'écrivez pas de nom, de téléphone ni d'adresse : décrivez l'écran et le bouton. Par sécurité, les noms connus de l'application sont de toute façon retirés du rapport.</p>
+      <div class="inline" style="gap:8px; flex-wrap:wrap;">
+        <button class="btn primary" type="submit" name="action" value="afficher">Générer le rapport</button>
+        <button class="btn" type="submit" name="action" value="telecharger">⬇️ Télécharger (.md)</button>
+      </div>
+    </form>
+  </div>
+
+  {% if rapport %}
+  <div class="card">
+    <h2>2. Transmettez le rapport</h2>
+    <p class="muted">Copiez-le dans une IA de programmation (Claude, ChatGPT…) ou envoyez-le à la personne qui maintient l'application. Les noms, e-mails, téléphones et adresses ont été remplacés par [NOM], [EMAIL], [TÉLÉPHONE], [ADRESSE]. Relisez-le quand même avant de l'envoyer.</p>
+    <div class="inline" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+      <button class="btn primary" type="button" data-copy-target="#rapport-sos">📋 Copier le rapport</button>
+    </div>
+    <textarea id="rapport-sos" class="in" rows="24" readonly style="font-family:monospace; font-size:12px;">{{ rapport }}</textarea>
+    <p class="muted">Si la copie ne fonctionne pas (connexion non sécurisée), utilisez « Télécharger (.md) » ci-dessus, ou sélectionnez le texte à la main.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
