@@ -93,9 +93,11 @@ def certificat_centre():
     certificat = certificat_du_centre()
     if certificat is None:
         abort(404)
-    # Type que reconnaissent Android et iOS pour proposer l'installation.
+    # Type que reconnaissent Android et iOS pour proposer l'installation ;
+    # « inline » : Safari (iPhone) ouvre alors l'installation du profil au
+    # lieu de ranger le fichier, les autres navigateurs l'enregistrent.
     return Response(certificat.contenu, mimetype="application/x-x509-ca-cert",
-                    headers={"Content-Disposition": f'attachment; filename="{NOM_FICHIER}"',
+                    headers={"Content-Disposition": f'inline; filename="{NOM_FICHIER}"',
                              "Cache-Control": "no-cache"})
 
 
