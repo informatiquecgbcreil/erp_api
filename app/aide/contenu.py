@@ -876,6 +876,16 @@ AIDE_PAGES: dict[str, dict] = {
         ],
         "astuce": "Les comptes, le nom et le logo, le territoire, les secteurs, les quartiers, les salles et les tarifs sont gardés : réglez-les pendant l'entraînement, ils serviront pour de vrai.",
     },
+    "aide.fiche_reflexe": {
+        "titre": "Fiche réflexe",
+        "resume": "Une page A4 à imprimer et coller près du poste : que faire quand l'application affiche une erreur, quand un import est raté, quand une tablette refuse le code…",
+        "etapes": [
+            "Cliquez sur « Imprimer la fiche » : elle tient sur une seule feuille A4.",
+            "Écrivez à la main le nom et le téléphone de la personne référente, et l'endroit où se trouve le serveur.",
+            "Collez-la près du poste d'accueil et du serveur.",
+        ],
+        "astuce": "La fiche suit l'application : réimprimez-la après une mise à jour importante.",
+    },
     "admin.connecter_appareil": {
         "titre": "Connecter un appareil",
         "resume": "Les QR codes pour brancher une tablette d'émargement ou le poste d'un collègue, et la marche à suivre quand une alerte de sécurité s'affiche.",
@@ -1492,8 +1502,87 @@ NOTICE: list[dict] = [
             ]),
             ("Quand quelque chose ne va pas", [
                 "Une page d'erreur ? Le détail technique est enregistré dans instance/logs/erreurs.log sur le serveur : transmettez ce fichier à votre support, il contient la date, la page et la cause exacte.",
-                "L'application ne répond plus ? Redémarrez le service Windows « AppGestion » (ou l'ordinateur). Vos données sont dans PostgreSQL : un redémarrage ne perd rien.",
+                "L'application ne répond plus ? Redémarrez le service Windows « Mon Centre Social » (« AppGestion » sur les installations d'avant l'installateur), ou l'ordinateur. Vos données sont dans PostgreSQL : un redémarrage ne perd rien.",
             ]),
         ],
+    },
+]
+
+
+# ----------------------------------------------------------------------
+# LA FICHE RÉFLEXE (une page A4 à coller près du poste, /aide/fiche-reflexe)
+# ----------------------------------------------------------------------
+# « Il se passe ceci → je fais cela », avec les vrais noms de menus et de
+# boutons, écrits entre « … ». tests/test_fiche_reflexe.py vérifie que
+# chacun existe dans un écran : renommer un bouton sans mettre la fiche à
+# jour fait échouer les tests, la fiche imprimée ne ment donc jamais.
+# « page » : l'écran où commencer, lien de la version à l'écran.
+
+FICHE_REFLEXE: list[dict] = [
+    {
+        "icone": "🆘",
+        "situation": "L'application affiche une erreur",
+        "geste": "« Administration » › « État de l'application » › « Rapport SOS ». Décrivez ce que vous faisiez, sans nom de personne, puis envoyez le rapport à la personne référente.",
+        "page": "admin.rapport_sos",
+    },
+    {
+        "icone": "🔌",
+        "situation": "Plus rien ne s'ouvre, sur aucun poste",
+        "geste": "Vérifiez que l'ordinateur serveur est allumé et branché au réseau, puis redémarrez-le. Un redémarrage ne perd aucune donnée.",
+        "page": "",
+    },
+    {
+        "icone": "↩️",
+        "situation": "J'ai importé le mauvais fichier Excel",
+        "geste": "Revenez sur l'écran d'import (« Participants » › « Importer depuis un tableur », ou l'import des présences) : encart « Dernier import » › « Annuler cet import ». Seul le dernier import s'annule.",
+        "page": "participants.import_annuaire",
+    },
+    {
+        "icone": "💾",
+        "situation": "Les sauvegardes sont-elles à jour ?",
+        "geste": "« Administration » › « État de l'application » : la carte Sauvegarde doit dire « à jour ». Sinon : « Gérer les sauvegardes » › « Sauvegarder maintenant ».",
+        "page": "admin.sante_systeme",
+    },
+    {
+        "icone": "📱",
+        "situation": "Brancher une tablette ou le poste d'un collègue",
+        "geste": "« Administration » › « État de l'application » › « Connecter un appareil ». Scannez le QR code avec l'appareil, connecté au wifi du centre.",
+        "page": "admin.connecter_appareil",
+    },
+    {
+        "icone": "🔒",
+        "situation": "« Votre connexion n'est pas privée » sur un appareil",
+        "geste": "Même page, partie « L'alerte de sécurité » : installez une fois le certificat du centre en comparant son empreinte. Jamais sur un réseau public.",
+        "page": "admin.connecter_appareil",
+    },
+    {
+        "icone": "✍️",
+        "situation": "La tablette refuse le code d'émargement",
+        "geste": "Le code vaut 12 heures. Sur la feuille d'émargement de la séance, « Rouvrir le pointage tablette » donne un nouveau code et un nouveau QR code.",
+        "page": "activite.index",
+    },
+    {
+        "icone": "🔑",
+        "situation": "Un collègue a oublié son mot de passe",
+        "geste": "Page de connexion › « Mot de passe oublié ? » (si l'envoi d'e-mails est réglé). Sinon, la direction : « Administration » › « Équipe » › « Modifier » › « Nouveau mot de passe ».",
+        "page": "admin.users",
+    },
+    {
+        "icone": "👋",
+        "situation": "Un salarié ou un bénévole arrive ou part",
+        "geste": "« Administration » › « Équipe » : créez son compte à l'arrivée. À son départ, « Désactiver » plutôt que supprimer : l'historique reste juste.",
+        "page": "admin.users",
+    },
+    {
+        "icone": "📄",
+        "situation": "Un habitant demande une copie de ses données",
+        "geste": "Sa fiche › « Modifier » › « Exporter toutes les données de la personne ». À lui remettre dans le mois (obligation RGPD).",
+        "page": "main.hub_publics",
+    },
+    {
+        "icone": "🧭",
+        "situation": "Je ne trouve pas une page",
+        "geste": "Tapez son nom dans la recherche en haut (Ctrl+K), ouvrez « ❓ Aide », ou passez l'affichage en « Expert » en bas de page pour voir tous les menus.",
+        "page": "aide.notice",
     },
 ]
