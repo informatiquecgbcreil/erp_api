@@ -310,6 +310,16 @@ AIDE_PAGES: dict[str, dict] = {
         ],
         "astuce": "L'anonymisation est définitive : elle efface l'identité mais conserve les chiffres pour les statistiques. À utiliser si la personne demande l'effacement de ses données.",
     },
+    "participants.import_annuaire": {
+        "titre": "Importer un annuaire",
+        "resume": "Créez en une fois les fiches des habitants listés dans un fichier Excel, sans doublon.",
+        "etapes": [
+            "Choisissez le fichier : l'outil l'analyse d'abord sans rien créer.",
+            "Vérifiez l'aperçu, puis validez la création des fiches.",
+            "Une sauvegarde complète est faite juste avant la création. « Annuler cet import » retire les fiches du dernier import qui n'ont pas servi depuis.",
+        ],
+        "astuce": "Une fiche qui a déjà reçu des présences ou une inscription n'est jamais retirée par l'annulation.",
+    },
     "participants.duplicates": {
         "titre": "Fusionner les fiches en double",
         "resume": "Quand une personne a été créée deux fois, cette page permet de fusionner les fiches sans perdre l'historique.",
@@ -851,6 +861,8 @@ AIDE_PAGES: dict[str, dict] = {
         "etapes": [
             "Choisissez le secteur et le fichier.",
             "Lancez d'abord un test (« simulation ») pour vérifier avant d'importer pour de bon.",
+            "L'import réel fait d'abord une sauvegarde complète. S'il échoue à la faire, rien n'est importé.",
+            "Erreur de fichier, de colonnes ou de secteur ? « Annuler cet import » retire ce que le dernier import a créé, sans toucher au reste.",
         ],
         "astuce": "Faites toujours une simulation d'abord : elle montre ce qui sera importé sans rien modifier.",
     },

@@ -1189,9 +1189,21 @@ def import_excel():
     """Import Excel des présences (format tableaux Antoine)."""
     from app.secteurs import get_secteur_labels
 
+    from app.services import imports_lots
+
     secteurs = [s for s in get_secteur_labels(active_only=True) if can_access_secteur(s)]
+
+    def page(code=200, **contexte):
+        dernier = imports_lots.dernier_lot("presences_excel")
+        return render_template(
+            "admin_import_excel.html", secteurs=secteurs, dernier_import=dernier,
+            dernier_import_elements=imports_lots.elements(dernier) if dernier else None,
+            dernier_import_annulable=imports_lots.peut_annuler(dernier, current_user),
+            dernier_import_compte_rendu=imports_lots.compte_rendu(dernier) if dernier else None,
+            **contexte), code
+
     if request.method == "GET":
-        return render_template("admin_import_excel.html", secteurs=secteurs, dry_run=True)
+        return page(dry_run=True)
 
     f = request.files.get("xlsx_file")
     secteur = (request.form.get("secteur") or "").strip()
@@ -1199,7 +1211,7 @@ def import_excel():
 
     if secteur not in secteurs:
         flash("Choisissez un secteur actif auquel vous avez accès.", "danger")
-        return render_template("admin_import_excel.html", secteurs=secteurs, dry_run=True), 400
+        return page(400, dry_run=True)
 
     if not f or not f.filename:
         flash("Fichier manquant.", "danger")
@@ -1211,16 +1223,34 @@ def import_excel():
     f.save(tmp_path)
 
     try:
-        stats = import_presences_from_xlsx(tmp_path, secteur=secteur, dry_run=dry_run)
+        journal = sauvegarde = None
+        if not dry_run:
+            # Le parachute : pas d'import réel sans sauvegarde juste avant.
+            try:
+                sauvegarde = imports_lots.sauvegarder_avant_import()
+            except imports_lots.SauvegardeImpossible as exc:
+                flash("Import non lancé : la sauvegarde de sécurité d'avant import a échoué "
+                      f"({exc}). Vérifiez Administration > Sauvegardes, puis recommencez.", "danger")
+                return page(secteur=secteur, dry_run=dry_run)
+            journal = imports_lots.Journal()
+
+        def enregistrer_le_lot(_stats):
+            if not journal.vide:
+                imports_lots.enregistrer("presences_excel", filename, journal, sauvegarde,
+                                         getattr(current_user, "id", None))
+
+        stats = import_presences_from_xlsx(tmp_path, secteur=secteur, dry_run=dry_run, journal=journal,
+                                           avant_validation=None if dry_run else enregistrer_le_lot)
         if dry_run:
             flash("Dry-run OK : rien n'a été enregistré (rollback).", "info")
         else:
-            flash("Import terminé ✅", "success")
-        return render_template("admin_import_excel.html", stats=stats, secteur=secteur, secteurs=secteurs, dry_run=dry_run)
+            flash(f"Import terminé ✅ Une sauvegarde a été faite juste avant ({sauvegarde}) ; "
+                  "vous pouvez aussi annuler cet import ci-dessous.", "success")
+        return page(stats=stats, secteur=secteur, dry_run=dry_run)
     except Exception as e:
         db.session.rollback()
         flash(f"Erreur import : {e}", "danger")
-        return render_template("admin_import_excel.html", secteur=secteur, secteurs=secteurs, dry_run=dry_run)
+        return page(secteur=secteur, dry_run=dry_run)
     finally:
         try:
             os.remove(tmp_path)
@@ -1230,6 +1260,30 @@ def import_excel():
             os.rmdir(tmpdir)
         except Exception:
             pass
+
+
+@bp.route("/import-excel/annuler/<int:lot_id>", methods=["POST"])
+@login_required
+@require_perm("ateliers:sync")
+def import_excel_annuler(lot_id):
+    """Annule le dernier import Excel des présences (voir app/services/imports_lots.py)."""
+    from flask import abort
+
+    from app.models import ImportLot
+    from app.services import imports_lots
+
+    lot = db.session.get(ImportLot, lot_id)
+    if lot is None or lot.nature != "presences_excel":
+        abort(404)
+    if imports_lots.annulable(lot) and not imports_lots.peut_annuler(lot, current_user):
+        abort(403)
+    try:
+        rapport = imports_lots.annuler(lot, getattr(current_user, "id", None))
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("admin.import_excel"))
+    flash(imports_lots.message_annulation(rapport), "success")
+    return redirect(url_for("admin.import_excel"))
 
 
 # ---------------------------------------------------------------------------

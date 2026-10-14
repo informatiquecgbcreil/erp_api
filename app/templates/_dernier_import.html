@@ -1,0 +1,40 @@
+{# Encart « Dernier import » : sauvegarde d'avant import et annulation.
+   Commun à l'import Excel des présences et à l'import de l'annuaire
+   (app/services/imports_lots.py). #}
+{% macro encart(lot, elements, annulable, compte_rendu, url_annuler) %}
+{% if lot %}
+<section class="section-card" id="dernier-import">
+  <div class="page-header"><div class="page-title-wrap">
+    <h2>Dernier import</h2>
+    <p class="muted">Fichier « {{ lot.fichier or '—' }} », le {{ lot.cree_le.strftime('%d/%m/%Y à %H:%M') }} (heure UTC).</p>
+  </div></div>
+  <div class="choice-pills">
+    <span class="chip">Fiches créées <strong>{{ elements.participants|length }}</strong></span>
+    <span class="chip">Présences créées <strong>{{ elements.presences|length }}</strong></span>
+    {% if elements.sessions %}<span class="chip">Séances créées <strong>{{ elements.sessions|length }}</strong></span>{% endif %}
+    {% if elements.ateliers %}<span class="chip">Activités créées <strong>{{ elements.ateliers|length }}</strong></span>{% endif %}
+    {% if elements.quartiers %}<span class="chip">Quartiers créés <strong>{{ elements.quartiers|length }}</strong></span>{% endif %}
+    {% if elements.modifications %}<span class="chip">Valeurs complétées sur des fiches existantes <strong>{{ elements.modifications|length }}</strong></span>{% endif %}
+  </div>
+  {% if lot.sauvegarde %}
+    <p class="muted">Une sauvegarde complète a été faite juste avant cet import : <code>{{ lot.sauvegarde }}</code> (Administration &gt; Sauvegardes).</p>
+  {% endif %}
+  {% if lot.annule_le %}
+    <div class="ux-callout">
+      <div class="ux-callout__title">Import annulé le {{ lot.annule_le.strftime('%d/%m/%Y à %H:%M') }} (heure UTC)</div>
+      {% if compte_rendu and compte_rendu.conserves %}
+        <div class="ux-callout__text">Conservé car utilisé depuis :
+          {% for raison, nombre in compte_rendu.conserves.items() %}{{ nombre }} {{ raison }}{% if not loop.last %}, {% endif %}{% endfor %}.</div>
+      {% endif %}
+    </div>
+  {% elif annulable %}
+    <form method="post" action="{{ url_annuler }}"
+          onsubmit="return confirm('Annuler cet import ? Ce qu\'il a créé sera retiré et ce qu\'il a modifié remis comme avant. Ce qui a servi depuis est conservé.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <p class="muted">Vous vous êtes trompé de fichier, de colonnes ou de secteur ? L'annulation retire ce que cet import a créé et remet ce qu'il a modifié, sans toucher au reste. Ce qui a servi depuis (une fiche qui a reçu d'autres présences, par exemple) est conservé.</p>
+      <div class="hero-actions"><button class="btn danger" type="submit">Annuler cet import</button></div>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endmacro %}

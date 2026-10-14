@@ -2133,6 +2133,33 @@ class HistoricalImportSource(db.Model):
     __table_args__ = (db.UniqueConstraint("batch_id", "kind", "source_key", name="uq_historical_source"),)
 
 
+class ImportLot(db.Model):
+    """Un import Excel du quotidien (présences, annuaire), pour pouvoir l'annuler.
+
+    Retient la sauvegarde faite juste avant, ce que l'import a créé et ce
+    qu'il a modifié (valeur d'avant, valeur posée) : l'annulation retire
+    exactement cela, sans toucher à ce que l'équipe a saisi depuis — ce que
+    ferait une restauration de sauvegarde. Service : app/services/imports_lots.py.
+    """
+    __tablename__ = "import_lot"
+    id = db.Column(db.Integer, primary_key=True)
+    #: « presences_excel » (Administration > Import Excel) ou « annuaire »
+    #: (Participants > Importer).
+    nature = db.Column(db.String(40), nullable=False, index=True)
+    fichier = db.Column(db.String(255), nullable=True)
+    cree_le = db.Column(db.DateTime, default=utcnow, nullable=False)
+    cree_par_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    #: Nom du lot de sauvegarde fait juste avant l'import.
+    sauvegarde = db.Column(db.String(255), nullable=True)
+    #: {"participants": [ids], "presences": [...], "sessions": [...],
+    #:  "ateliers": [...], "quartiers": [...], "modifications": [...]}
+    elements_json = db.Column(db.Text, nullable=False, default="{}")
+    annule_le = db.Column(db.DateTime, nullable=True)
+    annule_par_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    #: Compte rendu de l'annulation : retiré, conservé (et pourquoi).
+    annulation_json = db.Column(db.Text, nullable=True)
+
+
 class InscriptionActivite(db.Model):
     """Inscription PRÉALABLE à une activité — l'étage « avant la séance ».
 

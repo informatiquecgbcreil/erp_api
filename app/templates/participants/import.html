@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import "_dernier_import.html" as parachute %}
 {% block title %}Importer un annuaire de participants{% endblock %}
 {% block body %}
 <div class="stack">
@@ -17,6 +18,9 @@
   </div>
 
   {% if not rapport %}
+    {{ parachute.encart(dernier_import, dernier_import_elements, dernier_import_annulable,
+                        dernier_import_compte_rendu,
+                        url_for('participants.import_annuaire_annuler', lot_id=dernier_import.id) if dernier_import else '') }}
     <div class="card">
       <h2>1. Choisir le fichier</h2>
       <form method="post" enctype="multipart/form-data" class="stack" style="gap:12px;" data-no-scroll-restore>
@@ -73,6 +77,7 @@
             onsubmit="return confirm('Créer les fiches participants ? Cette action écrit en base.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="token" value="{{ token }}">
+        <input type="hidden" name="fichier_nom" value="{{ fichier_nom or '' }}">
 
         <p>✅ <strong>{{ n_nouveaux }} fiches fiables</strong> seront créées (nom, prénom, année de naissance, sexe).
            La date de naissance sera fixée au <em>1er janvier</em> de l'année connue (jour et mois inconnus).</p>

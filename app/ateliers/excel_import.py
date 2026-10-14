@@ -33,7 +33,6 @@ FOOTER_ROW_PREFIXES = (
     "TOTAL",
 )
 
-CREIL_CANON = "Creil"
 
 
 # ------------------------------------------------------------
@@ -80,12 +79,6 @@ def normalize_ville(value: Any) -> Optional[str]:
 
     propre = normaliser(value)
     return propre[:120] if propre else None
-
-
-def is_creil(ville: Optional[str]) -> bool:
-    if not ville:
-        return False
-    return _norm_key(ville) == _norm_key(CREIL_CANON)
 
 
 def normalize_genre(value: Any) -> Optional[str]:
@@ -189,24 +182,32 @@ def _detect_date_columns(ws, header_row: int) -> Dict[int, date]:
     return date_by_col
 
 
-def _get_or_create_quartier(nom_quartier: str, ville: str = CREIL_CANON) -> Optional[Quartier]:
-    """
-    ⚠️ Dans ta stratégie : on ne crée/associe des quartiers que pour Creil.
-    """
-    nom = _norm(nom_quartier)
-    if not nom:
-        return None
+def _get_or_create_quartier(nom_quartier: str, ville: str, journal=None) -> Optional[Quartier]:
+    """Le quartier ``nom_quartier`` de ``ville``, créé s'il n'existe pas.
 
-    ville = normalize_ville(ville) or CREIL_CANON
+    Toutes les villes ont leurs quartiers. L'import ne les gardait que pour
+    Creil, et devinait le QPV d'un quartier créé par des mots propres à
+    Creil (« ROUHER », « HAUT » + « CREIL ») : un autre centre perdait tous
+    ses quartiers. Le QPV se déduit maintenant du territoire réglé (un QPV
+    suivi ou un quartier distingué cité dans le nom) ou de la mention
+    « QPV » ; à défaut, la fiche quartier se corrige à la main.
+    """
+    from app.services.territoire import territoire
+
+    nom = _norm(nom_quartier)
+    ville = normalize_ville(ville)
+    if not nom or not ville:
+        return None
 
     q = Quartier.query.filter_by(ville=ville, nom=nom).first()
     if q:
         return q
 
-    up = nom.upper()
-    is_qpv = ("ROUHER" in up) or ("HAUT" in up and "CREIL" in up) or ("QPV" in up)
+    terr = territoire()
+    qpv = terr.qpv_suivi_dans_le_nom(nom)
+    is_qpv = bool(qpv) or terr.nomme_un_qpv(nom) or "QPV" in nom.upper()
 
-    q = Quartier(ville=ville, nom=nom, is_qpv=is_qpv)
+    q = Quartier(ville=ville, nom=nom, qpv=qpv, is_qpv=is_qpv)
     db.session.add(q)
 
     try:
@@ -215,7 +216,23 @@ def _get_or_create_quartier(nom_quartier: str, ville: str = CREIL_CANON) -> Opti
     except IntegrityError:
         return Quartier.query.filter_by(ville=ville, nom=nom).first()
 
+    if journal is not None:
+        journal.cree("quartiers", q.id)
     return q
+
+
+def _quartier_connu_sans_ville(nom_quartier: str) -> Optional[Quartier]:
+    """Ligne sans ville : le quartier existant de ce nom, s'il n'y en a qu'un.
+
+    La ville reste vide (on ne la devine pas), mais un quartier déjà connu
+    sous ce nom dans une seule commune se retrouve sans risque. Plusieurs
+    communes, ou aucune : le quartier est laissé de côté.
+    """
+    nom = _norm(nom_quartier)
+    if not nom:
+        return None
+    candidats = Quartier.query.filter(db.func.lower(Quartier.nom) == nom.lower()).limit(2).all()
+    return candidats[0] if len(candidats) == 1 else None
 
 
 def _find_participant(
@@ -226,6 +243,7 @@ def _find_participant(
     quartier: Optional[Quartier],
     secteur: str,
     ville: Optional[str] = None,
+    journal=None,
 ) -> Participant:
     n = _norm(nom)
     p = _norm(prenom)
@@ -252,22 +270,28 @@ def _find_participant(
     if existing:
         changed = False
 
+        def completer(champ, valeur):
+            # Le journal garde la valeur d'avant : l'annulation la remet.
+            if journal is not None:
+                journal.modifie(existing.id, champ, getattr(existing, champ), valeur)
+            setattr(existing, champ, valeur)
+
         # ville : on la met si vide (ou placeholder) — ET on n’écrase pas une ville déjà renseignée
         if nv and getattr(existing, "ville", None) in (None, "", "—"):
-            existing.ville = nv
+            completer("ville", nv)
             changed = True
 
-        # quartier seulement si Creil et si manquant
-        if quartier and is_creil(nv) and not existing.quartier_id:
-            existing.quartier = quartier
+        # quartier si manquant, quelle que soit la ville
+        if quartier and not existing.quartier_id:
+            completer("quartier_id", quartier.id)
             changed = True
 
         if ddn and not existing.date_naissance:
-            existing.date_naissance = ddn
+            completer("date_naissance", ddn)
             changed = True
 
         if ng and existing.genre != ng:
-            existing.genre = ng
+            completer("genre", ng)
             changed = True
 
         if changed:
@@ -280,7 +304,7 @@ def _find_participant(
         prenom=p or "?",
         genre=ng,
         date_naissance=ddn,
-        quartier=quartier if is_creil(nv) else None,  # ✅ NULL hors Creil
+        quartier=quartier,
         created_secteur=secteur,
     )
 
@@ -289,10 +313,12 @@ def _find_participant(
 
     db.session.add(part)
     db.session.flush()
+    if journal is not None:
+        journal.cree("participants", part.id)
     return part
 
 
-def _get_or_create_atelier(secteur: str, nom_atelier: str) -> AtelierActivite:
+def _get_or_create_atelier(secteur: str, nom_atelier: str, journal=None) -> AtelierActivite:
     nom = _norm(nom_atelier)
     a = AtelierActivite.query.filter_by(secteur=secteur, nom=nom, is_deleted=False).first()
     if a:
@@ -300,10 +326,12 @@ def _get_or_create_atelier(secteur: str, nom_atelier: str) -> AtelierActivite:
     a = AtelierActivite(secteur=secteur, nom=nom, type_atelier="COLLECTIF")
     db.session.add(a)
     db.session.flush()
+    if journal is not None:
+        journal.cree("ateliers", a.id)
     return a
 
 
-def _get_or_create_session(atelier: AtelierActivite, secteur: str, d: date) -> SessionActivite:
+def _get_or_create_session(atelier: AtelierActivite, secteur: str, d: date, journal=None) -> SessionActivite:
     s = (
         SessionActivite.query.filter_by(
             atelier_id=atelier.id,
@@ -326,6 +354,8 @@ def _get_or_create_session(atelier: AtelierActivite, secteur: str, d: date) -> S
     )
     db.session.add(s)
     db.session.flush()
+    if journal is not None:
+        journal.cree("sessions", s.id)
     return s
 
 
@@ -338,7 +368,15 @@ def import_presences_from_xlsx(
     skip_sheets: Optional[List[str]] = None,
     dry_run: bool = False,
     limit_rows_per_sheet: int = 5000,
+    journal=None,
+    avant_validation=None,
 ) -> Dict[str, Any]:
+    """Importe les présences du classeur.
+
+    ``journal`` (app.services.imports_lots.Journal) note ce que l'import crée
+    et modifie, pour pouvoir l'annuler ; ``avant_validation`` est appelé juste
+    avant le commit, dans la même transaction (on y enregistre le lot).
+    """
 
     secteur = normalize_secteur(secteur)
 
@@ -348,6 +386,7 @@ def import_presences_from_xlsx(
         "participants_created": 0,
         "presences_created": 0,
         "presences_skipped_duplicates": 0,
+        "quartiers_ignores": 0,
         "sheets_processed": 0,
         "warnings": [],
         "sheets": {},
@@ -415,11 +454,12 @@ def import_presences_from_xlsx(
 
             if col_ville is None:
                 stats_sheet["warnings"].append(
-                    "⚠️ Colonne VILLE non détectée (header_map). "
-                    "Fallback ville = Creil. Quartiers hors Creil resteront NULL."
+                    "⚠️ Colonne VILLE non détectée : les villes restent vides. Un quartier "
+                    "n'est repris que s'il existe déjà sous ce nom dans une seule commune."
                 )
+            quartiers_ignores = 0
 
-            atelier = _get_or_create_atelier(secteur, sheet_name.strip())
+            atelier = _get_or_create_atelier(secteur, sheet_name.strip(), journal)
 
             blank_streak = 0
             processed_rows = 0
@@ -458,24 +498,19 @@ def import_presences_from_xlsx(
                 sexe = ws.cell(r, col_sexe).value if col_sexe else None
                 quartier_name = ws.cell(r, col_quart).value if col_quart else None
 
-                # Ville : IMPORTANT
-                # - si col_ville détectée : on lit cellule, sinon fallback Creil
-                # - si cellule vide MAIS col_ville existe : on met None (évite coller Creil par erreur)
-                if col_ville is None:
-                    ville_norm = CREIL_CANON
-                else:
-                    ville_norm = normalize_ville(ws.cell(r, col_ville).value) or None
+                # Ville : celle du fichier, sinon vide. L'import mettait
+                # « Creil » à toute ligne sans ville : un autre centre
+                # aurait vu ses habitants comptés comme Creillois.
+                ville_norm = normalize_ville(ws.cell(r, col_ville).value) if col_ville else None
 
-                # si tu veux absolument une valeur : fallback Creil
-                # (tu peux commenter si tu préfères des villes NULL quand cellule vide)
-                ville_norm = ville_norm or CREIL_CANON
-
-                # Quartier: NULL hors Creil
                 quartier = None
-                if is_creil(ville_norm):
-                    qn = _norm(quartier_name)
-                    if qn:
-                        quartier = _get_or_create_quartier(qn, ville=CREIL_CANON)
+                if _norm(quartier_name):
+                    if ville_norm:
+                        quartier = _get_or_create_quartier(quartier_name, ville_norm, journal)
+                    else:
+                        quartier = _quartier_connu_sans_ville(quartier_name)
+                        if quartier is None:
+                            quartiers_ignores += 1
 
                 # déterminer si "nouveau" (compteur)
                 before = Participant.query.filter(
@@ -491,6 +526,7 @@ def import_presences_from_xlsx(
                     quartier,
                     secteur,
                     ville=ville_norm,
+                    journal=journal,
                 )
 
                 if before is None:
@@ -515,7 +551,7 @@ def import_presences_from_xlsx(
                         is_deleted=False,
                     ).first()
 
-                    session = _get_or_create_session(atelier, secteur, d)
+                    session = _get_or_create_session(atelier, secteur, d, journal)
                     if session_before is None:
                         stats["sessions_created"] += 1
                         stats_sheet["sessions"] += 1
@@ -525,17 +561,27 @@ def import_presences_from_xlsx(
                         with db.session.begin_nested():
                             db.session.add(pr)
                             db.session.flush()
+                        if journal is not None:
+                            journal.cree("presences", pr.id)
                         stats["presences_created"] += 1
                         stats_sheet["presences"] += 1
                     except IntegrityError:
                         stats["presences_skipped_duplicates"] += 1
 
+            if quartiers_ignores:
+                stats["quartiers_ignores"] += quartiers_ignores
+                stats_sheet["warnings"].append(
+                    f"{quartiers_ignores} ligne(s) avec un quartier mais sans ville : quartier non "
+                    "repris (inconnu, ou présent dans plusieurs communes). À compléter sur la fiche."
+                )
             stats["sheets_processed"] += 1
             stats["sheets"][sheet_name] = stats_sheet
 
         if dry_run:
             db.session.rollback()
         else:
+            if avant_validation is not None:
+                avant_validation(stats)
             db.session.commit()
 
     except Exception:
