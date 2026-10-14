@@ -239,6 +239,19 @@ static class SystemSmoke {
             Check(response != null && response.StatusCode == HttpStatusCode.Forbidden, "Le filtrage du point d'accès mobile est absent");
         }
     }
+    /// Le certificat du centre, que les collègues téléchargent depuis la page
+    /// d'installation : le service web (compte virtuel) doit pouvoir le lire.
+    static void CenterCertificateServed(Dictionary<string, object> config) {
+        var request = (HttpWebRequest)WebRequest.Create((string)config["url"] + "/installer/certificat-du-centre.cer");
+        request.Proxy = null; request.Timeout = 30000;
+        using (var response = (HttpWebResponse)request.GetResponse())
+        using (var copy = new MemoryStream()) {
+            response.GetResponseStream().CopyTo(copy);
+            var expected = File.ReadAllBytes(Path.Combine(Program.Root, "public", "Certificat-du-centre.cer"));
+            Check(response.StatusCode == HttpStatusCode.OK && Convert.ToBase64String(copy.ToArray()) == Convert.ToBase64String(expected),
+                  "Le certificat du centre n'est pas proposé aux collègues");
+        }
+    }
     static int Main(string[] args) {
         try {
             Check(Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" && Program.IsAdmin,
@@ -326,10 +339,10 @@ static class SystemSmoke {
             Check(Array.IndexOf(privileges,"SeImpersonatePrivilege") < 0,"Le service conserve SeImpersonate");
             Program.StopService();
             Check(!File.Exists(Path.Combine(Program.Root, "postgresql", "postmaster.pid")), "PostgreSQL encore démarré");
-            Program.FinishInstallation(c); Healthy(c); KioskHealthy(c);
+            Program.FinishInstallation(c); Healthy(c); KioskHealthy(c); CenterCertificateServed(c);
             Check(File.ReadAllText(Path.Combine(Program.Root,"https","autorite","racine.crt")) == rootAfterRenewal, "Autorité changée au redémarrage");
             Check(HostAccepted(c, "gestion-recette.test"), "Nom d'accès perdu au redémarrage");
-            Console.WriteLine("SERVICE_HTTPS_DPAPI_ACL_ARRET_REDEMARRAGE_ADRESSES_OK");
+            Console.WriteLine("SERVICE_HTTPS_DPAPI_ACL_ARRET_REDEMARRAGE_ADRESSES_CERTIFICAT_OK");
             return 0;
         } catch (Exception e) {
             Console.Error.WriteLine(e.GetType().Name + ": " + e.Message);

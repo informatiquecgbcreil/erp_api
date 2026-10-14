@@ -37,6 +37,13 @@
       Ouvrez <code>{{ adresse }}</code> (ou scannez le QR code ci-dessous).</p>
   </div>
 
+  {% if connexion.guide_certificat %}
+    <div class="card" id="alerte-securite">
+      <h2 style="margin-top:0">🔒 Une alerte de sécurité s'affiche ?</h2>
+      {% include "pwa/_guide_certificat.html" %}
+    </div>
+  {% endif %}
+
   <div class="card" data-appareil="android" hidden>
     <h2 style="margin-top:0">📱 Téléphone ou tablette Android</h2>
     <p data-etat="bouton" hidden><button type="button" class="btn ok install-big" data-installer>Installer l'application</button></p>
@@ -115,6 +122,7 @@
   montrer('[data-etat="installee"]', installee);
   montrer('[data-etat="non-securise"]', !window.isSecureContext);
   montrer('[data-appareil="' + appareil + '"]', !installee);
+  document.querySelectorAll('[data-guide-appareil="' + appareil + '"]').forEach(function (el) { el.open = true; });
   var invite = null;
   window.addEventListener("beforeinstallprompt", function (evenement) {
     evenement.preventDefault();

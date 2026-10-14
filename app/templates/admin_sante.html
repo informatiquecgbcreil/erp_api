@@ -13,6 +13,9 @@
       <div class="inline" style="gap:8px; flex-wrap:wrap;">
         <a class="btn primary" href="{{ url_for('admin.rapport_sos') }}">🆘 Rapport SOS</a>
         <a class="btn" href="{{ url_for('admin.journal_audit') }}">📜 Journal d'audit</a>
+        {# Affichage simple (par défaut) : ces pages ne sont pas dans le menu. #}
+        <a class="btn" href="{{ url_for('admin.connecter_appareil') }}">📱 Connecter un appareil</a>
+        <a class="btn" href="{{ url_for('admin.mode_entrainement') }}">🎓 Mode entraînement</a>
       </div>
     </div>
   </div>

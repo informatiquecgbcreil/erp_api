@@ -876,6 +876,16 @@ AIDE_PAGES: dict[str, dict] = {
         ],
         "astuce": "Les comptes, le nom et le logo, le territoire, les secteurs, les quartiers, les salles et les tarifs sont gardés : réglez-les pendant l'entraînement, ils serviront pour de vrai.",
     },
+    "admin.connecter_appareil": {
+        "titre": "Connecter un appareil",
+        "resume": "Les QR codes pour brancher une tablette d'émargement ou le poste d'un collègue, et la marche à suivre quand une alerte de sécurité s'affiche.",
+        "etapes": [
+            "Tablette d'émargement : scannez le premier QR code avec la tablette, connectée au wifi du centre. Rien à installer.",
+            "Poste ou téléphone d'un collègue : scannez le second QR code ; la page qui s'ouvre explique comment installer l'application sur son appareil.",
+            "Si l'appareil affiche « Votre connexion n'est pas privée », installez une fois le certificat du centre en suivant le guide de votre appareil.",
+        ],
+        "astuce": "Sous Windows, comparez l'empreinte affichée par Windows avec celle de cette page avant de cliquer sur « Oui » : c'est la preuve que le certificat vient bien du serveur du centre.",
+    },
     "admin.rapport_sos": {
         "titre": "Rapport SOS",
         "resume": "Rassemble ce qu'il faut pour faire réparer une panne : version installée, état de l'application et dernières erreurs, sans aucune donnée personnelle.",
@@ -1168,12 +1178,13 @@ AIDE_PAGES: dict[str, dict] = {
 
     # ---------------------- Accès tablette / kiosque --------------------
     "launcher.index": {
-        "titre": "Accès tablette & QR codes",
-        "resume": "Les liens et QR codes pour ouvrir l'application ou le pointage depuis une tablette d'atelier.",
+        "titre": "Portail : kiosque et connexion",
+        "resume": "Page publique à laisser ouverte sur un écran d'accueil : les QR codes du kiosque d'émargement et de la page de connexion.",
         "etapes": [
-            "Scannez le QR code « Pointage tablette » pour ouvrir l'émargement public.",
-            "Le pointage tablette permet aux participants de confirmer leur présence eux-mêmes, sans accéder au reste de l'application.",
+            "Scannez le QR code « Accès Kiosk » pour ouvrir l'émargement public : les participants confirment leur présence eux-mêmes, sans accéder au reste de l'application.",
+            "Le QR code « Administration » mène à la page de connexion : chaque membre de l'équipe s'y connecte avec son compte.",
         ],
+        "astuce": "Pour brancher une tablette ou le poste d'un collègue pas à pas, et faire disparaître une alerte de sécurité : Administration > Connecter un appareil.",
     },
 }
 

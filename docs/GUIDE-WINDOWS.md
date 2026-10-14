@@ -231,10 +231,17 @@ Changer ensuite le nom du serveur demande une nouvelle autorité (voir
 « Ajouter un nom d'accès » ci-dessous pour un nom supplémentaire). La DSI déploie
 `C:\ProgramData\MonCentreSocial\public\Certificat-du-centre.cer` dans les
 **Autorités de certification racines de confiance** des postes (GPO possible).
+Sans DSI : **Administration > Connecter un appareil** (lien aussi depuis « État
+de l'application ») explique l'installation poste par poste (Windows, Android,
+iPhone) avec l'empreinte à comparer, et la page d'installation
+(`/installer`) propose le même fichier en téléchargement
+(`/installer/certificat-du-centre.cer`, jamais par la façade « hors les murs »).
 Seul ce certificat public est à diffuser ; jamais le dossier `https\tls`.
 Sa clé privée est réservée au service HTTPS distinct `MonCentreSocialHTTPS`,
 à SYSTEM et aux administrateurs ; le service de l'application ne peut pas la lire.
-Le DNS local doit résoudre le nom choisi. Ne pas ignorer une alerte de certificat.
+Le DNS local doit résoudre le nom choisi. Ne pas ignorer une alerte de certificat,
+sauf une seule fois sur le wifi du centre pour télécharger le certificat du centre,
+dont l'empreinte est alors vérifiée avant de l'installer.
 Pour une exposition Internet, faire configurer le domaine, le certificat public
 et les règles réseau par la DSI ; ce paquet est configuré pour le réseau local.
 
@@ -327,7 +334,10 @@ Chaque page annonce l'application comme **installable** (icône sur l'écran
 d'accueil ou le bureau, ouverture plein écran, sans store). Mode d'emploi par
 appareil, avec QR code : `https://<adresse>/installer` (lien « Installer l'appli »
 sous la connexion). Une **affiche A4** à imprimer (QR code + 3 étapes) est
-proposée aux personnes connectées : `/installer/affiche`.
+proposée aux personnes connectées : `/installer/affiche`. **Administration >
+Connecter un appareil** rassemble les QR codes de la tablette d'émargement
+(kiosque, sans certificat) et des collègues, signale une adresse qui ne marche
+que sur le serveur (`127.0.0.1`), et guide l'installation du certificat du centre.
 
 - L'installation exige une adresse **reconnue comme sûre** par l'appareil :
   en pratique le **certificat reconnu** ci-dessus (sinon le certificat du
