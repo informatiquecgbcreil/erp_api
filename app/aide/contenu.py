@@ -866,6 +866,16 @@ AIDE_PAGES: dict[str, dict] = {
         ],
         "astuce": "Faites toujours une simulation d'abord : elle montre ce qui sera importé sans rien modifier.",
     },
+    "admin.mode_entrainement": {
+        "titre": "Mode entraînement",
+        "resume": "Remplit une base vierge de fausses données pour découvrir l'application et former l'équipe, puis efface tout d'un clic.",
+        "etapes": [
+            "Activez le mode entraînement sur une base encore vide : habitants, activités, présences et adhésions d'exemple sont créés.",
+            "Essayez tout : créer, modifier, supprimer. Le bandeau orange rappelle que rien ne compte.",
+            "Quand l'équipe est prête, tapez EFFACER puis « Tout effacer et passer en mode réel » : une sauvegarde est faite, puis toutes les données d'entraînement sont effacées.",
+        ],
+        "astuce": "Les comptes, le nom et le logo, le territoire, les secteurs, les quartiers, les salles et les tarifs sont gardés : réglez-les pendant l'entraînement, ils serviront pour de vrai.",
+    },
     "admin.rapport_sos": {
         "titre": "Rapport SOS",
         "resume": "Rassemble ce qu'il faut pour faire réparer une panne : version installée, état de l'application et dernières erreurs, sans aucune donnée personnelle.",
