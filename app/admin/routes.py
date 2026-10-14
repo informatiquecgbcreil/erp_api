@@ -1218,6 +1218,17 @@ def mode_entrainement():
     )
 
 
+@bp.get("/appareils")
+@login_required
+@require_perm("admin:rbac")
+def connecter_appareil():
+    """Tablette d'émargement, poste d'un collègue : QR codes et alerte de sécurité
+    (app/services/connexion_appareils.py)."""
+    from app.services.connexion_appareils import etat
+
+    return render_template("admin_appareils.html", connexion=etat())
+
+
 @bp.route("/sante/test-smtp", methods=["POST"])
 @login_required
 @require_perm("admin:rbac")

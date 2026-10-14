@@ -832,6 +832,7 @@
                     <a class="pill {% if ep.startswith('admin.instance_settings') %}active{% endif %}" href="{{ url_for('admin.instance_settings') }}">Nom et logo</a>
                     <a class="pill {% if ep == 'admin.sauvegardes' %}active{% endif %}" href="{{ url_for('admin.sauvegardes') }}">Sauvegardes</a>
                     <a class="pill {% if ep == 'admin.mode_entrainement' %}active{% endif %}" href="{{ url_for('admin.mode_entrainement') }}">Mode entraînement</a>
+                    <a class="pill {% if ep == 'admin.connecter_appareil' %}active{% endif %}" href="{{ url_for('admin.connecter_appareil') }}">Connecter un appareil</a>
                     <a class="pill {% if ep == 'admin.notifications' %}active{% endif %}" href="{{ url_for('admin.notifications') }}">Notifications</a>
                   {% endif %}
                   {% if can('secteurs:edit') %}
@@ -865,6 +866,7 @@
                     <a class="pill {% if ep.startswith('admin.instance_settings') %}active{% endif %}" href="{{ url_for('admin.instance_settings') }}">Nom et logo</a>
                     <a class="pill {% if ep == 'admin.sauvegardes' %}active{% endif %}" href="{{ url_for('admin.sauvegardes') }}">Sauvegardes</a>
                     <a class="pill {% if ep == 'admin.mode_entrainement' %}active{% endif %}" href="{{ url_for('admin.mode_entrainement') }}">Mode entraînement</a>
+                    <a class="pill {% if ep == 'admin.connecter_appareil' %}active{% endif %}" href="{{ url_for('admin.connecter_appareil') }}">Connecter un appareil</a>
                     <a class="pill {% if ep == 'admin.notifications' %}active{% endif %}" href="{{ url_for('admin.notifications') }}">Notifications</a>
                   {% endif %}
                   {% if can('secteurs:edit') %}

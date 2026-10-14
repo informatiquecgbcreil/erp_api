@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+{% block title %}Connecter un appareil{% endblock %}
+{% block body %}
+<style>
+  .appareil-qr{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .appareil-qr img{width:200px;height:200px;background:#fff;padding:8px;border-radius:12px;flex:none}
+  .appareil-qr > div{flex:1 1 260px;min-width:0}
+  .appareil-qr code{word-break:break-all;white-space:normal}
+</style>
+<div class="stack">
+  <div class="card">
+    <h1>📱 Connecter un appareil</h1>
+    <p class="muted">Une tablette pour l'émargement, le PC ou le téléphone d'un collègue : scannez le bon QR code avec
+      l'appareil, <strong>connecté au wifi du centre</strong>.</p>
+  </div>
+
+  {% if connexion.application_locale_seulement or connexion.kiosque_local_seulement %}
+    <div class="card callout-soft warnish" role="alert">
+      <h2 style="margin-top:0">⚠️ Les autres appareils ne peuvent pas joindre cette adresse</h2>
+      <p>L'application répond à une adresse qui ne fonctionne <strong>que sur le serveur lui-même</strong>
+        (<code>{{ connexion.adresse_installation if connexion.application_locale_seulement else connexion.adresse_kiosque }}</code>) :
+        les QR codes ci-dessous ne mèneront nulle part depuis une tablette ou un téléphone.</p>
+      <p>Sur le serveur Windows, relancez <strong>« Configurer Mon Centre Social »</strong> depuis le menu Démarrer et
+        choisissez l'accès depuis les autres postes du réseau. Hors installateur Windows, l'adresse se règle avec
+        <code>ERP_PUBLIC_BASE_URL</code>.</p>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <h2 style="margin-top:0">🖐️ Une tablette pour l'émargement des participants</h2>
+    <div class="appareil-qr">
+      <img alt="QR code du pointage tablette" src="{{ url_for('launcher.launcher_qr', u=connexion.adresse_kiosque) }}">
+      <div>
+        <p style="margin-top:0">Ouvre le <strong>pointage public</strong> : les participants émargent eux-mêmes, sans accès
+          au reste de l'application. <strong>Aucun certificat à installer, aucune alerte.</strong></p>
+        <p><code>{{ connexion.adresse_kiosque }}</code></p>
+        <p class="muted">Sur la tablette, ajoutez la page à l'écran d'accueil pour la retrouver d'un geste. Pour une séance
+          précise, utilisez plutôt le QR code de sa feuille d'émargement (valable 12 heures).
+          {% if connexion.hors_les_murs %}Ce lien fonctionne aussi hors du centre (accès « hors les murs »).{% endif %}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">💻 Le PC ou le téléphone d'un collègue</h2>
+    <div class="appareil-qr">
+      <img alt="QR code de la page d'installation" src="{{ url_for('launcher.launcher_qr', u=connexion.adresse_installation) }}">
+      <div>
+        <p style="margin-top:0">Ouvre la page <strong>« Installer l'application »</strong> : le collègue y trouve le mode
+          d'emploi de son appareil, puis se connecte avec son propre compte (Administration &gt; Équipe).</p>
+        <p><code>{{ connexion.adresse_installation }}</code></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">🔒 L'alerte de sécurité</h2>
+    {% if connexion.nom_public %}
+      <p>✅ L'application utilise un <strong>certificat reconnu</strong> ({{ connexion.nom_public }}) : aucun appareil n'a de
+        certificat à installer, aucune alerte ne s'affiche.</p>
+    {% elif not connexion.https %}
+      <p>L'adresse de l'application n'est pas sécurisée (<code>http://</code>) : pas d'alerte, mais les téléphones ne
+        pourront pas l'installer comme une appli, et les échanges ne sont pas chiffrés. L'installateur Windows en mode
+        réseau règle cela.</p>
+    {% elif connexion.certificat %}
+      {% include "pwa/_guide_certificat.html" %}
+      <p class="muted">Le collègue retrouve ces explications sur la page d'installation, sous « Une alerte de sécurité
+        s'affiche ? ».</p>
+    {% else %}
+      <p>Le certificat du centre n'a pas été trouvé sur ce serveur. Sur le serveur Windows, il se trouve dans
+        <code>C:\ProgramData\MonCentreSocial\public\Certificat-du-centre.cer</code> ; sinon, demandez-le à la personne
+        qui a installé le serveur.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">🖨️ À afficher dans le centre</h2>
+    <ul>
+      <li><a href="{{ url_for('pwa.affiche') }}" target="_blank" rel="noopener">L'affiche A4 « L'application du centre sur
+        votre téléphone »</a>, avec son QR code.</li>
+      <li><a href="{{ url_for('launcher.index') }}">Le portail public</a> : les QR codes du pointage et de la connexion, à
+        laisser ouvert sur un écran d'accueil.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

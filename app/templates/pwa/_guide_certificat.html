@@ -1,0 +1,74 @@
+{# Faire confiance au certificat du centre, appareil par appareil.
+   Inclus par la page d'installation (pour le collègue, sur son appareil) et
+   par Administration > Connecter un appareil. Attend « connexion »
+   (app/services/connexion_appareils.py) avec un certificat présent. #}
+{% set cert = connexion.certificat %}
+<style>
+  .guide-cert ol{margin:0;padding-left:1.3em;line-height:1.7}
+  .guide-cert li{margin-bottom:6px}
+  .guide-cert details{border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-top:10px}
+  .guide-cert summary{cursor:pointer;font-weight:600}
+  .guide-cert .empreinte{font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+</style>
+<div class="guide-cert">
+  <p>La première fois, l'appareil affiche une <strong>alerte de sécurité</strong> (« Votre connexion n'est pas
+    privée », « Non sécurisé »). C'est attendu : il ne connaît pas encore le <strong>certificat du centre</strong>,
+    qui garantit que vous parlez bien au serveur du centre. Installez-le <strong>une seule fois</strong> par appareil
+    et l'alerte disparaît.</p>
+  <p class="muted">Par prudence, faites-le sur le <strong>wifi du centre</strong>, jamais sur un réseau public, et
+    comparez l'empreinte quand l'appareil l'affiche : <span class="empreinte">{{ cert.empreinte_windows }}</span>
+    (empreinte « SHA-1 »). Si elle diffère, n'installez rien et prévenez la direction.</p>
+  {% if not cert.bride %}
+    <p class="callout-soft warnish" role="note" style="margin:10px 0;">⚠️ Ce certificat vient d'une installation ancienne :
+      il n'est pas limité aux adresses du centre. Installez-le seulement sur les <strong>appareils du centre</strong>,
+      pas sur des téléphones personnels. Pour ceux-là, un certificat reconnu (nom public) évite toute installation :
+      voir le guide d'installation Windows.</p>
+  {% endif %}
+  <p><a class="btn ok" href="{{ url_for('pwa.certificat_centre') }}" download>⬇️ Télécharger le certificat du centre</a></p>
+
+  <details data-guide-appareil="pc">
+    <summary>💻 Ordinateur Windows (Edge, Chrome)</summary>
+    <ol>
+      <li>Téléchargez le certificat, puis ouvrez le fichier <code>Certificat-du-centre.cer</code>.</li>
+      <li>Cliquez sur <strong>« Installer le certificat… »</strong>, choisissez <strong>« Utilisateur actuel »</strong>,
+        puis <strong>« Suivant »</strong>.</li>
+      <li>Cochez <strong>« Placer tous les certificats dans le magasin suivant »</strong>, cliquez sur
+        <strong>« Parcourir… »</strong> et choisissez <strong>« Autorités de certification racines de confiance »</strong>.
+        Puis <strong>« Suivant »</strong> et <strong>« Terminer »</strong>.</li>
+      <li>Windows demande confirmation et affiche une « empreinte numérique (sha1) ». Elle doit être identique à :
+        <br><span class="empreinte">{{ cert.empreinte_windows }}</span><br>
+        Si c'est le cas, cliquez sur <strong>« Oui »</strong>. Sinon, cliquez sur « Non » et prévenez la direction.</li>
+      <li>Fermez complètement le navigateur, puis rouvrez l'adresse de l'application.</li>
+    </ol>
+  </details>
+
+  <details data-guide-appareil="android">
+    <summary>📱 Téléphone ou tablette Android</summary>
+    <ol>
+      <li>Téléchargez le certificat : le fichier arrive dans « Téléchargements ».</li>
+      <li>Ouvrez les <strong>Paramètres</strong> et tapez <strong>« certificat »</strong> dans la recherche,
+        puis choisissez <strong>« Certificat CA »</strong> (selon les modèles : Sécurité → Paramètres avancés →
+        Chiffrement et identifiants → Installer un certificat → Certificat CA).</li>
+      <li>Touchez <strong>« Installer quand même »</strong>, confirmez avec le code de l'appareil, puis choisissez
+        le fichier <code>Certificat-du-centre.cer</code>.</li>
+      <li>Android affiche ensuite « Le réseau peut être surveillé » : c'est normal, il parle du certificat du centre.
+        Rouvrez l'adresse de l'application dans Chrome.</li>
+    </ol>
+  </details>
+
+  <details data-guide-appareil="ios">
+    <summary>📱 iPhone ou iPad</summary>
+    <ol>
+      <li>Dans <strong>Safari</strong>, touchez « Télécharger le certificat du centre », puis <strong>« Autoriser »</strong>.</li>
+      <li>Ouvrez <strong>Réglages</strong> → <strong>« Profil téléchargé »</strong> (tout en haut). Touchez
+        <strong>« Plus de détails »</strong> puis le certificat : son empreinte SHA-1 doit être celle indiquée plus haut.
+        Revenez en arrière, touchez <strong>« Installer »</strong> et entrez le code de l'appareil.</li>
+      <li>Puis <strong>Réglages → Général → Informations</strong> → tout en bas <strong>« Réglages des certificats »</strong> :
+        activez le certificat <strong>{{ cert.nom }}</strong>.</li>
+      <li>Revenez dans Safari et rouvrez l'adresse de l'application.</li>
+    </ol>
+  </details>
+
+  <p class="muted" style="margin-top:10px;">Certificat valable jusqu'au {{ cert.expire_le.strftime('%d/%m/%Y') }}.
+    {% if cert.bride %}Il ne vaut que pour les adresses du centre : il ne permet pas d'usurper un autre site.{% endif %}</p>
+</div>

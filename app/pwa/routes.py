@@ -71,9 +71,32 @@ def hors_ligne():
 
 @bp.get("/installer")
 def installer():
+    from app.services.connexion_appareils import etat
+
     nom_app, structure = _identite()
     return render_template("pwa/installer.html", nom_app=nom_app, structure=structure,
-                           adresse=adresse_installation(), base=public_base_url())
+                           adresse=adresse_installation(), base=public_base_url(), connexion=etat())
+
+
+@bp.get("/installer/certificat-du-centre.cer")
+def certificat_centre():
+    """Le certificat public du centre, pour faire disparaître l'alerte de sécurité.
+
+    Sans connexion : l'appareil qui en a besoin n'a pas encore de compte
+    ouvert. Rien de secret (la clé privée reste au service HTTPS), et la
+    façade « hors les murs » ne laisse passer que le kiosque.
+    """
+    from flask import abort
+
+    from app.services.connexion_appareils import NOM_FICHIER, certificat_du_centre
+
+    certificat = certificat_du_centre()
+    if certificat is None:
+        abort(404)
+    # Type que reconnaissent Android et iOS pour proposer l'installation.
+    return Response(certificat.contenu, mimetype="application/x-x509-ca-cert",
+                    headers={"Content-Disposition": f'attachment; filename="{NOM_FICHIER}"',
+                             "Cache-Control": "no-cache"})
 
 
 @bp.get("/installer/affiche")
