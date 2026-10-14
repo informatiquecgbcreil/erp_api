@@ -393,6 +393,37 @@ ou utiliser un disque externe. L'état de la dernière sauvegarde quotidienne
 (lot vérifié, copies réussies ou non) s'affiche en haut de l'écran. Une
 sauvegarde située sur le même disque ne couvre pas la perte de ce disque.
 
+**Règle 3-2-1** (Administration > Sauvegardes) : trois voyants disent si les
+données existent en 3 copies, sur 2 supports différents, dont 1 hors du centre.
+L'écran a trois cases, chacune avec un bouton « Parcourir » qui liste les
+disques et dossiers **tels que les voit le service** (un lecteur réseau Z:
+monté dans une session n'y figure pas : taper `\\NAS\partage`) :
+
+1. **Sur ce serveur** : le dossier `backups`, fixé par l'installation (ses
+   droits protègent les données). Nombre de lots gardés et seuil d'alerte s'y
+   règlent ; ils priment sur `BACKUP_RETENTION_LOTS` et `BACKUP_ALERT_DAYS`.
+2. **Autre support dans le centre** : disque externe ou NAS, copies en clair.
+   Un dossier sur le disque du serveur, ou qui ressemble à un dossier
+   synchronisé (OneDrive, Google Drive, Nextcloud…), est signalé.
+3. **Hors du centre** : un dossier synchronisé vers un cloud, où les copies
+   partent **chiffrées** (décision du centre : les fiches ne partent jamais en
+   clair chez un hébergeur). Le plus simple est un dossier comme
+   `C:\Sauvegardes-cloud`, synchronisé par Google Drive (« Ordinateurs ») ou
+   Nextcloud ; un dossier OneDrive est dans la session d'un utilisateur, il faut
+   y donner l'écriture à `NT SERVICE\MonCentreSocial`, et la synchronisation ne
+   tourne que session ouverte. Le chiffrement repose sur une **phrase secrète**
+   choisie par la direction et **jamais enregistrée** : le serveur garde une clé
+   publique (qui ne sait que chiffrer) et la clé privée protégée par la phrase.
+   Chaque fichier `.chiffre` emporte cette clé protégée ; sa liste d'empreintes
+   (`<lot>.chiffre.sha256`) permet de contrôler la copie sans la phrase. Phrase
+   perdue : en choisir une nouvelle ; les copies déjà faites ne s'ouvrent
+   qu'avec l'ancienne.
+
+**Serveur perdu** : réinstaller, régler la case 3 sur le dossier cloud
+synchronisé, puis « Rapatrier » une copie avec la phrase secrète : elle est
+déchiffrée, vérifiée contre ses empreintes d'origine et rejoint la liste des
+sauvegardes du serveur, où elle se restaure comme les autres.
+
 Le délai de la sauvegarde est proportionné au volume (15 min + 1 min par
 100 Mo, 8 h au plus) ; au-delà, la sauvegarde et son `pg_dump` sont arrêtés et
 le lot partiel est **refusé à la restauration** (dump sans marqueur de fin,

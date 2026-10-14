@@ -908,12 +908,14 @@ AIDE_PAGES: dict[str, dict] = {
     },
     "admin.sauvegardes": {
         "titre": "Sauvegardes",
-        "resume": "Créez une sauvegarde de la base de données et des pièces jointes, et consultez les sauvegardes existantes.",
+        "resume": "Réglez où partent les sauvegardes pour respecter la règle 3-2-1 : 3 copies, sur 2 supports, dont 1 hors du centre.",
         "etapes": [
-            "Cliquez sur « Sauvegarder maintenant » : la sauvegarde est créée sur le serveur, dans le dossier backups/.",
-            "Copiez régulièrement ce dossier sur un support externe (disque, clé, espace réseau) pour être protégé en cas de panne.",
+            "La sauvegarde se fait seule chaque nuit sur le serveur ; « Sauvegarder maintenant » en fait une tout de suite.",
+            "Case ② : choisissez avec « Parcourir » un disque externe ou un partage réseau du centre, puis « Enregistrer et tester l'écriture ».",
+            "Case ③ : choisissez le dossier synchronisé vers le cloud, puis définissez la phrase secrète et notez-la hors du serveur.",
+            "Les trois voyants passent au vert quand tout est en place. Serveur perdu : « Rapatrier » une copie cloud avec la phrase secrète, puis la restaurer.",
         ],
-        "astuce": "La sauvegarde reste sur le serveur : aucune donnée personnelle n'est téléchargée par le navigateur.",
+        "astuce": "La phrase secrète n'est enregistrée nulle part : sans elle, personne ne peut rouvrir les copies cloud. Vérifiez-la de temps en temps avec « Vérifier ma phrase ».",
     },
 
     # ---------------------- Pages de pilotage prioritaires -------------
