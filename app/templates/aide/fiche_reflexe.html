@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fiche réflexe — {{ APP_NAME }}</title>
+  {# Page autonome, comme l'affiche d'installation : elle doit tenir sur UNE
+     feuille A4, sans menu ni bandeau. Les libellés viennent de
+     app/aide/contenu.py (FICHE_REFLEXE), vérifiés par les tests. #}
+  <style>
+    @page{size:A4;margin:10mm}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#10383d;margin:0;background:#fff}
+    .page{max-width:190mm;margin:0 auto;padding:6mm 0}
+    .entete{display:flex;align-items:center;gap:12px;border-bottom:1.2mm solid #f2b84b;padding-bottom:3mm}
+    .entete img{height:16mm;width:auto;max-width:40mm;object-fit:contain}
+    .entete h1{font-size:22pt;margin:0;line-height:1.1}
+    .entete .sous{font-size:10.5pt;color:#135b63;margin-top:1mm}
+    .grille{display:grid;grid-template-columns:1fr 1fr;gap:2.6mm;margin-top:3.5mm}
+    .cas{border:0.5mm solid #c9dcde;border-radius:3mm;padding:2.6mm 3.2mm;break-inside:avoid;font-size:10.4pt;line-height:1.38}
+    .cas b{display:block;font-size:11.4pt;color:#135b63;margin-bottom:1mm}
+    .bouton{font-weight:700;background:#fdf1d8;border-radius:1mm;padding:0 0.8mm}
+    .cas a{color:inherit;text-decoration:none}
+    .cas a:hover b{text-decoration:underline}
+    .pied{display:flex;gap:5mm;align-items:center;margin-top:3.5mm;border-top:0.5mm solid #c9dcde;padding-top:3mm;font-size:10pt}
+    .pied img{width:24mm;height:24mm;flex:none}
+    .ligne{display:flex;gap:2mm;align-items:baseline;margin:1.6mm 0}
+    .ligne span{flex:1;border-bottom:0.3mm dotted #10383d;min-height:5mm}
+    .adresse{font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+    .imprimer{display:block;margin:4mm auto;font:inherit;font-size:12pt;padding:8px 20px;border-radius:999px;border:0;background:#135b63;color:#fff;cursor:pointer}
+    .retour{display:block;text-align:center;margin-bottom:4mm;color:#135b63}
+    @media print{.imprimer,.retour{display:none}.page{padding:0}}
+    @media (max-width:640px){.grille{grid-template-columns:1fr}.page{padding:4mm}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <button type="button" class="imprimer" onclick="window.print()">🖨️ Imprimer la fiche (une page A4)</button>
+    <a class="retour" href="{{ url_for('aide.notice') }}">← Retour à l'aide</a>
+
+    <div class="entete">
+      {% if ORGANIZATION_LOGO_URL or APP_LOGO_URL %}<img src="{{ ORGANIZATION_LOGO_URL or APP_LOGO_URL }}" alt="">{% endif %}
+      <div>
+        <h1>Fiche réflexe — {{ APP_NAME }}</h1>
+        <div class="sous">{% if ORGANIZATION_NAME and ORGANIZATION_NAME != APP_NAME %}{{ ORGANIZATION_NAME }} · {% endif %}Il se passe quelque chose ? Voici quoi faire, sans rien casser.</div>
+      </div>
+    </div>
+
+    <div class="grille">
+      {% for cas in situations %}
+        <div class="cas">
+          {% if cas.page %}<a href="{{ url_for(cas.page) }}">{% endif %}
+          <b>{{ cas.icone }} {{ cas.situation }}</b>
+          {% if cas.page %}</a>{% endif %}
+          {{ cas.geste_html }}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="pied">
+      <img alt="QR code de l'application" src="{{ url_for('launcher.launcher_qr', u=adresse) }}">
+      <div style="flex:1">
+        <div class="ligne">Personne référente :<span></span>Téléphone :<span></span></div>
+        <div class="ligne">Serveur (ordinateur, pièce) :<span></span></div>
+        <div>Application : <span class="adresse">{{ adresse }}</span> — notice complète : bouton <span class="bouton">❓ Aide</span>.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
