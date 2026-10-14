@@ -754,6 +754,7 @@ def modules():
 @require_perm("admin:rbac")
 def sauvegardes():
     from app.services.sauvegarde import (
+        dossier_sauvegardes,
         etat_hors_serveur,
         jours_depuis_derniere,
         lister_lots,
@@ -766,26 +767,32 @@ def sauvegardes():
         moteur = "SQLite"
     else:
         moteur = "inconnu"
-    try:
-        seuil = int(current_app.config.get("BACKUP_ALERT_DAYS") or 2)
-    except (TypeError, ValueError):
-        seuil = 2
-    from app.services.sauvegarde import lire_etat_sauvegarde, reglage_hors_serveur
-    from app.services.sauvegarde import restauration_inachevee
+    from app.services.sauvegarde import (conservation_lots, destination_cloud, destinations_support, etat_321,
+                                         lire_etat_sauvegarde, lister_lots_cloud, meme_disque_que_le_serveur,
+                                         ressemble_cloud, restauration_inachevee, seuil_alerte_jours, trousseau)
+    seuil = seuil_alerte_jours()
     etat_restauration = restauration_inachevee()
     if etat_restauration:
         flash(f"Maintenance : la restauration « {etat_restauration.get('lot') or '?'} » n'est pas terminée "
               f"({etat_restauration.get('etat')}). Restaurez la sauvegarde de sécurité "
               f"« {etat_restauration.get('securite') or '—'} » pour revenir à l'état d'avant, ou relancez la "
               "restauration voulue.", "danger")
+    hors_serveur = etat_hors_serveur()
     return render_template(
         "admin_sauvegardes.html",
         lots=lister_lots(),
         jours_depuis=jours_depuis_derniere(),
         seuil_alerte=seuil,
         moteur=moteur,
-        hors_serveur=etat_hors_serveur(),
-        reglage_hors_serveur=reglage_hors_serveur(),
+        hors_serveur=hors_serveur,
+        voyants=etat_321(hors_serveur),
+        supports=[{"chemin": str(c), "cloud": ressemble_cloud(c), "meme_disque": meme_disque_que_le_serveur(c)}
+                  for c in destinations_support()],
+        cloud=destination_cloud(),
+        phrase_definie=trousseau() is not None,
+        lots_cloud=lister_lots_cloud(),
+        dossier_local=str(dossier_sauvegardes()),
+        conservation=conservation_lots(),
         etat_quotidien=lire_etat_sauvegarde(),
     )
 
@@ -798,10 +805,10 @@ def sauvegarde_hors_serveur():
     sous le compte de l'application, celui de la sauvegarde quotidienne."""
     from pathlib import Path
     from app.models import InstanceSettings
-    from app.services.sauvegarde import tester_destination
 
-    lignes = [l.strip().strip('"') for l in (request.form.get("destinations") or "").replace(";", "\n").splitlines()]
-    lignes = [l for l in lignes if l]
+    brut = "\n".join(request.form.getlist("destinations"))
+    lignes = [l.strip().strip('"') for l in brut.replace(";", "\n").splitlines()]
+    lignes = list(dict.fromkeys(l for l in lignes if l))
     reglages = InstanceSettings.query.first()
     if reglages is None:
         reglages = InstanceSettings()
@@ -812,6 +819,23 @@ def sauvegarde_hors_serveur():
     if not lignes:
         flash("Copies hors serveur désactivées : les sauvegardes restent sur cette machine uniquement.", "warning")
         return redirect(url_for("admin.sauvegardes"))
+    _flash_tests_destinations(lignes)
+    from app.services.sauvegarde import meme_disque_que_le_serveur, ressemble_cloud
+    for ligne in lignes:
+        if ressemble_cloud(ligne):
+            flash(f"⚠️ {ligne} ressemble à un dossier synchronisé vers un cloud : la copie y part en clair. "
+                  "Indiquez-le plutôt dans la case « Hors du centre », où les copies sont chiffrées.", "warning")
+        elif meme_disque_que_le_serveur(Path(ligne)):
+            flash(f"⚠️ {ligne} est sur le même disque que le serveur : une panne de ce disque emporterait "
+                  "aussi cette copie. Choisissez un disque externe ou un partage réseau.", "warning")
+    return redirect(url_for("admin.sauvegardes"))
+
+
+def _flash_tests_destinations(lignes):
+    """Test d'écriture de chaque destination, sous le compte de la sauvegarde quotidienne."""
+    from pathlib import Path
+    from app.services.sauvegarde import tester_destination
+
     for resultat in (tester_destination(Path(l)) for l in lignes):
         compte = f" (compte : {resultat['compte']})" if resultat.get("compte") else ""
         if resultat["ok"]:
@@ -819,7 +843,137 @@ def sauvegarde_hors_serveur():
         else:
             flash(f"❌ {resultat['destination']} : {resultat['detail']}{compte}. La sauvegarde quotidienne "
                   "ne pourra pas y écrire : donnez les droits d'écriture à ce compte.", "danger")
+
+
+def _reglages_instance():
+    from app.models import InstanceSettings
+
+    reglages = InstanceSettings.query.first()
+    if reglages is None:
+        reglages = InstanceSettings()
+        db.session.add(reglages)
+    return reglages
+
+
+@bp.route("/sauvegardes/cloud", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_cloud():
+    """Dossier synchronisé vers un cloud (règle 3-2-1) : les copies y partent chiffrées."""
+    from app.services.sauvegarde import destinations_support, trousseau
+
+    chemin = (request.form.get("dossier") or "").strip().strip('"')
+    if chemin and chemin in {str(c) for c in destinations_support()}:
+        flash("Ce dossier est déjà une copie en clair (« Autre support ») : choisissez un dossier distinct.", "danger")
+        return redirect(url_for("admin.sauvegardes"))
+    _reglages_instance().sauvegarde_cloud = chemin or None
+    db.session.commit()
+    journaliser("backup.cloud_reglage", details={"configure": bool(chemin)})
+    if not chemin:
+        flash("Copie hors du centre désactivée.", "warning")
+        return redirect(url_for("admin.sauvegardes"))
+    _flash_tests_destinations([chemin])
+    if trousseau() is None:
+        flash("Définissez maintenant la phrase secrète : sans elle, rien ne part vers le cloud.", "warning")
     return redirect(url_for("admin.sauvegardes"))
+
+
+@bp.route("/sauvegardes/phrase", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_phrase():
+    """Définir ou changer la phrase secrète des copies cloud (jamais enregistrée)."""
+    from app.services.chiffrement_sauvegarde import LONGUEUR_MIN_PHRASE
+    from app.services.sauvegarde import definir_phrase_secrete, trousseau
+
+    phrase = request.form.get("phrase") or ""
+    if len(phrase) < LONGUEUR_MIN_PHRASE:
+        flash(f"La phrase secrète doit faire au moins {LONGUEUR_MIN_PHRASE} caractères : "
+              "plusieurs mots faciles à retenir, par exemple.", "danger")
+    elif phrase != (request.form.get("confirmation") or ""):
+        flash("Les deux phrases ne sont pas identiques : rien n'a été changé.", "danger")
+    elif not request.form.get("notee"):
+        flash("Cochez la case qui confirme que la phrase est notée hors du serveur : sans elle, "
+              "les copies cloud seraient perdues.", "danger")
+    else:
+        changement = trousseau() is not None
+        definir_phrase_secrete(phrase)
+        db.session.commit()
+        journaliser("backup.phrase_changee" if changement else "backup.phrase_definie", cible="structure")
+        flash("Phrase secrète enregistrée : les prochaines copies cloud sont chiffrées avec elle."
+              + (" Les copies déjà faites s'ouvrent toujours avec l'ancienne phrase." if changement else ""),
+              "success")
+    return redirect(url_for("admin.sauvegardes"))
+
+
+@bp.route("/sauvegardes/phrase/verifier", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_phrase_verifier():
+    from app.services.sauvegarde import phrase_secrete_correcte
+
+    if phrase_secrete_correcte(request.form.get("phrase") or ""):
+        flash("✅ C'est la bonne phrase secrète : les copies cloud s'ouvriront avec elle.", "success")
+    else:
+        flash("❌ Ce n'est pas la phrase secrète actuelle.", "danger")
+    return redirect(url_for("admin.sauvegardes"))
+
+
+@bp.route("/sauvegardes/cloud/rapatrier", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_cloud_rapatrier():
+    """Déchiffre une copie cloud sur le serveur ; elle se restaure ensuite comme les autres."""
+    from app.services.chiffrement_sauvegarde import CopieIllisible, PhraseIncorrecte
+    from app.services.sauvegarde import rapatrier_lot_chiffre
+
+    base = request.form.get("base") or ""
+    try:
+        resultat = rapatrier_lot_chiffre(base, request.form.get("phrase") or "")
+    except PhraseIncorrecte:
+        flash("Phrase secrète incorrecte pour cette copie : rien n'a été rapatrié.", "danger")
+    except CopieIllisible as exc:
+        flash(f"Copie cloud inutilisable ({exc}) : rien n'a été rapatrié. Essayez une copie plus ancienne.", "danger")
+    else:
+        journaliser("backup.cloud_rapatrie", details={"lot": resultat["base"]})
+        flash(f"Copie « {resultat['base']} » rapatriée et vérifiée : elle apparaît dans la liste des sauvegardes "
+              "du serveur, où vous pouvez la restaurer.", "success")
+    return redirect(url_for("admin.sauvegardes"))
+
+
+@bp.route("/sauvegardes/reglages", methods=["POST"])
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_reglages():
+    """Nombre de sauvegardes gardées et seuil d'alerte (prioritaires sur la configuration)."""
+    try:
+        conservation = int(request.form.get("conservation") or 0)
+        seuil = int(request.form.get("seuil") or 0)
+    except ValueError:
+        conservation = seuil = 0
+    if not (3 <= conservation <= 365 and 1 <= seuil <= 30):
+        flash("Gardez entre 3 et 365 sauvegardes, avec une alerte entre 1 et 30 jours.", "danger")
+        return redirect(url_for("admin.sauvegardes"))
+    reglages = _reglages_instance()
+    reglages.sauvegarde_conservation_lots = conservation
+    reglages.sauvegarde_alerte_jours = seuil
+    db.session.commit()
+    journaliser("backup.reglages", details={"conservation": conservation, "seuil": seuil})
+    flash(f"Réglages enregistrés : {conservation} sauvegardes gardées, alerte après {seuil} jour(s).", "success")
+    return redirect(url_for("admin.sauvegardes"))
+
+
+@bp.get("/sauvegardes/parcourir")
+@login_required
+@require_perm("admin:rbac")
+def sauvegarde_parcourir():
+    """Dossiers du serveur, tels que les voit le service (app/services/parcourir_dossiers.py)."""
+    from app.services.parcourir_dossiers import racines, sous_dossiers
+
+    chemin = (request.args.get("chemin") or "").strip()
+    vue = sous_dossiers(chemin) if chemin else {"chemin": "", "parent": None, "dossiers": [], "erreur": None}
+    vue["racines"] = racines()
+    return jsonify(vue)
 
 
 @bp.route("/sauvegardes/creer", methods=["POST"])
@@ -1130,10 +1284,8 @@ def sante_systeme():
         recherche_sans_accent = moteur == "SQLite"
 
     mail = resolve_mail_settings(current_app.config)
-    try:
-        seuil = int(current_app.config.get("BACKUP_ALERT_DAYS") or 2)
-    except (TypeError, ValueError):
-        seuil = 2
+    from app.services.sauvegarde import seuil_alerte_jours
+    seuil = seuil_alerte_jours()
 
     return render_template(
         "admin_sante.html",

@@ -250,6 +250,16 @@ class InstanceSettings(db.Model):
     # Administration > Sauvegardes ; prioritaire sur BACKUP_OFFSITE_DIRS
     # (audit 6.5 : l'installation Windows n'a pas de fichier .env).
     sauvegarde_hors_serveur = db.Column(db.Text, nullable=True)
+    # Règle 3-2-1 (app/services/sauvegarde.py) : dossier synchronisé vers un
+    # cloud, où les copies partent toujours chiffrées. Clé publique et clé
+    # privée protégée par la phrase secrète, jamais la phrase elle-même
+    # (app/services/chiffrement_sauvegarde.py). Réglages prioritaires sur
+    # BACKUP_RETENTION_LOTS et BACKUP_ALERT_DAYS.
+    sauvegarde_cloud = db.Column(db.Text, nullable=True)
+    sauvegarde_cle_publique = db.Column(db.Text, nullable=True)
+    sauvegarde_cle_privee = db.Column(db.Text, nullable=True)
+    sauvegarde_conservation_lots = db.Column(db.Integer, nullable=True)
+    sauvegarde_alerte_jours = db.Column(db.Integer, nullable=True)
 
     # Territoire du centre (app/services/territoire.py) : ville siège, QPV
     # suivis à part dans les bilans et quartiers distingués à l'intérieur de

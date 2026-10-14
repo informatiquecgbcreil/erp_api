@@ -221,6 +221,17 @@ def _installation() -> list[tuple[str, str]]:
                        f"{usage.free // 1_000_000_000} Go libres sur {usage.total // 1_000_000_000} Go"))
     except Exception:  # noqa: BLE001
         lignes.append(("Sauvegardes", "état illisible"))
+    try:
+        # Les voyants seulement : un chemin peut contenir un nom de session.
+        from app.services.sauvegarde import etat_321, trousseau
+
+        voyants = etat_321()
+        lignes.append(("Règle 3-2-1", " ; ".join(
+            f"{nom} {'oui' if voyants[cle]['ok'] else 'NON'}"
+            for cle, nom in (("copies", "3 copies"), ("supports", "2 supports"), ("hors_centre", "1 hors du centre")))
+            + f" ; phrase secrète {'définie' if trousseau() is not None else 'non définie'}"))
+    except Exception:  # noqa: BLE001
+        lignes.append(("Règle 3-2-1", "état illisible"))
     return lignes
 
 

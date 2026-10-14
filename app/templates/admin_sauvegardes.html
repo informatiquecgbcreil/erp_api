@@ -1,14 +1,26 @@
 {% extends "layout.html" %}
 {% block body %}
+<style>
+  .voyants-321{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px}
+  .voyant{border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+  .voyant.ok{border-color:rgba(16,185,129,.45)}
+  .voyant.ko{border-color:rgba(239,68,68,.45)}
+  .voyant strong{display:block;font-size:1.05rem}
+  .champ-dossier{display:flex;gap:6px;align-items:center;margin:6px 0}
+  .champ-dossier .in{flex:1;min-width:0}
+  #parcourir-dialogue{max-width:640px;width:calc(100% - 32px);border:1px solid var(--border);border-radius:14px;padding:16px}
+  #parcourir-dialogue ul{list-style:none;padding:0;margin:8px 0;max-height:50vh;overflow:auto}
+  #parcourir-dialogue li button{width:100%;text-align:left;justify-content:flex-start;margin:2px 0}
+  .parcourir-chemin{word-break:break-all}
+</style>
 
 <div class="stack">
   <div class="card">
     <h1>Sauvegardes</h1>
     <p class="muted">
       Une sauvegarde copie <strong>la base de données</strong> (moteur : {{ moteur }}) et
-      <strong>les pièces jointes</strong> dans le dossier <code>backups/</code> du serveur.
-      C'est votre filet de sécurité en cas de panne, de fausse manipulation ou de
-      changement de machine.
+      <strong>les pièces jointes</strong>. C'est votre filet de sécurité en cas de panne, de fausse
+      manipulation ou de changement de machine. Elle se fait toute seule chaque nuit.
     </p>
 
     {% if jours_depuis is none %}
@@ -28,48 +40,166 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit" data-pending-text="Sauvegarde en cours…">💾 Sauvegarder maintenant</button>
     </form>
-    <p class="ux-helper">
-      Chaque sauvegarde est écrite dans <code>backups/</code> sur le serveur, puis recopiée
-      automatiquement vers les destinations <strong>hors serveur</strong> configurées (ci-dessous).
-      Les plus anciennes sont automatiquement purgées, ici comme là-bas.
-    </p>
-  </div>
-
-  <div class="card">
-    <h2>Copies hors serveur</h2>
-    <p class="muted">
-      Une sauvegarde rangée sur la machine qu'elle protège disparaît avec elle : panne de disque,
-      vol, rançongiciel ou réinstallation emportent l'application <em>et</em> ses sauvegardes.
-      Ces destinations externes (disque amovible, partage réseau, dossier synchronisé vers un
-      cloud) sont ce qui rend une remise en service possible après la perte du serveur.
-    </p>
-
-    <form method="post" action="{{ url_for('admin.sauvegarde_hors_serveur') }}" style="margin:10px 0;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="ui-label" for="destinations">Dossiers de copie (un par ligne) : disque externe, partage réseau (<code>\\NAS\sauvegardes\centre</code>), dossier synchronisé</label>
-      <textarea class="in" id="destinations" name="destinations" rows="3" style="width:100%;">{{ reglage_hors_serveur }}</textarea>
-      <button class="btn" type="submit">Enregistrer et tester l'écriture</button>
-      <span class="muted" style="font-size:12px;">Le test écrit un petit fichier avec le compte qui fait la sauvegarde quotidienne
-        (sous Windows : <code>NT SERVICE\MonCentreSocial</code>) : un partage que seul l'administrateur peut écrire est détecté ici.</span>
-    </form>
 
     {% if etat_quotidien %}
       <div class="callout {{ 'info' if etat_quotidien.ok else 'danger' }}" style="margin:10px 0;">
         {% if etat_quotidien.ok %}✅{% else %}⚠️{% endif %}
         <strong>Sauvegarde quotidienne du {{ etat_quotidien.date[:10] }}</strong> —
         lot {{ 'vérifié' if etat_quotidien.lot_ok else 'NON restaurable' }}
-        {% if etat_quotidien.copies %}; copie(s) hors serveur :
+        {% if etat_quotidien.copies %}; copie(s) :
           {% for copie in etat_quotidien.copies %}{{ copie.destination }} {{ '✓' if copie.ok else '✗ (' ~ copie.detail ~ ')' }}{% if not loop.last %}, {% endif %}{% endfor %}
         {% elif not etat_quotidien.hors_serveur_configure %}; aucune copie hors serveur.{% endif %}
       </div>
     {% endif %}
+  </div>
 
+  <div class="card">
+    <h2>La règle 3-2-1</h2>
+    <p class="muted">Trois copies de vos données, sur deux supports différents, dont une hors du centre : ainsi,
+      ni une panne, ni un rançongiciel, ni un incendie ne font tout perdre d'un coup.</p>
+    <div class="voyants-321">
+      {% for cle, titre in [("copies", "3 copies"), ("supports", "2 supports différents"), ("hors_centre", "1 hors du centre")] %}
+        <div class="voyant {{ 'ok' if voyants[cle].ok else 'ko' }}">
+          <strong>{{ '✅' if voyants[cle].ok else '❌' }} {{ titre }}</strong>
+          <span class="muted">{{ voyants[cle].detail }}</span>
+        </div>
+      {% endfor %}
+    </div>
     {% if not hors_serveur.configure %}
       <div class="callout danger" style="margin:10px 0;">
         ⚠️ <strong>Aucune copie hors serveur configurée.</strong> Toutes les sauvegardes sont
-        sur cette machine, et uniquement sur elle. Indiquez un dossier ci-dessus.
+        sur cette machine, et uniquement sur elle. Remplissez les cases ② et ③ ci-dessous.
       </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>① Sur ce serveur</h2>
+    <p>Chaque nuit, une sauvegarde complète est écrite dans <code>{{ dossier_local }}</code>, puis vérifiée.
+      Ce dossier est fixé par l'installation : ses droits d'accès protègent les données.</p>
+    <form method="post" action="{{ url_for('admin.sauvegarde_reglages') }}" class="inline" style="gap:10px;flex-wrap:wrap;align-items:end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Sauvegardes gardées (ici et sur chaque copie)
+        <input class="in" type="number" name="conservation" min="3" max="365" value="{{ conservation }}" style="max-width:110px;"></label>
+      <label>Alerter après combien de jours sans sauvegarde
+        <input class="in" type="number" name="seuil" min="1" max="30" value="{{ seuil_alerte }}" style="max-width:110px;"></label>
+      <button class="btn" type="submit">Enregistrer</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>② Autre support dans le centre</h2>
+    <p class="muted">Un disque externe branché en permanence sur le serveur, ou un partage réseau (NAS). Les copies y
+      sont en clair, mais elles restent dans le centre. Un lecteur réseau (Z:) ouvert dans votre session n'est pas
+      visible par la sauvegarde de la nuit : tapez son adresse complète, par exemple <code>\\NAS\sauvegardes\centre</code>.</p>
+    <form method="post" action="{{ url_for('admin.sauvegarde_hors_serveur') }}" id="form-supports">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for support in supports %}
+        <div class="champ-dossier">
+          <input class="in" name="destinations" value="{{ support.chemin }}" aria-label="Dossier de copie {{ loop.index }}">
+          <button class="btn" type="button" data-parcourir>📂 Parcourir</button>
+        </div>
+        {% if support.cloud %}
+          <div class="callout-soft warnish" role="note">⚠️ Ce dossier ressemble à un dossier synchronisé vers un cloud :
+            la copie y part en clair. Mettez-le plutôt dans la case ③, où les copies sont chiffrées.</div>
+        {% elif support.meme_disque %}
+          <div class="callout-soft warnish" role="note">⚠️ Ce dossier est sur le même disque que le serveur : une panne
+            de ce disque emporterait aussi cette copie.</div>
+        {% endif %}
+      {% endfor %}
+      <div class="champ-dossier" data-modele-support>
+        <input class="in" name="destinations" value="" placeholder="E:\Sauvegardes ou \\NAS\sauvegardes\centre"
+               aria-label="Nouveau dossier de copie">
+        <button class="btn" type="button" data-parcourir>📂 Parcourir</button>
+      </div>
+      <p style="margin-top:8px;">
+        <button class="btn" type="button" data-ajouter-support>➕ Ajouter un autre dossier</button>
+        <button class="btn primary" type="submit">Enregistrer et tester l'écriture</button>
+      </p>
+      <p class="muted" style="font-size:12px;">Le test écrit un petit fichier avec le compte qui fait la sauvegarde de
+        la nuit (sous Windows : <code>NT SERVICE\MonCentreSocial</code>) : un dossier où seul l'administrateur peut
+        écrire est détecté ici. Pour retirer un dossier, videz sa case puis enregistrez.</p>
+    </form>
+  </div>
+
+  <div class="card" id="cloud">
+    <h2>③ Hors du centre : copie chiffrée dans le cloud</h2>
+    <p class="muted">Un dossier du serveur synchronisé par Google Drive, Nextcloud ou OneDrive. Les copies y partent
+      <strong>chiffrées</strong> : l'hébergeur ne voit que des fichiers illisibles. Le plus simple : créez un dossier
+      comme <code>C:\Sauvegardes-cloud</code> et faites-le synchroniser (Google Drive : « Ordinateurs » ;
+      Nextcloud : « Ajouter une synchronisation de dossier »). Un dossier OneDrive est rangé dans la session d'un
+      utilisateur : il faut y donner le droit d'écriture au compte <code>NT SERVICE\MonCentreSocial</code>, et la
+      synchronisation ne tourne que si cette session est ouverte.</p>
+    <form method="post" action="{{ url_for('admin.sauvegarde_cloud') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="champ-dossier">
+        <input class="in" name="dossier" value="{{ cloud or '' }}" placeholder="C:\Sauvegardes-cloud" aria-label="Dossier synchronisé vers le cloud">
+        <button class="btn" type="button" data-parcourir>📂 Parcourir</button>
+      </div>
+      <button class="btn primary" type="submit">Enregistrer et tester l'écriture</button>
+    </form>
+
+    <h3 style="margin-top:16px;">🔑 Phrase secrète</h3>
+    {% if phrase_definie %}
+      <p>✅ Phrase secrète définie : chaque nuit, les copies cloud sont chiffrées sans que personne n'ait à la taper.
+        Elle n'est enregistrée nulle part dans l'application : elle sert seulement à <strong>rouvrir</strong> une copie.</p>
+      <form method="post" action="{{ url_for('admin.sauvegarde_phrase_verifier') }}" class="inline" style="gap:8px;flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input class="in" type="password" name="phrase" autocomplete="off" aria-label="Phrase secrète à vérifier"
+               placeholder="Tapez la phrase notée pour la vérifier" style="min-width:260px;">
+        <button class="btn" type="submit">Vérifier ma phrase</button>
+      </form>
+      <details style="margin-top:10px;">
+        <summary>Changer la phrase secrète (par exemple si elle a été perdue)</summary>
+        <p class="muted">Les prochaines copies seront chiffrées avec la nouvelle phrase. Les copies déjà faites ne
+          s'ouvriront qu'avec l'ancienne : gardez-la tant que ces copies existent.</p>
+        {% set libelle_bouton = "Changer la phrase secrète" %}
+        {% include "_phrase_secrete_form.html" %}
+      </details>
     {% else %}
+      <p>Choisissez une phrase d'au moins 16 caractères, facile à retenir : plusieurs mots, par exemple
+        « la tarte aux mirabelles du jeudi ». <strong>Notez-la hors du serveur</strong> (coffre-fort, enveloppe chez la
+        direction) : sans elle, les copies cloud ne peuvent plus être ouvertes, par personne.</p>
+      {% set libelle_bouton = "Enregistrer la phrase secrète" %}
+      {% include "_phrase_secrete_form.html" %}
+    {% endif %}
+
+    {% if lots_cloud %}
+      <h3 style="margin-top:16px;">Copies dans le cloud</h3>
+      <p class="muted">Serveur perdu ou réinstallé ? Rapatriez une copie avec la phrase secrète : elle rejoint la liste des
+        sauvegardes du serveur, où vous la restaurez comme les autres.</p>
+      <div class="tablewrap">
+      <table class="table">
+        <thead><tr><th>Date</th><th>Taille</th><th>Rapatrier sur le serveur</th></tr></thead>
+        <tbody>
+          {% for lot in lots_cloud %}
+            <tr>
+              <td>{{ lot.modifie.strftime('%d/%m/%Y à %H:%M') if lot.modifie else '—' }}
+                {% if not lot.complet %}<div class="muted" style="font-size:12px;">incomplète</div>{% endif %}</td>
+              <td>{{ lot.taille_lisible }}</td>
+              <td>
+                {% if lot.complet %}
+                  <form method="post" action="{{ url_for('admin.sauvegarde_cloud_rapatrier') }}" class="inline" style="gap:6px;flex-wrap:wrap;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="base" value="{{ lot.base }}">
+                    <input class="in" type="password" name="phrase" autocomplete="off" required
+                           aria-label="Phrase secrète pour la copie du {{ lot.modifie.strftime('%d/%m/%Y') if lot.modifie else '' }}"
+                           placeholder="Phrase secrète">
+                    <button class="btn" type="submit" data-pending-text="Déchiffrement…">⬇️ Rapatrier</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if hors_serveur.configure %}
+    <div class="card">
+      <h2>État des copies</h2>
       <div class="tablewrap">
       <table class="table">
         <thead>
@@ -83,7 +213,7 @@
         <tbody>
           {% for d in hors_serveur.destinations %}
             <tr>
-              <td><code>{{ d.chemin }}</code></td>
+              <td><code>{{ d.chemin }}</code>{% if d.chiffre %} <span class="status-badge status-info">chiffrée 🔒</span>{% endif %}</td>
               <td>
                 {% if d.modifie %}{{ d.modifie.strftime('%d/%m/%Y à %H:%M') }}
                   {% if d.jours_depuis is not none %}
@@ -110,8 +240,86 @@
         à l'arrivée de chaque copie : une copie tronquée (disque plein, lien réseau coupé) est
         signalée ici plutôt que découverte le jour de la panne.
       </p>
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
+
+  <dialog id="parcourir-dialogue" aria-labelledby="parcourir-titre">
+    <h2 id="parcourir-titre" style="margin-top:0;">Choisir un dossier du serveur</h2>
+    <p class="muted" style="margin:0;">Dossiers vus par la sauvegarde de la nuit. <span class="parcourir-chemin" data-chemin></span></p>
+    <p class="muted" data-erreur hidden style="color:var(--danger);"></p>
+    <ul data-liste></ul>
+    <div class="inline" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn" type="button" data-racines>💽 Disques</button>
+      <button class="btn" type="button" data-parent>⬆️ Dossier parent</button>
+      <button class="btn primary" type="button" data-choisir>Choisir ce dossier</button>
+      <button class="btn" type="button" data-fermer>Annuler</button>
+    </div>
+  </dialog>
+
+<script>
+(function () {
+  var dialogue = document.getElementById("parcourir-dialogue");
+  var adresse = "{{ url_for('admin.sauvegarde_parcourir') }}";
+  var cible = null, courant = "", parent = null;
+  var types = {"amovible": "💾 disque amovible", "fixe": "🖴 disque", "réseau": "🌐 réseau", "autre": ""};
+
+  function bouton(texte, action) {
+    var li = document.createElement("li"), b = document.createElement("button");
+    b.type = "button"; b.className = "btn"; b.textContent = texte;
+    b.addEventListener("click", action);
+    li.appendChild(b);
+    return li;
+  }
+  function afficher(vue) {
+    var liste = dialogue.querySelector("[data-liste]"), erreur = dialogue.querySelector("[data-erreur]");
+    courant = vue.chemin || ""; parent = vue.parent;
+    dialogue.querySelector("[data-chemin]").textContent = courant ? "Dossier : " + courant : "";
+    erreur.hidden = !vue.erreur; erreur.textContent = vue.erreur || "";
+    liste.textContent = "";
+    if (!courant) {
+      (vue.racines || []).forEach(function (r) {
+        liste.appendChild(bouton(r.chemin + "  " + (types[r.type] || ""), function () { aller(r.chemin); }));
+      });
+    } else {
+      vue.dossiers.forEach(function (nom) {
+        liste.appendChild(bouton("📁 " + nom, function () { aller(courant.replace(/[\\/]+$/, "") + (courant.indexOf("\\") >= 0 ? "\\" : "/") + nom); }));
+      });
+      if (!vue.dossiers.length && !vue.erreur) { liste.appendChild(document.createTextNode("Aucun sous-dossier.")); }
+    }
+    dialogue.querySelector("[data-choisir]").disabled = !courant || !!vue.erreur;
+    dialogue.querySelector("[data-parent]").disabled = !parent;
+  }
+  function aller(chemin) {
+    fetch(adresse + "?chemin=" + encodeURIComponent(chemin || ""), {credentials: "same-origin"})
+      .then(function (r) { return r.json(); }).then(afficher)
+      .catch(function () { afficher({chemin: chemin, dossiers: [], erreur: "le serveur ne répond pas"}); });
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-parcourir]");
+    if (!b) return;
+    cible = b.parentElement.querySelector("input");
+    aller(cible.value.trim());
+    dialogue.showModal();
+  });
+  dialogue.querySelector("[data-racines]").addEventListener("click", function () { aller(""); });
+  dialogue.querySelector("[data-parent]").addEventListener("click", function () { if (parent) aller(parent); });
+  dialogue.querySelector("[data-fermer]").addEventListener("click", function () { dialogue.close(); });
+  dialogue.querySelector("[data-choisir]").addEventListener("click", function () {
+    if (cible && courant) { cible.value = courant; }
+    dialogue.close();
+  });
+  var ajouter = document.querySelector("[data-ajouter-support]");
+  if (ajouter) {
+    ajouter.addEventListener("click", function () {
+      var modele = document.querySelector("[data-modele-support]"), copie = modele.cloneNode(true);
+      copie.removeAttribute("data-modele-support");
+      copie.querySelector("input").value = "";
+      modele.parentNode.insertBefore(copie, modele.nextSibling);
+      copie.querySelector("input").focus();
+    });
+  }
+})();
+</script>
 
   <div class="card">
     <h2>{{ lots|length }} sauvegarde(s) disponible(s)</h2>

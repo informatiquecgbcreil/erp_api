@@ -388,10 +388,7 @@ def _nettoyer_dossier(dossier: Path, max_lots: int) -> int:
 def nettoyer_sauvegardes(max_lots: int | None = None) -> int:
     """Conserve les ``max_lots`` lots les plus récents, supprime les plus anciens."""
     if max_lots is None:
-        try:
-            max_lots = int(current_app.config.get("BACKUP_RETENTION_LOTS") or 30)
-        except (TypeError, ValueError):
-            max_lots = 30
+        max_lots = conservation_lots()
     return _nettoyer_dossier(dossier_sauvegardes(), max_lots)
 
 
@@ -999,16 +996,50 @@ def verifier_lot(base: str) -> dict:
 SUFFIXE_COPIE_EN_COURS = ".part"
 
 
-def reglage_hors_serveur() -> str:
-    """Destinations saisies dans Administration > Sauvegardes (prioritaires
-    sur BACKUP_OFFSITE_DIRS, que l'installation Windows n'a pas)."""
+def _reglages():
+    """La ligne de réglages, ou None (base pas encore migrée ou vide)."""
     try:
         from app.models import InstanceSettings
-        ligne = InstanceSettings.query.first()
+        return InstanceSettings.query.first()
     except Exception:  # noqa: BLE001 — base pas encore migrée
         from app.extensions import db
         db.session.rollback()
-        return ""
+        return None
+
+
+def _entier_regle(colonne: str, cle_config: str, defaut: int) -> int:
+    """Réglage de l'administration, sinon configuration, sinon défaut (> 0)."""
+    for valeur in (getattr(_reglages(), colonne, None), current_app.config.get(cle_config)):
+        try:
+            if valeur is not None and int(valeur) > 0:
+                return int(valeur)
+        except (TypeError, ValueError):
+            continue
+    return defaut
+
+
+def conservation_lots() -> int:
+    """Nombre de sauvegardes gardées sur le serveur."""
+    return _entier_regle("sauvegarde_conservation_lots", "BACKUP_RETENTION_LOTS", 30)
+
+
+def conservation_lots_hors_serveur() -> int:
+    return _entier_regle("sauvegarde_conservation_lots", "BACKUP_OFFSITE_RETENTION_LOTS", conservation_lots())
+
+
+def seuil_alerte_jours() -> int:
+    """Au-delà de ce nombre de jours sans sauvegarde, l'application alerte."""
+    return _entier_regle("sauvegarde_alerte_jours", "BACKUP_ALERT_DAYS", 2)
+
+
+def seuil_alerte_hors_serveur() -> int:
+    return _entier_regle("sauvegarde_alerte_jours", "BACKUP_OFFSITE_ALERT_DAYS", seuil_alerte_jours())
+
+
+def reglage_hors_serveur() -> str:
+    """Destinations saisies dans Administration > Sauvegardes (prioritaires
+    sur BACKUP_OFFSITE_DIRS, que l'installation Windows n'a pas)."""
+    ligne = _reglages()
     return (getattr(ligne, "sauvegarde_hors_serveur", None) or "") if ligne else ""
 
 
@@ -1038,8 +1069,9 @@ def tester_destination(dest: Path) -> dict:
         return {"destination": str(dest), "ok": False, "compte": compte, "detail": str(exc)}
 
 
-def destinations_hors_serveur() -> list[Path]:
-    """Destinations configurées (``BACKUP_OFFSITE_DIRS``), dans l'ordre.
+def destinations_support() -> list[Path]:
+    """Copies en clair sur un autre support du centre (disque externe, NAS),
+    dans l'ordre (réglage de l'administration, sinon ``BACKUP_OFFSITE_DIRS``).
 
     Séparateur : point-virgule ou saut de ligne — jamais la virgule ni le
     deux-points, qui apparaissent dans les chemins Windows (``D:\\...``).
@@ -1053,6 +1085,47 @@ def destinations_hors_serveur() -> list[Path]:
         if morceau:
             chemins.append(Path(morceau))
     return chemins
+
+
+def destination_cloud() -> Path | None:
+    """Dossier synchronisé vers un cloud : les copies y partent chiffrées."""
+    chemin = (getattr(_reglages(), "sauvegarde_cloud", None) or "").strip().strip('"')
+    return Path(chemin) if chemin else None
+
+
+def destinations_hors_serveur() -> list[Path]:
+    """Toutes les destinations des copies : autres supports, puis le cloud."""
+    chemins = destinations_support()
+    cloud = destination_cloud()
+    if cloud is not None and cloud not in chemins:
+        chemins.append(cloud)
+    return chemins
+
+
+#: Noms qui trahissent un dossier synchronisé vers un cloud : une copie en
+#: clair y partirait chez l'hébergeur, contre la décision du centre.
+_INDICES_CLOUD = ("onedrive", "google drive", "googledrive", "mon drive", "my drive", "nextcloud",
+                  "owncloud", "dropbox", "icloud", "pcloud", "kdrive", "seafile", "sync.com")
+
+
+def ressemble_cloud(chemin: Path | str) -> bool:
+    return any(indice in str(chemin).lower() for indice in _INDICES_CLOUD)
+
+
+def _peripherique(chemin: Path) -> int | None:
+    """Numéro du disque (volume) qui porte ce chemin, ou None s'il est injoignable."""
+    for candidat in (chemin, *chemin.parents):
+        try:
+            return os.stat(candidat).st_dev
+        except OSError:
+            continue
+    return None
+
+
+def meme_disque_que_le_serveur(chemin: Path) -> bool:
+    """Le dossier est-il sur le disque des sauvegardes ? Ce n'est alors pas un autre support."""
+    ici, la = _peripherique(dossier_sauvegardes()), _peripherique(Path(chemin))
+    return ici is not None and ici == la
 
 
 def _fichiers_du_lot(base: str, dossier: Path) -> list[Path]:
@@ -1138,15 +1211,14 @@ def copier_lot_hors_serveur(
     if not fichiers:
         raise RuntimeError(f"lot introuvable dans {source} : {base}")
 
-    try:
-        max_lots = int(current_app.config.get("BACKUP_OFFSITE_RETENTION_LOTS") or 0)
-    except (TypeError, ValueError):
-        max_lots = 0
-    if max_lots <= 0:
-        max_lots = 30
+    max_lots = conservation_lots_hors_serveur()
+    cloud = destination_cloud()
 
     rapports: list[dict] = []
     for dest in cibles:
+        if cloud is not None and dest == cloud:
+            rapports.append(_copier_lot_chiffre(base, fichiers, dest, max_lots))
+            continue
         rapport = {
             "destination": str(dest),
             "ok": False,
@@ -1186,12 +1258,8 @@ def etat_hors_serveur() -> dict:
     destination est en alerte si elle est injoignable, vide, sans lot complet,
     ou si son lot le plus récent dépasse le seuil d'ancienneté.
     """
-    try:
-        seuil = int(current_app.config.get("BACKUP_OFFSITE_ALERT_DAYS") or 0)
-    except (TypeError, ValueError):
-        seuil = 0
-    if seuil <= 0:
-        seuil = 2
+    seuil = seuil_alerte_hors_serveur()
+    cloud = destination_cloud()
 
     cibles = destinations_hors_serveur()
     etat = {
@@ -1215,6 +1283,8 @@ def etat_hors_serveur() -> dict:
             "integre": None,
             "alerte": True,
             "detail": "",
+            "chiffre": cloud is not None and dest == cloud,
+            "meme_disque": False,
         }
         try:
             joignable = dest.is_dir()
@@ -1227,7 +1297,13 @@ def etat_hors_serveur() -> dict:
             continue
 
         info["joignable"] = True
-        lots = [lot for lot in _lots_du_dossier(dest) if lot["complet"]]
+        info["meme_disque"] = meme_disque_que_le_serveur(dest)
+        if info["chiffre"]:
+            lots = [lot for lot in _lots_chiffres_du_dossier(dest) if lot["complet"]]
+            if lots:
+                lots[0]["integre"] = verifier_lot_chiffre(lots[0]["base"], dest)
+        else:
+            lots = [lot for lot in _lots_du_dossier(dest) if lot["complet"]]
         info["nb_lots"] = len(lots)
         if not lots:
             info["detail"] = "aucun lot complet à cette destination"
@@ -1256,3 +1332,239 @@ def etat_hors_serveur() -> dict:
         etat["destinations"].append(info)
 
     return etat
+
+
+# --------------------------------------------------------------------------
+# Copie cloud chiffrée (règle 3-2-1 : une copie hors du centre).
+#
+# Décision du centre : les fiches des habitants ne partent jamais en clair
+# chez un hébergeur. Chaque fichier du lot est chiffré avec la clé publique
+# (app/services/chiffrement_sauvegarde.py) : la sauvegarde de la nuit se fait
+# sans personne, la phrase secrète ne sert qu'à rouvrir. Un lot chiffré a sa
+# propre liste d'empreintes (« <lot>.chiffre.sha256 », écrite en dernier) :
+# son intégrité se contrôle sans la phrase secrète.
+# --------------------------------------------------------------------------
+SUFFIXE_EMPREINTES_CHIFFREES = ".chiffre.sha256"
+
+
+class PhraseNonDefinie(RuntimeError):
+    """Copie cloud demandée sans phrase secrète : rien ne part en clair."""
+
+
+def trousseau():
+    """Clés de chiffrement des copies cloud, ou None si la phrase n'est pas définie."""
+    import base64
+
+    from app.services.chiffrement_sauvegarde import Trousseau
+
+    reglages = _reglages()
+    publique = getattr(reglages, "sauvegarde_cle_publique", None)
+    protegee = getattr(reglages, "sauvegarde_cle_privee", None)
+    if not publique or not protegee:
+        return None
+    return Trousseau(base64.b64decode(publique), base64.b64decode(protegee))
+
+
+def definir_phrase_secrete(phrase: str) -> None:
+    """Nouvelles clés protégées par ``phrase`` (la phrase n'est pas gardée). Ne valide pas.
+
+    Les copies déjà chiffrées restent lisibles avec l'ancienne phrase seulement.
+    """
+    import base64
+
+    from app.extensions import db
+    from app.models import InstanceSettings
+    from app.services.chiffrement_sauvegarde import creer_trousseau
+
+    cles = creer_trousseau(phrase)
+    reglages = _reglages()
+    if reglages is None:
+        reglages = InstanceSettings()
+        db.session.add(reglages)
+    reglages.sauvegarde_cle_publique = base64.b64encode(cles.cle_publique).decode("ascii")
+    reglages.sauvegarde_cle_privee = base64.b64encode(cles.cle_privee_protegee).decode("ascii")
+
+
+def phrase_secrete_correcte(phrase: str) -> bool:
+    from app.services.chiffrement_sauvegarde import phrase_correcte
+
+    cles = trousseau()
+    return cles is not None and phrase_correcte(phrase, cles.cle_privee_protegee)
+
+
+def _copier_lot_chiffre(base: str, fichiers: list[Path], dest: Path, max_lots: int) -> dict:
+    from app.services.chiffrement_sauvegarde import EXTENSION, chiffrer_fichier
+
+    rapport = {"destination": str(dest), "ok": False, "detail": "", "fichiers": 0, "purges": 0, "chiffre": True}
+    try:
+        cles = trousseau()
+        if cles is None:
+            raise PhraseNonDefinie("phrase secrète non définie : rien n'est copié vers le cloud, "
+                                   "les données des habitants n'y partent jamais en clair")
+        _preparer_destination(dest)
+        empreintes = []
+        for f in fichiers:
+            nom = f.name + EXTENSION
+            provisoire = dest / (nom + SUFFIXE_COPIE_EN_COURS)
+            try:
+                empreinte = chiffrer_fichier(f, provisoire, cles)
+                if _sha256(provisoire) != empreinte:
+                    raise RuntimeError(f"{nom} : copie altérée à l'arrivée (disque plein ? lien coupé ?)")
+                provisoire.replace(dest / nom)
+            except Exception:
+                provisoire.unlink(missing_ok=True)
+                raise
+            empreintes.append(f"{empreinte}  {nom}")
+            rapport["fichiers"] += 1
+        # Écrite en dernier : sans elle, le lot n'est pas considéré complet.
+        liste = dest / f"{base}{SUFFIXE_EMPREINTES_CHIFFREES}"
+        provisoire = dest / (liste.name + SUFFIXE_COPIE_EN_COURS)
+        provisoire.write_text("\n".join(empreintes) + "\n", encoding="utf-8")
+        provisoire.replace(liste)
+        if not verifier_lot_chiffre(base, dest):
+            raise RuntimeError("le lot chiffré ne correspond pas à ses empreintes")
+        rapport["purges"] = _nettoyer_lots_chiffres(dest, max_lots)
+        rapport["ok"] = True
+        rapport["detail"] = f"{rapport['fichiers']} fichier(s) chiffré(s), copié(s) et vérifié(s)"
+    except Exception as exc:  # une destination fautive n'en condamne pas d'autres
+        rapport["detail"] = str(exc)
+        current_app.logger.error("Copie cloud chiffrée échouée vers %s (lot %s) : %s", dest, base, exc)
+    return rapport
+
+
+def _empreintes_chiffrees(base: str, dossier: Path) -> dict[str, str]:
+    from app.services.chiffrement_sauvegarde import EXTENSION
+
+    liste = dossier / f"{_safe_name(base)}{SUFFIXE_EMPREINTES_CHIFFREES}"
+    attendues = {}
+    for ligne in liste.read_text(encoding="utf-8").splitlines():
+        attendu, _, nom = ligne.strip().partition("  ")
+        nom = nom.strip()
+        if not ligne.strip():
+            continue
+        if (not re.fullmatch(r"[a-fA-F0-9]{64}", attendu) or not nom.startswith(base) or not nom.endswith(EXTENSION)
+                or "/" in nom or "\\" in nom):
+            raise ValueError(f"liste d'empreintes illisible : {liste.name}")
+        attendues[nom] = attendu
+    return attendues
+
+
+def verifier_lot_chiffre(base: str, dossier: Path) -> bool:
+    """Les fichiers chiffrés sont-ils ceux qui ont été écrits ? (sans la phrase secrète)"""
+    try:
+        attendues = _empreintes_chiffrees(base, dossier)
+        return bool(attendues) and all(
+            (dossier / nom).is_file() and _sha256(dossier / nom) == empreinte for nom, empreinte in attendues.items())
+    except (OSError, ValueError):
+        return False
+
+
+def _lots_chiffres_du_dossier(dossier: Path) -> list[dict]:
+    """Lots chiffrés d'un dossier cloud, du plus récent au plus ancien."""
+    from app.services.chiffrement_sauvegarde import EXTENSION
+
+    try:
+        listes = [p for p in dossier.iterdir() if p.name.endswith(SUFFIXE_EMPREINTES_CHIFFREES)]
+    except OSError:
+        return []
+    lots = []
+    for liste in listes:
+        base = liste.name[: -len(SUFFIXE_EMPREINTES_CHIFFREES)]
+        try:
+            noms = list(_empreintes_chiffrees(base, dossier))
+            modifie = dt.datetime.fromtimestamp(liste.stat().st_mtime)
+            taille = sum((dossier / nom).stat().st_size for nom in noms if (dossier / nom).exists())
+        except (OSError, ValueError):
+            noms, modifie, taille = [], None, 0
+        presents = {nom for nom in noms if (dossier / nom).exists()}
+        complet = (f"{base}_uploads.zip{EXTENSION}" in presents
+                   and bool({f"{base}.sql{EXTENSION}", f"{base}.db{EXTENSION}"} & presents)
+                   and presents == set(noms))
+        lots.append({"base": base, "modifie": modifie, "taille": taille, "taille_lisible": humaniser_taille(taille),
+                     "complet": complet, "integre": None, "fichiers": noms})
+    lots.sort(key=lambda l: l["modifie"] or dt.datetime.min, reverse=True)
+    return lots
+
+
+def lister_lots_cloud() -> list[dict]:
+    cloud = destination_cloud()
+    return _lots_chiffres_du_dossier(cloud) if cloud is not None else []
+
+
+def _nettoyer_lots_chiffres(dossier: Path, max_lots: int) -> int:
+    supprimes = 0
+    for lot in _lots_chiffres_du_dossier(dossier)[max_lots:]:
+        # La liste d'empreintes d'abord : un lot à moitié effacé n'a plus l'air complet.
+        for nom in (f"{lot['base']}{SUFFIXE_EMPREINTES_CHIFFREES}", *lot["fichiers"]):
+            try:
+                (dossier / nom).unlink(missing_ok=True)
+                supprimes += 1
+            except OSError:
+                pass
+    return supprimes
+
+
+def rapatrier_lot_chiffre(base: str, phrase: str) -> dict:
+    """Déchiffre un lot du cloud dans le dossier des sauvegardes du serveur.
+
+    Le lot devient une sauvegarde ordinaire, restaurable depuis la liste.
+    Lève ``PhraseIncorrecte`` ou ``CopieIllisible`` ; rien n'est laissé sur
+    le serveur en cas d'échec.
+    """
+    from app.services.chiffrement_sauvegarde import EXTENSION, CopieIllisible, dechiffrer_fichier, phrase_ouvre
+
+    cloud = destination_cloud()
+    base = _safe_name(base)
+    if cloud is None:
+        raise CopieIllisible("aucun dossier cloud n'est réglé")
+    if not verifier_lot_chiffre(base, cloud):
+        raise CopieIllisible("la copie cloud ne correspond plus à ses empreintes (incomplète ou abîmée)")
+    noms = list(_empreintes_chiffrees(base, cloud))
+    if not phrase_ouvre(cloud / noms[0], phrase):
+        from app.services.chiffrement_sauvegarde import PhraseIncorrecte
+
+        raise PhraseIncorrecte("phrase secrète incorrecte pour cette copie")
+    local = dossier_sauvegardes()
+    ecrits: list[Path] = []
+    try:
+        for nom in noms:
+            cible = local / nom[: -len(EXTENSION)]
+            dechiffrer_fichier(cloud / nom, cible, phrase)
+            ecrits.append(cible)
+        if verifier_integrite(base, local) is not True:
+            raise CopieIllisible("le lot déchiffré ne correspond pas à ses empreintes d'origine")
+    except Exception:
+        for fichier in ecrits:
+            fichier.unlink(missing_ok=True)
+        raise
+    return {"base": base, "fichiers": len(ecrits)}
+
+
+def etat_321(etat: dict | None = None) -> dict:
+    """La règle 3-2-1 en trois voyants : 3 copies, 2 supports, 1 hors du centre."""
+    etat = etat if etat is not None else etat_hors_serveur()
+    saines = [d for d in etat["destinations"] if not d["alerte"]]
+    # Le dossier cloud est souvent sur le disque du serveur, mais sa copie
+    # vit chez l'hébergeur : c'est bien un autre support.
+    ailleurs = [d for d in saines if d["chiffre"] or not d["meme_disque"]]
+    dehors = [d for d in saines if d["chiffre"]]
+    voyants = {
+        "copies": {
+            "ok": bool(saines),
+            "detail": (f"les données, la sauvegarde du serveur et {len(saines)} copie(s) à jour"
+                       if saines else "aucune copie à jour en dehors de la sauvegarde du serveur"),
+        },
+        "supports": {
+            "ok": bool(ailleurs),
+            "detail": ("au moins une copie sur un autre disque que le serveur" if ailleurs else
+                       "toutes les copies sont sur le disque du serveur : une panne les emporterait"
+                       if saines else "aucune copie sur un autre support"),
+        },
+        "hors_centre": {
+            "ok": bool(dehors),
+            "detail": ("copie chiffrée à jour dans le cloud" if dehors else
+                       "aucune copie hors du centre : un incendie ou un cambriolage emporterait tout"),
+        },
+    }
+    voyants["ok"] = all(v["ok"] for v in voyants.values())
+    return voyants
